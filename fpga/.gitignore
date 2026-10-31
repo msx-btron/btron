@@ -1,0 +1,10 @@
+# FPGA build and simulation artifacts
+*.bo
+*.ba
+*.v
+!bsv/**/*.v
+obj_dir/
+bsc_bdir/
+fpga_sim_phase1
+*.dSYM/
+*.vcd
