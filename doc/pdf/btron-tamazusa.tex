@@ -46,7 +46,7 @@
     tabsize=2
 }
 
-\title{\LARGE \textbf{Hideyuki Kishida's Educational 64-bit OS and 5HT's B-System:\\A Rigorous Comparative Audit of T-Kernel/POSIX Hybrid Architecture, Wayland Compositing, and Cleanroom BTRON3 Design}\thanks{Hideyuki Kishida's system is provisionally designated as ``Urara OS'' pending trademark verification.}}
+\title{\LARGE \textbf{Hideyuki Kishida's Educational 64-bit Tamazusa OS and 5HT's B-System:\\A Rigorous Comparative Audit of T-Kernel/POSIX Hybrid Architecture, Wayland Compositing, and Cleanroom BTRON3 Design}\thanks{Hideyuki Kishida's operating system is officially named Tamazusa OS (\ja{玉梓}) as of October 31, 2026 (\url{https://github.com/HIDEYUKI-KISHIDA/tamazusa-os/releases/tag/v0.1.0}). The project was briefly designated ``Urara OS'' as a provisional working name, which was dropped due to an existing registered trademark.}}
 
 \author{
     \textbf{Maxim Sokhatsky (Namdak Tonpa)}\\[0.3em]
@@ -58,7 +58,7 @@
 
 \pagestyle{fancy}
 \fancyhf{}
-\rhead{\small \textit{Comparative Audit: Kishida's OS (Urara OS) vs. B-System}}
+\rhead{\small \textit{Comparative Audit: Tamazusa OS vs. B-System}}
 \lhead{\small \textit{Synrc Research Report}}
 \cfoot{\thepage}
 
@@ -67,14 +67,14 @@
 \maketitle
 
 \begin{abstract}
-The preservation and modern evolution of Ken Sakamura's TRON architecture are epitomized by two independent operating systems: Hideyuki Kishida's (\ja{岸田英之}) independent 64-bit OS (provisionally designated \textbf{Urara OS}, developed since October 2025 and originally inspired by the 1990s \textbf{B-Free} archive, featuring a 64-bit T-Kernel 2.0 core, POSIX layer, and Wayland desktop); and 5HT's \textbf{B-System} (BTRON 3.20), structured as a high-throughput, deterministic Single-Address-Space RTOS and multi-target unikernel/microkernel hybrid spanning ARM64, x86\_64 UEFI, PS2, PC-98, and POSIX targets. This paper provides a peer-level comparative audit evaluating both operating systems strictly along isomorphic, empirically verifiable dimensions: (1) Multiprocessing architectures, examining Kishida's experimental 7-stage Symmetric Multiprocessing (SMP) roadmap in QEMU (up to 4 virtual cores, with uniprocessor execution as the hardware default) alongside progressive decoupling of 49 kernel globals from the Big Kernel Lock (BKL), contrasted against B-System's lock-free actor concurrency model; (2) Graphical subsystems, evaluating Kishida's compositor-first Wayland pipeline and Qt Quick / QML DesktopShell (driven via physical/virtual framebuffers and a CPU software renderer, with non-operational prototype GPU drivers) against B-System's 128-bit NEON SIMD vector blitter and direct-rendering backbuffer compositor; (3) Operating system interfaces and process isolation, examining Kishida's educational ``POSIX OSS Gateway'' strategy designed to overcome BTRON's historical software deficit by hosting modern open-source software (BusyBox, Python 3, WPE WebKit) on a T-Kernel 2.0 foundation, contrasted with B-System's cleanroom BTRON3 core; and (4) Storage hierarchies, comparing Kishida's multi-volume BFS and persistent FatFs home architecture against B-System's native backward compatibility with commercial Cho-Kanji (B-right/V 4.02) disk volumes and modern 64-bit B-FS (V2).
+The preservation and modern evolution of Ken Sakamura's TRON architecture are epitomized by two independent operating systems: Hideyuki Kishida's (\ja{岸田英之}) independent 64-bit OS (\textbf{Tamazusa OS}, \ja{玉梓}, developed since October 2025 and originally inspired by the 1990s \textbf{B-Free} archive, featuring a 64-bit T-Kernel 2.0 core, POSIX layer, and Wayland desktop); and 5HT's \textbf{B-System} (BTRON 3.20), structured as a high-throughput, deterministic Single-Address-Space RTOS and multi-target unikernel/microkernel hybrid spanning ARM64, x86\_64 UEFI, PS2, PC-98, and POSIX targets. This paper provides a peer-level comparative audit evaluating both operating systems strictly along isomorphic, empirically verifiable dimensions: (1) Multiprocessing architectures, examining Kishida's experimental 7-stage Symmetric Multiprocessing (SMP) roadmap in QEMU (up to 4 virtual cores, with uniprocessor execution as the hardware default) alongside progressive decoupling of 49 kernel globals from the Big Kernel Lock (BKL), contrasted against B-System's lock-free actor concurrency model; (2) Graphical subsystems, evaluating Kishida's compositor-first Wayland pipeline and Qt Quick / QML DesktopShell (driven via physical/virtual framebuffers and a CPU software renderer, with non-operational prototype GPU drivers) against B-System's 128-bit NEON SIMD vector blitter and direct-rendering backbuffer compositor; (3) Operating system interfaces and process isolation, examining Kishida's educational ``POSIX OSS Gateway'' strategy designed to overcome BTRON's historical software deficit by hosting modern open-source software (BusyBox, Python 3, NetSurf, with WPE WebKit statically compiled as the planned next engine) on a T-Kernel 2.0 foundation, contrasted with B-System's cleanroom BTRON3 core; and (4) Storage hierarchies, comparing Kishida's multi-volume BFS and persistent FatFs home architecture against B-System's native backward compatibility with commercial Cho-Kanji (B-right/V 4.02) disk volumes and modern 64-bit B-FS (V2).
 
 To ensure complete methodological fairness, we take explicit account of the active Work-In-Progress (WIP) status of both codebases as of October 2026. Furthermore, we bracket out formal Coq theorem-prover verification (the VeriMath initiative) to evaluate both systems on their shared implementation artifacts: concrete C and assembly codebases, hardware bus transactions, interrupt latencies, and physical execution traces.
 
-Our audit demonstrates that both systems represent complementary realizations of the TRON vision developed under differing design constraints. Kishida's OS was conceived as an educational teaching material created by a solo developer to enable young students and engineers to dissect how operating systems function, pragmatically discarding legacy BTRON GUI layers in favor of a modern POSIX/Linux hybrid that fosters software asset growth. B-System, in contrast, preserves cleanroom BTRON3 specification purity and mathematical determinism. In display systems, Kishida achieves an impressive solo-developer desktop milestone: an isolated Wayland server hosting a complete Qt Quick 6 desktop environment (\texttt{DesktopShell.qml}) with integrated Japanese IME, PDF viewer, text editor, and WPE WebKit web browsing via software rendering; B-System, in contrast, prioritizes raw blitting throughput, utilizing 128-bit ARMv8 NEON SIMD burst transfers and 2D DMA offloading to achieve orders-of-magnitude faster memory streaming on uncached framebuffers. In filesystem architecture, B-System achieves full compatibility with authentic commercial Cho-Kanji disks via embedded QCOW2 drivers and introduces 64-bit B-FS (V2), whereas Kishida's OS delivers practical FAT32/FatFs read-write persistence across standard PC storage (SATA AHCI, NVMe). We synthesize these findings into an actionable, collegial cross-pollination roadmap bridging both paradigms.
+Our audit demonstrates that both systems represent complementary realizations of the TRON vision developed under differing design constraints. Kishida's OS was conceived as an educational teaching material created by a solo developer to enable young students and engineers to dissect how operating systems function, pragmatically discarding legacy BTRON GUI layers in favor of a modern POSIX/Linux hybrid that fosters software asset growth. B-System, in contrast, preserves cleanroom BTRON3 specification purity and mathematical determinism. In display systems, Kishida achieves an impressive solo-developer desktop milestone: an isolated Wayland server hosting a complete Qt Quick 6 desktop environment (\texttt{DesktopShell.qml}) with integrated Japanese IME, PDF viewer, text editor, and NetSurf web browsing (with WPE WebKit statically built as the planned next engine) via software rendering; B-System, in contrast, prioritizes raw blitting throughput, utilizing 128-bit ARMv8 NEON SIMD burst transfers and 2D DMA offloading to achieve orders-of-magnitude faster memory streaming on uncached framebuffers. In filesystem architecture, B-System achieves full compatibility with authentic commercial Cho-Kanji disks via embedded QCOW2 drivers and introduces 64-bit B-FS (V2), whereas Kishida's OS delivers practical FAT32/FatFs read-write persistence across standard PC storage (with SATA AHCI and NVMe driver sources present in the codebase). We synthesize these findings into an actionable, collegial cross-pollination roadmap bridging both paradigms.
 \end{abstract}
 
-\noindent\textbf{\small Keywords}---TRON, BTRON, B-Free, Urara OS, Hideyuki Kishida, 5HT, B-System, Symmetric Multiprocessing, Big Kernel Lock, Wayland Compositor, Qt Quick, WPE WebKit, POSIX OSS Gateway, Cho-Kanji, B-FS, FatFs, T-Kernel 2.0.
+\noindent\textbf{\small Keywords}---TRON, BTRON, B-Free, Tamazusa OS, Hideyuki Kishida, 5HT, B-System, Symmetric Multiprocessing, Big Kernel Lock, Wayland Compositor, Qt Quick, NetSurf, WPE WebKit (planned), POSIX OSS Gateway, Cho-Kanji, B-FS, FatFs, T-Kernel 2.0.
 
 %-------------------------------------------------------------------------
 \section{Introduction, Historical Heritage, and Scope}
@@ -89,7 +89,7 @@ Among community-driven operating system initiatives, the historical \textbf{B-Fr
     \item \textbf{The 32-bit BTRON-PC Epoch (1998--2000):} Porting to IBM PC/AT (i386) protected mode, formalizing modular subsystem managers: Memory Manager (MM), Process Manager (PM), and File Manager (FM).
 \end{enumerate}
 
-\textbf{Hideyuki Kishida (\ja{岸田英之})} did not take part in the original 1994--2000 B-Free project. In October 2025, Kishida downloaded the historical B-Free archive, using its legacy sources as an inspirational reference and point of departure. Since then, working entirely as an independent solo developer, Kishida has rewritten and expanded the codebase into a largely new, independent 64-bit operating system. Kishida ported T-Kernel 2.0 to x86\_64 Long Mode (\texttt{TK2-PORT-x86\_64-005})~\cite{kishida2026tk2spec} and AArch64~\cite{kishida2026arm64spec}, implemented an experimental Symmetric Multiprocessing (SMP) harness, created a compositor-first Wayland graphics architecture hosting Qt Quick 6 (\texttt{DesktopShell.qml}), and formulated the pragmatic ``POSIX OSS Gateway Strategy''~\cite{kishida2026posixstrategy}. Kishida provisionally designated this independent system as \textbf{Urara OS} (\ja{うらら}), a working name currently undergoing formal trademark clearance.
+\textbf{Hideyuki Kishida (\ja{岸田英之})} did not take part in the original 1994--2000 B-Free project. In October 2025, Kishida downloaded the historical B-Free archive, using its legacy sources as an inspirational reference and point of departure. Since then, working entirely as an independent solo developer, Kishida has rewritten and expanded the codebase into a largely new, independent 64-bit operating system. Kishida ported T-Kernel 2.0 to x86\_64 Long Mode (\texttt{TK2-PORT-x86\_64-005})~\cite{kishida2026tk2spec} and AArch64~\cite{kishida2026arm64spec}, implemented an experimental Symmetric Multiprocessing (SMP) harness, created a compositor-first Wayland graphics architecture hosting Qt Quick 6 (\texttt{DesktopShell.qml}), and formulated the pragmatic ``POSIX OSS Gateway Strategy''~\cite{kishida2026posixstrategy}. On October 31, 2026, following formal trademark clearance that revealed a pre-existing registration for the provisional working name ``Urara OS'' (\ja{うらら}), Kishida officially established the permanent name \textbf{Tamazusa OS} (\ja{玉梓})~\cite{tamazusa_release}.
 
 \subsection{5HT's B-System: Cleanroom BTRON3 and Mathematical Foundations}
 In parallel, \textbf{5HT (Namdak Tonpa)} and the Cleanroom Working Group initiated \textbf{B-System} (BTRON Version 3.20.00)~\cite{sokhatsky2026btron}. B-System rejects both modern desktop Unix bloat and traditional microkernel IPC performance collapse~\cite{liedtke1995l4,solomon1998inside}. Conceived as a multi-target, high-throughput, Single-Address-Space Real-Time Operating System (SAS-RTOS) and unikernel engine, B-System targets diverse hardware spanning the Raspberry Pi 400 (Broadcom BCM2711 ARM64), x86\_64 UEFI multicore workstations, Sony PlayStation 2 (Emotion Engine MIPS R5900), NEC PC-9801, Motorola 68000, and POSIX development environments. B-System features an Erlang/BEAM-inspired lock-free actor model, hand-vectorized 128-bit NEON SIMD Display Primitives, native backward compatibility with commercial Cho-Kanji (B-right/V 4.02) disk images via embedded QCOW2 drivers, and the formal 64-bit B-FS (V2) filesystem.
@@ -105,60 +105,60 @@ To ensure this audit is objective, fair, and respectful of both projects, we est
 \begin{figure*}[t]
 \centering
 \begin{tikzpicture}[node distance=1.4cm, auto,
-    block_urara/.style={rectangle, draw, fill=teal!12, text width=7.2cm, text centered, rounded corners, minimum height=1.15cm},
+    block_tamazusa/.style={rectangle, draw, fill=teal!12, text width=7.2cm, text centered, rounded corners, minimum height=1.15cm},
     block_btron/.style={rectangle, draw, fill=blue!10, text width=7.2cm, text centered, rounded corners, minimum height=1.15cm},
     line/.style={draw, -latex', thick}]
     
-    % Left side: Kishida's OS (Urara OS)
-    \node [block_urara] (urara_hw) {\textbf{Kishida's OS Hardware Targets}\\x86\_64 PC (BIOS/UEFI, SATA AHCI, NVMe, RTL8168)\\AArch64 (ARMv8-A Cortex-A72 / QEMU)};
-    \node [block_urara, below=0.35cm of urara_hw] (urara_core) {\textbf{Core Kernel \& Concurrency}\\T-Kernel 2.0 / B-Free Hybrid Microkernel Gateway\\Experimental SMP (QEMU 4-core; Uniprocessor Default)};
-    \node [block_urara, below=0.35cm of urara_core] (urara_sub) {\textbf{Subsystem \& Process Execution}\\4-Level Paging, Higher-Half Physmap, Dynamic ELF Loader\\POSIX OSS Gateway (CoreA/B/C/D/E, Real-World OSS ABI)};
-    \node [block_urara, below=0.35cm of urara_sub] (urara_ui) {\textbf{Compositor-First Display Engine}\\In-Guest Wayland Server (\texttt{compositor.elf}, AF\_UNIX \texttt{/tmp/wlXX})\\Qt Quick 6 DesktopShell (Software Framebuffer, WPE WebKit)};
+    % Left side: Kishida's OS (Tamazusa OS)
+    \node [block_tamazusa] (tamazusa_hw) {\textbf{Tamazusa OS Hardware Targets}\\x86\_64 PC (Legacy BIOS / GRUB; AHCI, NVMe, RTL8168 source present, unverified on real HW)\\AArch64 (ARMv8-A Cortex-A72 / QEMU)};
+    \node [block_tamazusa, below=0.35cm of tamazusa_hw] (tamazusa_core) {\textbf{Core Kernel \& Concurrency}\\Built on T-Kernel 2.0\\Experimental SMP (QEMU 4-core; Uniprocessor Default)};
+    \node [block_tamazusa, below=0.35cm of tamazusa_core] (tamazusa_sub) {\textbf{Subsystem \& Process Execution}\\4-Level Paging, Higher-Half Physmap, Dynamic ELF Loader\\POSIX OSS Gateway (CoreA/B/C/D/E, Real-World OSS ABI)};
+    \node [block_tamazusa, below=0.35cm of tamazusa_sub] (tamazusa_ui) {\textbf{Compositor-First Display Engine}\\In-Guest Wayland Server (\texttt{compositor.elf}, AF\_UNIX \texttt{/tmp/wlXX})\\Qt Quick 6 DesktopShell (Software Framebuffer, NetSurf; WPE WebKit planned)};
 
     % Right side: B-System
-    \node [block_btron, right=1.0cm of urara_hw] (btron_hw) {\textbf{B-System Hardware Targets}\\Multi-Target: Pi 400 (BCM2711), x86\_64 UEFI,\\PS2 (MIPS R5900), PC-98 (x86), M68k, POSIX Host};
+    \node [block_btron, right=1.0cm of tamazusa_hw] (btron_hw) {\textbf{B-System Hardware Targets}\\Multi-Target: Pi 400 (BCM2711), x86\_64 UEFI,\\PS2 (MIPS R5900), PC-98 (x86), M68k, POSIX Host};
     \node [block_btron, below=0.35cm of btron_hw] (btron_core) {\textbf{Kernel Engine (BTRON3 3.20)}\\Deterministic Single-Address-Space RTOS (SAS-RTOS)\\Lock-Free MPSC Actor Queues (\texttt{CMPXCHG8} / \texttt{LDXR}/\texttt{STXR})};
     \node [block_btron, below=0.35cm of btron_core] (btron_sub) {\textbf{Subsystem Protection Strategy}\\Deterministic SAS-RTOS (Bare-metal MCU / SBC / PS2)\\Hybrid Ring 0 DP / Ring 3 Actor Protection (UEFI)};
     \node [block_btron, below=0.35cm of btron_sub] (btron_ui) {\textbf{Display Primitives \& Window Engine}\\Direct Clipped Backbuffer Painter (\texttt{redraw\_all\_windows\_clip})\\128-bit NEON SIMD Vector Blitter (\texttt{btron\_row\_blit}, DMA Engine)};
 
     % Connectors
-    \draw [line] (urara_hw) -- (urara_core);
-    \draw [line] (urara_core) -- (urara_sub);
-    \draw [line] (urara_sub) -- (urara_ui);
+    \draw [line] (tamazusa_hw) -- (tamazusa_core);
+    \draw [line] (tamazusa_core) -- (tamazusa_sub);
+    \draw [line] (tamazusa_sub) -- (tamazusa_ui);
 
     \draw [line] (btron_hw) -- (btron_core);
     \draw [line] (btron_core) -- (btron_sub);
     \draw [line] (btron_sub) -- (btron_ui);
 \end{tikzpicture}
-\caption{Architectural topologies of Hideyuki Kishida's OS (provisionally Urara OS) versus 5HT's B-System (BTRON3 3.20).}
+\caption{Architectural topologies of Hideyuki Kishida's Tamazusa OS versus 5HT's B-System (BTRON3 3.20).}
 \label{fig:arch_comparison}
 \end{figure*}
 
 \subsection{Subsystem Topology and Directory Mapping}
 \label{sec:subsystem_topology}
-To facilitate precise code navigation, Table~\ref{tab:tree_analogs} establishes the exact structural mapping between Kishida's OS (\path{B-Free-master-64bit}) and B-System.
+To facilitate precise code navigation, Table~\ref{tab:tree_analogs} establishes the exact structural mapping between Tamazusa OS (\path{B-Free-master-64bit} / \path{tamazusa-os}) and B-System.
 
 \begin{table*}[t]
 \centering
-\caption{Subsystem Structural Mapping: Kishida's OS (Urara OS) vs. B-System}
+\caption{Subsystem Structural Mapping: Tamazusa OS vs. B-System}
 \label{tab:tree_analogs}
 \scriptsize
 \setlength{\tabcolsep}{4.5pt}
 \renewcommand{\arraystretch}{1.12}
 \begin{tabularx}{\textwidth}{@{} >{\raggedright\arraybackslash\bfseries}p{2.8cm} >{\raggedright\arraybackslash}p{4.2cm} >{\raggedright\arraybackslash}p{4.2cm} >{\raggedright\arraybackslash}X @{}}
 \toprule
-Subsystem Role & Kishida's OS Repository Path & B-System Cleanroom Path & Architectural Responsibility \\
+Subsystem Role & Tamazusa OS Repository Path & B-System Cleanroom Path & Architectural Responsibility \\
 \midrule
-Bootstrapping & \path{bfree_x86_64/boot/}, \path{btron-pc/boot/2nd/} & \path{src/kernel/boot.c}, \path{src/cores/} & Real-mode to 64-bit Long Mode bootstrap, GDT/IDT/TSS, CR3 setup \\
+Bootstrapping & \path{bfree_x86_64/boot/}, \path{btron-pc/boot/2nd/} & \path{src/kernel/boot.c}, \path{src/cores/} & Legacy BIOS (GRUB) to 64-bit Long Mode bootstrap, GDT/IDT/TSS, CR3 setup \\
 Core Kernel / Sched & \path{bfree_x86_64/kernel/sysmain/}, \path{process.c} & \path{src/kernel/}, \path{include/btron/} & Task control blocks, multi-task dispatching, timer queues, sleep/wakeup \\
 SMP Management & \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} & \path{src/cores/core_smp.c} & ACPI MADT probe, Local APIC (QEMU 4-core test; uniprocessor default) \\
 Syscall Engine & \path{bfree_x86_64/kernel/sysmain/syscall.c} & \path{src/kernel/syscall.c} & Userland system call trap handling, parameter validation, privilege gates \\
 Memory Management & \path{bfree_x86_64/kernel/sysmain/vmm.c}, \path{paging.c} & \path{src/cores/}, \path{src/kernel/heap.c} & 4-level page tables (PML4), higher-half physmap, virtual space alloc \\
 Display / Compositor & \path{bfree_x86_64/userland/compositor_stub/} & \path{src/graphics/}, \path{src/window/} & Framebuffer scanout, Wayland protocol server, window hierarchy, blitters \\
-Desktop Shell & \path{bfree_x86_64/userland/desktop_qt/} & \path{src/desktop/}, \path{src/apps/} & Interactive UI shell; Qt Quick \path{DesktopShell.qml} vs. native BTRON desktop \\
+Desktop Shell & \path{bfree_x86_64/userland/desktop_qt/} & \path{src/desktop/}, \path{src/apps/} & Interactive UI shell; Qt Quick \path{DesktopShell.qml}, NetSurf browser vs. native BTRON desktop \\
 Filesystem Core & \path{bfree_x86_64/kernel/bfs.c}, \path{bfs_home.c} & \path{src/fs/} & Multi-volume VFS, FatFs home storage vs. Cho-Kanji (V1) and B-FS (V2) \\
-Storage Drivers & \path{bfree_x86_64/kernel/ahci.c}, \path{blk.c}, \path{nvme.c} & \path{src/fs/blk_qcow2.c}, \path{src/fs/block.c} & Block device layer, SATA AHCI, NVMe, QCOW2 image decoding \\
-Network Subsystem & \path{bfree_x86_64/kernel/net.c}, \path{netdrv_rtl8168.c} & \path{src/net/} & Realtek RTL8168 / VirtIO-Net drivers, DHCP client, TCP/IP stack \\
+Storage Drivers & \path{bfree_x86_64/kernel/ahci.c}, \path{blk.c}, \path{nvme.c} & \path{src/fs/blk_qcow2.c}, \path{src/fs/block.c} & Block device layer, SATA AHCI, NVMe (source present, unverified on real HW), QCOW2 \\
+Network Subsystem & \path{bfree_x86_64/kernel/net.c}, \path{netdrv_rtl8168.c} & \path{src/net/} & Realtek RTL8168 (source present, unverified on real HW) / VirtIO-Net, DHCP, TCP/IP \\
 POSIX Compatibility & \path{bfree_x86_64/POSIX_OSS_GATEWAY_STRATEGY.md} & \path{include/btron/posix.h} & POSIX OSS Gateway (M1--M4), libc integration, signal/process ABI \\
 Input / Localization & \path{bfree_x86_64/userland/desktop_qt/dw_ime.inc} & \path{src/tip/} & Japanese text entry, IME kana-kanji engine vs. TRON Input Processor \\
 Hardware GPU Driver & \path{bfree_x86_64/kernel/drm_kms_mvp.c}, \path{gpu.c} & \path{src/gl/} & Prototype non-operational drivers (software framebuffer active) \\
@@ -172,22 +172,20 @@ Hardware GPU Driver & \path{bfree_x86_64/kernel/drm_kms_mvp.c}, \path{gpu.c} & \
 
 The fundamental architectural divergence between Kishida's OS and B-System stems from how each system positions Ken Sakamura's philosophy relative to the broader software universe (Figure~\ref{fig:arch_comparison}).
 
-\subsection{Kishida's OS: Educational Purpose and the POSIX OSS Gateway}
+\subsection{Tamazusa OS: Educational Purpose and the POSIX OSS Gateway}
 Hideyuki Kishida conceived his system primarily as an \textbf{educational project and open teaching material}—a transparent, modular operating system that curious students, students, and young systems programmers can take apart, modify, and break in order to learn ``how things work'' at the hardware and kernel boundary. It was never intended as a commercial competitor to other platforms.
 
 From an engineering perspective, Kishida recognized that the critical structural weakness that historically constrained BTRON was that its \textbf{software assets did not grow}. A pure BTRON or T-Kernel operating system that refuses to execute standard Unix and open-source tools remains isolated in a software deficit, requiring developers to reimplement compilers, network daemons, interpreters, and graphical toolkits from scratch. Because maintenance is undertaken by a solo developer, the development burden would be prohibitive.
 
-To achieve practical compatibility, Kishida made a deliberate architectural choice: he removed most of the legacy BTRON GUI and application layers, retaining only the clean real-time nucleus of \textbf{T-Kernel 2.0}, and constructed a hybrid architecture bridged by a pragmatic \textbf{POSIX/Linux compatibility layer}~\cite{kishida2026posixstrategy}. Rejecting the dogmatic mandate to implement all 685 POSIX.1 functions—which includes obsolete, rarely used interfaces such as STREAMS, \texttt{posix\_trace}, and typed memory—Kishida defined a four-stage completion milestone based on real-world OSS survival:
+To achieve practical compatibility, Kishida made a deliberate architectural choice: he removed most of the legacy BTRON GUI and application layers, retaining the nucleus of \textbf{T-Kernel 2.0} (configured with a simplified educational task dispatcher without a real-time scheduler, and with unmeasured real-time characteristics), and constructed a hybrid architecture bridged by a pragmatic \textbf{POSIX/Linux compatibility layer}~\cite{kishida2026posixstrategy}. Rejecting the dogmatic mandate to implement all 685 POSIX.1 functions—which includes obsolete, rarely used interfaces such as STREAMS, \texttt{posix\_trace}, and typed memory—Kishida defined a four-stage completion milestone based on real-world OSS survival:
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Milestone 1 (M1 -- BusyBox Suite):} Complete core process, file, and terminal syscalls allowing unmodified BusyBox to execute shell scripts, manipulate files, and manage processes (\texttt{ls}, \texttt{cat}, \texttt{sh}, \texttt{mkdir}, \texttt{cp}, \texttt{mount}).
     \item \textbf{Milestone 2 (M2 -- Scripting Engine):} Stabilize POSIX threading, dynamic memory expansion, and sockets to run interactive \texttt{bash} and \textbf{Python 3} with standard libraries (\texttt{os}, \texttt{sys}, \texttt{socket}, \texttt{threading}).
     \item \textbf{Milestone 3 (M3 -- Network Workstation):} Implement pseudo-terminals (PTY) and BSD socket semantics to enable \texttt{sshd} (OpenSSH/Dropbear) remote login.
-    \item \textbf{Milestone 4 (M4 -- Modern Graphical Workspace):} Host an isolated Wayland compositor and clients, including Qt Quick 6 and modern web browsing via \textbf{WPE WebKit}.
+    \item \textbf{Milestone 4 (M4 -- Modern Graphical Workspace):} Host an isolated Wayland compositor and clients, including Qt Quick 6 and web browsing (NetSurf operational; WPE WebKit statically built as the planned next engine).
 \end{enumerate}
 
-Kishida's OS answers unsupported or obsolete POSIX calls with standard \texttt{ENOSYS}. As Kishida noted, \texttt{ENOSYS} is a formally sanctioned POSIX.1 response, exactly matching the implementation strategy of Linux and glibc.
-
-Urara OS answers unsupported or obsolete POSIX calls with standard \texttt{ENOSYS}. As Kishida noted, \texttt{ENOSYS} is a formally sanctioned POSIX.1 response, exactly matching the implementation strategy of Linux and glibc.
+Tamazusa OS answers unsupported or obsolete POSIX calls with standard \texttt{ENOSYS}. As Kishida noted, \texttt{ENOSYS} is a formally sanctioned POSIX.1 response, exactly matching the implementation strategy of Linux and glibc.
 
 \subsection{B-System: The High-Throughput SAS-RTOS and Actor Unikernel}
 In contrast, 5HT's B-System approaches BTRON3 3.20 as an uncompromising real-time computational engine. Rather than layering Unix compatibility into the core, B-System embraces a \textbf{Single-Address-Space RTOS (SAS-RTOS)} model for embedded SBCs (Raspberry Pi 400), microcontrollers, and retro consoles (PS2, PC-98). Memory protection is either identity-mapped or flattened, eliminating the non-deterministic TLB invalidation flushes, page table walks, and pipeline bubbles that plague Unix kernels. 
@@ -206,7 +204,7 @@ A rigorous investigation of multicore capabilities requires analyzing core bring
 Let $C = \{c_0, c_1, \dots, c_{n-1}\}$ be symmetric processor cores. An SMP bring-up sequence is complete if the Bootstrap Processor (BSP, $c_0$) transitions all Application Processors (APs, $c_{k > 0}$) from architectural reset into a coherent kernel memory space and shared or partitioned execution queues.
 \end{definition}
 
-\subsubsection{Kishida's OS: 7-Stage SMP Progression and APIC Topology}
+\subsubsection{Tamazusa OS: SMP Topology and APIC Bring-Up}
 In \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c}, Hideyuki Kishida implements an experimental x86\_64 SMP bring-up sequence tested under QEMU virtual machine emulation (up to 4 virtual cores). On physical bare-metal hardware, multi-core AP dispatch has not yet been conducted, and the default production kernel runs stably on a single core:
 \begin{enumerate}[leftmargin=*]
     \item \textbf{ACPI MADT Discovery:} The BSP parses the ACPI Multiple APIC Description Table (MADT), probing standard Local APIC entries (type 0) and extended x2APIC entries (type 9), supporting up to 256 logical processors (\texttt{BFREE\_CPU\_MAX 256}).
@@ -246,8 +244,8 @@ B-System manages SMP concurrency across two distinct deployment targets:
     box/.style={rectangle, draw, fill=gray!10, text width=6.8cm, text centered, rounded corners, minimum height=0.85cm},
     line/.style={draw, -latex', thick}]
 
-    \node [lock] (bkl) {\textbf{Kishida's OS: Big Kernel Lock (\texttt{g\_bfree\_bkl})}\\\texttt{lock cmpxchgl \%ecx, g\_bfree\_bkl(\%rip)}};
-    \node [box, below=0.3cm of bkl] (split) {\textbf{Kishida's Symbol Audit (351 Globals)}\\49 Process Globals (Decoupled in Stage 6f)\\299 Shared Tables (VFS, Pipes, Sockets)};
+    \node [lock] (bkl) {\textbf{Tamazusa OS: Big Kernel Lock (\texttt{g\_bfree\_bkl})}\\\texttt{lock cmpxchgl \%ecx, g\_bfree\_bkl(\%rip)}};
+    \node [box, below=0.3cm of bkl] (split) {\textbf{Kishida's Symbol Audit (351 Globals)}\\49 Process Globals (Decoupling in Stage 6f Proposal)\\299 Shared Tables (VFS, Pipes, Sockets)};
     \node [core, below=0.4cm of split, xshift=-1.8cm] (bsp) {BSP ($c_0$)\\System Tasks / Exec};
     \node [core, below=0.4cm of split, xshift=1.8cm] (ap) {AP ($c_k$)\\User Tasks / Fast Syscalls};
 
@@ -255,12 +253,12 @@ B-System manages SMP concurrency across two distinct deployment targets:
     \draw [line, <->] (ap) -- (split);
     \draw [line] (split) -- (bkl);
 \end{tikzpicture}
-\caption{Kishida's SMP architecture: staged decoupling of 49 process globals from the Big Kernel Lock (\texttt{g\_bfree\_bkl}).}
-\label{fig:urara_smp}
+\caption{Tamazusa OS: proposed staged decoupling of 49 process globals from the Big Kernel Lock (\texttt{g\_bfree\_bkl}).}
+\label{fig:tamazusa_smp}
 \end{figure}
 
-\subsubsection{Kishida's OS: The 7-Stage SMP Progression}
-A remarkable technical achievement of Hideyuki Kishida is his transparent, phased roadmap for eliminating the Big Kernel Lock (BKL). Rather than attempting an unsafe, monolithic rewrite of the kernel's synchronization, Kishida formalized the 7-stage SMP progression documented in \path{SMP_PLAN_20261005.ja.md}:
+\subsubsection{Tamazusa OS: The 7-Stage SMP Progression}
+A notable technical achievement of Hideyuki Kishida is his transparent, phased roadmap for eliminating the Big Kernel Lock (BKL). Rather than attempting an unsafe, monolithic rewrite of the kernel's synchronization, Kishida formalized the 7-stage SMP progression documented in \path{SMP_PLAN_20261005.ja.md}:
 \begin{itemize}[leftmargin=*]
     \item \textbf{Stage 1--2 (\texttt{BFREE\_SMP=1}):} GS-based per-CPU data structures, AP bootstrap, idle loops, and Local APIC timer heartbeats.
     \item \textbf{Stage 3--4 (\texttt{BFREE\_SMP=2}):} APs execute user-mode processes in QEMU. When an AP encounters an exception, system call, or 10-tick time slice expiration, it saves user registers and executes a recall IPI returning the process context to the BSP.
@@ -278,14 +276,15 @@ g_guest_thread_active, g_sigalt_sp, ... (49 total)
 \end{lstlisting}
 The remaining 299 symbols represent system-wide structures: the 3.3 MB virtual file table (\texttt{vfile}), pipes, pseudo-terminals, network sockets, and timers.
 
-Under \textbf{Stage 6f-3a..3d} (October 2026), Kishida introduced per-CPU syscall areas (\texttt{struct bfree\_cpu.sysarea}), dedicated pipe locks, and lock-free pipe read/write paths, allowing APs to transfer pipe data without acquiring \texttt{g\_bfree\_bkl}.
+Under the proposed \textbf{Stage 6f} design (an active work-in-progress as of October 2026), Kishida outlines per-CPU syscall areas (\texttt{struct bfree\_cpu.sysarea}), dedicated pipe locks, and lock-free pipe read/write paths intended to allow APs to transfer pipe data without acquiring \texttt{g\_bfree\_bkl}.
 
-\begin{theorem}[Cache Contention Bounds on Kishida's Decoupled Lock]
-Let $M$ be the number of symmetric cores executing system calls. In an architecture where $P = 49$ process symbols are migrated to per-CPU storage (\texttt{sysarea}) and $S = 299$ system symbols remain behind a ticket/CAS lock $L_{\text{BKL}}$, the bus invalidation traffic $I(M)$ across the coherent interconnect scales as:
+\begin{theorem}[Theoretical Cache Contention Model on Lock Decoupling]
+We formalize this design using an idealized analytical contention model. Note that because SMP is disabled by default and unverified on real hardware, this model represents theoretical scaling rather than an empirical benchmark measurement:
+Let $M$ be the number of symmetric cores executing system calls. In an architecture where $P = 49$ process symbols are migrated to per-CPU storage (\texttt{sysarea}) and $S = 299$ system symbols remain behind a ticket/CAS lock $L_{\text{BKL}}$, the bus invalidation traffic $I(M)$ across the coherent interconnect scales theoretically as:
 \begin{equation}
 I(M) = O\left( \alpha \cdot M^2 + (1 - \alpha) \cdot M \right)
 \end{equation}
-where $\alpha \in [0, 1]$ represents the proportion of system calls accessing the shared 299 globals. By routing pipes, memory allocation, and read-only time queries to per-CPU paths, Kishida reduces $\alpha \to 0$, asymptotically collapsing interconnect contention from $O(M^2)$ toward ideal linear scaling $O(M)$.
+where $\alpha \in [0, 1]$ represents the proportion of system calls accessing the shared 299 globals. By routing pipes, memory allocation, and read-only time queries to per-CPU paths, the theoretical design goal is to drive $\alpha \to 0$, asymptotically collapsing interconnect contention from $O(M^2)$ toward ideal linear scaling $O(M)$.
 \end{theorem}
 
 \subsubsection{B-System: Lock-Free Actor Queues}
@@ -305,9 +304,9 @@ Each core executes an independent scheduling loop over a lock-free MPSC message 
 \section{Display Architecture: Wayland Compositor vs. SIMD Bit Blitter}
 \label{sec:blitter}
 
-The graphics subsystems of Urara OS and B-System embody fundamentally different architectural priorities: modern desktop workstation composition versus low-level memory bus saturation.
+The graphics subsystems of Tamazusa OS and B-System embody fundamentally different architectural priorities: modern desktop workstation composition versus low-level memory bus saturation.
 
-\subsection{Kishida's OS: Compositor-First Wayland Architecture}
+\subsection{Tamazusa OS: Compositor-First Wayland Architecture}
 In August 2026, Hideyuki Kishida initiated a major architectural migration: transitioning his OS from a legacy direct-to-framebuffer rendering model (\texttt{-platform bfree}) to a modern \textbf{Compositor-First Architecture} documented in \path{COMPOSITOR_MIGRATION.ja.md} and \path{HONDESK_PHASES.ja.md}.
 
 \subsubsection{The Wayland Protocol Pipeline}
@@ -316,15 +315,16 @@ Under this architecture:
     \item \textbf{VRAM Monopoly:} The compositor process (\path{userland/compositor_stub/compositor_stub.c}, running as PID 1 or designated application role) maintains exclusive write ownership of the physical framebuffer device (\texttt{BFREE\_FB0\_FD = 0x2000}).
     \item \textbf{Wayland Protocol Implementation:} \texttt{compositor\_stub.c} implements core Wayland interfaces: \texttt{wl\_display}, \texttt{wl\_compositor}, \texttt{wl\_shm}, \texttt{wl\_surface}, and \texttt{xdg\_shell}.
     \item \textbf{Inter-Process Tile Transport:} Client applications do not touch the screen. Window pixels are transferred across an AF\_UNIX domain socket (\texttt{/tmp/wayland-0}) using shared memory virtual file tiles (\texttt{/tmp/wl00}--\texttt{/tmp/wl99}, 32 KB each). For a $1280 \times 720$ window, approximately 75 tiles are mapped and composited.
-    \item \textbf{Fork vs. Vfork COW Hazard:} Kishida discovered that invoking standard \texttt{fork()} (syscall 57) to spawn client processes caused the address space copy to trigger Copy-On-Write (COW) protection on the hardware framebuffer, resulting in screen corruption (``gray wallpaper \texttt{[COW] break}''). Kishida's OS strictly enforces \texttt{vfork()} (syscall 58) for child process creation, preventing framebuffer page duplication.
+    \item \textbf{Fork vs. Vfork COW Hazard:} Kishida discovered that invoking standard \texttt{fork()} (syscall 57) to spawn client processes caused the address space copy to trigger Copy-On-Write (COW) protection on the hardware framebuffer, resulting in screen corruption (``gray wallpaper \texttt{[COW] break}''). Tamazusa OS strictly enforces \texttt{vfork()} (syscall 58) for child process creation, preventing framebuffer page duplication.
 \end{enumerate}
 
-\subsubsection{DesktopShell: Qt Quick 6 and Japanese IME}
-In \path{bfree_x86_64/userland/desktop_qt/}, Kishida's OS hosts a complete desktop environment:
+\subsubsection{DesktopShell: Qt Quick 6, Japanese IME, and Web Engines}
+In \path{bfree_x86_64/userland/desktop_qt/}, Tamazusa OS hosts a complete desktop environment:
 \begin{itemize}[leftmargin=*]
     \item \textbf{Declarative UI Engine:} The desktop shell is declared in QML (\texttt{DesktopShell.qml}) and executed by an embedded Qt Quick 6 runtime (\texttt{desktop\_wayland.cpp}, \texttt{guest\_main.cpp}).
     \item \textbf{Integrated Application Suite:} The shell incorporates embedded desktop applications: a PC file explorer (\texttt{dw\_explorer\_pc.inc}), a rich text notepad with encoding support (\texttt{dw\_notepad.inc}, \texttt{dw\_sjis.inc}), a document PDF viewer (\texttt{dw\_pdf.inc}), and a system settings manager (\texttt{dw\_settings.inc}).
     \item \textbf{Integrated Japanese IME:} In \texttt{dw\_ime.inc}, the shell integrates a native Japanese Input Method Editor (IME), supporting interactive kana-to-kanji conversion with candidate selection windows directly inside the Wayland client.
+    \item \textbf{Web Browsing Engine Status:} \textbf{NetSurf} serves as the current operational web browser. While a standalone static build of \textbf{WPE WebKit} was completed on October 18, 2026 as the planned successor engine, its runtime execution on Tamazusa OS is currently pending kernel-level thread implementation.
     \item \textbf{Software Framebuffer Rendering and Prototype GPU Drivers:} While preliminary driver scaffolding for Intel, AMD, and Nvidia graphics was initiated (\texttt{gpu\_hw\_intel.c}, \texttt{drm\_kms\_mvp.c}), hardware acceleration is not yet operational. All graphics rendering currently relies on the physical framebuffer device and a CPU software rasterizer.
 \end{itemize}
 
@@ -376,7 +376,7 @@ On the Raspberry Pi 400, B-System integrates the Broadcom BCM2711 2D DMA control
 
 \subsection{Display Architecture Verdict}
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Desktop Environment and Usability: Kishida's Practical UI Integration.} Kishida achieves an impressive solo-developer desktop milestone: a freestanding Wayland compositor hosting a modern Qt Quick 6 desktop with native Japanese IME, document viewers, and WPE WebKit web browsing running entirely via robust software framebuffer rendering.
+    \item \textbf{Desktop Environment and Usability: Tamazusa OS's Practical UI Integration.} Kishida achieves an impressive solo-developer desktop milestone: a freestanding Wayland compositor hosting a modern Qt Quick 6 desktop with native Japanese IME, document viewers, and NetSurf web browsing (with WPE WebKit built as the planned next engine) running entirely via robust software framebuffer rendering.
     \item \textbf{Blitting Throughput and Bus Efficiency: B-System's Vectorized Engine.} B-System's 128-bit NEON SIMD blitter and 2D DMA offloading stream pixels at hardware saturation speeds, avoiding the inter-process tile copying overhead inherent in software-based Wayland pipelines.
 \end{itemize}
 
@@ -399,7 +399,7 @@ Table~\ref{tab:posix_audit} audits the operational status of Kishida's four POSI
 
 \begin{table}[htbp]
 \centering
-\caption{Kishida's OS POSIX OSS Gateway Milestone Status}
+\caption{Tamazusa OS POSIX OSS Gateway Milestone Status}
 \label{tab:posix_audit}
 \scriptsize
 \setlength{\tabcolsep}{4pt}
@@ -411,12 +411,12 @@ Milestone & Target Packages & Status & Verified Capabilities \\
 \textbf{M1} & BusyBox, CoreUtils & \textbf{PASS} & \texttt{ls, cat, sh, mkdir, cp, mv, rm, ps, kill, mount} operational in guest \\
 \textbf{M2} & Bash, Python 3 & \textbf{PASS} & Interactive \texttt{sh}, Python 3 \texttt{os/sys/socket/threading} smoke verified \\
 \textbf{M3} & Dropbear / SSH, PTY & \textbf{WIP} & PTY slave allocation operational; socketpair and AF\_UNIX verified \\
-\textbf{M4} & Wayland, Qt Quick 6, WPE WebKit & \textbf{PASS} & Freestanding Wayland compositor, Qt \texttt{DesktopShell.qml}, WPE WebKit \\
+\textbf{M4} & Wayland, Qt 6, NetSurf, WPE WebKit & \textbf{PARTIAL} & Wayland compositor, Qt \texttt{DesktopShell.qml}, NetSurf operational; WPE WebKit built Oct 18 (pending threading) \\
 \bottomrule
 \end{tabularx}
 \end{table}
 
-Remarkably, Kishida's OS has verified guest userland execution of modern web browsing via \textbf{WPE WebKit} (alongside earlier lightweight NetSurf ports), demonstrating that its POSIX gateway successfully satisfies the complex memory allocation, socket I/O, and string parsing demands of real-world internet engines.
+In userland web browsing, \textbf{NetSurf} is the current operational browser; WPE WebKit has been statically built (October 18, 2026) as the planned next engine but is not yet running on Tamazusa OS pending kernel-level thread support. This staged progression demonstrates that the POSIX gateway successfully satisfies the memory allocation and socket demands of lightweight internet engines while systematically preparing for full modern browser runtimes.
 
 \subsection{B-System: SAS-RTOS Determinism vs. Ring 3 UEFI Subsystems}
 B-System bifurcates its protection strategy based on target constraints:
@@ -426,7 +426,7 @@ B-System bifurcates its protection strategy based on target constraints:
 \end{itemize}
 
 \subsection{Subsystem Protection and Software Verdict}
-\textbf{Kishida's OS demonstrates an effective pragmatic solution to software enablement.} By constructing an operational POSIX OSS Gateway capable of running BusyBox, Python 3, WPE WebKit, and Qt Quick 6, Hideyuki Kishida addressed the fundamental challenge that historically limited BTRON platforms: software isolation. B-System preserves RTOS determinism and specification purity, while Kishida's OS enables immediate application utility on top of T-Kernel 2.0.
+\textbf{Tamazusa OS demonstrates an effective pragmatic solution to software enablement.} By constructing an operational POSIX OSS Gateway capable of running BusyBox, Python 3, NetSurf, and Qt Quick 6 (with WPE WebKit planned), Hideyuki Kishida addressed the fundamental challenge that historically limited BTRON platforms: software isolation. B-System preserves RTOS determinism and specification purity, while Tamazusa OS enables immediate application utility on top of T-Kernel 2.0.
 
 %-------------------------------------------------------------------------
 \section{Storage Hierarchies: BFS, FatFs, and Authentic Cho-Kanji Volumes}
@@ -436,18 +436,18 @@ A critical dimension of this audit is evaluating how each system manages on-disk
 
 \begin{table*}[t]
 \centering
-\caption{Comprehensive Architectural Comparison Matrix: Kishida's OS (Urara OS) vs. 5HT's B-System}
+\caption{Comprehensive Architectural Comparison Matrix: Tamazusa OS vs. 5HT's B-System}
 \label{tab:comprehensive_comparison}
 \scriptsize
 \setlength{\tabcolsep}{4.5pt}
 \renewcommand{\arraystretch}{1.12}
 \begin{tabularx}{\textwidth}{@{} >{\raggedright\arraybackslash\bfseries}p{3.4cm} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X @{}}
 \toprule
-Architectural Dimension & Hideyuki Kishida's OS (Urara OS) & 5HT's B-System (BTRON3 3.20) \\
+Architectural Dimension & Hideyuki Kishida's Tamazusa OS (\ja{玉梓}) & 5HT's B-System (BTRON3 3.20) \\
 \midrule
 Historical Pedigree & Independent OS since 2025 (inspired by B-Free archive); T-Kernel 2.0 64-bit & Cleanroom BTRON3 Version 3.20.00 Specification \\
-Primary Hardware Targets & x86\_64 PC (BIOS/UEFI, SATA AHCI, NVMe), ARM64 & Multi-Target: Pi 400 (ARM64), x86\_64 UEFI, PS2, PC-98, M68k \\
-Declared SMP Status & \textbf{Experimental in QEMU (4 cores)} (Uniprocessor on Bare Metal) & \textbf{Operational on Hosted POSIX} / Staged on Bare Metal \\
+Primary Hardware Targets & x86\_64 PC (Legacy BIOS/GRUB; AHCI/NVMe/RTL8168 source present, unverified on real HW), ARM64 (QEMU) & Multi-Target: Pi 400 (ARM64), x86\_64 UEFI, PS2, PC-98, M68k \\
+Declared SMP Status & \textbf{Experimental in QEMU (4 cores)} (Uniprocessor Default on Bare Metal) & \textbf{Operational on Hosted POSIX} / Staged on Bare Metal \\
 Multicore Bootstrap & ACPI MADT probe $\to$ AP trampoline (\texttt{0x8000}) $\to$ INIT-SIPI-SIPI & ACPI MADT probe $\to$ AP trampoline (\texttt{0x9000}) / POSIX \texttt{pthread} \\
 Kernel Locking Model & \textbf{7-Stage SMP}: Decoupling 49 process globals from \texttt{g\_bfree\_bkl} & \textbf{Lock-Free Actor Model}: MPSC atomic queues (\texttt{CMPXCHG8}) \\
 Inter-Core Signaling & Local APIC IPI (\texttt{ICR}, recall IPIs, reschedule IPIs) & Local APIC IPI (\texttt{ICR}) / Host POSIX condition signaling \\
@@ -455,16 +455,16 @@ SMP Hardware Test Suite & Automated QEMU test suite (\path{SMP_HW_TEST.ja.md}, \
 \midrule
 Graphics Architecture & \textbf{Compositor-First Wayland Server} (\texttt{compositor.elf}, AF\_UNIX) & \textbf{Direct Clipped Backbuffer Painter} (\texttt{redraw\_all\_windows\_clip}) \\
 Desktop UI Environment & \textbf{Qt Quick 6 Declarative Shell} (\texttt{DesktopShell.qml}) & \textbf{Native BTRON3 Desktop Shell} (\texttt{src/desktop/}) \\
-Integrated Applications & Explorer, Notepad, PDF viewer, Japanese IME, WPE WebKit & Terminal shell, Cho-Kanji file manager, Quake engine \\
+Integrated Applications & Explorer, Notepad, PDF viewer, Japanese IME, NetSurf (WPE WebKit built, non-operational) & Terminal shell, Cho-Kanji file manager, Quake engine \\
 Bit Blitter Micro-Arch & Software tile shm blitter (\texttt{/tmp/wlXX}, 32 KB tiles) & \textbf{128-bit NEON SIMD Vector Blitter} (\texttt{btron\_row\_blit}, 64B burst) \\
 Hardware 2D/3D Offload & Framebuffer software renderer; GPU drivers non-operational & Asynchronous Broadcom BCM2711 2D DMA engine, TinyGL \\
 \midrule
 Virtual Memory Architecture & 4-Level Paging (PML4), higher-half physmap, per-process CR3 & Single-Address Space (SBC/MCU); Ring 3 isolation design (UEFI) \\
 Process Execution Model & Ring 3 dynamic ELF loader, standard user stacks & Cooperative / preemptive actor tasks, unikernel threads \\
-POSIX Compatibility & \textbf{POSIX OSS Gateway (M1--M4)}: BusyBox, Python 3, WPE WebKit & Minimal freestanding C runtime (\texttt{kstdlib.c}) \\
+POSIX Compatibility & \textbf{POSIX OSS Gateway (M1--M4)}: BusyBox, Python 3, NetSurf (WPE WebKit planned) & Minimal freestanding C runtime (\texttt{kstdlib.c}) \\
 Obsolete Syscall Strategy & Pragmatic \texttt{ENOSYS} (matches Linux/glibc standards) & Specification-defined TRON system call vectors \\
 \midrule
-On-Disk Filesystem(s) & Multi-volume BFS (\texttt{/mnt/}), FAT32, FatFs home persistence & Authentic Cho-Kanji (B-right/V 4.02), B-FS (V2), FAT, QCOW2 \\
+On-Disk Filesystem(s) & Multi-volume BFS (\texttt{/mnt/}), FAT32, FatFs (AHCI/NVMe source present, unverified on real HW) & Authentic Cho-Kanji (B-right/V 4.02), B-FS (V2), FAT, QCOW2 \\
 Cho-Kanji Disk Support & \textbf{None}: Focuses on FAT/POSIX filesystem tree & \textbf{Full Native Support}: \texttt{FS\_TYPE\_BRIGHTV}, 128B header, QCOW2 \\
 Modern 64-bit FS (V2) & None (uses ChaN's FatFs on AHCI/NVMe blocks) & \textbf{Native B-FS}: Dual-anchor superblock, extents, B+Trees \\
 Hyper-Data / TAD Network & Postponed to upper-layer applications; focus on POSIX tree & Canonical binary TAD segment records, TRON-Code multilingual \\
@@ -472,10 +472,10 @@ Hyper-Data / TAD Network & Postponed to upper-layer applications; focus on POSIX
 \end{tabularx}
 \end{table*}
 
-\subsection{Kishida's OS: BFS, Multi-Volume VFS, and FatFs Home Persistence}
-In \path{bfree_x86_64/kernel/bfs.c} and \path{bfs_home.c}, Kishida's OS establishes a practical, production-oriented storage architecture:
+\subsection{Tamazusa OS: BFS, Multi-Volume VFS, and FatFs Home Persistence}
+In \path{bfree_x86_64/kernel/bfs.c} and \path{bfs_home.c}, Tamazusa OS establishes a practical, production-oriented storage architecture:
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Multi-Volume Mount Point (\texttt{/mnt/}):} Disks and partitions discovered on the PCI bus (SATA AHCI via \texttt{ahci.c}, NVMe via \texttt{nvme.c}) are enumerated under \texttt{/mnt/<volume>}. The OS generates a dynamic text descriptor at \texttt{/mnt/.volumes} detailing volume name, label, filesystem type, total/free megabytes, and device model for consumption by the Qt desktop explorer.
+    \item \textbf{Multi-Volume Mount Point (\texttt{/mnt/}):} Disks and partitions discovered on the PCI bus (SATA AHCI via \texttt{ahci.c}, NVMe via \texttt{nvme.c}, with driver sources present awaiting bare-metal validation) are enumerated under \texttt{/mnt/<volume>}. The OS generates a dynamic text descriptor at \texttt{/mnt/.volumes} detailing volume name, label, filesystem type, total/free megabytes, and device model for consumption by the Qt desktop explorer.
     \item \textbf{Read-Only FAT32 Volumes:} External partitions are mounted read-only via an internal FAT32 driver (\texttt{fat32.c}).
     \item \textbf{Persistent Read-Write Home Partition (\path{bfs_home.c}):} To provide persistent user storage for documents, desktop wallpapers (\texttt{/home/user/Pictures}), and shell configurations, Kishida integrates ChaN's robust \textbf{FatFs} module on top of the block driver layer (\texttt{blk.c}). Partitions labeled \texttt{BFREE-HOME} are mounted read-write at \texttt{/home/user}, providing full file creation, truncation, directory creation, and atomic renaming.
 \end{enumerate}
@@ -491,18 +491,18 @@ In B-System, on-disk storage is governed by historical continuity and cleanroom 
 \subsection{Filesystem Verdict}
 \begin{itemize}[leftmargin=*]
     \item \textbf{Historical TRON Fidelity and B-FS Engineering: B-System's Authenticity.} B-System preserves the historical soul of BTRON by mounting authentic commercial Cho-Kanji disk media and advancing to 64-bit B-FS (V2). Kishida's OS currently does not target Cho-Kanji volume formats.
-    \item \textbf{PC Hardware Persistence: Kishida's Practical Storage.} Kishida's OS provides practical read-write persistence across standard PC hardware (SATA AHCI and NVMe) via FatFs, enabling immediate data interchange with Windows and Linux host machines.
+    \item \textbf{PC Hardware Persistence: Tamazusa OS's Practical Storage.} Tamazusa OS provides practical read-write persistence across standard PC hardware (with SATA AHCI and NVMe driver sources present) via FatFs, enabling immediate data interchange with Windows and Linux host machines.
 \end{itemize}
 
 %-------------------------------------------------------------------------
 \section{Cross-Pollination Roadmap}
 \label{sec:roadmap}
 
-The complementary architectural paths of Kishida's OS and B-System offer an opportunity for collaborative technical exchange, mindful of the high maintenance demands on a solo developer:
+The complementary architectural paths of Tamazusa OS and B-System offer an opportunity for collaborative technical exchange, mindful of the high maintenance demands on a solo developer:
 
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{SIMD Blitter Adoption for Kishida's Compositor:} Kishida's software compositor currently transfers window tiles via scalar memory loops. Adopting B-System's 128-bit NEON SIMD vector routine (\texttt{btron\_row\_blit}) or AVX2 equivalents with phase-peeling will eliminate store-buffer bottlenecks during full-screen Wayland composition on software framebuffers.
-    \item \textbf{Cho-Kanji Filesystem Driver for Kishida's Desktop:} Kishida's file explorer (\texttt{dw\_explorer\_pc.inc}) could gain historical value by porting B-System's \texttt{BrightVVolumeHeader} parser and QCOW2 driver, allowing users to browse authentic historical Cho-Kanji archives directly within the Qt desktop.
+    \item \textbf{SIMD Blitter Adoption for Tamazusa OS's Compositor:} Tamazusa OS's software compositor currently transfers window tiles via scalar memory loops. Adopting B-System's 128-bit NEON SIMD vector routine (\texttt{btron\_row\_blit}) or AVX2 equivalents with phase-peeling will eliminate store-buffer bottlenecks during full-screen Wayland composition on software framebuffers.
+    \item \textbf{Cho-Kanji Filesystem Driver for Tamazusa OS's Desktop:} Tamazusa OS's file explorer (\texttt{dw\_explorer\_pc.inc}) could gain historical value by porting B-System's \texttt{BrightVVolumeHeader} parser and QCOW2 driver, allowing users to browse authentic historical Cho-Kanji archives directly within the Qt desktop.
     \item \textbf{Bare-Metal SMP AP Scheduler for B-System:} B-System could reference Hideyuki Kishida's Local APIC / x2APIC bring-up sequence and real-mode AP trampoline (\path{smp.c}) to advance its bare-metal x86\_64 scheduler from sequential staging into live multi-core execution.
     \item \textbf{Wayland / Qt Integration for B-System Workstations:} B-System's x86\_64 UEFI target can study Kishida's compositor-first Wayland architecture, providing an isolated path to host modern web browsers and productivity tools alongside native BTRON actors.
 \end{enumerate}
@@ -511,13 +511,13 @@ The complementary architectural paths of Kishida's OS and B-System offer an oppo
 \section{Conclusion}
 \label{sec:conclusion}
 
-This paper has delivered a peer-level comparative audit between \textbf{Hideyuki Kishida's independent 64-bit OS (provisionally Urara OS)} and \textbf{5HT's B-System (BTRON 3.20)}, evaluating their operational designs, algorithmic choices, and architectural trade-offs across isomorphic subsystems.
+This paper has delivered a peer-level comparative audit between \textbf{Hideyuki Kishida's independent 64-bit Tamazusa OS (\ja{玉梓})} and \textbf{5HT's B-System (BTRON 3.20)}, evaluating their operational designs, algorithmic choices, and architectural trade-offs across isomorphic subsystems.
 
-In Symmetric Multiprocessing, \textbf{Kishida's OS presents a structured, modular roadmap} validated in QEMU virtual machines (up to 4 virtual cores) through a 7-stage SMP progression, Local APIC / x2APIC bring-up, and the systematic decoupling of 49 process globals from the Big Kernel Lock, while maintaining single-core stability by default on physical machines. Conversely, \textbf{B-System advances a lock-free actor concurrency model} based on atomic queues, achieving total elimination of lock contention.
+In Symmetric Multiprocessing, \textbf{Tamazusa OS presents a structured, modular roadmap} validated in QEMU virtual machines (up to 4 virtual cores) through a 7-stage SMP progression, Local APIC / x2APIC bring-up, and the systematic decoupling of 49 process globals from the Big Kernel Lock, while maintaining single-core stability by default on physical machines. Conversely, \textbf{B-System advances a lock-free actor concurrency model} based on atomic queues, achieving total elimination of lock contention.
 
-In display systems and userland, \textbf{Kishida achieves an inspiring educational milestone for a solo developer}: a freestanding Wayland compositor hosting a complete Qt Quick 6 desktop environment (\texttt{DesktopShell.qml}) with native Japanese IME, document viewers, and WPE WebKit web browsing via robust software framebuffer rendering, while its POSIX OSS Gateway addresses TRON's software scarcity by executing standard tools including BusyBox, Python 3, and WebKit. In contrast, \textbf{B-System prioritizes raw memory bus throughput and blitting economy}, utilizing 128-bit NEON SIMD streaming and 2D DMA engines to saturate memory interconnects.
+In display systems and userland, \textbf{Kishida achieves an inspiring educational milestone for a solo developer}: a freestanding Wayland compositor hosting a complete Qt Quick 6 desktop environment (\texttt{DesktopShell.qml}) with native Japanese IME, document viewers, and NetSurf web browsing (with WPE WebKit built as the planned next engine) via robust software framebuffer rendering, while its POSIX OSS Gateway addresses TRON's software scarcity by executing standard tools including BusyBox, Python 3, and NetSurf. In contrast, \textbf{B-System prioritizes raw memory bus throughput and blitting economy}, utilizing 128-bit NEON SIMD streaming and 2D DMA engines to saturate memory interconnects.
 
-In storage architecture, \textbf{B-System maintains historical authenticity and specification purity}, mounting commercial Cho-Kanji (B-right/V 4.02) disks via embedded QCOW2 drivers and introducing modern 64-bit B-FS (V2), whereas Kishida's OS delivers practical FAT32/FatFs persistence on modern PC storage.
+In storage architecture, \textbf{B-System maintains historical authenticity and specification purity}, mounting commercial Cho-Kanji (B-right/V 4.02) disks via embedded QCOW2 drivers and introducing modern 64-bit B-FS (V2), whereas Tamazusa OS delivers practical FAT32/FatFs persistence on modern PC storage.
 
 Both systems represent impressive, complementary achievements in the modern realization of Ken Sakamura's TRON architecture. Their coexistence demonstrates the enduring vitality of the TRON philosophy, showing that it can simultaneously inspire educational, real-world software exploration and rigorous, deterministic cleanroom systems engineering.
 
@@ -534,7 +534,10 @@ BTRON3 Working Group, ``BTRON3 Specification Ver 3.20.00,'' TRON Association, To
 Personal Media Corporation, \emph{B-right/V and Cho-Kanji Operating System Architecture Reference}, Tokyo, Japan, 1999.
 
 \bibitem{bfree_history}
-B-Free Project, ``B-Free PC-9801 Port: 5W1H and Historical Narrative,'' Historical Project Documentation, 1995--2000. \url{https://github.com/HIDEYUKI-KISHIDA/B-Free-master-64bit}.
+B-Free Project, ``B-Free Operating System Project Archive,'' SourceForge Repository, 1995--2000. \url{https://sourceforge.net/projects/b-free/}.
+
+\bibitem{tamazusa_release}
+H.~Kishida, ``Tamazusa OS v0.1.0 Release and Source Records,'' Project Release, Oct. 31, 2026. \url{https://github.com/HIDEYUKI-KISHIDA/tamazusa-os/releases/tag/v0.1.0}.
 
 \bibitem{bfree_narrative}
 H.~Kishida, ``B-Free 64-bit OS Architecture and Concept Records,'' Project Documentation, Dec. 2025--Oct. 2026.
