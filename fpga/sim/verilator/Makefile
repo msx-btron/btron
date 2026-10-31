@@ -1,15 +1,11 @@
 # fpga/sim/verilator/Makefile
-# Phase 1: Clocks + Memory Arbiter co-simulation against C99 mem_model.
-#
-# Build is two-step to handle mixed C99/C++ sources correctly:
-#   Step 1: verilator --cc        → generates C++ model in obj_dir/
-#   Step 2: compile each source, then link manually
+# MSX turboR FPGA Co-Simulation Makefile (Phases 1 & 2).
 #
 # Targets:
-#   make          — build ./fpga_sim_phase1
-#   make run      — run 1,000,000 master-clock cycles and verify
-#   make verilog  — only regenerate Verilog from BSV
-#   make clean    — remove generated files
+#   make phase1       — build and run Phase 1 (Clocks & Memory Arbiter)
+#   make phase2       — build and run Phase 2 (CPU Core, Multiplier, S1990)
+#   make all          — run both Phase 1 and Phase 2 suites
+#   make clean        — remove generated artifacts
 
 BSC        ?= bsc
 VERILATOR  ?= verilator
@@ -23,103 +19,111 @@ SIM_DIR    := $(CURDIR)
 VL_OBJ     := $(SIM_DIR)/obj_dir
 BSC_BDIR   := $(SIM_DIR)/bsc_bdir
 
-# ── BSV source packages (dependency order) ─────────────────────────────────
-BSV_SRCS   := $(BSV_ROOT)/Bus.bsv \
-              $(BSV_ROOT)/MSXClocks.bsv \
-              $(BSV_ROOT)/memory/MemoryArbiter.bsv \
-              $(BSV_ROOT)/TopPhase1.bsv
+# ── BSV Sources ────────────────────────────────────────────────────────────
+BSV_P1_SRCS := $(BSV_ROOT)/Bus.bsv \
+               $(BSV_ROOT)/MSXClocks.bsv \
+               $(BSV_ROOT)/memory/MemoryArbiter.bsv \
+               $(BSV_ROOT)/TopPhase1.bsv
 
-TOP_MODULE := mkTopPhase1
-TOP_V      := $(SIM_DIR)/$(TOP_MODULE).v
+BSV_P2_SRCS := $(BSV_ROOT)/Bus.bsv \
+               $(BSV_ROOT)/MSXClocks.bsv \
+               $(BSV_ROOT)/memory/MemoryArbiter.bsv \
+               $(BSV_ROOT)/cpu/ALU.bsv \
+               $(BSV_ROOT)/cpu/Decode.bsv \
+               $(BSV_ROOT)/cpu/T9769C.bsv \
+               $(BSV_ROOT)/cpu/CPUCore.bsv \
+               $(BSV_ROOT)/TopPhase2.bsv
+
+TOP_P1_V   := $(SIM_DIR)/mkTopPhase1.v
+TOP_P2_V   := $(SIM_DIR)/mkTopPhase2.v
 
 # ── Compiler include paths ─────────────────────────────────────────────────
-VERILATOR_ROOT  ?= $(shell verilator --getenv VERILATOR_ROOT 2>/dev/null || echo /opt/homebrew/share/verilator)
-VL_INCLUDE       = $(VERILATOR_ROOT)/include
+VERILATOR_ROOT ?= $(shell verilator --getenv VERILATOR_ROOT 2>/dev/null || echo /opt/homebrew/share/verilator)
+VL_INCLUDE      = $(VERILATOR_ROOT)/include
 
-# BSC support library — exclude Verilog files with unsupported constructs
-BSC_LIBDIR  := /opt/homebrew/Cellar/bsc/2026.07.1_1/libexec/lib/Verilog
-EXCLUDE_V   := InoutConnect.v ProbeHook.v ProbeCapture.v ProbeWire.v \
-               ProbeMux.v ProbeTrigger.v ProbeValue.v main.v
-BSC_LIB_V   := $(filter-out $(addprefix $(BSC_LIBDIR)/,$(EXCLUDE_V)), $(wildcard $(BSC_LIBDIR)/*.v))
+BSC_LIBDIR := /opt/homebrew/Cellar/bsc/2026.07.1_1/libexec/lib/Verilog
+EXCLUDE_V  := InoutConnect.v ProbeHook.v ProbeCapture.v ProbeWire.v \
+              ProbeMux.v ProbeTrigger.v ProbeValue.v main.v
+BSC_LIB_V  := $(filter-out $(addprefix $(BSC_LIBDIR)/,$(EXCLUDE_V)), $(wildcard $(BSC_LIBDIR)/*.v))
 
-# ── C99 testbench sources ──────────────────────────────────────────────────
-C_SRCS      := $(SIM_DIR)/sim_main.c \
-               $(SIM_DIR)/mem_model.c \
-               $(SIM_DIR)/frame_dump.c \
-               $(SIM_DIR)/trace_compare.c
+COMMON_INC := -I$(SIM_DIR) -I$(VL_OBJ) -I$(VL_INCLUDE)
+CFLAGS     := -std=c99  -O2 -Wall $(COMMON_INC) -DVERILATOR=1
+CXXFLAGS   := -std=c++17 -O2 -Wall $(COMMON_INC) -DVERILATOR=1
 
-# C++ bridge files (two: vl_bridge + sc_stub)
-CXX_SRCS    := $(SIM_DIR)/vl_bridge.cpp \
-               $(SIM_DIR)/sc_stub.cpp
+VL_FLAGS   := -Wall -Wno-WIDTHTRUNC -Wno-PINCONNECTEMPTY -Wno-UNUSEDSIGNAL --error-limit 99 \
+              +incdir+$(BSC_LIBDIR) $(foreach v,$(BSC_LIB_V),-v $(v))
 
-# ── Compiler flags ─────────────────────────────────────────────────────────
-COMMON_INC  := -I$(SIM_DIR) -I$(VL_OBJ) -I$(VL_INCLUDE)
-CFLAGS      := -std=c99  -O2 -Wall $(COMMON_INC) -DVERILATOR=1
-CXXFLAGS    := -std=c++17 -O2 -Wall $(COMMON_INC) -DVERILATOR=1
+# ── Binaries ───────────────────────────────────────────────────────────────
+BIN_P1     := $(SIM_DIR)/fpga_sim_phase1
+BIN_P2     := $(SIM_DIR)/fpga_sim_phase2
 
-# Object files derived from sources
-C_OBJS   := $(patsubst $(SIM_DIR)/%.c,   $(VL_OBJ)/%.o, $(C_SRCS))
-CXX_OBJS := $(patsubst $(SIM_DIR)/%.cpp, $(VL_OBJ)/%.o, $(CXX_SRCS))
-VL_OBJS  := $(VL_OBJ)/VmkTopPhase1__ALL.o \
-             $(VL_OBJ)/verilated.o \
-             $(VL_OBJ)/verilated_threads.o
+.PHONY: all phase1 phase2 run clean
 
-OUTPUT   := $(SIM_DIR)/fpga_sim_phase1
+all: phase1 phase2
 
-.PHONY: all run clean verilog verilate
-
-all: $(OUTPUT)
-
-# ── Step 1: Compile BSV → Verilog ─────────────────────────────────────────
-verilog: $(TOP_V)
-
-$(TOP_V): $(BSV_SRCS)
+# ── Phase 1 Build & Run ────────────────────────────────────────────────────
+$(TOP_P1_V): $(BSV_P1_SRCS)
 	@mkdir -p $(BSC_BDIR)
-	$(BSC) -verilog \
-	       -p +:$(BSV_ROOT):$(BSV_ROOT)/memory \
-	       -vdir $(SIM_DIR) \
-	       -bdir $(BSC_BDIR) \
-	       -u $(BSV_ROOT)/TopPhase1.bsv
-	@echo "Verilog generated: $(TOP_V)"
+	$(BSC) -verilog -p +:$(BSV_ROOT):$(BSV_ROOT)/memory \
+	       -vdir $(SIM_DIR) -bdir $(BSC_BDIR) -u $(BSV_ROOT)/TopPhase1.bsv
 
-# ── Step 2: Verilate (generate C++ model only, no build) ──────────────────
-$(VL_OBJ)/VmkTopPhase1__ALL.o: $(TOP_V)
+$(VL_OBJ)/VmkTopPhase1__ALL.o: $(TOP_P1_V)
 	@mkdir -p $(VL_OBJ)
-	$(VERILATOR) --cc \
-	    --Mdir $(VL_OBJ) \
-	    -Wall \
-	    -Wno-WIDTHTRUNC \
-	    -Wno-PINCONNECTEMPTY \
-	    -Wno-UNUSEDSIGNAL \
-	    --error-limit 99 \
-	    +incdir+$(BSC_LIBDIR) \
-	    $(foreach v,$(BSC_LIB_V),-v $(v)) \
-	    $(TOP_V) \
-	    --top-module $(TOP_MODULE)
+	$(VERILATOR) --cc --Mdir $(VL_OBJ) $(VL_FLAGS) $(TOP_P1_V) --top-module mkTopPhase1
 	$(MAKE) -C $(VL_OBJ) -f VmkTopPhase1.mk
-	# Compile Verilator runtime support
-	$(CXX) $(CXXFLAGS) -c $(VL_INCLUDE)/verilated.cpp        -o $(VL_OBJ)/verilated.o
+	$(CXX) $(CXXFLAGS) -c $(VL_INCLUDE)/verilated.cpp -o $(VL_OBJ)/verilated.o
 	$(CXX) $(CXXFLAGS) -c $(VL_INCLUDE)/verilated_threads.cpp -o $(VL_OBJ)/verilated_threads.o
 
-# ── Step 3: Compile C99 testbench sources ─────────────────────────────────
-$(VL_OBJ)/%.o: $(SIM_DIR)/%.c | $(VL_OBJ)/VmkTopPhase1__ALL.o
-	$(CC) $(CFLAGS) -c $< -o $@
-
-# ── Step 4: Compile C++ bridge sources ────────────────────────────────────
-$(VL_OBJ)/%.o: $(SIM_DIR)/%.cpp | $(VL_OBJ)/VmkTopPhase1__ALL.o
-	$(CXX) $(CXXFLAGS) -c $< -o $@
-
-# ── Step 5: Link everything ────────────────────────────────────────────────
-$(OUTPUT): $(VL_OBJS) $(C_OBJS) $(CXX_OBJS)
+$(BIN_P1): $(VL_OBJ)/VmkTopPhase1__ALL.o $(SIM_DIR)/sim_main.c $(SIM_DIR)/mem_model.c $(SIM_DIR)/frame_dump.c $(SIM_DIR)/trace_compare.c $(SIM_DIR)/vl_bridge.cpp $(SIM_DIR)/sc_stub.cpp
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/sim_main.c -o $(VL_OBJ)/sim_main.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/mem_model.c -o $(VL_OBJ)/mem_model.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/frame_dump.c -o $(VL_OBJ)/frame_dump.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/trace_compare.c -o $(VL_OBJ)/trace_compare.o
+	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/vl_bridge.cpp -o $(VL_OBJ)/vl_bridge.o
+	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/sc_stub.cpp -o $(VL_OBJ)/sc_stub.o
 	$(CXX) -std=c++17 -O2 \
-	    $(C_OBJS) $(CXX_OBJS) $(VL_OBJS) \
+	    $(VL_OBJ)/sim_main.o $(VL_OBJ)/mem_model.o $(VL_OBJ)/frame_dump.o $(VL_OBJ)/trace_compare.o \
+	    $(VL_OBJ)/vl_bridge.o $(VL_OBJ)/sc_stub.o \
+	    $(VL_OBJ)/VmkTopPhase1__ALL.o $(VL_OBJ)/verilated.o $(VL_OBJ)/verilated_threads.o \
 	    -o $@
-	@echo "Built: $@"
 
-run: $(OUTPUT)
-	@echo "--- Running Phase 1 co-simulation (1,000,000 master cycles) ---"
-	$(OUTPUT) 1000000
+phase1: $(BIN_P1)
+	@echo "=== Running Phase 1 (Clocks & Memory Arbiter) ==="
+	$(BIN_P1) 1000000
+
+# ── Phase 2 Build & Run ────────────────────────────────────────────────────
+$(TOP_P2_V): $(BSV_P2_SRCS)
+	@mkdir -p $(BSC_BDIR)
+	$(BSC) -verilog -p +:$(BSV_ROOT):$(BSV_ROOT)/memory:$(BSV_ROOT)/cpu \
+	       -vdir $(SIM_DIR) -bdir $(BSC_BDIR) -u $(BSV_ROOT)/TopPhase2.bsv
+
+$(VL_OBJ)/VmkTopPhase2__ALL.o: $(TOP_P2_V)
+	@mkdir -p $(VL_OBJ)
+	$(VERILATOR) --cc --Mdir $(VL_OBJ) $(VL_FLAGS) \
+	    -v $(SIM_DIR)/mkCPUCore.v \
+	    -v $(SIM_DIR)/mkR800Multiplier.v \
+	    -v $(SIM_DIR)/mkT9769C.v \
+	    $(TOP_P2_V) --top-module mkTopPhase2
+	$(MAKE) -C $(VL_OBJ) -f VmkTopPhase2.mk
+	$(CXX) $(CXXFLAGS) -c $(VL_INCLUDE)/verilated.cpp -o $(VL_OBJ)/verilated.o
+	$(CXX) $(CXXFLAGS) -c $(VL_INCLUDE)/verilated_threads.cpp -o $(VL_OBJ)/verilated_threads.o
+
+$(BIN_P2): $(VL_OBJ)/VmkTopPhase2__ALL.o $(SIM_DIR)/sim_phase2.c $(SIM_DIR)/mem_model.c $(SIM_DIR)/trace_compare.c $(SIM_DIR)/vl_bridge_p2.cpp $(SIM_DIR)/sc_stub.cpp
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/sim_phase2.c -o $(VL_OBJ)/sim_phase2.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/mem_model.c -o $(VL_OBJ)/mem_model.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/trace_compare.c -o $(VL_OBJ)/trace_compare.o
+	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/vl_bridge_p2.cpp -o $(VL_OBJ)/vl_bridge_p2.o
+	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/sc_stub.cpp -o $(VL_OBJ)/sc_stub.o
+	$(CXX) -std=c++17 -O2 \
+	    $(VL_OBJ)/sim_phase2.o $(VL_OBJ)/mem_model.o $(VL_OBJ)/trace_compare.o \
+	    $(VL_OBJ)/vl_bridge_p2.o $(VL_OBJ)/sc_stub.o \
+	    $(VL_OBJ)/VmkTopPhase2__ALL.o $(VL_OBJ)/verilated.o $(VL_OBJ)/verilated_threads.o \
+	    -o $@
+
+phase2: $(BIN_P2)
+	@echo "=== Running Phase 2 (CPU Core, Multiplier, S1990) ==="
+	$(BIN_P2)
 
 clean:
-	rm -rf $(VL_OBJ) $(BSC_BDIR) $(OUTPUT)
+	rm -rf $(VL_OBJ) $(BSC_BDIR) $(BIN_P1) $(BIN_P2)
 	rm -f $(SIM_DIR)/mk*.v $(SIM_DIR)/*.bo

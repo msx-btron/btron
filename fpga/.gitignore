@@ -6,5 +6,7 @@
 obj_dir/
 bsc_bdir/
 fpga_sim_phase1
+fpga_sim_phase2
 *.dSYM/
 *.vcd
+

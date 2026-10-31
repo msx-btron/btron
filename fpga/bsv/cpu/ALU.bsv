@@ -84,7 +84,8 @@ function AluResult8 evalAlu8(AluOp8 op, Bit#(8) a, Bit#(8) b, Bool cin);
             Bit#(9) sum = ext_a + ext_b;
             res = sum[7:0];
             cf = unpack(sum[8]);
-            hf = unpack((a[3:0] + b[3:0])[4]);
+            Bit#(5) sum4 = {1'b0, a[3:0]} + {1'b0, b[3:0]};
+            hf = unpack(sum4[4]);
             // Overflow: operands same sign, result opposite
             pf = (a[7] == b[7]) && (res[7] != a[7]);
             nf = False;
@@ -93,7 +94,8 @@ function AluResult8 evalAlu8(AluOp8 op, Bit#(8) a, Bit#(8) b, Bool cin);
             Bit#(9) sum = ext_a + ext_b + c_bit;
             res = sum[7:0];
             cf = unpack(sum[8]);
-            hf = unpack((a[3:0] + b[3:0] + c_bit[3:0])[4]);
+            Bit#(5) sum4 = {1'b0, a[3:0]} + {1'b0, b[3:0]} + {4'd0, c_bit[0]};
+            hf = unpack(sum4[4]);
             pf = (a[7] == b[7]) && (res[7] != a[7]);
             nf = False;
         end
@@ -240,9 +242,10 @@ endfunction
 
 // ── 16-bit ADD HL, ss ───────────────────────────────────────────────────────
 function AluResult16 evalAdd16(Bit#(16) hl, Bit#(16) ss, Z80Flags oldFlags);
-    Bit#(17) sum = {1'b0, hl} + {1'b0, ss};
-    Bit#(16) res = sum[15:0];
-    Bool hf = unpack((hl[11:0] + ss[11:0])[12]);
+    Bit#(17) sum   = {1'b0, hl} + {1'b0, ss};
+    Bit#(16) res   = sum[15:0];
+    Bit#(13) sum12 = {1'b0, hl[11:0]} + {1'b0, ss[11:0]};
+    Bool hf = unpack(sum12[12]);
     return AluResult16 {
         res: res,
         flags: Z80Flags {
@@ -263,7 +266,8 @@ function AluResult16 evalAdc16(Bit#(16) hl, Bit#(16) ss, Bool cin);
     Bit#(17) c_bit = cin ? 17'd1 : 17'd0;
     Bit#(17) sum   = {1'b0, hl} + {1'b0, ss} + c_bit;
     Bit#(16) res   = sum[15:0];
-    Bool hf = unpack((hl[11:0] + ss[11:0] + c_bit[11:0])[12]);
+    Bit#(13) sum12 = {1'b0, hl[11:0]} + {1'b0, ss[11:0]} + c_bit[12:0];
+    Bool hf = unpack(sum12[12]);
     Bool pf = (hl[15] == ss[15]) && (res[15] != hl[15]);
     return AluResult16 {
         res: res,
