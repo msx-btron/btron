@@ -247,81 +247,55 @@ flowchart TD
 > 7. **Headless Pure C99 Frame Capture:** Uses `stb_image_write.h` in C99 to capture PNG frames directly from simulated VRAM, accelerating test cycles by $100\times$.
 
 
-=============================
 
-Ran list ROMs in assets/msx
-Ran check AurelVault-Source
-Analyzed MANUAL_EN.md:L1-84
-Analyzed geo3d.h:L1-50
-Ran search for BULLRUSH references · Exited with code 2
-Checked task Search for BULLRUSH references
-Analyzed msx_app.c:L210-240
-Ran search for AUREL in src/
-Analyzed slots.c:L170-210
-Analyzed geo3d.c:L1-60
-Ran find geo3d in slots.c
-Analyzed capture_screens.c:L430-470
-Ran find open_msx_window_with_rom
-Analyzed msx_app.c:L1180-1213
-Analyzed msx_app.c:L1100-1180
-Ran inspect msx_load in msx_app.c · Exited with code 1
-Ran search msx_load in msx_app.c
-Analyzed msx_app.c:L285-345
-Ran find BMSX_MACHINE_MSXTR_CBIOS occurrences
-Analyzed bios.c:L140-260
-Ran check SYS/cbios/
-Ran check third_party cbios-nextor
-Ran find msx related files
-Analyzed msx_trace.c:L1-60
-Canceled run msx_trace on BULLRUSH.ROM
-Killed task Run msx_trace on BULLRUSH.ROM
-Analyzed msx_trace.c:L880-940
-Analyzed msx_trace.c:L700-750
-Analyzed msx_trace.c:L610-650
-Analyzed msx_trace.c:L800-860
-Analyzed msx_trace.c:L750-800
-Ran run msx_trace on BULLRUSH.ROM for 60 frames
-Ran run msx_trace on AUREL_VAULT.rom for 60 frames
-Analyzed msx_trace.c:L560-590
-Ran test trace of Aurel Vault with 120 frames
-Analyzed msx_app.c:L90-140
-Ran find machine profile references in msx_app.c
-Analyzed msx_app.c:L195-230
-Ran find Geo3D integration in slots.c
-Analyzed slots.c:L1360-1415
-Ran check OPLL in slots.c
-Analyzed slots.c:L1425-1455
-Ran check 7C in t9769c.c
-Analyzed t9769c.c:L65-160
-Analyzed t9769c.c:L35-65
-Ran check where t9769c_advance is called · Exited with code 2
-Analyzed MANUAL_EN.md:L1-84
-Ran inspect strings in Neon Revenant ROM
-Ran inspect strings in Bullrush ROM
-Analyzed geo3d.h:L1-60
-Analyzed geo3d.h:L60-75
-Ran inspect commands handled in geo3d.c
-Analyzed geo3d.c:L1-60
-Ran find geo3d_write definition
-Analyzed geo3d.c:L360-450
-Ran trace 60 frames of Neon Revenant
-Ran check machine type in msx_trace.c · Exited with code 1
-Ran check initialization in msx_trace.c
-Analyzed msx_trace.c:L420-470
-Ran check bmsx_init in tronmsx.c · Exited with code 1
-Ran search for bmsx_init · Exited with code 2
-Ran check initialization calls in msx_app.c
-Ran find msx_init in tronmsx.c
-Analyzed tronmsx.c:L135-180
-Analyzed tronmsx.c:L220-280
-Ran check bios loading for BMSX_MACHINE_MSXTR_CBIOS
-Analyzed bios.c:L140-260
-Ran list C-BIOS directory contents
-Ran find any turboR or T-BIOS ROMs in repo
-Ran check s_bios_dir in tronmsx.c
-Ran check msx_set_bios_dir in msx_app.c · Exited with code 1
-Analyzed tronmsx.c:L30-55
-Analyzed bios.c:L30-70
+---
+
+## 8. Critical Hardware Implementation Details & Edge Cases
+
+Before synthesizing BSV modules, the following exact timing, protocol, and bus specifications must be locked down to guarantee zero divergence against `./src/emulators/msx/`:
+
+### 8.1 Cycle-Exact Clock Divider Matrix ($f_{\text{master}} = 57.272728\text{ MHz}$)
+All phase enables are synchronous single-cycle pulses (`tick_*`) derived from an 8-bit master counter:
+
+| Clock Domain | Frequency | Division Ratio ($57.27\text{ MHz} / N$) | Master Cycles ($N$) | Purpose |
+| :--- | :--- | :--- | :--- | :--- |
+| **`tick_28m`** | $28.636364\text{ MHz}$ | $\div 2$ | 2 | V9958 Master Dot Clock & R800 Internal Sequencer |
+| **`tick_7m`** | $7.159091\text{ MHz}$ | $\div 8$ | 8 | R800 External Bus Clock |
+| **`tick_3m58`** | $3.579545\text{ MHz}$ | $\div 16$ | 16 | Z80A CPU Clock & MSX Legacy Bus |
+| **`tick_e6`** | $255.6818\text{ kHz}$ | $\div (16 \times 14) = \div 224$ | **224** | **T9769C Port `#E6`/`#E7` System Timer** (Aurel Vault loop) |
+| **`tick_pcm`** | $15.700\text{ kHz}$ | $\div (16 \times 228) = \div 3648$ | **3648** | **turboR PCM DAC Sample Strobe** (Port `#A4`) |
+| **`tick_audio`**| $44.1238\text{ kHz}$ | $\div 1298$ | **1298** | Host $\Delta\Sigma$ PWM / I2S DAC Master Strobe |
+
+### 8.2 Memory Hierarchy & BRAM vs. External SDRAM Partitioning
+- **Simulation (Verilator / Bluesim)**:
+  - Backed by `mem_model.c` (flat 16 MB host C array, 0 wait-state virtual DRAM).
+- **Physical FPGA (ULX3S ECP5 / Tang Primer 20K GW2A)**:
+  - **VRAM (128 KB)**: Implemented in on-chip Block RAM (Dual-Port: Port A for scanout rasterizer, Port B for VDP blitter/CPU/Geo3D).
+  - **Main RAM (512 KB–4 MB)** & **Cartridge MegaROM (1 MB–4 MB)**: Stored in external SDRAM / HyperRAM.
+  - `MemoryArbiter.bsv` exposes a split-phase `Client#(BusReq, BusResp)` interface with `tag`, allowing memory transactions to complete in variable latency without locking the core pipeline.
+
+### 8.3 R800 Hardware Multiplier Specifications
+Must match `src/emulators/msx/r800.c` bit-for-bit:
+- **`MULUB A, reg8` (Opcodes `ED C1`, `C9`, `D1`, `D9`, `E1`, `E9`, `F1`)**:
+  - Timing: **14 CPU cycles** (7 bus cycles).
+  - Result: $HL \leftarrow A \times \text{reg8}$.
+  - Flags: $ZF \leftarrow (\text{prod} == 0)$, $CF \leftarrow (\text{prod} > 255)$, $SF \leftarrow 0$, $PF \leftarrow 0$.
+- **`MULUQ HL, reg16` (Opcodes `ED C3`, `D3`, `E3`, `F3`)**:
+  - Timing: **36 CPU cycles** (18 bus cycles).
+  - Result: $DE:HL \leftarrow HL \times \text{reg16}$ ($DE$ high word, $HL$ low word).
+  - Flags: $ZF \leftarrow (\text{prod} == 0)$, $CF \leftarrow (\text{prod} > 65535)$, $SF \leftarrow 0$, $PF \leftarrow 0$.
+
+### 8.4 Geo3D Fixed-Point Math & Bus Mastership
+- Model transformation requires 16-bit signed multiplication and 32/16 non-restoring division for perspective projection:
+  $$S_X = \text{Center}_X + \frac{X \cdot F_X}{Z}, \quad S_Y = \text{Center}_Y + \frac{Y \cdot F_Y}{Z}$$
+- Pipelined over 16 cycles in `Geo3D.bsv`.
+- Geo3D connects as a bus master client to the VRAM arbiter in `MemoryArbiter.bsv` for fast line drawing and polygon spans.
+
+### 8.5 Lock-Step Co-Simulation Synchronization Strobe
+- `CPUCore.bsv` asserts a 1-cycle output strobe `inst_retired` when an instruction retires.
+- On `inst_retired == 1`, `sim_main.c` executes exactly one instruction on the reference C99 emulator (`msx_step_one()`) and verifies:
+  $$\Delta(\text{PC}, \text{AF}, \text{BC}, \text{DE}, \text{HL}, \text{IX}, \text{IY}, \text{SP}) == 0$$
+- If any register diverges, the harness aborts with an immediate side-by-side disassembly trace.
 
 # Investigation Report: MSX turboR ROMs Execution Requirements
 
