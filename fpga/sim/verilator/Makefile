@@ -88,6 +88,9 @@ BIN_P1     := $(SIM_DIR)/fpga_sim_phase1
 BIN_P2     := $(SIM_DIR)/fpga_sim_phase2
 BIN_P3     := $(SIM_DIR)/fpga_sim_phase3
 BIN_P4     := $(SIM_DIR)/fpga_sim_phase4
+BIN_P5     := $(SIM_DIR)/fpga_sim_phase5
+BIN_P6     := $(SIM_DIR)/fpga_sim_phase6
+BIN_ROM    := $(SIM_DIR)/fpga_rom_runner
 
 BSV_P5_SRCS := $(BSV_ROOT)/Bus.bsv \
                $(BSV_ROOT)/MSXClocks.bsv \
@@ -367,11 +370,33 @@ phase6: $(BIN_P6)
 	@echo "=== Running Phase 6 (Full System MSX turbo R SoC) ==="
 	$(BIN_P6)
 
+# ── Cartridge ROM Verification Runner ──────────────────────────────────────
+$(BIN_ROM): $(VL_OBJ)/VmkTopMSXTurboR__ALL.a $(SIM_DIR)/sim_rom.c $(SIM_DIR)/mem_model.c $(SIM_DIR)/trace_compare.c $(SIM_DIR)/vl_bridge_p6.cpp $(SIM_DIR)/sc_stub.cpp
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/sim_rom.c -o $(VL_OBJ)/sim_rom.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/mem_model.c -o $(VL_OBJ)/mem_model.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/trace_compare.c -o $(VL_OBJ)/trace_compare.o
+	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/vl_bridge_p6.cpp -o $(VL_OBJ)/vl_bridge_p6.o
+	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/sc_stub.cpp -o $(VL_OBJ)/sc_stub.o
+	$(CXX) -std=c++17 -O2 \
+	    $(VL_OBJ)/sim_rom.o $(VL_OBJ)/mem_model.o $(VL_OBJ)/trace_compare.o \
+	    $(VL_OBJ)/vl_bridge_p6.o $(VL_OBJ)/sc_stub.o \
+	    $(VL_OBJ)/VmkTopMSXTurboR__ALL.a $(VL_OBJ)/VmkTopMSXTurboR.o $(VL_OBJ)/verilated.o $(VL_OBJ)/verilated_threads.o \
+	    -o $@
+
+ROM ?= $(FPGA_ROOT)/../assets/msx/MSX_LOGO.rom
+CYCLES ?= 15000000
+PPM ?= cart_frame.ppm
+
+fpga_rom_runner: $(BIN_ROM)
+
+run_rom: $(BIN_ROM)
+	$(BIN_ROM) "$(ROM)" --cycles $(CYCLES) --ppm "$(PPM)"
+
 # ── Physical Synthesis Flow (Yosys ECP5) ────────────────────────────────────
 synth_ecp5: $(TOP_P6_V)
 	@echo "=== Running Yosys Synthesis for Lattice ECP5 ==="
 	yosys $(FPGA_ROOT)/syn/yosys/ecp5_synth.ys
 
 clean:
-	rm -rf $(VL_OBJ) $(BSC_BDIR) $(BIN_P1) $(BIN_P2) $(BIN_P3) $(BIN_P4) $(BIN_P5) $(BIN_P6)
-	rm -f $(SIM_DIR)/mk*.v $(SIM_DIR)/*.bo frame_phase4.ppm $(FPGA_ROOT)/syn/yosys/*.json
+	rm -rf $(VL_OBJ) $(BSC_BDIR) $(BIN_P1) $(BIN_P2) $(BIN_P3) $(BIN_P4) $(BIN_P5) $(BIN_P6) $(BIN_ROM)
+	rm -f $(SIM_DIR)/mk*.v $(SIM_DIR)/*.bo frame_phase4.ppm $(SIM_DIR)/*.ppm $(FPGA_ROOT)/syn/yosys/*.json

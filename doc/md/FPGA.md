@@ -411,3 +411,83 @@ fpga/
 3. **Phase 3 (Geo3D Hardware Coprocessor)**: Implement `Geo3D.bsv` with internal vertex/edge/face FIFOs, a pipelined $Q2.14$ matrix multiplier, and direct memory-mapped VRAM line/polygon draw commands.
 4. **Phase 4 (C99 Verilator Testbench)**: Execute `AUREL_VAULT.rom` and `NEON_REVENANT.rom` headless under Verilator in C99, dumping PPM frames to verify boot screens, 3D polygon projection, and frame timings before bitstream synthesis.
 
+=================
+
+Ran list files in assets/msx/
+Ran find cbios usage in emulator
+Ran find cbios roms
+Ran find cartridge loading in emulator
+Analyzed slots.c:L40-100
+Analyzed slots.c:L350-450
+Analyzed slots.c:L490-560
+Analyzed SlotManager.bsv:L1-100
+Analyzed SlotManager.bsv:L100-140
+Analyzed mem_model.c:L1-91
+Ran hexdump MSX_LOGO.rom
+Ran hexdump Dynamite Go! Go!
+Ran hexdump YAZZIER and c0man
+Ran hexdump Bad Apple
+Ran check cbios_main_msxtr.rom
+Ran check sub and music ROMs
+
+To test the authentic MSX turbo R cartridges and demos in [`./assets/msx/`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/), we can follow a systematic 4-stage progression from automated headless co-simulation to interactive local playback and physical FPGA deployment.
+
+---
+
+### Analysis of ROM Assets in `./assets/msx/`
+
+An inspection of `./assets/msx/` reveals three distinct tiers of ROM images:
+
+| ROM Tier | Example ROMs in `./assets/msx/` | Cartridge Mapping | Entry Point |
+|---|---|---|---|
+| **Tier 1: Plain Cartridges (16 KB – 48 KB)** | [`MSX_LOGO.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/MSX_LOGO.rom) (16K)<br>[`c0man.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/c0man.rom) (16K)<br>[`Dynamite Go! Go! - Demo.ROM`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/Dynamite%20Go!%20Go!%20-%20Demo%20(2021)%20(Rutubo%20Gameworks).ROM) (32K)<br>[`YAZZIER.ROM`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/YAZZIER.ROM) (32K)<br>[`xracing_v1.0.4.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/xracing_v1.0.4.rom) (48K) | **Standard Linear Slot 1**<br>(Page 1: `0x4000..0x7FFF`, Page 2: `0x8000..0xBFFF`) | Header signature `41 42` (`'AB'`), initial execution at `0x4010`. No bank switching required. |
+| **Tier 2: MegaROM Titles (1 MB – 4 MB)** | [`Bad Apple (MDPC)[ASCII16].rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/Bad%20Apple%20(MDPC)[ASCII16].rom) (2MB)<br>[`AUREL_VAULT.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/AUREL_VAULT.rom) (1MB)<br>[`BULLRUSH.ROM`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/BULLRUSH.ROM) (1MB)<br>[`NIGHT_RAVEN_GEO3D.ROM`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/NIGHT_RAVEN_GEO3D.ROM) (1MB)<br>[`NEON_REVENANT-HC-Geo3D.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/NEON_REVENANT-HC-Geo3D-256-v0.2.0.rom) (4MB) | **ASCII16 / ASCII8 / Konami SCC**<br>(Bank registers at `0x6000`, `0x7000`, `0x9000`, `0xB000`) | Header signature `41 42` (`'AB'`), entry at `0x4010` or `0x4810`. Requires dynamic bank translation. |
+| **Tier 3: Disk Images (.dsk)** | `512 Bytes MSX1 Demo.dsk`, `IOD GIF Demo.dsk`, `Puzzle Egg.dsk` | **Nextor / C-BIOS Disk Driver** | Requires disk ROM controller in Slot 2. |
+
+---
+
+### Step-by-Step Execution Plan
+
+```mermaid
+flowchart LR
+    A["Stage 1: C99 ROM Runner\n(CLI tool + C-BIOS TurboR boot)"] --> B["Stage 2: Headless Frame & Audio Dump\n(PPM screenshot verification)"]
+    B --> C["Stage 3: Interactive macOS Window\n(SDL2 real-time display & keyboard)"]
+    C --> D["Stage 4: Physical Bitstream Flashing\n(ULX3S / Tang Primer 20K)"]
+```
+
+#### Stage 1: Build the Headless ROM Runner (`fpga_rom_runner`)
+Create a CLI test harness in `fpga/sim/verilator/sim_rom.c` utilizing the existing [`vl_bridge_p6`](file:///Users/tonpa/depot/bitedits/btron/fpga/sim/verilator/vl_bridge_p6.h) and [`mem_model.c`](file:///Users/tonpa/depot/bitedits/btron/fpga/sim/verilator/mem_model.c):
+1. **Load C-BIOS turboR**:
+   - `cbios_main_msxtr.rom` (32 KB from `third_party/cbios-nextor_FDD-and-turboR/`) into physical BIOS address `0x000000..0x007FFF`.
+   - `cbios_sub.rom` (16 KB) into `0x008000..0x00BFFF`.
+2. **Mount the Cartridge ROM**:
+   - Load the user-specified `.rom` into `baseCartA + 0x4000` (`0x104000`).
+3. **Execute the Cold Boot Sequence**:
+   - Step clock cycles. Monitor C-BIOS initializing VDP, PPI, PSG, and scanning Slot 1.
+   - Detect when PC enters the cartridge space (`0x4000..0xBFFF`), confirming successful boot.
+
+#### Stage 2: Headless Frame Dumps & Visual Verification
+- As the ROM executes, capture video frames from the VDP scanout or VRAM (identical to Phase 4's headless `frame_phase4.ppm` generator).
+- Inspect the generated `.ppm` / `.png` screenshots to verify title screens, sprites, text rendering, and blitter graphics.
+- We can immediately test with **Tier 1** ROMs:
+  - `assets/msx/MSX_LOGO.rom`
+  - `assets/msx/c0man.rom`
+  - `assets/msx/Dynamite Go! Go! - Demo (2021) (Rutubo Gameworks).ROM`
+
+#### Stage 3: Support MegaROM Bank Switching (Tier 2)
+- For 1 MB – 4 MB games like `Bad Apple (MDPC)[ASCII16].rom` and `BULLRUSH.ROM`:
+  - Hook the memory model responder to intercept writes to `0x6000..0x67FF` and `0x7000..0x77FF` (ASCII16 bank registers) or `0x5000/0x7000/0x9000/0xB000` (Konami/SCC).
+  - Dynamically recalculate the 24-bit physical address offset:
+    $$\text{Addr}_{\text{phys}} = \text{baseCartA} + (\text{bank} \times 16\text{ KB}) + (\text{cpu\_addr} \bmod 16\text{ KB})$$
+
+#### Stage 4: Interactive Local GUI (SDL2)
+- Wrap `vl_bridge_p6` with an optional lightweight SDL2 frontend (`sim_gui.c`):
+  - Renders the 57.27 MHz `video_rgb565` output to an SDL2 window at 60 Hz.
+  - Streams `audio_pcm_sample` to the macOS audio output.
+  - Passes host keystrokes into `vl_p6_kbd_key_down` / `vl_p6_kbd_key_up`.
+
+---
+
+### Recommended Immediate Next Step
+
+Would you like to build **Stage 1 & 2** now by creating `fpga/sim/verilator/sim_rom.c` and a `make run_rom ROM=...` target, so we can boot `MSX_LOGO.rom` and `Dynamite Go! Go!` headlessly and dump the resulting framebuffers?
