@@ -3,12 +3,10 @@
 *.ba
 *.v
 !bsv/**/*.v
+!syn/**/*.v
 obj_dir/
 bsc_bdir/
-fpga_sim_phase1
-fpga_sim_phase2
-fpga_sim_phase3
-fpga_sim_phase4
+fpga_sim_phase*
 *.ppm
 *.dSYM/
 *.vcd
