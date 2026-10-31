@@ -96,3 +96,4 @@ function DecodedOp splitOpcode(Bit#(8) op);
 endfunction
 
 endpackage: Decode
+
