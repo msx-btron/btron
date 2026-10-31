@@ -19,6 +19,9 @@
 \usepackage{enumitem}
 \usepackage{cite}
 \usepackage{titlesec}
+\titlespacing*{\section}{0pt}{8pt plus 2pt minus 2pt}{4pt plus 1pt minus 1pt}
+\titlespacing*{\subsection}{0pt}{6pt plus 2pt minus 1pt}{3pt plus 1pt minus 1pt}
+\titlespacing*{\subsubsection}{0pt}{4pt plus 1pt minus 1pt}{2pt plus 1pt minus 1pt}
 \usepackage{fancyhdr}
 \usepackage{CJKutf8}
 \usepackage{tikz}
@@ -46,15 +49,17 @@
     tabsize=2
 }
 
-\title{\LARGE \textbf{Hideyuki Kishida's Educational 64-bit Tamazusa OS and 5HT's B-System:\\A Rigorous Comparative Audit of T-Kernel/POSIX Hybrid Architecture, Wayland Compositing, and Cleanroom BTRON3 Design}\thanks{Hideyuki Kishida's operating system is officially named Tamazusa OS (\ja{玉梓}) as of October 31, 2026 (\url{https://github.com/HIDEYUKI-KISHIDA/tamazusa-os/releases/tag/v0.1.0}). The project was briefly designated ``Urara OS'' as a provisional working name, which was dropped due to an existing registered trademark.}}
+\title{\LARGE \textbf{Hideyuki Kishida's Educational 64-bit Tamazusa OS and 5HT's B-System:\\A Rigorous Comparative Audit of T-Kernel/POSIX Hybrid Architecture, Wayland Compositing, and Cleanroom BTRON3 Design}
+
+\thanks{Authorship, provenance, and publication notice: This paper was authored exclusively by Maksym Sokhatsky in his position as Chief Technology Officer, Cryptographics Telesystems, LLC, on November 1, 2026. Published for MSX BTRON Research: \url{https://github.com/msx-btron}. Paper license: MIT License. The architectural description and analysis of Tamazusa OS (\ja{玉梓}) are based exclusively on publicly available materials—specifically the Tamazusa OS v0.1.0 release (\url{https://github.com/HIDEYUKI-KISHIDA/tamazusa-os/releases/tag/v0.1.0})—and on factual corrections communicated directly by Hideyuki Kishida (\ja{岸田英之}). \textbf{Hideyuki Kishida is not a co-author of this paper.} Quoted code excerpts from Tamazusa OS are cited with their source filenames under the project's open-source license notice (GNU General Public License v2 / GPL v2).}}
 
 \author{
-    \textbf{Maxim Sokhatsky (Namdak Tonpa)}\\[0.3em]
-    \small \textit{Synrc Research Center / Groupoid Infinity / BTRON Cleanroom Working Group}\\
-    \small \textit{Kyiv, Ukraine}\\
+    \textbf{Maksym Sokhatsky (Namdak Tonpa)}\\[0.3em]
+    \small \textit{Chief Technology Officer, Cryptographics Telesystems, LLC}\\
+    \small \textit{BTRON Cleanroom Working Group / Synrc Research Center}\\
     \small \texttt{maxim@synrc.com}
 }
-\date{October 2026}
+\date{November 1, 2026}
 
 \pagestyle{fancy}
 \fancyhf{}
@@ -98,8 +103,23 @@ In parallel, \textbf{5HT (Namdak Tonpa)} and the Cleanroom Working Group initiat
 To ensure this audit is objective, fair, and respectful of both projects, we establish three methodological boundaries:
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Bracketing Formal Verification:} B-System is developed alongside mechanized mathematical specifications in the \textsc{Coq} proof assistant (the VeriMath framework~\cite{sokhatsky2026verimath}). Evaluating Kishida's OS against machine-checked Coq proofs would constitute a category error, as Kishida's project is an empirical, educational implementation without formal theorem-prover artifacts. We therefore bracket formal verification entirely and judge both systems strictly on concrete C and assembly routines, hardware bus transactions, and execution traces.
-    \item \textbf{Accounting for Work-In-Progress (WIP) and Solo-Developer Realities:} Both systems are active, evolving research projects as of October 2026. Kishida's OS is authored and maintained by a solo developer as an educational platform, balancing kernel development with the substantial maintenance overhead of POSIX compatibility; its multicore support is an experimental build tested in QEMU, with uniprocessor execution running by default on hardware, and its GPU driver layer remains non-operational scaffolding. B-System is actively staging its bare-metal x86\_64 SMP scheduler and expanding native hardware drivers. Neither system is treated as a finished commercial product.
+    \item \textbf{Accounting for Work-In-Progress (WIP) and Solo-Developer Realities:} Both systems are active, evolving research projects as of October 2026. Kishida's OS is authored and maintained by a solo developer as an educational platform, balancing kernel development with the substantial maintenance overhead of POSIX compatibility; its multicore support is an experimental build tested in QEMU, with the default configuration being single-core (verified in QEMU; real-hardware boot is not yet verified), and its GPU driver layer remains non-operational scaffolding. B-System is actively staging its bare-metal x86\_64 SMP scheduler and expanding native hardware drivers. Neither system is treated as a finished commercial product.
     \item \textbf{Dual Philosophical Validation:} We recognize that both systems address Ken Sakamura's philosophy from valid, complementary paradigms: Kishida's OS pursues an \textbf{Educational Hybrid Paradigm} (retaining T-Kernel 2.0 while incorporating POSIX compatibility to enable application growth and demystify OS mechanics for students), while B-System pursues a \textbf{Deterministic Cleanroom Paradigm} (uncompromising RTOS latencies, specification purity, and mathematical safety).
+\end{enumerate}
+
+\subsection{Authorship, Provenance, and Publication Notice}
+\label{sec:provenance}
+
+To provide explicit scholarly and legal clarity regarding provenance, distribution, and non-co-authorship:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Author, Institutional Affiliation, and Date:} This paper was authored exclusively by \textbf{Maksym Sokhatsky} in his position as Chief Technology Officer (CTO) of \textbf{Cryptographic Telesystems, LLC}, completed on \textbf{November 1, 2026}.
+    \item \textbf{Publication and Distribution Venue:} This research is published and distributed as part of the \textbf{MSX BTRON Research} initiative hosted at:
+    \begin{center}
+    \url{https://github.com/msx-btron}
+    \end{center}
+    \item \textbf{Paper License:} The paper and its comparative audit materials are released under the terms of the \textbf{MIT License}.
+    \item \textbf{Information Provenance and Non-Co-Author Notice:} The technical description and analysis of Tamazusa OS (\ja{玉梓}) are based solely on publicly available materials—specifically the GitHub release v0.1.0 (\url{https://github.com/HIDEYUKI-KISHIDA/tamazusa-os/releases/tag/v0.1.0})—and on factual corrections communicated directly by Hideyuki Kishida (\ja{岸田英之}). \textbf{Hideyuki Kishida is not a co-author of this paper.} The project was briefly designated ``Urara OS'' as a provisional working name, which was dropped after confirming a pre-existing registered trademark.
+    \item \textbf{Quoted Code Excerpts and Project License:} All quoted source code excerpts from Tamazusa OS (specifically Listing~1 from \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} and Listing~2 from \path{bfree_x86_64/kernel/sysmain/syscall.c}) are identified by their originating source file paths and are governed by the Tamazusa OS project's open-source license notice: the \textbf{GNU General Public License v2 (GPL v2)}, inherited from the original B-Free archive reference.
 \end{enumerate}
 
 \begin{figure*}[t]
@@ -111,7 +131,7 @@ To ensure this audit is objective, fair, and respectful of both projects, we est
     
     % Left side: Kishida's OS (Tamazusa OS)
     \node [block_tamazusa] (tamazusa_hw) {\textbf{Tamazusa OS Hardware Targets}\\x86\_64 PC (Legacy BIOS / GRUB; AHCI, NVMe, RTL8168 source present, unverified on real HW)\\AArch64 (ARMv8-A Cortex-A72 / QEMU)};
-    \node [block_tamazusa, below=0.35cm of tamazusa_hw] (tamazusa_core) {\textbf{Core Kernel \& Concurrency}\\Built on T-Kernel 2.0\\Experimental SMP (QEMU 4-core; Uniprocessor Default)};
+    \node [block_tamazusa, below=0.35cm of tamazusa_hw] (tamazusa_core) {\textbf{Core Kernel \& Concurrency}\\Built on T-Kernel 2.0\\Experimental SMP (QEMU 4-core; Single-Core Default)};
     \node [block_tamazusa, below=0.35cm of tamazusa_core] (tamazusa_sub) {\textbf{Subsystem \& Process Execution}\\4-Level Paging, Higher-Half Physmap, Dynamic ELF Loader\\POSIX OSS Gateway (CoreA/B/C/D/E, Real-World OSS ABI)};
     \node [block_tamazusa, below=0.35cm of tamazusa_sub] (tamazusa_ui) {\textbf{Compositor-First Display Engine}\\In-Guest Wayland Server (\texttt{compositor.elf}, AF\_UNIX \texttt{/tmp/wlXX})\\Qt Quick 6 DesktopShell (Software Framebuffer, NetSurf; WPE WebKit planned)};
 
@@ -151,7 +171,7 @@ Subsystem Role & Tamazusa OS Repository Path & B-System Cleanroom Path & Archite
 \midrule
 Bootstrapping & \path{bfree_x86_64/boot/}, \path{btron-pc/boot/2nd/} & \path{src/kernel/boot.c}, \path{src/cores/} & Legacy BIOS (GRUB) to 64-bit Long Mode bootstrap, GDT/IDT/TSS, CR3 setup \\
 Core Kernel / Sched & \path{bfree_x86_64/kernel/sysmain/}, \path{process.c} & \path{src/kernel/}, \path{include/btron/} & Task control blocks, multi-task dispatching, timer queues, sleep/wakeup \\
-SMP Management & \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} & \path{src/cores/core_smp.c} & ACPI MADT probe, Local APIC (QEMU 4-core test; uniprocessor default) \\
+SMP Management & \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} & \path{src/cores/core_smp.c} & ACPI MADT probe, Local APIC (QEMU 4-core test; single-core default, real HW boot unverified) \\
 Syscall Engine & \path{bfree_x86_64/kernel/sysmain/syscall.c} & \path{src/kernel/syscall.c} & Userland system call trap handling, parameter validation, privilege gates \\
 Memory Management & \path{bfree_x86_64/kernel/sysmain/vmm.c}, \path{paging.c} & \path{src/cores/}, \path{src/kernel/heap.c} & 4-level page tables (PML4), higher-half physmap, virtual space alloc \\
 Display / Compositor & \path{bfree_x86_64/userland/compositor_stub/} & \path{src/graphics/}, \path{src/window/} & Framebuffer scanout, Wayland protocol server, window hierarchy, blitters \\
@@ -205,12 +225,13 @@ Let $C = \{c_0, c_1, \dots, c_{n-1}\}$ be symmetric processor cores. An SMP brin
 \end{definition}
 
 \subsubsection{Tamazusa OS: SMP Topology and APIC Bring-Up}
-In \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c}, Hideyuki Kishida implements an experimental x86\_64 SMP bring-up sequence tested under QEMU virtual machine emulation (up to 4 virtual cores). On physical bare-metal hardware, multi-core AP dispatch has not yet been conducted, and the default production kernel runs stably on a single core:
+In \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c}, Hideyuki Kishida implements an experimental x86\_64 SMP bring-up sequence tested under QEMU virtual machine emulation (up to 4 virtual cores). On physical bare-metal hardware, multi-core AP dispatch has not yet been conducted, and the default configuration is single-core (verified in QEMU; real-hardware boot is not yet verified):
 \begin{enumerate}[leftmargin=*]
     \item \textbf{ACPI MADT Discovery:} The BSP parses the ACPI Multiple APIC Description Table (MADT), probing standard Local APIC entries (type 0) and extended x2APIC entries (type 9), supporting up to 256 logical processors (\texttt{BFREE\_CPU\_MAX 256}).
     \item \textbf{Trampoline and Memory Window:} Kishida allocates an AP real-mode trampoline at physical address \texttt{0x8000}. Memory between \texttt{0x600000} and \texttt{16 MiB} is permanently identity-mapped across all process page tables, ensuring that AP trap stacks, IDTs, GDTs, and per-CPU control structures (\texttt{g\_cpu\_tab}) remain universally accessible without page faults.
-    \item \textbf{INIT-SIPI-SIPI Sequence:} In \texttt{smp.c}, the BSP initializes each AP by issuing standard inter-processor interrupt vectors through the Local APIC Interrupt Command Register (ICR):
+    \item \textbf{INIT-SIPI-SIPI Sequence:} In \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} (licensed under the GNU General Public License v2), the BSP initializes each AP by issuing standard inter-processor interrupt vectors through the Local APIC Interrupt Command Register (ICR):
     \begin{lstlisting}[language=C]
+/* Source: bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c (GPL v2) */
 slot[0] = cr3;
 slot[1] = (uint64_t)(uintptr_t)&smp_ap_entry;
 slot[2] = c->irq_top - 8u;
@@ -258,17 +279,19 @@ B-System manages SMP concurrency across two distinct deployment targets:
 \end{figure}
 
 \subsubsection{Tamazusa OS: The 7-Stage SMP Progression}
-A notable technical achievement of Hideyuki Kishida is his transparent, phased roadmap for eliminating the Big Kernel Lock (BKL). Rather than attempting an unsafe, monolithic rewrite of the kernel's synchronization, Kishida formalized the 7-stage SMP progression documented in \path{SMP_PLAN_20261005.ja.md}:
+A notable technical achievement of Hideyuki Kishida is his transparent, phased roadmap for eliminating the Big Kernel Lock (BKL). Rather than attempting an unsafe, monolithic rewrite of the kernel's synchronization, Kishida formalized the 7-stage SMP progression documented in \path{SMP_PLAN_20261005.ja.md}, with each stage explicitly designated as either implemented under QEMU emulation or planned:
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Stage 1--2 (\texttt{BFREE\_SMP=1}):} GS-based per-CPU data structures, AP bootstrap, idle loops, and Local APIC timer heartbeats.
-    \item \textbf{Stage 3--4 (\texttt{BFREE\_SMP=2}):} APs execute user-mode processes in QEMU. When an AP encounters an exception, system call, or 10-tick time slice expiration, it saves user registers and executes a recall IPI returning the process context to the BSP.
-    \item \textbf{Stage 5 (\texttt{BFREE\_SMP=2}):} APs execute local, read-only fast-path system calls (\texttt{getpid}, \texttt{gettid}, \texttt{clock\_gettime}, \texttt{gettimeofday}) locally via \texttt{bfree\_ap\_fast\_syscall} without acquiring the BKL.
-    \item \textbf{Stage 6 (\texttt{BFREE\_SMP=3/4}):} Symmetric kernel execution.
+    \item \textbf{Stage 1--2 (\texttt{BFREE\_SMP=1}) [Implemented (QEMU)]:} GS-based per-CPU data structures, AP bootstrap, idle loops, and Local APIC timer heartbeats.
+    \item \textbf{Stage 3--4 (\texttt{BFREE\_SMP=2}) [Implemented (QEMU)]:} APs execute user-mode processes in QEMU. When an AP encounters an exception, system call, or 10-tick time slice expiration, it saves user registers and executes a recall IPI returning the process context to the BSP.
+    \item \textbf{Stage 5 (\texttt{BFREE\_SMP=2}) [Implemented (QEMU)]:} APs execute local, read-only fast-path system calls (\texttt{getpid}, \texttt{gettid}, \texttt{clock\_gettime}, \texttt{gettimeofday}) locally via \texttt{bfree\_ap\_fast\_syscall} without acquiring the BKL.
+    \item \textbf{Stage 6 (\texttt{BFREE\_SMP=3/4}) [Planned]:} Symmetric kernel execution across APs.
+    \item \textbf{Stage 6f [Proposal]:} Proposed fine-grained lock decoupling of per-process structures and pipe transfers.
 \end{itemize}
 
 \subsubsection{The 49 Process Globals vs. 299 System Globals}
-In an exemplary audit of \path{bfree_x86_64/kernel/sysmain/syscall.c}, Kishida cataloged all 351 kernel data symbols. He established that \textbf{only 49 symbols represent per-process state} that dynamically mutates during task switching:
+In an exemplary audit of \path{bfree_x86_64/kernel/sysmain/syscall.c} (licensed under the GNU General Public License v2), Kishida cataloged all 351 kernel data symbols. He established that \textbf{only 49 symbols represent per-process state} that dynamically mutates during task switching:
 \begin{lstlisting}[language=C]
+/* Source: bfree_x86_64/kernel/sysmain/syscall.c (GPL v2) */
 g_bfree_fork_saved_*, g_bfree_sysret_exec_*, g_gp_cur,
 g_gthr, g_gthr_cur, g_guest_brk, g_guest_cwd,
 g_guest_fd_cloexec, g_guest_sig_handler, g_guest_sig_mask,
@@ -276,7 +299,7 @@ g_guest_thread_active, g_sigalt_sp, ... (49 total)
 \end{lstlisting}
 The remaining 299 symbols represent system-wide structures: the 3.3 MB virtual file table (\texttt{vfile}), pipes, pseudo-terminals, network sockets, and timers.
 
-Under the proposed \textbf{Stage 6f} design (an active work-in-progress as of October 2026), Kishida outlines per-CPU syscall areas (\texttt{struct bfree\_cpu.sysarea}), dedicated pipe locks, and lock-free pipe read/write paths intended to allow APs to transfer pipe data without acquiring \texttt{g\_bfree\_bkl}.
+Under the \textbf{Stage 6f proposal} (a proposed architectural design currently under evaluation), Kishida outlines per-CPU syscall areas (\texttt{struct bfree\_cpu.sysarea}), dedicated pipe locks, and lock-free pipe read/write paths intended to allow APs to transfer pipe data without acquiring \texttt{g\_bfree\_bkl}.
 
 \begin{theorem}[Theoretical Cache Contention Model on Lock Decoupling]
 We formalize this design using an idealized analytical contention model. Note that because SMP is disabled by default and unverified on real hardware, this model represents theoretical scaling rather than an empirical benchmark measurement:
@@ -296,7 +319,7 @@ Each core executes an independent scheduling loop over a lock-free MPSC message 
 
 \subsection{SMP Architectural Verdict}
 \begin{itemize}[leftmargin=*]
-    \item \textbf{Multicore Staging and APIC Bring-Up: Kishida's Pragmatic Roadmap.} Kishida demonstrates a structured, modular roadmap for multicore scaling, successfully validating Local APIC/x2APIC core discovery, AP trampoline initialization, and userland execution in QEMU (4 cores), while maintaining a single-core default on physical hardware to preserve stability for solo maintenance.
+    \item \textbf{Multicore Staging and APIC Bring-Up: Kishida's Pragmatic Roadmap.} Kishida demonstrates a structured, modular roadmap for multicore scaling, successfully validating Local APIC/x2APIC core discovery, AP trampoline initialization, and userland execution in QEMU (4 cores), while maintaining a single-core default configuration (verified in QEMU; real-hardware boot is not yet verified) to preserve stability for solo maintenance.
     \item \textbf{Theoretical Concurrency Architecture: B-System's Actor Model.} B-System's lock-free actor model eliminates the Big Kernel Lock by design, avoiding lock-contention overhead for arbitrarily high core counts, with multi-core operation fully verified on hosted POSIX environments and staged for bare-metal UEFI.
 \end{itemize}
 
@@ -447,7 +470,7 @@ Architectural Dimension & Hideyuki Kishida's Tamazusa OS (\ja{玉梓}) & 5HT's B
 \midrule
 Historical Pedigree & Independent OS since 2025 (inspired by B-Free archive); T-Kernel 2.0 64-bit & Cleanroom BTRON3 Version 3.20.00 Specification \\
 Primary Hardware Targets & x86\_64 PC (Legacy BIOS/GRUB; AHCI/NVMe/RTL8168 source present, unverified on real HW), ARM64 (QEMU) & Multi-Target: Pi 400 (ARM64), x86\_64 UEFI, PS2, PC-98, M68k \\
-Declared SMP Status & \textbf{Experimental in QEMU (4 cores)} (Uniprocessor Default on Bare Metal) & \textbf{Operational on Hosted POSIX} / Staged on Bare Metal \\
+Declared SMP Status & \textbf{Experimental in QEMU (4 cores)} (Single-core default; real HW boot unverified) & \textbf{Operational on Hosted POSIX} / Staged on Bare Metal \\
 Multicore Bootstrap & ACPI MADT probe $\to$ AP trampoline (\texttt{0x8000}) $\to$ INIT-SIPI-SIPI & ACPI MADT probe $\to$ AP trampoline (\texttt{0x9000}) / POSIX \texttt{pthread} \\
 Kernel Locking Model & \textbf{7-Stage SMP}: Decoupling 49 process globals from \texttt{g\_bfree\_bkl} & \textbf{Lock-Free Actor Model}: MPSC atomic queues (\texttt{CMPXCHG8}) \\
 Inter-Core Signaling & Local APIC IPI (\texttt{ICR}, recall IPIs, reschedule IPIs) & Local APIC IPI (\texttt{ICR}) / Host POSIX condition signaling \\
@@ -513,7 +536,7 @@ The complementary architectural paths of Tamazusa OS and B-System offer an oppor
 
 This paper has delivered a peer-level comparative audit between \textbf{Hideyuki Kishida's independent 64-bit Tamazusa OS (\ja{玉梓})} and \textbf{5HT's B-System (BTRON 3.20)}, evaluating their operational designs, algorithmic choices, and architectural trade-offs across isomorphic subsystems.
 
-In Symmetric Multiprocessing, \textbf{Tamazusa OS presents a structured, modular roadmap} validated in QEMU virtual machines (up to 4 virtual cores) through a 7-stage SMP progression, Local APIC / x2APIC bring-up, and the systematic decoupling of 49 process globals from the Big Kernel Lock, while maintaining single-core stability by default on physical machines. Conversely, \textbf{B-System advances a lock-free actor concurrency model} based on atomic queues, achieving total elimination of lock contention.
+In Symmetric Multiprocessing, \textbf{Tamazusa OS presents a structured, modular roadmap} validated in QEMU virtual machines (up to 4 virtual cores) through a 7-stage SMP progression, Local APIC / x2APIC bring-up, and the systematic decoupling of 49 process globals from the Big Kernel Lock, while maintaining a single-core default configuration (verified in QEMU; real-hardware boot is not yet verified). Conversely, \textbf{B-System advances a lock-free actor concurrency model} based on atomic queues, achieving total elimination of lock contention.
 
 In display systems and userland, \textbf{Kishida achieves an inspiring educational milestone for a solo developer}: a freestanding Wayland compositor hosting a complete Qt Quick 6 desktop environment (\texttt{DesktopShell.qml}) with native Japanese IME, document viewers, and NetSurf web browsing (with WPE WebKit built as the planned next engine) via robust software framebuffer rendering, while its POSIX OSS Gateway addresses TRON's software scarcity by executing standard tools including BusyBox, Python 3, and NetSurf. In contrast, \textbf{B-System prioritizes raw memory bus throughput and blitting economy}, utilizing 128-bit NEON SIMD streaming and 2D DMA engines to saturate memory interconnects.
 
@@ -523,6 +546,8 @@ Both systems represent impressive, complementary achievements in the modern real
 
 %-------------------------------------------------------------------------
 \begin{thebibliography}{99}
+\setlength{\itemsep}{1.5pt}
+\setlength{\parskip}{0pt}
 
 \bibitem{sakamura1984tron}
 K.~Sakamura, ``The TRON Project: A New Approach to Operating System Architecture,'' in \emph{IEEE Micro}, vol.~7, no.~2, pp.~8--14, 1987.
