@@ -46,16 +46,18 @@
     stringstyle=\color{red!70!black},
     numbers=none,
     showstringspaces=false,
-    tabsize=2
+    tabsize=2,
+    abovecaptionskip=2pt,
+    belowcaptionskip=2pt
 }
 
 \title{\LARGE \textbf{Hideyuki Kishida's Educational 64-bit Tamazusa OS and 5HT's B-System:\\A Rigorous Comparative Audit of T-Kernel/POSIX Hybrid Architecture, Wayland Compositing, and Cleanroom BTRON3 Design}
 
-\thanks{Authorship, provenance, and publication notice: This paper was authored exclusively by Maksym Sokhatsky in his position as Chief Technology Officer, Cryptographics Telesystems, LLC, on November 1, 2026. Published for MSX BTRON Research: \url{https://github.com/msx-btron}. Paper license: MIT License. The architectural description and analysis of Tamazusa OS (\ja{玉梓}) are based exclusively on publicly available materials—specifically the Tamazusa OS v0.1.0 release (\url{https://github.com/HIDEYUKI-KISHIDA/tamazusa-os/releases/tag/v0.1.0})—and on factual corrections communicated directly by Hideyuki Kishida (\ja{岸田英之}). \textbf{Hideyuki Kishida is not a co-author of this paper.} Quoted code excerpts from Tamazusa OS are cited with their source filenames under the project's open-source license notice (GNU General Public License v2 / GPL v2).}}
+\thanks{Authorship, provenance, and publication notice: This paper was authored exclusively by Maksym Sokhatsky in his position as Chief Technology Officer, Cryptographic Telesystems, LLC, on November 1, 2026. Published for MSX BTRON Research: \url{https://github.com/msx-btron}. Paper license: MIT License. The architectural description and analysis of Tamazusa OS (\ja{玉梓}) are based exclusively on publicly available materials—specifically the Tamazusa OS v0.1.0 release (\url{https://github.com/HIDEYUKI-KISHIDA/tamazusa-os/releases/tag/v0.1.0})—and on factual corrections communicated directly by Hideyuki Kishida (\ja{岸田英之}). \textbf{Hideyuki Kishida is not a co-author of this paper.} Quoted excerpts of Tamazusa OS code are \copyright~2026 Hideyuki Kishida, licensed under the MIT License; third-party components keep their own licenses.}}
 
 \author{
     \textbf{Maksym Sokhatsky (Namdak Tonpa)}\\[0.3em]
-    \small \textit{Chief Technology Officer, Cryptographics Telesystems, LLC}\\
+    \small \textit{Chief Technology Officer, Cryptographic Telesystems, LLC}\\
     \small \textit{BTRON Cleanroom Working Group / Synrc Research Center}\\
     \small \texttt{maxim@synrc.com}
 }
@@ -119,7 +121,7 @@ To provide explicit scholarly and legal clarity regarding provenance, distributi
     \end{center}
     \item \textbf{Paper License:} The paper and its comparative audit materials are released under the terms of the \textbf{MIT License}.
     \item \textbf{Information Provenance and Non-Co-Author Notice:} The technical description and analysis of Tamazusa OS (\ja{玉梓}) are based solely on publicly available materials—specifically the GitHub release v0.1.0 (\url{https://github.com/HIDEYUKI-KISHIDA/tamazusa-os/releases/tag/v0.1.0})—and on factual corrections communicated directly by Hideyuki Kishida (\ja{岸田英之}). \textbf{Hideyuki Kishida is not a co-author of this paper.} The project was briefly designated ``Urara OS'' as a provisional working name, which was dropped after confirming a pre-existing registered trademark.
-    \item \textbf{Quoted Code Excerpts and Project License:} All quoted source code excerpts from Tamazusa OS (specifically Listing~1 from \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} and Listing~2 from \path{bfree_x86_64/kernel/sysmain/syscall.c}) are identified by their originating source file paths and are governed by the Tamazusa OS project's open-source license notice: the \textbf{GNU General Public License v2 (GPL v2)}, inherited from the original B-Free archive reference.
+    \item \textbf{Quoted Code Excerpts and Project License:} All quoted source code excerpts from Tamazusa OS (specifically Listing~1 from \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} and Listing~2 from \path{bfree_x86_64/kernel/sysmain/syscall.c}) are identified by their originating source file paths. Quoted excerpts of Tamazusa OS code are \copyright~2026 Hideyuki Kishida, licensed under the MIT License; third-party components keep their own licenses. As documented in the repository's \texttt{NOTICE} file, Tamazusa OS contains no original B-Free source code.
 \end{enumerate}
 
 \begin{figure*}[t]
@@ -229,9 +231,10 @@ In \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c}, Hideyuki Kishida imple
 \begin{enumerate}[leftmargin=*]
     \item \textbf{ACPI MADT Discovery:} The BSP parses the ACPI Multiple APIC Description Table (MADT), probing standard Local APIC entries (type 0) and extended x2APIC entries (type 9), supporting up to 256 logical processors (\texttt{BFREE\_CPU\_MAX 256}).
     \item \textbf{Trampoline and Memory Window:} Kishida allocates an AP real-mode trampoline at physical address \texttt{0x8000}. Memory between \texttt{0x600000} and \texttt{16 MiB} is permanently identity-mapped across all process page tables, ensuring that AP trap stacks, IDTs, GDTs, and per-CPU control structures (\texttt{g\_cpu\_tab}) remain universally accessible without page faults.
-    \item \textbf{INIT-SIPI-SIPI Sequence:} In \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} (licensed under the GNU General Public License v2), the BSP initializes each AP by issuing standard inter-processor interrupt vectors through the Local APIC Interrupt Command Register (ICR):
-    \begin{lstlisting}[language=C]
-/* Source: bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c (GPL v2) */
+    \item \textbf{INIT-SIPI-SIPI Sequence:} In \path{bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c} (\copyright~2026 Hideyuki Kishida, MIT License), the BSP initializes each AP by issuing standard inter-processor interrupt vectors through the Local APIC Interrupt Command Register (ICR):
+    \begin{lstlisting}[language=C,caption={AP INIT-SIPI-SIPI sequence in \texttt{bfree\_x86\_64/kernel/sysdepend/cpu/x86\_64/smp.c}. Quoted excerpts of Tamazusa OS code are \copyright~2026 Hideyuki Kishida, licensed under the MIT License; third-party components keep their own licenses.}]
+/* Source: bfree_x86_64/kernel/sysdepend/cpu/x86_64/smp.c */
+/* (c) 2026 Hideyuki Kishida, MIT License */
 slot[0] = cr3;
 slot[1] = (uint64_t)(uintptr_t)&smp_ap_entry;
 slot[2] = c->irq_top - 8u;
@@ -266,7 +269,7 @@ B-System manages SMP concurrency across two distinct deployment targets:
     line/.style={draw, -latex', thick}]
 
     \node [lock] (bkl) {\textbf{Tamazusa OS: Big Kernel Lock (\texttt{g\_bfree\_bkl})}\\\texttt{lock cmpxchgl \%ecx, g\_bfree\_bkl(\%rip)}};
-    \node [box, below=0.3cm of bkl] (split) {\textbf{Kishida's Symbol Audit (351 Globals)}\\49 Process Globals (Decoupling in Stage 6f Proposal)\\299 Shared Tables (VFS, Pipes, Sockets)};
+    \node [box, below=0.3cm of bkl] (split) {\textbf{Kishida's Symbol Audit (351 Globals)}\\49 Process Globals (Decoupling in Stage 6f; 3a--3e in QEMU)\\299 Shared Tables (VFS, Pipes, Sockets)};
     \node [core, below=0.4cm of split, xshift=-1.8cm] (bsp) {BSP ($c_0$)\\System Tasks / Exec};
     \node [core, below=0.4cm of split, xshift=1.8cm] (ap) {AP ($c_k$)\\User Tasks / Fast Syscalls};
 
@@ -274,24 +277,25 @@ B-System manages SMP concurrency across two distinct deployment targets:
     \draw [line, <->] (ap) -- (split);
     \draw [line] (split) -- (bkl);
 \end{tikzpicture}
-\caption{Tamazusa OS: proposed staged decoupling of 49 process globals from the Big Kernel Lock (\texttt{g\_bfree\_bkl}).}
+\caption{Tamazusa OS: staged decoupling of 49 process globals from the Big Kernel Lock (\texttt{g\_bfree\_bkl}) in Stage 6f.}
 \label{fig:tamazusa_smp}
 \end{figure}
 
 \subsubsection{Tamazusa OS: The 7-Stage SMP Progression}
-A notable technical achievement of Hideyuki Kishida is his transparent, phased roadmap for eliminating the Big Kernel Lock (BKL). Rather than attempting an unsafe, monolithic rewrite of the kernel's synchronization, Kishida formalized the 7-stage SMP progression documented in \path{SMP_PLAN_20261005.ja.md}, with each stage explicitly designated as either implemented under QEMU emulation or planned:
+A notable technical achievement of Hideyuki Kishida is his transparent, phased roadmap for eliminating the Big Kernel Lock (BKL). Rather than attempting an unsafe, monolithic rewrite of the kernel's synchronization, Kishida formalized the 7-stage SMP progression documented in \path{SMP_PLAN_20261005.ja.md}. All stages are evaluated under QEMU emulation and remain unverified on real hardware:
 \begin{itemize}[leftmargin=*]
     \item \textbf{Stage 1--2 (\texttt{BFREE\_SMP=1}) [Implemented (QEMU)]:} GS-based per-CPU data structures, AP bootstrap, idle loops, and Local APIC timer heartbeats.
     \item \textbf{Stage 3--4 (\texttt{BFREE\_SMP=2}) [Implemented (QEMU)]:} APs execute user-mode processes in QEMU. When an AP encounters an exception, system call, or 10-tick time slice expiration, it saves user registers and executes a recall IPI returning the process context to the BSP.
     \item \textbf{Stage 5 (\texttt{BFREE\_SMP=2}) [Implemented (QEMU)]:} APs execute local, read-only fast-path system calls (\texttt{getpid}, \texttt{gettid}, \texttt{clock\_gettime}, \texttt{gettimeofday}) locally via \texttt{bfree\_ap\_fast\_syscall} without acquiring the BKL.
-    \item \textbf{Stage 6 (\texttt{BFREE\_SMP=3/4}) [Planned]:} Symmetric kernel execution across APs.
-    \item \textbf{Stage 6f [Proposal]:} Proposed fine-grained lock decoupling of per-process structures and pipe transfers.
+    \item \textbf{Stage 6 (\texttt{BFREE\_SMP=3/4}) [Implemented in QEMU (6a--6e); 6f partially implemented]:} Symmetric kernel execution across APs; sub-stages 6a--6e are implemented in QEMU, and 6f is partially implemented (sub-stages 3a--3e completed).
+    \item \textbf{Stage 7 [x2APIC, Implemented in QEMU]:} Extended x2APIC support, enabling 32-bit APIC IDs and MSR-based register access for scalable core topologies.
 \end{itemize}
 
 \subsubsection{The 49 Process Globals vs. 299 System Globals}
-In an exemplary audit of \path{bfree_x86_64/kernel/sysmain/syscall.c} (licensed under the GNU General Public License v2), Kishida cataloged all 351 kernel data symbols. He established that \textbf{only 49 symbols represent per-process state} that dynamically mutates during task switching:
-\begin{lstlisting}[language=C]
-/* Source: bfree_x86_64/kernel/sysmain/syscall.c (GPL v2) */
+In an exemplary audit of \path{bfree_x86_64/kernel/sysmain/syscall.c} (\copyright~2026 Hideyuki Kishida, MIT License), Kishida cataloged all 351 kernel data symbols. He established that \textbf{only 49 symbols represent per-process state} that dynamically mutates during task switching:
+\begin{lstlisting}[language=C,caption={The 49 per-process globals in \texttt{bfree\_x86\_64/kernel/sysmain/syscall.c}. Quoted excerpts of Tamazusa OS code are \copyright~2026 Hideyuki Kishida, licensed under the MIT License; third-party components keep their own licenses.}]
+/* Source: bfree_x86_64/kernel/sysmain/syscall.c */
+/* (c) 2026 Hideyuki Kishida, MIT License */
 g_bfree_fork_saved_*, g_bfree_sysret_exec_*, g_gp_cur,
 g_gthr, g_gthr_cur, g_guest_brk, g_guest_cwd,
 g_guest_fd_cloexec, g_guest_sig_handler, g_guest_sig_mask,
@@ -299,7 +303,7 @@ g_guest_thread_active, g_sigalt_sp, ... (49 total)
 \end{lstlisting}
 The remaining 299 symbols represent system-wide structures: the 3.3 MB virtual file table (\texttt{vfile}), pipes, pseudo-terminals, network sockets, and timers.
 
-Under the \textbf{Stage 6f proposal} (a proposed architectural design currently under evaluation), Kishida outlines per-CPU syscall areas (\texttt{struct bfree\_cpu.sysarea}), dedicated pipe locks, and lock-free pipe read/write paths intended to allow APs to transfer pipe data without acquiring \texttt{g\_bfree\_bkl}.
+Under \textbf{Stage 6f} (partially implemented in QEMU, with sub-stages 3a--3e completed and remaining decoupling in progress), Kishida outlines per-CPU syscall areas (\texttt{struct bfree\_cpu.sysarea}), dedicated pipe locks, and lock-free pipe read/write paths intended to allow APs to transfer pipe data without acquiring \texttt{g\_bfree\_bkl}.
 
 \begin{theorem}[Theoretical Cache Contention Model on Lock Decoupling]
 We formalize this design using an idealized analytical contention model. Note that because SMP is disabled by default and unverified on real hardware, this model represents theoretical scaling rather than an empirical benchmark measurement:
@@ -546,7 +550,8 @@ Both systems represent impressive, complementary achievements in the modern real
 
 %-------------------------------------------------------------------------
 \begin{thebibliography}{99}
-\setlength{\itemsep}{1.5pt}
+\footnotesize
+\setlength{\itemsep}{0.5pt}
 \setlength{\parskip}{0pt}
 
 \bibitem{sakamura1984tron}
