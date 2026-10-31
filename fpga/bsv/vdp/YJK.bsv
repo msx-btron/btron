@@ -78,3 +78,4 @@ function Bit#(16) decodeYJKPixel(
 endfunction
 
 endpackage: YJK
+

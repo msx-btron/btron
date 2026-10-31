@@ -51,3 +51,4 @@ uint8_t  vl_p4_vdp_peek_read_ahead(void *handle);
 #endif
 
 #endif /* _VL_BRIDGE_P4_H_ */
+
