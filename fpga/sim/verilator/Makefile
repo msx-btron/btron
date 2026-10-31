@@ -46,9 +46,26 @@ BSV_P3_SRCS := $(BSV_ROOT)/Bus.bsv \
                $(BSV_ROOT)/cpu/CPUCore.bsv \
                $(BSV_ROOT)/TopPhase3.bsv
 
+BSV_P4_SRCS := $(BSV_ROOT)/Bus.bsv \
+               $(BSV_ROOT)/MSXClocks.bsv \
+               $(BSV_ROOT)/memory/MemoryArbiter.bsv \
+               $(BSV_ROOT)/memory/SlotManager.bsv \
+               $(BSV_ROOT)/memory/Mapper.bsv \
+               $(BSV_ROOT)/cpu/ALU.bsv \
+               $(BSV_ROOT)/cpu/Decode.bsv \
+               $(BSV_ROOT)/cpu/T9769C.bsv \
+               $(BSV_ROOT)/cpu/CPUCore.bsv \
+               $(BSV_ROOT)/vdp/VDPRegs.bsv \
+               $(BSV_ROOT)/vdp/Raster.bsv \
+               $(BSV_ROOT)/vdp/Blitter.bsv \
+               $(BSV_ROOT)/vdp/YJK.bsv \
+               $(BSV_ROOT)/vdp/V9958.bsv \
+               $(BSV_ROOT)/TopPhase4.bsv
+
 TOP_P1_V   := $(SIM_DIR)/mkTopPhase1.v
 TOP_P2_V   := $(SIM_DIR)/mkTopPhase2.v
 TOP_P3_V   := $(SIM_DIR)/mkTopPhase3.v
+TOP_P4_V   := $(SIM_DIR)/mkTopPhase4.v
 
 # ── Compiler include paths ─────────────────────────────────────────────────
 VERILATOR_ROOT ?= $(shell verilator --getenv VERILATOR_ROOT 2>/dev/null || echo /opt/homebrew/share/verilator)
@@ -70,10 +87,11 @@ VL_FLAGS   := -Wall -Wno-WIDTHTRUNC -Wno-PINCONNECTEMPTY -Wno-UNUSEDSIGNAL --err
 BIN_P1     := $(SIM_DIR)/fpga_sim_phase1
 BIN_P2     := $(SIM_DIR)/fpga_sim_phase2
 BIN_P3     := $(SIM_DIR)/fpga_sim_phase3
+BIN_P4     := $(SIM_DIR)/fpga_sim_phase4
 
-.PHONY: all phase1 phase2 phase3 run clean
+.PHONY: all phase1 phase2 phase3 phase4 run clean
 
-all: phase1 phase2 phase3
+all: phase1 phase2 phase3 phase4
 
 # ── Phase 1 Build & Run ────────────────────────────────────────────────────
 $(TOP_P1_V): $(BSV_P1_SRCS)
@@ -173,6 +191,45 @@ phase3: $(BIN_P3)
 	@echo "=== Running Phase 3 (Slot Manager & Memory Mapper) ==="
 	$(BIN_P3)
 
+# ── Phase 4 Build & Run ────────────────────────────────────────────────────
+$(TOP_P4_V): $(BSV_P4_SRCS)
+	@mkdir -p $(BSC_BDIR)
+	$(BSC) -verilog -no-warn-action-shadowing \
+	       -p +:$(BSV_ROOT):$(BSV_ROOT)/memory:$(BSV_ROOT)/cpu:$(BSV_ROOT)/vdp \
+	       -vdir $(SIM_DIR) -bdir $(BSC_BDIR) -u $(BSV_ROOT)/TopPhase4.bsv
+
+$(VL_OBJ)/VmkTopPhase4__ALL.a: $(TOP_P4_V)
+	@mkdir -p $(VL_OBJ)
+	$(VERILATOR) --cc --Mdir $(VL_OBJ) $(VL_FLAGS) \
+	    -v $(SIM_DIR)/mkCPUCore.v \
+	    -v $(SIM_DIR)/mkR800Multiplier.v \
+	    -v $(SIM_DIR)/mkT9769C.v \
+	    -v $(SIM_DIR)/mkSlotManager.v \
+	    -v $(SIM_DIR)/mkMapper.v \
+	    -v $(SIM_DIR)/mkRaster.v \
+	    -v $(SIM_DIR)/mkBlitter.v \
+	    -v $(SIM_DIR)/mkV9958.v \
+	    $(TOP_P4_V) --top-module mkTopPhase4
+	$(MAKE) -C $(VL_OBJ) -f VmkTopPhase4.mk
+	$(CXX) $(CXXFLAGS) -c $(VL_INCLUDE)/verilated.cpp -o $(VL_OBJ)/verilated.o
+	$(CXX) $(CXXFLAGS) -c $(VL_INCLUDE)/verilated_threads.cpp -o $(VL_OBJ)/verilated_threads.o
+
+$(BIN_P4): $(VL_OBJ)/VmkTopPhase4__ALL.a $(SIM_DIR)/sim_phase4.c $(SIM_DIR)/mem_model.c $(SIM_DIR)/trace_compare.c $(SIM_DIR)/vl_bridge_p4.cpp $(SIM_DIR)/sc_stub.cpp
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/sim_phase4.c -o $(VL_OBJ)/sim_phase4.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/mem_model.c -o $(VL_OBJ)/mem_model.o
+	$(CC) $(CFLAGS) -c $(SIM_DIR)/trace_compare.c -o $(VL_OBJ)/trace_compare.o
+	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/vl_bridge_p4.cpp -o $(VL_OBJ)/vl_bridge_p4.o
+	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/sc_stub.cpp -o $(VL_OBJ)/sc_stub.o
+	$(CXX) -std=c++17 -O2 \
+	    $(VL_OBJ)/sim_phase4.o $(VL_OBJ)/mem_model.o $(VL_OBJ)/trace_compare.o \
+	    $(VL_OBJ)/vl_bridge_p4.o $(VL_OBJ)/sc_stub.o \
+	    $(VL_OBJ)/VmkTopPhase4__ALL.a $(VL_OBJ)/VmkTopPhase4.o $(VL_OBJ)/verilated.o $(VL_OBJ)/verilated_threads.o \
+	    -o $@
+
+phase4: $(BIN_P4)
+	@echo "=== Running Phase 4 (Yamaha V9958 Video Processor) ==="
+	$(BIN_P4)
+
 clean:
-	rm -rf $(VL_OBJ) $(BSC_BDIR) $(BIN_P1) $(BIN_P2) $(BIN_P3)
-	rm -f $(SIM_DIR)/mk*.v $(SIM_DIR)/*.bo
+	rm -rf $(VL_OBJ) $(BSC_BDIR) $(BIN_P1) $(BIN_P2) $(BIN_P3) $(BIN_P4)
+	rm -f $(SIM_DIR)/mk*.v $(SIM_DIR)/*.bo frame_phase4.ppm
