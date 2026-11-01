@@ -1,0 +1,346 @@
+/*
+ * sim_rom.c — Pure C99 Headless Cartridge ROM Runner for MSX turbo R SoC.
+ *
+ * Capabilities:
+ *   1. Loads C-BIOS turboR firmware (cbios_main_msxtr.rom + cbios_sub.rom).
+ *   2. Loads plain (16KB/32KB/48KB) or ASCII16 MegaROM cartridges from ./assets/msx/.
+ *   3. Executes mkTopMSXTurboR SoC with cycle-accurate memory arbiter servicing.
+ *   4. Monitors cold boot sequence, slot search, and cartridge initialization entry.
+ *   5. Captures real-time RGB565 video beam output and dumps frames to PPM.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "vl_bridge_p6.h"
+#include "mem_model.h"
+
+// ── Physical Address Constants ──────────────────────────────────────────────
+#define ADDR_BIOS        0x000000u // 32 KB Main BIOS
+#define ADDR_SUBROM      0x008000u // 16 KB Sub-ROM / BASIC
+#define ADDR_RAM         0x010000u // Base 512 KB RAM (Slot 3)
+#define ADDR_SHADOW_DRAM 0x080000u // turbo R fast DRAM shadow
+#define ADDR_CART_A      0x100000u // Primary Slot 1 Cartridge A
+#define ADDR_VRAM        0x300000u // 128 KB VRAM
+
+// ── Cartridge Mapper State ──────────────────────────────────────────────────
+typedef enum {
+    MAP_PLAIN,
+    MAP_ASCII16
+} cart_type_t;
+
+static cart_type_t g_cart_type = MAP_PLAIN;
+static uint8_t    *g_cart_buf  = NULL;
+static size_t      g_cart_size = 0;
+static uint32_t    g_num_16k   = 1;
+static uint8_t     g_bank1     = 0; // Page 1 (0x4000..0x7FFF)
+static uint8_t     g_bank2     = 0; // Page 2 (0x8000..0xBFFF)
+static uint16_t    g_cart_init = 0;
+static bool        g_cart_booted = false;
+
+// ── Framebuffer Capture ─────────────────────────────────────────────────────
+#define FB_W 256
+#define FB_H 212
+static uint16_t g_fb[FB_W * FB_H];
+
+// ── Global Memory Model ─────────────────────────────────────────────────────
+static mem_model_t g_mem;
+
+// ── Intercepted Physical Memory Service ─────────────────────────────────────
+static void service_mem(void *vl)
+{
+    vl_mem_req_t req;
+    while (vl_p6_has_mem_req(vl)) {
+        if (vl_p6_get_mem_req(vl, &req)) {
+            if (req.write) {
+                // Cartridge ROM is not RAM. CHKRAM probes from 0xFF00 downward
+                // and would overwrite a plain image if these writes stuck.
+                // ASCII16 bank latches are the only writes that take effect.
+                bool cart = (req.addr >= 0x100000u && req.addr < 0x110000u);
+                if (cart && g_cart_type == MAP_ASCII16) {
+                    uint16_t cart_reg = (uint16_t)(req.addr & 0xFFFF);
+                    if (cart_reg >= 0x6000 && cart_reg <= 0x67FF) {
+                        g_bank1 = req.data % g_num_16k;
+                    } else if (cart_reg >= 0x7000 && cart_reg <= 0x77FF) {
+                        g_bank2 = req.data % g_num_16k;
+                    }
+                }
+                if (!cart) mem_model_write(&g_mem, req.addr, req.data);
+                vl_p6_put_mem_resp(vl, req.tag, req.data, true);
+            } else {
+                uint8_t d;
+                // Intercept Cartridge Reads for ASCII16 (Slot 1)
+                if (g_cart_type == MAP_ASCII16 && req.addr >= 0x100000 && req.addr < 0x200000) {
+                    uint16_t vaddr = req.addr & 0xFFFF;
+                    if (vaddr >= 0x4000 && vaddr <= 0x7FFF) {
+                        uint32_t offset = (g_bank1 * 0x4000) + (vaddr - 0x4000);
+                        d = (offset < g_cart_size) ? g_cart_buf[offset] : 0xFF;
+                    } else if (vaddr >= 0x8000 && vaddr <= 0xBFFF) {
+                        uint32_t offset = (g_bank2 * 0x4000) + (vaddr - 0x8000);
+                        d = (offset < g_cart_size) ? g_cart_buf[offset] : 0xFF;
+                    } else {
+                        d = mem_model_read(&g_mem, req.addr);
+                    }
+                } else {
+                    d = mem_model_read(&g_mem, req.addr);
+                }
+                vl_p6_put_mem_resp(vl, req.tag, d, true);
+            }
+        }
+        vl_p6_step(vl);
+    }
+}
+
+// ── Save Framebuffer to PPM ─────────────────────────────────────────────────
+static void dump_frame_ppm(const char *path)
+{
+    FILE *fp = fopen(path, "wb");
+    if (!fp) {
+        fprintf(stderr, "Failed to open %s for writing\n", path);
+        return;
+    }
+    fprintf(fp, "P6\n%d %d\n255\n", FB_W, FB_H);
+    for (int i = 0; i < FB_W * FB_H; i++) {
+        uint16_t c = g_fb[i];
+        // Unpack RGB565 -> RGB888
+        uint8_t r = (uint8_t)(((c >> 11) & 0x1F) * 255 / 31);
+        uint8_t g = (uint8_t)(((c >> 5) & 0x3F) * 255 / 63);
+        uint8_t b = (uint8_t)((c & 0x1F) * 255 / 31);
+        fputc(r, fp);
+        fputc(g, fp);
+        fputc(b, fp);
+    }
+    fclose(fp);
+    printf("  [FRAME CAPTURE] Successfully dumped %dx%d RGB frame to %s\n", FB_W, FB_H, path);
+}
+
+static const char *find_file(const char *rel_path)
+{
+    static char buf[1024];
+    // Check direct
+    FILE *f = fopen(rel_path, "rb");
+    if (f) { fclose(f); return rel_path; }
+
+    // Check with ../../../
+    snprintf(buf, sizeof(buf), "../../../%s", rel_path);
+    f = fopen(buf, "rb");
+    if (f) { fclose(f); return buf; }
+
+    // Check absolute depot root
+    snprintf(buf, sizeof(buf), "/Users/tonpa/depot/bitedits/btron/%s", rel_path);
+    f = fopen(buf, "rb");
+    if (f) { fclose(f); return buf; }
+
+    return rel_path;
+}
+int main(int argc, char **argv)
+{
+    const char *cart_path = NULL;
+    const char *bios_path = "third_party/cbios-nextor_FDD-and-turboR/cbios/derived/bin/cbios_main_msxtr.rom";
+    const char *sub_path  = "third_party/cbios-nextor_FDD-and-turboR/cbios/derived/bin/cbios_sub.rom";
+    const char *out_ppm   = "cart_frame.ppm";
+    /* C-BIOS wait_b HALTs for 120 frames (~1.15e8 master cycles) before
+     * it scans slots. Stop early once the cartridge is running. */
+    uint64_t    max_cycles = 200000000ULL;
+
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "--bios") && i + 1 < argc) {
+            bios_path = argv[++i];
+        } else if (!strcmp(argv[i], "--sub") && i + 1 < argc) {
+            sub_path = argv[++i];
+        } else if (!strcmp(argv[i], "--ppm") && i + 1 < argc) {
+            out_ppm = argv[++i];
+        } else if (!strcmp(argv[i], "--cycles") && i + 1 < argc) {
+            max_cycles = strtoull(argv[++i], NULL, 0);
+        } else if (argv[i][0] != '-') {
+            cart_path = argv[i];
+        }
+    }
+
+    if (!cart_path) {
+        printf("Usage: %s <cartridge.rom> [--bios <bios.rom>] [--sub <sub.rom>] [--ppm <output.ppm>] [--cycles <N>]\n", argv[0]);
+        return 1;
+    }
+
+    printf("================================================================\n");
+    printf(" MSX turbo R FPGA: Headless Cartridge ROM Verification Runner\n");
+    printf("================================================================\n");
+    printf("Cartridge: %s\n", cart_path);
+    printf("BIOS     : %s\n", bios_path);
+    printf("Sub-ROM  : %s\n", sub_path);
+    printf("Target   : %llu master cycles\n\n", max_cycles);
+
+    // 1. Initialize physical memory model
+    mem_model_init(&g_mem);
+
+    // 2. Load C-BIOS main & sub ROMs
+    const char *actual_bios = find_file(bios_path);
+    if (!mem_model_load_rom(&g_mem, ADDR_BIOS, actual_bios)) {
+        fprintf(stderr, "Error: Failed to load BIOS from %s\n", actual_bios);
+        return 1;
+    }
+    printf("  [OK] Loaded BIOS into 0x%06X (32 KB)\n", ADDR_BIOS);
+
+    const char *actual_sub = find_file(sub_path);
+    if (!mem_model_load_rom(&g_mem, ADDR_SUBROM, actual_sub)) {
+        fprintf(stderr, "Error: Failed to load Sub-ROM from %s\n", actual_sub);
+        return 1;
+    }
+    printf("  [OK] Loaded Sub-ROM into 0x%06X (16 KB)\n", ADDR_SUBROM);
+
+    // 3. Load Cartridge ROM
+    const char *actual_cart = find_file(cart_path);
+    FILE *fc = fopen(actual_cart, "rb");
+    if (!fc) {
+        fprintf(stderr, "Error: Failed to open cartridge %s\n", cart_path);
+        return 1;
+    }
+    fseek(fc, 0, SEEK_END);
+    g_cart_size = ftell(fc);
+    fseek(fc, 0, SEEK_SET);
+
+    g_cart_buf = (uint8_t *)malloc(g_cart_size);
+    if (!g_cart_buf || fread(g_cart_buf, 1, g_cart_size, fc) != g_cart_size) {
+        fprintf(stderr, "Error reading cartridge file\n");
+        fclose(fc);
+        return 1;
+    }
+    fclose(fc);
+
+    g_num_16k = (uint32_t)(g_cart_size / 0x4000);
+    if (g_num_16k == 0) g_num_16k = 1;
+
+    // Inspect MSX Cartridge Header
+    if (g_cart_buf[0] == 'A' && g_cart_buf[1] == 'B') {
+        g_cart_init = (uint16_t)(g_cart_buf[2] | (g_cart_buf[3] << 8));
+        printf("  [CARTRIDGE HEADER] Valid 'AB' signature detected. Init Vector: 0x%04X\n", g_cart_init);
+    } else {
+        printf("  [WARNING] 'AB' header not at offset 0 (Raw binary or custom loader)\n");
+    }
+
+    if (g_cart_size > 49152) {
+        g_cart_type = MAP_ASCII16;
+        printf("  [MAPPER] Detected MegaROM (%zu KB, %u banks of 16KB). Using ASCII16 controller.\n",
+               g_cart_size / 1024, g_num_16k);
+        // Preload initial banks (bank 0 in Page 1 and Page 2)
+        mem_model_load_buf(&g_mem, ADDR_CART_A + 0x4000, g_cart_buf, 0x4000);
+        mem_model_load_buf(&g_mem, ADDR_CART_A + 0x8000, g_cart_buf, 0x4000);
+    } else if (g_cart_size <= 16384) {
+        g_cart_type = MAP_PLAIN;
+        printf("  [MAPPER] Detected Plain 16KB ROM. Mapped to Page 1 and mirrored to Page 2.\n");
+        mem_model_load_buf(&g_mem, ADDR_CART_A + 0x4000, g_cart_buf, g_cart_size);
+        mem_model_load_buf(&g_mem, ADDR_CART_A + 0x8000, g_cart_buf, g_cart_size);
+    } else {
+        g_cart_type = MAP_PLAIN;
+        printf("  [MAPPER] Detected Plain %zuKB ROM. Mapped linearly from page 1.\n",
+               g_cart_size / 1024);
+        mem_model_load_buf(&g_mem, ADDR_CART_A + 0x4000, g_cart_buf, g_cart_size);
+    }
+
+    // 4. Instantiate Verilated SoC
+    void *vl = vl_p6_create();
+    vl_p6_reset(vl);
+    printf("  [OK] Verilated SoC mkTopMSXTurboR initialized and reset.\n\n");
+
+    // 5. Execution Loop
+    printf("--- Beginning Execution ---\n");
+    uint64_t cycles = 0;
+    uint32_t retired_insts = 0;
+    uint32_t frame_count = 0;
+    uint32_t frames_after_boot = 0;
+    bool     prev_vsync = false;
+    trace_regs_t regs;
+
+    memset(g_fb, 0, sizeof(g_fb));
+
+    while (cycles < max_cycles) {
+        vl_p6_step(vl);
+        service_mem(vl);
+        cycles++;
+
+        // Track CPU Instruction Retirement
+        if (vl_p6_inst_retired(vl)) {
+            retired_insts++;
+            vl_p6_get_regs(vl, &regs);
+            if (retired_insts <= 24 || (retired_insts % 20000) == 0)
+                printf("  RET %-7u PC=%04X SP=%04X\n", retired_insts, regs.pc, regs.sp);
+
+            // Check for entry into cartridge execution space
+            if (!g_cart_booted && regs.pc >= 0x4000 && regs.pc <= 0xBFFF) {
+                // If it reached the init vector or cartridge page
+                if (regs.pc == g_cart_init || (g_cart_init != 0 && abs((int)regs.pc - (int)g_cart_init) < 0x20)) {
+                    printf("\n>>> [CARTRIDGE BOOT SUCCESS] PC=0x%04X entered cartridge code at cycle %llu! <<<\n\n",
+                           regs.pc, cycles);
+                    g_cart_booted = true;
+                }
+            }
+        }
+
+        // Active Display Video Sampling
+        if (!vl_p6_video_blank(vl)) {
+            uint16_t bx = vl_p6_video_beam_x(vl);
+            uint8_t  by = vl_p6_video_beam_y(vl);
+            if (bx < FB_W && by < FB_H) {
+                /* The raster steps 168 times across 256 pixels, so beam_x
+                 * skips. Paint the gap with this sample so the frame is solid. */
+                static int prev_x = -1, prev_y = -1;
+                uint16_t color = vl_p6_video_rgb565(vl);
+                int x0 = (int)bx;
+                if (prev_y == (int)by && prev_x >= 0 && prev_x < (int)bx)
+                    x0 = prev_x + 1;
+                for (int x = x0; x <= (int)bx; x++)
+                    g_fb[by * FB_W + x] = color;
+                prev_x = (int)bx;
+                prev_y = (int)by;
+            }
+        }
+
+        // VSync Edge Detection (Frame boundary)
+        bool vsync = vl_p6_video_vsync(vl);
+        if (prev_vsync && !vsync) {
+            frame_count++;
+            if (g_cart_booted) frames_after_boot++;
+            if (frame_count % 5 == 0) {
+                vl_p6_get_regs(vl, &regs);
+                printf("  [FRAME %02u] Cycle %-9llu | Ret: %-7u | PC=0x%04X SP=0x%04X Mode=%s TurboLED=%d\n",
+                       frame_count, cycles, retired_insts, regs.pc, regs.sp,
+                       vl_p6_is_r800(vl) ? "R800" : "Z80A",
+                       vl_p6_led_turbo(vl));
+            }
+        }
+        prev_vsync = vsync;
+
+        /* MSX_LOGO spends several frames copying VRAM after the init
+         * vector. Keep two extra frames so the dumped picture is the
+         * finished screen, not the first instruction of the cartridge. */
+        if (g_cart_booted && frames_after_boot >= 20) break;
+
+        // Periodic heartbeat
+        if (cycles % 2500000 == 0 && frame_count == 0) {
+            vl_p6_get_regs(vl, &regs);
+            printf("  [CYCLE %-9llu] Ret: %-7u | PC=0x%04X SP=0x%04X Mode=%s\n",
+                   cycles, retired_insts, regs.pc, regs.sp,
+                   vl_p6_is_r800(vl) ? "R800" : "Z80A");
+        }
+    }
+
+    printf("\n--- Simulation Complete (%llu cycles, %u frames, %u instructions retired) ---\n",
+           cycles, frame_count, retired_insts);
+
+    // Dump active display frame to PPM
+    dump_frame_ppm(out_ppm);
+
+    // Cleanup
+    vl_p6_destroy(vl);
+    mem_model_destroy(&g_mem);
+    if (g_cart_buf) free(g_cart_buf);
+
+    if (!g_cart_booted) {
+        fprintf(stderr, "Cartridge entry was not reached.\n");
+        return 2;
+    }
+    return 0;
+}
