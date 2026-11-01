@@ -7,6 +7,10 @@
  *   3. DRAM shadow mode switching (Slot 0-0 fast DRAM shadow vs ROM).
  *   4. E6 counter timer (Ports 0xE6, 0xE7).
  *   5. System flags (Port 0xF4).
+ *   6. MSX-MIDI status (Port 0xE9) and data (Port 0xE8).
+ *      C-BIOS keyint reads E9 on every frame. TxRdy|TxEmpty (0x05) keeps
+ *      RxRdy and the timer bit clear, so the MIDI hooks are not taken.
+ *      An open-bus 0xFF calls H_MDIN and jumps H_MDTM every interrupt.
  *
  * References:
  *   src/emulators/msx/t9769c.c
@@ -35,6 +39,7 @@ module mkT9769C(T9769C);
     Reg#(Bit#(8))  cpu_status  <- mkReg(8'h60); // bit 5: 1=Z80, bit 6: 1=ROM mode
     Reg#(Bit#(8))  sys_flags   <- mkReg(8'hA0); // bit 7: cold reset, bit 5: boot
     Reg#(Bit#(16)) e6_ticks    <- mkReg(16'h0000);
+    Reg#(Bit#(8))  midi_data  <- mkReg(8'h00);
 
     RWire#(Bool)   e6_tick_w   <- mkRWire;
     RWire#(Bool)   e6_reset_w  <- mkRWire;
@@ -75,6 +80,10 @@ module mkT9769C(T9769C);
             end
             8'hE6: return e6_ticks[7:0];
             8'hE7: return e6_ticks[15:8];
+            8'hE8: return midi_data;
+            // 0x05 = TxRdy|TxEmpty. Same idle status as t9769c.c. Bit 1
+            // (RxRdy) and bit 7 (timer IRQ) stay clear.
+            8'hE9: return 8'h05;
             8'hF4: return sys_flags;
             default: return 8'hFF;
         endcase
@@ -92,6 +101,7 @@ module mkT9769C(T9769C);
             8'hE6, 8'hE7: begin
                 e6_reset_w.wset(True);
             end
+            8'hE8: midi_data <= val;
             8'hF4: sys_flags <= val;
         endcase
     endmethod

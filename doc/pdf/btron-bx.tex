@@ -1,0 +1,320 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{microtype}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{float}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\lstset{
+    basicstyle=\ttfamily\small,
+    breaklines=true,
+    frame=single,
+    columns=fullflexible
+}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{BX-8 3D / BX-16 Architecture Proposal}
+\fancyhead[R]{\thepage}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{
+A Natural 16-bit Evolutionary Path for the MSX turboR:\\
+The BX-8 3D and BX-16 Architectures
+}
+
+\author{
+T\"onpa Namdak\\
+B-MSX / tronMSX Project\\
+\texttt{https://github.com/msx-btron/btron}
+}
+
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present a coherent, hardware-compatible evolutionary path for the MSX turboR architecture that extends the R800 into a practical 16-bit platform capable of supporting software 3D rendering (tinyGL-class workloads) while preserving full binary and bus compatibility with existing MSX software and cartridges. Two complementary designs are defined: BX-8 3D, a minimal-change extension of the classic turboR that adds a tightly-coupled 16-bit vector coprocessor, and BX-16, a dual-processor hybrid system in which two identical 16-bit cores (one scalar, one vector/GPU) deliver substantially higher 3D performance. Both designs reuse a single carefully specified 16-bit core (R1600) with a clean orthogonal ISA and a 4-wide SIMD vector extension (VEX). The proposal is grounded in the existing open-source BX-8 FPGA implementation and the tronMSX verifying emulator, and is offered as a practical alternative to more radical departures from the MSX architectural lineage.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+
+The MSX turboR, introduced in 1990--1991, remains one of the most elegant examples of evolutionary computer architecture. Its R800 processor retained full Z80 binary compatibility and the classic MSX slot/bus model while delivering a substantial internal 16-bit datapath, improved instruction timing, and modest multiply support. This combination allowed a large existing software base to continue running while new software could exploit the additional performance.
+
+More than three decades later, the same evolutionary pressure exists. Contemporary interest in software-rendered 3D (tinyGL and related fixed-function pipelines), retro-computing research, and FPGA re-implementations raises a natural question: can the turboR lineage be extended further in a way that remains recognisably MSX, preserves cartridge and bus compatibility, and yet provides enough arithmetic and memory bandwidth for interactive low-polygon 3D?
+
+This paper answers that question with two concrete proposals:
+
+\begin{itemize}
+    \item \textbf{BX-8 3D} --- a conservative, minimal-change extension of the existing turboR. The R800 remains the main CPU; a new 16-bit core (R1600) is added as a tightly-coupled vector/3D coprocessor.
+    \item \textbf{BX-16} --- a more ambitious dual-processor system in which two R1600 cores operate side-by-side: one as general-purpose CPU, the other as dedicated vector/GPU unit.
+\end{itemize}
+
+Both designs share the same R1600 microarchitecture and the same VEX vector instruction set. The difference lies only in system organisation and the degree of departure from the classic 8-bit external bus.
+
+The work is carried out in the context of the open-source B-MSX / tronMSX project, which already contains a cycle-accurate verifying emulator and an FPGA implementation of a turboR-class machine (BX-8). The proposals are therefore not purely theoretical; they are intended to be implemented by extending existing, publicly available hardware and software artefacts.
+
+\section{Background and Design Constraints}
+
+\subsection{The MSX turboR and the R800}
+
+The R800 is a microcoded, pipelined processor that executes the Z80 instruction set with significantly improved cycle counts and adds a small number of new instructions (notably \texttt{MULUB} and \texttt{MULUW}). Internally it already possesses a 16-bit ALU. Externally it presents an 8-bit data bus and the classic MSX slot protocol, guaranteeing that every existing cartridge and peripheral continues to function.
+
+Any credible successor must therefore satisfy three non-negotiable constraints:
+
+\begin{enumerate}
+    \item Binary compatibility with Z80 and R800 code in a well-defined compatibility mode.
+    \item Electrical and protocol compatibility with the MSX slot bus (at least as an option).
+    \item A clear, documentable migration path for both assembly-language and compiled software.
+\end{enumerate}
+
+\subsection{Related Work}
+
+Kazuhiko Nishi and collaborators have publicly discussed R900 / R1000 / R1800-class designs that continue the R800 lineage with higher clocks, cache, MMU and floating-point support. Those efforts are valuable. The present proposal differs in emphasis: it prioritises a clean 16-bit programming model and an explicit vector unit sized for 3D transform and lighting workloads, while retaining the possibility of a very high degree of hardware compatibility with existing MSX systems.
+
+\subsection{Target Workload}
+
+The primary non-legacy workload considered is software 3D rendering of the complexity that tinyGL (and similar fixed-function OpenGL 1.x subsets) can express: low-to-mid polygon counts, simple lighting, perspective-correct or affine texturing, and a software Z-buffer. The architecture must make the transform-and-lighting stage and the inner rasterisation loops substantially faster than a pure R800, without requiring a full modern GPU.
+
+\section{The R1600 Core}
+
+At the heart of both proposals lies a single new processor core, designated R1600. It is a true 16-bit (with 32-bit scalar registers) orthogonal RISC-like design that can operate in two roles:
+
+\begin{itemize}
+    \item as a general-purpose CPU, or
+    \item as a vector/3D coprocessor.
+\end{itemize}
+
+\subsection{Register File}
+
+\begin{center}
+\begin{tabular}{@{}llp{6cm}@{}}
+\toprule
+Resource & Width & Notes \\
+\midrule
+Scalar registers R0--R15 & 32-bit & General purpose; low 16 bits usable for pure 16-bit code \\
+Vector registers VR0--VR15 & 128-bit & 4 $\times$ 32-bit lanes (primary) or 8 $\times$ 16-bit \\
+SP, PC & 32-bit & \\
+SR & 32-bit & Flags, interrupt mask, mode bits, VU status \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The 16 vector registers of 128 bits each provide 256 bytes of vector state---sufficient to hold a 4$\times$4 matrix (four registers) plus several vertices and temporaries.
+
+\subsection{SIMD Width and Number Format}
+
+The primary SIMD configuration is 4-wide. Each lane is 32 bits and is interpreted by default as Q16.16 fixed-point (16 integer bits, 16 fractional bits). This format offers a good balance of range and precision for 3D geometry while remaining simple to implement in FPGA logic. Supporting views (8$\times$16-bit, pure integer, later optional FP32) are defined but not required for the initial implementation.
+
+Multiplication follows the rule
+\[
+\text{result}_{\text{Q16.16}} = (a_{\text{Q16.16}} \times b_{\text{Q16.16}}) \gg 16
+\]
+with a 64-bit intermediate product to preserve accuracy. A vector accumulator (VACC) is provided for long multiply-accumulate chains.
+
+\subsection{Instruction Encoding}
+
+Instructions are primarily 16-bit, with optional 16-bit extension words for immediates and displacements. The major opcode field (bits 15--12) partitions the encoding space:
+
+\begin{center}
+\begin{tabular}{@{}clp{7cm}@{}}
+\toprule
+Bits 15--12 & Group & Purpose \\
+\midrule
+0000 & System/Control & NOP, HALT, RESET, interrupt control \\
+0001 & Scalar ALU (reg-reg) & ADD, SUB, AND, OR, XOR, \ldots \\
+0010 & Scalar Immediate & Arithmetic/logic with immediate \\
+0011 & Shift/Rotate & ASL, ASR, LSR, ROL, ROR, \ldots \\
+0100 & Multiply/Divide & MUL, MULU, MULS, DIVU, DIVS \\
+0101 & Compare/Test & CMP, TST, CMN \\
+0110 & Load/Store (scalar) & Multiple addressing modes \\
+0111 & Branch/Jump/Call & Conditional branches, JSR, RTS \\
+1100 & VEX Arithmetic & Vector add/sub/mul/madd/dot/cross \ldots \\
+1101 & VEX Memory \& Permute & Vector load/store, broadcast, swizzle \\
+1110 & VEX Control & VWAIT, VSTATUS, VMAT4VEC, kick \\
+1111 & Escape/Extended & Future expansion \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A complete bit-field definition for every group is maintained in the project documentation; the most frequently used vector operations appear below.
+
+\subsection{VEX Vector Extensions (Selected Operations)}
+
+\begin{center}
+\begin{tabular}{@{}llp{5.5cm}@{}}
+\toprule
+Mnemonic & Encoding class & Operation \\
+\midrule
+VADD VRd,VRs,VRt & 1100 & 4-wide addition \\
+VSUB VRd,VRs,VRt & 1100 & 4-wide subtraction \\
+VMUL VRd,VRs,VRt & 1100 & 4-wide Q16.16 multiply \\
+VMADD VRd,VRs,VRt & 1100 & multiply-accumulate \\
+VDOT Rd,VRs,VRt & 1100 & scalar dot product \\
+VCROSS VRd,VRs,VRt & 1100 & 3-element cross product \\
+VLD VRd,(Rb) & 1101 & 128-bit vector load \\
+VST VRs,(Rb) & 1101 & 128-bit vector store \\
+VBROADCAST VRd,Rs & 1101 & broadcast scalar to all lanes \\
+VMAT4VEC VRd,VRs & 1110 & matrix (VR0--VR3) $\times$ vector \\
+VWAIT & 1110 & wait until vector unit idle \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The special instruction \texttt{VMAT4VEC} implements a complete 4$\times$4 matrix-by-vector multiply using the matrix already resident in VR0--VR3, dramatically reducing instruction count for the most common 3D transform.
+
+\section{System Organisation}
+
+\subsection{BX-8 3D: R800 + R1600 Coprocessor}
+
+In the BX-8 3D configuration the existing R800 remains the main CPU and continues to own the classic MSX slot bus. An R1600 core is attached as a tightly-coupled coprocessor. Communication occurs through:
+
+\begin{itemize}
+    \item a shared memory window (typically 4--16\,KB, dual-ported or DMA-accessible),
+    \item a command FIFO,
+    \item status and doorbell registers.
+\end{itemize}
+
+The R800 issues work by writing parameters and a command packet into the shared region and then writing a kick register. It may poll for completion or receive an interrupt. All existing MSX software runs unchanged; new software detects the presence of the vector unit and offloads transform, lighting and batch vertex work.
+
+This organisation satisfies the original BX-8 3D design goal: maximal compatibility with minimal changes to the surrounding system logic.
+
+\subsection{BX-16: Dual R1600}
+
+In the full BX-16 system two identical R1600 cores are instantiated. One runs general-purpose code (operating system, game logic, classic MSX compatibility layer). The second is dedicated to vector and simple raster workloads. A high-bandwidth 16-bit local interconnect, shared memory, and the same command-FIFO protocol used in BX-8 3D allow the two cores to cooperate efficiently.
+
+A compatibility bridge presents a classic 8-bit MSX slot interface to the outside world, so that existing cartridges can still be used. Internally the machine is a clean 16-bit dual-processor system.
+
+\subsection{Hardware Block Diagrams (Conceptual)}
+
+\paragraph{BX-8 3D}
+\begin{verbatim}
++---------------------------------------------------------------+
+| R800 (main CPU)  <-->  Shared Mem + FIFO  <-->  R1600+VEX (VU) |
+|        |                                              |       |
+|   Memory Mapper / RAM                          VDP + Sound    |
+|        |                                              |       |
+|        +---------------- MSX Slot Bus ----------------+       |
++---------------------------------------------------------------+
+\end{verbatim}
+
+\paragraph{BX-16}
+\begin{verbatim}
++---------------------------------------------------------------+
+| R1600+VEX #1 (CPU)  <== 16-bit local bus ==>  R1600+VEX #2 (GPU)|
+|        |                                        |              |
+|   Main Memory (16-bit)                   Video Memory          |
+|        |                                        |              |
+|   MSX Compatibility Bridge  -----------------> Output          |
++---------------------------------------------------------------+
+\end{verbatim}
+
+\section{Programming Model and Software Compatibility}
+
+A single high-level 3D library (or a tuned tinyGL back-end) can target both machines. The portable layer performs matrix construction, scene management and high-level rendering calls. Only the lowest-level kernels---vertex transform, matrix--vector products, and block fills---are written against the VEX instruction set or the command-FIFO interface.
+
+On BX-8 3D the main thread runs on the R800 (or its 16-bit extended form) and kicks the R1600. On BX-16 the same source can be compiled to native R1600 code for the primary core while the secondary core executes the vector kernels. Detection of the exact configuration is performed at start-up via a status register, allowing a single binary to adapt.
+
+Assembly-language programmers retain two clean models:
+
+\begin{itemize}
+    \item an R800-like additive style for BX-8 3D (new vector operations appear as coprocessor or extended opcodes),
+    \item a pure orthogonal 16-bit style for native BX-16 code.
+\end{itemize}
+
+Both models are fully documented with bit-accurate encodings, assembler syntax and calling conventions.
+
+\section{Implementation Context}
+
+The proposals are developed inside the B-MSX / tronMSX open-source effort:
+
+\begin{itemize}
+    \item \textbf{Verifying emulator} (cycle-accurate reference):\\
+    \url{https://github.com/msx-btron/btron/tree/main/src/emulators/msx}
+    \item \textbf{BX-8 FPGA implementation} (Bluespec SystemVerilog):\\
+    \url{https://github.com/msx-btron/btron/tree/main/src/emulators/bx8/bsv}
+    \item \textbf{BTRON host environment} --- a lightweight host layer used for development, testing and future higher-level services.
+\end{itemize}
+
+The existing BX-8 BSV sources already contain a clean modular structure (CPU, memory, VDP, audio, bus). Extending them with an R1600 core and the shared-memory/FIFO interface is a well-scoped engineering task. The verifying emulator provides a reference against which both functional and timing correctness can be checked.
+
+\section{Expected Characteristics and Trade-offs}
+
+\begin{center}
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Property & BX-8 3D & BX-16 \\
+\midrule
+MSX cartridge compatibility & Native, excellent & High (via bridge) \\
+Binary compatibility (Z80/R800) & Full & Full (compatibility mode) \\
+3D transform performance & Good & High \\
+Implementation complexity & Moderate & Higher \\
+Silicon / FPGA resource use & R800 + one R1600 & Two R1600 \\
+Programming model purity & Hybrid & Clean 16-bit \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+BX-8 3D maximises compatibility and minimises risk; it is the natural next step for an existing turboR-class FPGA design. BX-16 trades some purity of the external bus for a cleaner internal architecture and substantially higher sustained 3D throughput. Both remain within the philosophical bounds of an MSX evolutionary path.
+
+\section{Conclusion}
+
+The MSX architecture has always favoured careful, compatibility-preserving evolution over radical breaks. The R800 itself was an embodiment of that principle. The BX-8 3D and BX-16 proposals continue the same tradition into the era of software 3D.
+
+By defining a single reusable 16-bit core with a practical vector extension, and by offering two system organisations that differ only in the degree of coupling and bus width, we obtain a scalable family: a highly compatible turboR successor on one hand, and a more powerful dual-processor hybrid on the other. Both can share algorithms, libraries and even substantial amounts of implementation IP.
+
+The designs are offered for discussion, refinement and, we hope, eventual realisation within the open-source MSX research community and beyond.
+
+\section*{Acknowledgements}
+
+This work builds directly on the MSX architectural legacy created by ASCII Corporation and the many engineers who contributed to the turboR. The open-source BX-8 and tronMSX code bases provide the concrete foundation that makes a proposal of this concreteness possible.
+
+\begin{thebibliography}{9}
+
+\bibitem{msx-tech}
+MSX Technical Handbook / MSX Datapack (ASCII / various editions).
+
+\bibitem{r800}
+ASCII Corporation, R800 documentation and turboR hardware manuals (1990--1991).
+
+\bibitem{tinygl}
+TinyGL / related software OpenGL 1.x subset implementations.
+
+\bibitem{btron}
+B-MSX / tronMSX project repositories:\\
+\url{https://github.com/msx-btron/btron}
+
+\end{thebibliography}
+
+\end{document}

@@ -62,16 +62,20 @@ static void print_vdp_mode(void *vl, const char *tag)
 static uint16_t    g_cart_init = 0;
 static bool        g_cart_booted = false;
 
-/* MSX_KEY=space|a|both. Pressed only after the cartridge has run for two
- * frames, so C-BIOS's boot HALT is left alone. Each press is one master
- * clock in place of vl_p6_step, so a memory request from that clock is
- * still serviced. SPACE is row 8 col 0 (0xFE). A is row 2 col 6 (0xBF). */
+/* MSX_KEY=space|a|both. MSX_KEY_AT is frames after cartridge entry before
+ * the key goes down (default 2, so C-BIOS's boot HALT is left alone).
+ * Each press is one master clock in place of vl_p6_step, so a memory
+ * request from that clock is still serviced. The key stays down.
+ * SPACE is row 8 col 0 (0xFE). A is row 2 col 6 (0xBF).
+ * MSX_WAV writes a 44.1 kHz mono WAV of the PSG+SCC+PCM mix.
+ * MSX_WAV_AT is frames after cartridge entry before that file starts. */
 static int g_key_space = 0;
 static int g_key_a = 0;
 static int g_key_arm = 0;
 static int g_space_sent = 0;
 static int g_a_sent = 0;
 static int g_keys_down = 0;
+static uint32_t g_key_at = 2;
 static uint32_t g_kbd_strobe_r8 = 0;
 static uint32_t g_kbd_strobe_r2 = 0;
 static int g_kbd_saw_r8 = 0;
@@ -89,6 +93,182 @@ static void parse_msx_key(void)
     } else {
         fprintf(stderr, "MSX_KEY=%s ignored (space, a, or both)\n", k);
     }
+}
+
+/* Master clock is 3579545*16 Hz. Each file sample is the mean of the mix
+ * over one 44100 Hz window, so a tone that toggles inside the window does
+ * not alias as a single spike. */
+#define AUDIO_HZ  44100u
+#define MASTER_HZ (3579545u * 16u)
+
+static const char *g_wav_path = NULL;
+static uint32_t g_wav_at = 0;
+static FILE *g_wav = NULL;
+static uint32_t g_wav_n = 0;
+static uint32_t g_audio_phase = 0;
+static int64_t g_audio_acc = 0;
+static uint32_t g_audio_acc_n = 0;
+static int32_t g_raw_peak = 0;
+static int32_t g_span_peak = 0;
+static int32_t g_rec_peak = 0;
+static uint16_t g_psg_peak = 0;
+static int32_t g_scc_peak = 0;
+static int g_pcm_lo = 256;
+static int g_pcm_hi = -1;
+static uint16_t g_rec_psg_peak = 0;
+static int32_t g_rec_scc_peak = 0;
+static int g_rec_pcm_lo = 256;
+static int g_rec_pcm_hi = -1;
+
+static void wav_header(FILE *f, uint32_t nsamp)
+{
+    uint32_t data_bytes = nsamp * 2u;
+    uint32_t riff = 36u + data_bytes;
+    uint32_t byterate = AUDIO_HZ * 2u;
+    uint8_t h[44];
+
+    memset(h, 0, sizeof(h));
+    memcpy(h, "RIFF", 4);
+    h[4] = (uint8_t)riff;
+    h[5] = (uint8_t)(riff >> 8);
+    h[6] = (uint8_t)(riff >> 16);
+    h[7] = (uint8_t)(riff >> 24);
+    memcpy(h + 8, "WAVEfmt ", 8);
+    h[16] = 16;
+    h[20] = 1;
+    h[22] = 1;
+    h[24] = (uint8_t)AUDIO_HZ;
+    h[25] = (uint8_t)(AUDIO_HZ >> 8);
+    h[26] = (uint8_t)(AUDIO_HZ >> 16);
+    h[27] = (uint8_t)(AUDIO_HZ >> 24);
+    h[28] = (uint8_t)byterate;
+    h[29] = (uint8_t)(byterate >> 8);
+    h[30] = (uint8_t)(byterate >> 16);
+    h[31] = (uint8_t)(byterate >> 24);
+    h[32] = 2;
+    h[34] = 16;
+    memcpy(h + 36, "data", 4);
+    h[40] = (uint8_t)data_bytes;
+    h[41] = (uint8_t)(data_bytes >> 8);
+    h[42] = (uint8_t)(data_bytes >> 16);
+    h[43] = (uint8_t)(data_bytes >> 24);
+    fwrite(h, 1, 44, f);
+}
+
+static int wav_begin(void)
+{
+    g_wav = fopen(g_wav_path, "wb");
+    if (!g_wav) {
+        perror(g_wav_path);
+        return -1;
+    }
+    setvbuf(g_wav, NULL, _IOFBF, 1 << 16);
+    wav_header(g_wav, 0);
+    return 0;
+}
+
+static void wav_close(void)
+{
+    if (g_wav) {
+        fflush(g_wav);
+        if (fseek(g_wav, 0, SEEK_SET) == 0)
+            wav_header(g_wav, g_wav_n);
+        fclose(g_wav);
+        g_wav = NULL;
+    }
+    if (!g_wav_path) return;
+    printf("  [WAV] %s samples=%u sec=%.2f raw_peak=%d rec_peak=%d psg=%u/%u scc=%d/%d pcm=%d..%d rec_pcm=%d..%d\n",
+           g_wav_path, g_wav_n,
+           (double)g_wav_n / (double)AUDIO_HZ,
+           g_raw_peak, g_rec_peak,
+           g_psg_peak, g_rec_psg_peak,
+           g_scc_peak, g_rec_scc_peak,
+           g_pcm_lo > 255 ? -1 : g_pcm_lo, g_pcm_hi,
+           g_rec_pcm_lo > 255 ? -1 : g_rec_pcm_lo, g_rec_pcm_hi);
+    fflush(stdout);
+}
+
+static void audio_take(void *vl, int booted, uint32_t frames_after_boot)
+{
+    int16_t sample;
+    int32_t aabs;
+    int32_t avg;
+    uint16_t psg;
+    int16_t scc;
+    int32_t sca;
+    uint8_t pcm;
+    uint8_t buf[2];
+
+    if (!g_wav_path) return;
+
+    sample = (int16_t)vl_p6_audio_pcm_sample(vl);
+    aabs = sample < 0 ? -(int32_t)sample : (int32_t)sample;
+    if (aabs > g_raw_peak) g_raw_peak = aabs;
+    if (aabs > g_span_peak) g_span_peak = aabs;
+    g_audio_acc += sample;
+    g_audio_acc_n++;
+
+    g_audio_phase += AUDIO_HZ;
+    if (g_audio_phase < MASTER_HZ) return;
+    g_audio_phase -= MASTER_HZ;
+
+    psg = vl_p6_psg_sample(vl);
+    if (psg > g_psg_peak) g_psg_peak = psg;
+    scc = (int16_t)vl_p6_scc_sample(vl);
+    sca = scc < 0 ? -(int32_t)scc : (int32_t)scc;
+    if (sca > g_scc_peak) g_scc_peak = sca;
+    pcm = vl_p6_pcm_sample(vl);
+    if ((int)pcm < g_pcm_lo) g_pcm_lo = (int)pcm;
+    if ((int)pcm > g_pcm_hi) g_pcm_hi = (int)pcm;
+
+    avg = g_audio_acc_n ? (int32_t)(g_audio_acc / (int64_t)g_audio_acc_n) : 0;
+    g_audio_acc = 0;
+    g_audio_acc_n = 0;
+    if (avg > 32767) avg = 32767;
+    if (avg < -32768) avg = -32768;
+
+    if (!g_wav) {
+        if (!booted || frames_after_boot < g_wav_at) return;
+        if (wav_begin() != 0) {
+            g_wav_path = NULL;
+            return;
+        }
+        printf("  [WAV] recording %s from frame %u after entry\n",
+               g_wav_path, frames_after_boot);
+        fflush(stdout);
+    }
+
+    aabs = avg < 0 ? -avg : avg;
+    if (aabs > g_rec_peak) g_rec_peak = aabs;
+    if (psg > g_rec_psg_peak) g_rec_psg_peak = psg;
+    if (sca > g_rec_scc_peak) g_rec_scc_peak = sca;
+    if ((int)pcm < g_rec_pcm_lo) g_rec_pcm_lo = (int)pcm;
+    if ((int)pcm > g_rec_pcm_hi) g_rec_pcm_hi = (int)pcm;
+
+    buf[0] = (uint8_t)(uint16_t)avg;
+    buf[1] = (uint8_t)((uint16_t)avg >> 8);
+    if (fwrite(buf, 1, 2, g_wav) == 2)
+        g_wav_n++;
+}
+
+static void parse_audio_env(void)
+{
+    const char *w = getenv("MSX_WAV");
+    const char *at = getenv("MSX_WAV_AT");
+    const char *kt = getenv("MSX_KEY_AT");
+    if (w && w[0]) g_wav_path = w;
+    if (at && at[0]) g_wav_at = (uint32_t)strtoul(at, NULL, 10);
+    if (kt && kt[0]) g_key_at = (uint32_t)strtoul(kt, NULL, 10);
+}
+
+static void audio_span_report(uint32_t frames_after_boot)
+{
+    if (!g_wav_path || !g_cart_booted) return;
+    if (frames_after_boot == 0 || (frames_after_boot % 60u) != 0) return;
+    printf("  [AUD f%u] span_peak=%d raw_peak=%d rec=%u rec_peak=%d\n",
+           frames_after_boot, g_span_peak, g_raw_peak, g_wav_n, g_rec_peak);
+    fflush(stdout);
+    g_span_peak = 0;
 }
 
 /* A 48 KiB image whose "AB" header sits at file+0x4000, with INIT inside
@@ -494,6 +674,7 @@ int main(int argc, char **argv)
 
     g_do_trace = getenv("MSX_TRACE") && getenv("MSX_TRACE")[0];
     parse_msx_key();
+    parse_audio_env();
 
     while (cycles < max_cycles && !g_trace_stop) {
         int injected = 0;
@@ -522,6 +703,7 @@ int main(int argc, char **argv)
             vl_p6_step(vl);
         trace_step(vl);
         service_mem(vl);
+        audio_take(vl, g_cart_booted, frames_after_boot);
         if (g_trace_stop) break;
         cycles++;
 
@@ -627,9 +809,10 @@ int main(int argc, char **argv)
             frame_count++;
             if (g_cart_booted) frames_after_boot++;
             if (!g_keys_down && !g_key_arm &&
-                g_cart_booted && frames_after_boot >= 2 &&
+                g_cart_booted && frames_after_boot >= g_key_at &&
                 (g_key_space || g_key_a))
                 g_key_arm = 1;
+            audio_span_report(frames_after_boot);
             if (frame_count % 5 == 0) {
                 vl_p6_get_regs(vl, &regs);
                 printf("  [FRAME %02u] Cycle %-9llu | Ret: %-7u | PC=0x%04X SP=0x%04X Mode=%s TurboLED=%d\n",
@@ -715,6 +898,12 @@ int main(int argc, char **argv)
                    vl_p6_kbd_peek_row(vl, 8), g_kbd_strobe_r8,
                    vl_p6_kbd_peek_row(vl, 2), g_kbd_strobe_r2);
         }
+        if (g_wav_path) {
+            printf("  [PSG]");
+            for (int ri = 0; ri < 11; ri++)
+                printf(" R%d=%02X", ri, vl_p6_psg_peek_reg(vl, (uint8_t)ri));
+            printf("\n");
+        }
         uint32_t n = g_mring_n < 16 ? g_mring_n : 16;
         uint32_t start = g_mring_n - n;
         printf("  [MEM tail]\n");
@@ -782,6 +971,7 @@ int main(int argc, char **argv)
     }
 
     // Cleanup
+    wav_close();
     vl_p6_destroy(vl);
     mem_model_destroy(&g_mem);
     if (g_cart_buf) free(g_cart_buf);

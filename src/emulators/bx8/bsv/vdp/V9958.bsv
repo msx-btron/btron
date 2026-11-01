@@ -115,9 +115,6 @@ module mkV9958(V9958);
     // V9968 extended palette. Screen 8 indexes it when R#20 bit 4 is set.
     RegFile#(Bit#(8), Bit#(16)) pal256 <- mkRegFileFull;
 
-    // Interrupt Latch
-    Reg#(Bool)     irq_pending   <- mkReg(False);
-
     // Blitter Parameter Shadow Registers (R#32..R#46)
     Reg#(Bit#(10)) blit_sx <- mkReg(0);
     Reg#(Bit#(10)) blit_sy <- mkReg(0);
@@ -207,17 +204,11 @@ module mkV9958(V9958);
     rule handle_vblank (raster.vblank_edge());
         regs.set_stat_bits(4'd0, stFG);
         regs.set_stat_bits(4'd2, stVR);
-        if (regs.ie0_enabled()) begin
-            irq_pending <= True;
-        end
     endrule
 
     // Handle Line Interrupt Event
     rule handle_line_int (raster.line_int_edge());
         regs.set_stat_bits(4'd1, 8'h01); // FH flag
-        if (regs.ie1_enabled()) begin
-            irq_pending <= True;
-        end
     endrule
 
     // Mux CPU VRAM accesses and Blitter requests into arbiter client 2.
@@ -378,11 +369,6 @@ module mkV9958(V9958);
     function Action handleRegWrite(Bit#(6) r, Bit#(8) val);
         action
             regs.write_reg(r, val);
-
-            // If R#1 IE0 enabled while ST_FG is set, raise IRQ immediately
-            if (r == 6'd1 && (val[5] == 1'b1) && ((regs.read_stat(4'd0) & stFG) != 0)) begin
-                irq_pending <= True;
-            end
 
             // R#16 reset palette write latch
             if (r == 6'd16) begin
@@ -553,9 +539,9 @@ module mkV9958(V9958);
             Bit#(8) statVal = regs.read_stat(sreg);
 
             if (sreg == 4'd0) begin
-                // Reading S#0 clears ST_FG and frame interrupt
+                // Reading S#0 clears ST_FG. The pin drops because irq()
+                // follows the flag, not a latch that outlives the read.
                 regs.clear_stat_bits(4'd0, stFG);
-                irq_pending <= False;
             end else if (sreg == 4'd1) begin
                 // Reading S#1 clears FH (line interrupt)
                 regs.clear_stat_bits(4'd1, 8'h01);
@@ -580,7 +566,14 @@ module mkV9958(V9958);
 
     // ── External Interfaces ─────────────────────────────────────────────────
 
-    method Bool irq() = irq_pending;
+    // The pin is the enable and the flag. Turning IE0 off drops the
+    // request even when FH is still set. A sticky latch here retriggers
+    // keyint forever once R#15 selects a status other than S#0.
+    method Bool irq();
+        Bool frame_irq = regs.ie0_enabled() && ((regs.read_stat(4'd0) & stFG) != 0);
+        Bool line_irq  = regs.ie1_enabled() && ((regs.read_stat(4'd1) & 8'h01) != 0);
+        return frame_irq || line_irq;
+    endmethod
 
     method Bit#(9)  beam_x()       = raster.beam_x();
     method Bit#(8)  beam_y()       = raster.beam_y();
