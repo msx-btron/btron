@@ -1,0 +1,60 @@
+MSX FPGA BX-16 Pure 16-bit 3D Console
+
+Goal
+
+Design a true 16-bit (internal and external where it matters) hybrid console that still boots and runs classic MSX software with high compatibility, while delivering Amiga-class or better 3D performance for a tuned tinyGL (and later more advanced software rasterizers or simple hardware assists). This is a larger project: the machine is no longer a pure MSX turboR derivative but a new architecture that claims MSX heritage through a compatibility mode and shared I/O/slot semantics.Design Principles
+Native 16-bit data path everywhere it counts (CPU, local memory, VDP interface, co-processors).
+Classic MSX 8-bit cartridge bus and slot protocol retained as a compatibility island.
+Explicit dual-mode operation: “MSX Compatible” (Z80/R800 timing and bus behaviour) vs “BX-16 Native” (full 16-bit, higher clocks, flat or large paged address space, accelerated graphics).
+New graphics and DMA engines that can operate independently of the CPU (Amiga-like philosophy).
+Still implementable in the existing BSV framework, but many modules will be substantially rewritten or augmented.
+
+CPU
+
+Full 16-bit external data path for local RAM and co-processors; 8-bit path only for the classic slot bus.
+Orthogonal 16-bit ISA (can still be a superset of R800 for easier tool-chain migration) or a clean 16-bit design with a compatibility translation layer.
+Larger register file, hardware multiply/divide, optional simple FPU or soft-float acceleration, instruction and data caches.
+Higher clock (28–50+ MHz feasible on modern FPGA) and true pipelining.
+Memory management that supports both classic MSX banking and a larger linear or paged space in native mode.
+
+Memory & Bus
+
+Dual-bus or multi-master architecture: a fast 16-bit local system bus for CPU + VRAM + co-processors, plus the classic 8-bit MSX slot bus for cartridges and legacy peripherals.
+Larger main RAM and VRAM (at least 512 KiB–2 MiB range) with dual-port or DMA access.
+DMA controllers that can move data without CPU intervention.
+
+Video
+
+* Significant evolution of the VDP: either a heavily enhanced V9958/V9990-style core or a new raster engine with:
+  1) Hardware triangle setup / fill assists or a programmable blit/Z unit.
+  2) Higher resolution and colour depth targets (at least 320×240 or 512×212 true colour / high-colour with Z-buffer).
+  3) Copper-like display-list or scan-line interrupt engine for flexible display control.
+  4) Bandwidth sufficient for real-time textured soft-3D at interactive rates.
+* tinyGL (or a successor) can target either a pure software path or a hybrid path that offloads fill and Z work.
+
+Sound
+
+Multi-channel sample playback with DMA, plus retained MSX FM/PSG for compatibility.
+Enough channels and bandwidth to approach or exceed Paula-class capabilities while still supporting classic MSX audio software.
+
+System Integration & Compatibility
+
+Explicit mode bit or register that switches the entire machine between “MSX Compatible” (bus timing, interrupt behaviour, VDP I/O map, CPU restricted to R800-compatible subset) and “BX-16 Native”.
+BIOS / boot firmware that can start in compatible mode and switch under software control.
+Existing MSX cartridges and most software continue to run in compatible mode; new software uses the full native facilities.
+BSV changes are extensive: new bus fabric, co-processor interfaces, larger memory controllers, dual-mode CPU and VDP wrappers. The verifying emulator must gain a parallel native-mode model.
+
+Expected Outcome
+
+A hybrid console that legitimately claims MSX heritage (boots and runs the library) while offering Amiga-class or better soft-3D performance.
+tinyGL (and later engines) can run at frame rates and visual quality competitive with late-1980s / early-1990s Amiga titles, and potentially better once the co-processors are fully utilised.
+Larger engineering and verification effort; the machine is no longer a drop-in turboR evolution.
+
+Trade-offs
+
+Higher complexity, longer development time, and the risk that the “MSX compatible” mode becomes a second-class citizen if not carefully maintained. You gain performance headroom and a cleaner 16-bit programming model at the cost of purity of the original MSX bus model.Next steps you can choose
+Deep-dive either plan into concrete BSV module change lists, new opcode tables, register maps, and emulator impact.
+Side-by-side comparison of silicon/FPGA resource estimates, risk, and schedule.
+Definition of the exact tinyGL performance targets (resolution, polygon count, features) that each plan is required to meet.
+Naming, branding, and documentation conventions for the two machines.
+Both plans are now named and scoped. Which one (or which aspects of both) do you want to expand first?

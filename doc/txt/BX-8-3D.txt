@@ -1,0 +1,56 @@
+BX-8 3D Natural R800 Extension with hardware OpenGL primitives
+
+Goal
+
+Produce a legitimate, binary-compatible MSX turboR successor that remains fully hardware-compatible with existing cartridges, slots, and software while delivering a meaningful jump in CPU and modest graphics acceleration. The machine can run a carefully tuned tinyGL (fixed-function, software rasterizer) at usable frame rates for early-1990s-style 3D (low-poly, modest resolution, simple lighting/texturing). It does not attempt to match or beat a stock Amiga 500/1000 on graphics-heavy titles without additional co-processor work. Ownership and architectural purity stay with the BX-8 lineage.Design Principles
+Preserve the external 8-bit data / 16-bit address MSX bus and slot protocol exactly.
+Keep Z80 ↔ R800 exclusive switching (S1990-style) so every existing MSX program continues to run.
+Extend only the internal CPU datapath, instruction set, and selected peripheral engines.
+Changes stay inside the existing BSV module boundaries (cpu, memory, vdp, audio, Bus, TopMSXTurboR).
+Verifying emulator (r800.c path) is updated in lock-step; all existing test vectors must still pass.
+
+CPU (cpu module)
+
+Confirm and harden the existing 16-bit internal ALU/datapath of the R800 model.
+Add a modest set of new 16-bit arithmetic, logic, shift, and multiply/divide opcodes under unused ED/DD/FD prefixes (or a single new prefix). Keep the classic Z80 encoding as the base so existing assemblers and compilers need only minimal updates.
+Optional: 256–1 KiB instruction prefetch/cache and a higher internal clock domain (14–28 MHz FPGA-friendly) while the external bus remains at classic turboR rates or a clean multiple.
+Retain MULUB / MULUW and make a few additional 16×16→32 operations official.
+No change to the external pinout or bus-cycle timing that would break cartridges.
+
+Memory & Bus (memory + Bus.bsv)
+
+Keep the classic Memory Mapper and primary/secondary slot mechanism.
+Optional dual-port or wider internal path only between CPU and local VRAM/work RAM; external cartridge bus stays 8-bit.
+No flat 24/32-bit address space.
+
+Video (vdp module)
+
+Accelerate the existing V9958-style command engine (faster COPY, LINE, FILL, etc.).
+Add a lightweight CPU-driven assist unit for Z-buffer clear/fill and simple rectangle operations, memory-mapped or via new I/O ports that do not collide with the classic VDP map.
+Raise effective VRAM bandwidth modestly (still within the spirit of MSX VDP timing).
+Support a software frame-buffer path that tinyGL can target directly (16-bit colour preferred).
+Goal: enough fill-rate and Z support that a tuned tinyGL can sustain interactive frame rates at 256×212 or 320×200 with low polygon counts and simple texturing.
+
+Sound (audio module)
+
+Keep PSG + OPLL.
+Add higher-rate PCM/DMA paths and/or a second SCC-style or OPL-class channel set, all behind the existing MSX I/O map.
+Sufficient for 1990s game audio and modest sample playback without starving the CPU.
+
+System Integration
+
+Top-level modules (TopMSXTurboR.bsv and phased Tops) gain only the new control registers and clock domains needed for the above.
+Mode switch (Z80 / classic R800 / BX-8 3D extended) remains software-visible and BIOS-compatible.
+Emulator updates: extend r800.c with the new opcodes and timing; keep the existing C99 verifying suite green.
+
+Expected Outcome
+
+Fully compatible turboR successor.
+tinyGL runs at “usable but not spectacular” rates for the target era.
+You retain complete ownership of the ISA and silicon story.
+Development effort stays moderate; most existing BSV and emulator code is reused.
+
+Limitations (explicit)
+
+Cannot match Amiga blitter/Copper bandwidth or free the CPU to the same degree.
+Heavy 3D or high-resolution textured scenes will remain CPU-bound.
