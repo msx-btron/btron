@@ -1,14 +1,14 @@
 /*
  * TopTangMega60K.v — Sipeed Tang Mega 60K SOM.
  *
- * This is not the Tang Primer 20K. Primer 20K is a GW2A-18 board and is
- * not a target. Mega 60K is a GW5AT-60.
+ * Primer 20K was a GW2A-18 board and has been removed.
+ * Mega 60K is the GW5AT-60 SOM.
  *
  * From the Sipeed wiki page for Tang Mega 60K (updated 2025-09-25):
  *   Device:  GOWIN GW5AT-LV60PG484A
  *   Fabric:  59,904 LUT4, 59,904 flip-flops, 2,124 Kbit block SRAM,
  *            8 PLLs
- *   RAM:     512 MB DDR3 on the SOM (4 Gbit, one device, 16-bit)
+ *   RAM:     512 MB DDR3 on the SOM (4 Gbit, one device)
  *   Flash:   64 Mbit on the SOM
  * The dock (shared with the Mega 138K) adds HDMI, a headphone jack,
  * buttons, and LEDs. The DDR3 stays on the SOM, so the cartridge image

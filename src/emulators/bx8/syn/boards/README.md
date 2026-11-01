@@ -18,8 +18,8 @@ Cyclone IV E EP4CE15 has 15,408 logic elements and 56 M9K blocks, 504 Kbit (63 K
 
 `qmtech_xc7a35t/` — QMTECH Artix-7 core board, XC7A35T-1CSG325C. 33,280 logic cells, 1,800 Kbit block RAM, 32 MB W9825G6KH-6, 50 MHz. MMCM ratio 50 × 63 / 5 / 11 = 57.2727 MHz.
 
-`tang_mega_60k/` — Sipeed Tang Mega 60K SOM, GW5AT-LV60PG484A. 59,904 LUT4, 512 MB DDR3 on the SOM. This is the large-RAM board. It is not the Tang Primer 20K. The Sipeed wiki does not name the oscillator, so the wrapper does not invent a PLL. `clk_soc` is the input clock until the schematic's frequency is written down.
+`tang_mega_60k/` — Sipeed Tang Mega 60K SOM, GW5AT-LV60PG484A. 59,904 LUT4, 512 MB DDR3 on the SOM. This is the large-RAM board. Primer 20K was a different card, a GW2A-18, and that directory is gone. The Sipeed wiki does not name the oscillator, so the wrapper does not invent a PLL. `clk_soc` is the input clock until the schematic's frequency is written down.
 
-## Removed
+## Credits
 
-`ulx3s/` and `tang_primer_20k/` are gone. ULX3S was an ECP5 LFE5U-85F board. Tang Primer 20K was a Gowin GW2A-18 board. Neither directory remains.
+* Namdak Tonpa
