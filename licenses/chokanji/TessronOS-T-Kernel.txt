@@ -1,0 +1,25 @@
+/*
+ *----------------------------------------------------------------------
+ *    TessronOS
+ *
+ *    Copyright (C) 2026 satromi
+ *    This software is distributed under the T-License 2.2.
+ *----------------------------------------------------------------------
+ */
+
+/*
+ * bpk_lh5.c
+ * The LH5 decoder (design 17.16)
+ *
+ * The input is read as a stream of bits, most significant first; the
+ * next 16 of them are always in bitbuf. A block starts with its count
+ * of codes and three tables: the code lengths of the code lengths, the
+ * code lengths of the literals and lengths, and those of the
+ * distances. A code of up to 12 bits (8 for the small tables) is found
+ * in one look in its table; a longer one goes on down a tree of left
+ * and right from there.
+ *
+ * A code below 256 is a byte; above, it is a length of 3 to 256 and a
+ * distance follows: the number of its bits and then the bits. The
+ * whole output is one buffer, so the window is the output itself.
+ */

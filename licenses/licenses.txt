@@ -1,3 +1,29 @@
+B-System (BTRON 3.20) License Information
+
+├── licenses.txt
+├── chokanji
+│   └── TessronOS-T-Kernel.txt
+├── clu
+│   ├── armadillo.txt
+│   ├── armv7.txt
+│   ├── hx.txt
+│   ├── nasm.txt
+│   ├── nv.txt
+│   ├── riscv.txt
+│   ├── sh4.txt
+│   └── vdappc.txt
+├── media
+│   ├── Font-License.txt
+│   └── TinyGL-License.txt
+└── system
+    ├── BSD-License-mozc.txt
+    ├── CC-BY-SA-4.0.txt
+    ├── ISC-License.en.txt
+    ├── ISC-License.jp.txt
+    ├── MIT-LICENSE.superzazu-z80.txt
+    ├── TEF000-218-150401.txt
+    └── TEF000-219-200401.txt
+
 Zero Dependencies Cleanroom Derivative work B-System:
   [1] https://github.com/bitedits/btron — ISC-License.{en,jp}.txt
   [2] https://github.com/hfg-gmuend/openmoji — CC-BY-SA-4.0.txt Glyphs usage as assets
