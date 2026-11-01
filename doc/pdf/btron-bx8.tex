@@ -1,0 +1,186 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{times}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  frame=single,
+  backgroundcolor=\color{gray!8}
+}
+
+\title{\textbf{BX-8: A Clean FPGA Implementation of an\\
+MSX / R800-Class Machine in Bluespec SystemVerilog}}
+
+\author{
+  Independent Systems Architecture Study\\
+  \texttt{btron-bx8} Technical Note\\[0.6em]
+  \small Implementation: \texttt{/Users/tonpa/depot/bitedits/btron/src/emulators/bx8/bsv}\\
+  \small Documentation reference: \texttt{/Users/tonpa/depot/bitedits/msx.btron.pro/emulators/fpgaMSX}
+}
+
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+BX-8 is the entry-level member of the BTRON BX series of clean FPGA RTL machines. It realises an MSX-compatible peripheral set---Video Display Processor (VDP), Programmable Sound Generator (PSG) and related I/O---driven by an R800-class CPU core, all expressed in synthesizable Bluespec SystemVerilog. The design deliberately stays at the 8-bit scale so that the common BSV infrastructure (bus fabrics, clocking, host interface, peripheral-library discipline) can be validated before being reused by the wider 16-, 32- and 64-bit members of the family. This note describes the architectural intent, the organisation of the BSV sources, the relationship to the reference documentation under \texttt{fpgaMSX}, and the place of BX-8 inside the overall BX programme. BX-8 itself has no vector unit; the scalable VEX vector architecture begins with BX-16.
+\end{abstract}
+
+\section{Motivation and Place in the Series}
+
+The BTRON BX programme treats classic media-processor architectures as living subjects of study. BX-8 occupies the foundational position:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item It is small enough that every major block can be held in a single engineer's head.
+  \item It exercises the same Bluespec methodology, peripheral-library style and FPGA flow that later appear in bx-16, bx-32 and bx-64.
+  \item It preserves the characteristic MSX look-and-feel (VDP, PSG/SCC-style sound, cartridge and joystick ports) while remaining fully open and synthesizable.
+\end{itemize}
+
+The authoritative implementation lives at
+\begin{center}
+\texttt{/Users/tonpa/depot/bitedits/btron/src/emulators/bx8/bsv}
+\end{center}
+and the accompanying documentation and reference material for the broader FPGA MSX effort is collected under
+\begin{center}
+\texttt{/Users/tonpa/depot/bitedits/msx.btron.pro/emulators/fpgaMSX}.
+\end{center}
+
+\section{Architectural Outline}
+
+\subsection{CPU Core}
+
+The computational heart is an R800-compatible (or clean re-implementation) 8-bit processor. The R800, originally designed by ASCII Corporation for the MSX turbo~R, is a high-performance Z80-family core with additional instructions, a multiplier and improved pipeline behaviour. In BX-8 the core is expressed in BSV so that its interface to the memory and I/O fabric is precise, typed and free of the ambiguities that often accompany hand-written Verilog CPU models.
+
+\subsection{Memory and Bus Fabric}
+
+A simple but clean multi-master fabric connects:
+\begin{itemize}[leftmargin=1.5em]
+  \item the R800 core,
+  \item the Video Display Processor,
+  \item the sound subsystem,
+  \item cartridge / ROM slots,
+  \item system RAM,
+  \item a host or debug interface (UART, JTAG or memory-mapped window).
+\end{itemize}
+The fabric is deliberately kept minimal so that latency and arbitration behaviour remain predictable---an essential property when the same infrastructure is later scaled to dual-core and vector designs.
+
+\subsection{Video Display Processor (VDP)}
+
+The VDP block realises the classic MSX video architecture (TMS9918-compatible modes together with the later V9938/V9958 extensions where appropriate). In BSV the VDP is decomposed into:
+\begin{itemize}[leftmargin=1.5em]
+  \item a register file and command decoder,
+  \item a timing generator (horizontal/vertical counters, blanking, sync),
+  \item a sprite engine,
+  \item a background/tile engine,
+  \item a pixel serializer and colour lookup path that feeds a simple VGA or HDMI output stage.
+\end{itemize}
+All state transitions are expressed as Bluespec rules, making the interaction between CPU writes, VRAM arbitration and display timing explicit and race-free.
+
+\subsection{Sound Subsystem}
+
+The sound path supports the characteristic MSX audio devices:
+\begin{itemize}[leftmargin=1.5em]
+  \item AY-3-8910-compatible PSG (three tone channels + noise + envelope),
+  \item optional SCC or SCC+ style wavetable channels,
+  \item a simple mixer and sigma-delta or I2S output stage suitable for FPGA boards.
+\end{itemize}
+Again the implementation is rule-based; register writes from the CPU and sample generation run concurrently under Bluespec's atomic-rule semantics.
+
+\subsection{Peripheral Set}
+
+The remaining I/O follows the classic MSX map:
+\begin{itemize}[leftmargin=1.5em]
+  \item keyboard matrix and joystick ports,
+  \item memory mapper (where required for larger RAM configurations),
+  \item cartridge slot signalling,
+  \item optional printer or general-purpose parallel port,
+  \item a lightweight debug/host channel for loading ROMs and inspecting state from a workstation.
+\end{itemize}
+
+\section{Bluespec SystemVerilog Organisation}
+
+The sources under \texttt{bx8/bsv} are organised so that each major block is a self-contained package with a clear interface:
+
+\begin{lstlisting}
+bx8/
+  bsv/
+    CPU/          # R800-class core
+    VDP/          # Video Display Processor
+    Sound/        # PSG / SCC path
+    Bus/          # fabric, arbiters, memory map
+    Peripherals/  # keyboard, joystick, mapper, ...
+    Top/          # system integration, clocking, FPGA pins
+\end{lstlisting}
+
+Key design choices that recur throughout the BX series already appear here:
+\begin{itemize}[leftmargin=1.5em]
+  \item Interfaces are explicit BSV interfaces rather than loose collections of wires.
+  \item Timing and concurrency are expressed with rules; the compiler schedules them.
+  \item Parameterisation (RAM size, presence of SCC, video output standard, etc.) is performed at elaboration time.
+  \item A thin Verilog wrapper, generated by the Bluespec compiler, provides the final pin-level interface to the FPGA board.
+\end{itemize}
+
+\section{Relationship to the fpgaMSX Documentation}
+
+The directory
+\begin{center}
+\texttt{/Users/tonpa/depot/bitedits/msx.btron.pro/emulators/fpgaMSX}
+\end{center}
+holds the broader documentation, test ROMs, timing diagrams and board-support notes that accompany the BX-8 implementation. It serves as the human-readable counterpart to the BSV sources: architectural descriptions, register maps, known deviations from particular MSX models, and synthesis/place-and-route results for the target FPGA families.
+
+Together the two trees form a complete, self-contained package: the BSV sources are the executable specification; the fpgaMSX documentation is the explanatory and validation material.
+
+\section{FPGA Implementation Notes}
+
+BX-8 is deliberately modest in resource consumption. On a mid-range contemporary FPGA it typically occupies only a fraction of the available LUTs, block RAMs and DSP slices. This economy has two consequences:
+\begin{enumerate}[leftmargin=1.5em]
+  \item The design can be synthesised and iterated quickly, making it an ideal test vehicle for the common BX infrastructure.
+  \item Multiple BX-8 instances, or a BX-8 alongside experimental peripherals, can coexist on a single device---useful for comparative studies and for classroom demonstration.
+\end{enumerate}
+
+Clocking is kept simple: a single system clock derived from the board oscillator, with optional secondary clocks for the video pixel domain and the audio sample rate. Reset and start-up sequencing are expressed as ordinary BSV rules, avoiding the ad-hoc initial blocks that often complicate pure Verilog designs.
+
+\section{Educational and Methodological Value}
+
+Because BX-8 is the smallest member of the series it is the natural starting point for anyone wishing to understand the BX design culture:
+\begin{itemize}[leftmargin=1.5em]
+  \item Students can read the entire CPU, VDP and sound packages in a few sittings.
+  \item The same peripheral-library and bus-fabric patterns reappear, only scaled, in bx-16, bx-32 and bx-64.
+  \item Synthesis, simulation and on-hardware debugging can be mastered on a design whose failure modes are still tractable.
+\end{itemize}
+
+In this sense BX-8 is both a useful MSX-class machine in its own right and the pedagogical foundation of the larger programme. The scalable VEX vector architecture is introduced only from BX-16 onward; BX-8 deliberately remains free of vector state so that the common infrastructure can be validated in isolation.
+
+\section{Conclusion}
+
+BX-8 demonstrates that a classic MSX / R800 peripheral set can be expressed cleanly in Bluespec SystemVerilog and realised on contemporary FPGAs without sacrificing authenticity or readability. By keeping the design compact, well-factored and fully open, it supplies the common infrastructure and the design discipline that the rest of the BTRON BX series builds upon. The sources at \texttt{bx8/bsv} together with the documentation under \texttt{fpgaMSX} constitute a complete, self-contained realisation of the 8-bit member of the family.
+
+\vspace{1.5em}
+\noindent\textit{Technical note prepared for professional consideration.\\
+November 2026.}
+
+\end{document}

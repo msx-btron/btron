@@ -9,7 +9,6 @@
 \usepackage{enumitem}
 \usepackage{titlesec}
 \usepackage{xcolor}
-\usepackage{longtable}
 
 \hypersetup{
   colorlinks=true,
@@ -23,7 +22,8 @@
 
 \title{\textbf{The BTRON BX Series:\\
 A Family of Clean FPGA RTL Machines\\
-from 8-bit to 64-bit Vector Architectures}}
+with Scalable Vector Extensions\\
+from 16-bit to 64-bit}}
 
 \author{
   Independent Systems Architecture Study\\
@@ -37,64 +37,119 @@ from 8-bit to 64-bit Vector Architectures}}
 \maketitle
 
 \begin{abstract}
-The BTRON BX series is a coherent family of clean, synthesizable FPGA RTL machines that systematically revive the peripheral ecosystems and computational spirit of classic 8-bit, 16-bit, 32-bit and 64-bit platforms. Each member replaces the original proprietary CPU with an open or carefully designed modern core while preserving the characteristic I/O, sound, video and controller interfaces of its source era. The series progresses from an R800-based 8-bit machine through a 16-bit design supporting MSX/Amiga-class peripherals, to 32-bit and 64-bit RISC-V machines equipped with Vector Extensions that honour the Sega Saturn/Dreamcast and PlayStation~2/Nintendo~64 organisations respectively. All designs are expressed in Bluespec SystemVerilog, target contemporary FPGAs, and share a common philosophical stance: respect for the original engineering, clean architecture, and open accessibility. This umbrella note situates the four cores---bx-8, bx-16, bx-32 and bx-64---within a single coherent programme.
+The BTRON BX series is a coherent family of clean, synthesizable FPGA RTL machines that systematically revive the peripheral ecosystems and computational spirit of classic 8-bit through 64-bit platforms. From BX-16 upward the series adopts a deliberately scalable vector architecture whose element widths, vector lengths and floating-point capabilities grow in lock-step with the host integer ISA. The vector story begins with the concrete VEX (Vector Extension) defined for the 16-bit R1600 core and is thereafter grounded in the RISC-V Vector Extension (RVV) and its embedded subsets (Zve32x/f, Zve64x/f/d), adapted where necessary so that software written against the BX-16 model remains source-compatible. All designs are expressed in Bluespec SystemVerilog, target contemporary FPGAs, and share a common philosophical stance: respect for the original engineering, clean architecture, and open accessibility. This umbrella note situates the four cores---bx-8, bx-16, bx-32 and bx-64---within a single coherent programme that includes a progressive vector capability.
 \end{abstract}
 
 \section{Motivation and Unifying Philosophy}
 
-Classic home-computer and console architectures solved difficult real-time media problems under severe cost, power and transistor constraints. Their peripheral sets (sound chips, video display processors, controller ports, cartridge and disk interfaces) and their specialised compute units (geometry engines, vector units, dual-processor coordination) remain instructive. The BTRON BX programme does not attempt commercial competition or cycle-accurate commercial emulation. Instead it asks a simpler question:
+Classic home-computer and console architectures solved difficult real-time media problems under severe cost, power and transistor constraints. Their peripheral sets and specialised compute units remain instructive. The BTRON BX programme does not attempt commercial competition or cycle-accurate commercial emulation. Instead it asks:
 
 \begin{quote}
 Can the essential organisation of these machines---their peripheral libraries, their dual-processor or vector-unit structure, their DMA and local-memory philosophy---be re-expressed in clean, modern, synthesizable RTL that any competent engineer can read, modify and run on an FPGA?
 \end{quote}
 
-The answer is pursued through four graduated designs that share a common methodology:
+From BX-16 upward an additional requirement is imposed: the vector capability itself must be \emph{scalable}. The same programming model, the same configuration mechanism, and the same element-type hierarchy should appear at every width, merely with larger minimum VLEN, wider supported element widths, and richer floating-point support as one moves from 16-bit to 64-bit hosts.
+
+\section{The VEX Vector Extension --- Authoritative Definition}
+
+VEX is the name given to the scalable vector architecture of the BX series. It is first realised concretely on the 16-bit R1600 core (see the companion note \texttt{btron-bx16}) and is thereafter mapped onto the ratified RISC-V Vector Extension (RVV~1.0) and its embedded subsets.
+
+\subsection{Core Properties (common to every width)}
 
 \begin{itemize}[leftmargin=1.5em]
-  \item Bluespec SystemVerilog as the primary hardware description language (rule-based concurrency, strong typing, parametric elaboration);
-  \item open or cleanly designed instruction-set architectures;
-  \item selectable peripheral libraries that preserve the look-and-feel of the original platforms;
-  \item a consistent stance of professional respect toward the original designers.
+  \item Orthogonal vector register file (16 architectural vector registers).
+  \item Configurable element width (SEW) drawn from the hierarchy \{8, 16, 32, 64\}.
+  \item Length-agnostic programming style: kernels are written against a dynamic vector length (VL) that is set by a \texttt{vsetvl}-style configuration instruction.
+  \item Support for saturating integer arithmetic, widening multiplies, reductions, and (from BX-32 upward) single- and double-precision floating-point.
+  \item A small set of domain-specific accelerators (4$\times$4 matrix-by-vector, 3-element cross product, etc.) that appear as single instructions on BX-16 and expand into short RVV sequences on BX-32/BX-64.
 \end{itemize}
 
-The result is a family rather than four isolated projects.
-
-\section{The Four Machines}
-
-\subsection{bx-8 --- MSX / R800 Class}
+\subsection{Concrete Realisation on BX-16 (R1600 + VEX)}
 
 \begin{itemize}[leftmargin=1.5em]
-  \item \textbf{Compute core:} R800-compatible (or clean re-implementation) 8-bit CPU.
-  \item \textbf{Peripherals:} MSX-family sound (PSG / SCC / MSX-MUSIC style) and Video Display Processor (VDP) interfaces, together with classic MSX cartridge, keyboard and joystick ports.
-  \item \textbf{Role in the series:} The entry-level member. It demonstrates that the same BSV methodology and peripheral-library discipline can be applied at the 8-bit scale, providing a foundation for educational use and for validating the common infrastructure (bus fabrics, DMA, clocking, host interface) later reused by the larger machines.
+  \item Vector registers: VR0--VR15, each 128 bits (primary view 4$\times$32-bit Q16.16 lanes; alternative views 8$\times$16-bit).
+  \item Primary arithmetic format: Q16.16 fixed-point with a 64-bit intermediate product.
+  \item Key operations (non-exhaustive): VADD, VSUB, VMUL, VMADD, VDOT, VCROSS, VLD, VST, VBROADCAST, VMAT4VEC, VWAIT.
+  \item Configuration is performed by a compact control register set that is intentionally isomorphic to the later RVV \texttt{vtype}/\texttt{vl} state, so that the same length-agnostic loops compile unchanged when the design is retargeted to RV32.
 \end{itemize}
 
-\subsection{bx-16 --- 16-bit MSX / Amiga Class}
+\subsection{Mapping onto the RVV Hierarchy}
 
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{BX Machine} & \textbf{Host} & \textbf{VEX / RVV Subset} & \textbf{Key Capabilities} \\
+\midrule
+BX-16 & R1600 (16-bit) & VEX (native) & SEW 8/16, VLEN 32--128, integer + saturating \\
+BX-32 & RV32 & Zve32f / Zve64f & SEW 8/16/32, FP32, VLEN $\ge$ 64 \\
+BX-64 & RV64 & V / Zve64d & SEW 8/16/32/64, FP32+FP64, VLEN $\ge$ 128 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Software written against the BX-16 VEX model remains source-compatible; only the available element widths and the concrete VLMAX change. The special instructions (VMAT4VEC, VCROSS, \ldots) are either retained as custom opcodes under the RVV custom-0/1 space or expanded by the compiler into short standard sequences.
+
+\section{Scalable Vector Architecture across the Series}
+
+The vector story is deliberately aligned with the ratified RISC-V Vector Extension and its embedded subsets, because those subsets already encode a clean scaling path:
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Subset} & \textbf{Min VLEN} & \textbf{EEW} & \textbf{FP} \\
+\midrule
+Zve32x  & 32  & 8, 16, 32     & none \\
+Zve32f  & 32  & 8, 16, 32     & FP32 \\
+Zve64x  & 64  & 8, 16, 32, 64 & none \\
+Zve64f  & 64  & 8, 16, 32, 64 & FP32 \\
+Zve64d  & 64  & 8, 16, 32, 64 & FP32+FP64 \\
+V (full)& 128 & 8, 16, 32, 64 & FP32+FP64 \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The BX series maps onto this hierarchy exactly as shown in the preceding table.
+
+\subsection{BX-16 --- First Appearance of Scalable Vectors}
+
+BX-16 introduces a lightweight, integer-centric vector unit whose programming model is source-compatible with the later RVV subsets:
 \begin{itemize}[leftmargin=1.5em]
-  \item \textbf{Compute core:} Either a clean 16-bit proprietary architecture or a soft Motorola 68000-class core.
-  \item \textbf{Peripherals:} MSX and Amiga-inspired sound and video interfaces, with an eye toward OpenGL~ES-style rendering abstractions where appropriate.
-  \item \textbf{Role in the series:} Bridges the 8-bit and 32-bit worlds. It explores the design space of a modestly wide datapath, richer interrupt and DMA models, and the first appearance of more sophisticated graphics and audio pipelines while remaining firmly in the 16-bit realm.
+  \item supported element widths SEW = 8 and 16 (native to a 16-bit host),
+  \item modest VLEN (32 or 64 bits is sufficient; 128-bit registers are used),
+  \item saturating arithmetic, widening multiplies and simple reductions---exactly the operations useful for Amiga-style blitter work, audio mixing and early OpenGL~ES-style transform kernels,
+  \item the same \texttt{vsetvl}-style configuration registers and length-agnostic loops that appear in BX-32 and BX-64.
 \end{itemize}
+Whether the host is a clean 16-bit proprietary core (R1600) or a soft 68000-class processor, the vector unit is attached as a coprocessor whose instruction encodings and register file can be carried forward unchanged when the design is later retargeted to RV32.
 
-\subsection{bx-32 --- Sega Saturn / Dreamcast Class (VEX BX-32)}
+\subsection{BX-32 --- Practical Embedded Vector (Zve32f / Zve64f class)}
 
+BX-32 adopts a 32-bit RISC-V host (RV32) together with a vector unit belonging to the Zve32f or Zve64f family:
 \begin{itemize}[leftmargin=1.5em]
-  \item \textbf{Compute core:} 32-bit RISC-V (RV32) with a practical Vector Extension (VEX / RVV subset).
-  \item \textbf{Peripherals:} Sega-derived interfaces modelled on the Saturn (dual-processor coordination, VDP-style video, SCSP-style audio) and Dreamcast (controller, GD-ROM-style storage, Maple-like expansion).
-  \item \textbf{Replacement strategy:} Hitachi SuperH (SH-2 / SH-4) is replaced by open RISC-V + vector support that can express the original dual-core and 4-wide floating-point matrix workloads.
-  \item \textbf{Graphics path:} OpenGL~ES-oriented abstractions layered over the vector unit and a clean display pipeline.
-  \item \textbf{Detailed treatment:} See the companion note \texttt{btron-bx32.tex}.
+  \item VLEN $\ge$ 64 (commonly 128),
+  \item SEW = 8, 16, 32,
+  \item single-precision floating-point vector arithmetic (essential for Dreamcast-style matrix work and for OpenGL~ES vertex processing),
+  \item the same length-agnostic loops written for BX-16 continue to run, now with wider elements and floating-point support.
 \end{itemize}
+This configuration is sufficient to express the dual-SH-2 coordination patterns of the Saturn and the 4-wide floating-point matrix pipelines of the Dreamcast SH-4.
 
-\subsection{bx-64 --- PlayStation~2 / Nintendo~64 Class}
+\subsection{BX-64 --- Full Application Vector (V / Zve64d class)}
+
+BX-64 employs dual 64-bit RISC-V cores, each equipped with a full RVV (or at least Zve64d) vector unit:
+\begin{itemize}[leftmargin=1.5em]
+  \item VLEN $\ge$ 128 (256 or 512 preferred),
+  \item SEW = 8, 16, 32, 64,
+  \item single- and double-precision floating-point,
+  \item the complete set of widening, narrowing, masked and reduction operations required to cover the Emotion Engine VU0/VU1 and the N64 RSP workloads.
+\end{itemize}
+Software written against the BX-16 or BX-32 vector model remains source-compatible; only the available element widths and the concrete VLMAX change.
+
+\section{The Four Machines (Summary)}
 
 \begin{itemize}[leftmargin=1.5em]
-  \item \textbf{Compute core:} Dual powerful 64-bit RISC-V cores equipped with the full Vector Extension (RVV).
-  \item \textbf{Peripherals:} PS2- and N64-derived interfaces (Joypad / DualShock-style controllers, cartridge and IDE-style storage, audio, video output, DMA-centric fabric).
-  \item \textbf{Replacement strategy:} The Emotion Engine (MIPS + VU0/VU1) and the Reality Co-Processor (RSP + RDP) are re-expressed as two RISC-V cores with vector units whose register width and arithmetic capabilities cover the original 4-wide single-precision and 8-wide 16-bit workloads.
-  \item \textbf{Graphics path:} OpenGL~ES-oriented abstractions fed by vector-generated display lists.
-  \item \textbf{Detailed treatment:} See the companion note \texttt{btron-bx64.tex}.
+  \item \textbf{bx-8} --- MSX / R800 class. No vector unit; pure 8-bit foundation for the common BSV infrastructure and peripheral-library discipline.
+  \item \textbf{bx-16} --- 16-bit MSX / Amiga class + first scalable vector unit (R1600 + native VEX, SEW 8/16, modest VLEN, integer + saturating arithmetic). OpenGL~ES path begins here.
+  \item \textbf{bx-32} --- Sega Saturn / Dreamcast peripherals on RV32 + Zve32f/Zve64f-class vector unit. Dual-core or single high-performance configurations. Full OpenGL~ES vertex pipeline.
+  \item \textbf{bx-64} --- PS2 / N64 peripherals on dual RV64 cores + full RVV / Zve64d vector units. Highest throughput member of the family.
 \end{itemize}
 
 \section{Common Design Principles}
@@ -102,44 +157,43 @@ The result is a family rather than four isolated projects.
 All four machines share the following invariants:
 
 \begin{enumerate}[leftmargin=1.5em]
-  \item \textbf{Clean RTL.} Source is written in Bluespec SystemVerilog. No opaque IP blocks are required for the core architecture; the designs are intended to be readable and modifiable.
-  \item \textbf{Selectable peripheral libraries.} Each machine offers a parameterised set of peripheral modules so that a single codebase can be configured for different authenticity or experimental goals.
-  \item \textbf{Open or clean ISAs.} Proprietary cores are replaced by open standards (RISC-V) or by cleanly designed alternatives whose documentation is part of the project.
-  \item \textbf{FPGA-first implementation.} Every design is synthesizable for contemporary FPGAs, enabling immediate measurement, iteration and educational use.
-  \item \textbf{Professional respect.} The series is framed as an architectural study that honours the original engineers rather than as a commercial or nostalgic product.
+  \item \textbf{Clean RTL.} Source is written in Bluespec SystemVerilog.
+  \item \textbf{Selectable peripheral libraries.} Parameterised modules preserve authenticity while allowing experimental configurations.
+  \item \textbf{Open or clean ISAs.} Proprietary cores are replaced by open standards or cleanly designed alternatives.
+  \item \textbf{Scalable vector model (from BX-16).} The same configuration mechanism, the same element-type hierarchy and the same length-agnostic programming style appear at every width (VEX $\rightarrow$ RVV).
+  \item \textbf{FPGA-first implementation.} Every design is synthesizable for contemporary FPGAs.
+  \item \textbf{Professional respect.} The series is framed as an architectural study that honours the original engineers.
 \end{enumerate}
 
 \section{Progression and Educational Value}
 
-The series is deliberately graduated:
-
 \begin{center}
-\begin{tabular}{@{}llp{6.5cm}@{}}
+\begin{tabular}{@{}llp{6.2cm}@{}}
 \toprule
-\textbf{Machine} & \textbf{Width} & \textbf{Primary lesson} \\
+\textbf{Machine} & \textbf{Width} & \textbf{Vector capability} \\
 \midrule
-bx-8  & 8-bit  & Peripheral integration, simple bus fabrics, educational accessibility \\
-bx-16 & 16-bit & Wider datapaths, richer DMA/interrupt models, first OpenGL~ES experiments \\
-bx-32 & 32-bit & Dual-core coordination, practical vector extensions, Sega-class media workloads \\
-bx-64 & 64-bit & High-throughput dual vector cores, PS2/N64-class geometry and emotion synthesis \\
+bx-8  & 8-bit  & none (infrastructure only) \\
+bx-16 & 16-bit & native VEX (SEW 8/16, Q16.16, 4-wide) \\
+bx-32 & 32-bit & Zve32f/Zve64f-class, FP32, VLEN $\ge$ 64 \\
+bx-64 & 64-bit & full RVV / Zve64d, FP32+FP64, VLEN $\ge$ 128 \\
 \bottomrule
 \end{tabular}
 \end{center}
 
-A student or engineer can begin with bx-8, master the common BSV infrastructure and peripheral-library style, then progress through increasing computational sophistication while remaining inside a single coherent design culture.
+A student or engineer can begin with bx-8, master the common BSV infrastructure, then acquire the scalable vector programming model on bx-16 and simply grow the same code to the richer element widths and floating-point support of bx-32 and bx-64.
 
 \section{Relationship to Companion Notes}
 
 \begin{itemize}[leftmargin=1.5em]
-  \item \texttt{btron-bx32.tex} --- detailed architectural revival of the Sega Saturn and Dreamcast using 32-bit RISC-V + Vector Extension.
-  \item \texttt{btron-bx64.tex} --- detailed architectural revival of the PlayStation~2 Emotion Engine and Nintendo~64 Reality Co-Processor using dual 64-bit RISC-V cores with full RVV.
+  \item \texttt{btron-bx8.tex} --- BX-8 (MSX / R800) detailed implementation note.
+  \item \texttt{btron-bx16.tex} --- BX-16 / BX-8 3D: R1600 core and the concrete VEX definition.
+  \item \texttt{btron-bx32.tex} --- Saturn / Dreamcast revival with 32-bit RISC-V + vector extension.
+  \item \texttt{btron-bx64.tex} --- PS2 / N64 revival with dual 64-bit RISC-V + full RVV.
 \end{itemize}
-
-Future notes may expand bx-8 and bx-16 to the same depth. The present umbrella document exists to keep the overall programme visible and coherent.
 
 \section{Conclusion}
 
-The BTRON BX series is an invitation to treat classic media-processor architectures as living subjects of study rather than as museum pieces. By re-expressing their peripheral ecosystems and computational organisations in clean Bluespec SystemVerilog, and by substituting open or carefully designed modern cores for the original proprietary CPUs, the series offers a practical path from 8-bit MSX-class machines to 64-bit vector architectures. The four cores---bx-8, bx-16, bx-32 and bx-64---form a single graduated family united by methodology, by respect for the original engineering, and by a commitment to open, synthesizable RTL.
+The BTRON BX series is an invitation to treat classic media-processor architectures as living subjects of study. By re-expressing their peripheral ecosystems in clean Bluespec SystemVerilog, and by imposing a single scalable vector architecture (VEX) from BX-16 upward, the series offers a practical path from 8-bit MSX-class machines to 64-bit vector architectures whose software model remains coherent across the entire family. The four cores---bx-8, bx-16, bx-32 and bx-64---form one graduated programme united by methodology, by a progressive vector capability, and by respect for the original engineering.
 
 \vspace{1.5em}
 \noindent\textit{Umbrella technical note prepared for professional consideration.\\

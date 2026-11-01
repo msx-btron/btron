@@ -37,7 +37,7 @@ A 32-bit RISC-V Vector Design in Bluespec SystemVerilog\\
 \maketitle
 
 \begin{abstract}
-This article presents a respectful engineering analysis and a concrete proposal for the clean revival of the computational organisation of the Sega Saturn and the Sega Dreamcast. Both platforms relied on Hitachi SuperH RISC cores---dual SH-2 processors in the Saturn and a single high-performance SH-4 with a powerful graphics-oriented floating-point unit in the Dreamcast. These designs remain instructive examples of 32-bit RISC efficiency, dual-processor coordination, and specialised vector/matrix acceleration under commercial constraints. Rather than cycle-accurate emulation or commercial reverse engineering, we advocate a first-principles reconstruction: one or two 32-bit RISC-V cores equipped with a practical Vector Extension (VEX / RVV subset), realised in synthesizable Bluespec SystemVerilog (BSV) and targeted at contemporary FPGA platforms. The resulting architecture preserves the essential dual-core and vector-math spirit of the originals while replacing the proprietary SuperH cores with an open, modern ISA. The work is offered as a pure computer-architecture exercise---one that Sega and Hitachi engineers of the era may find technically interesting and, we hope, worthy of professional respect.
+This article presents a respectful engineering analysis and a concrete proposal for the clean revival of the computational organisation of the Sega Saturn and the Sega Dreamcast. Both platforms relied on Hitachi SuperH RISC cores---dual SH-2 processors in the Saturn and a single high-performance SH-4 with a powerful graphics-oriented floating-point unit in the Dreamcast. These designs remain instructive examples of 32-bit RISC efficiency, dual-processor coordination, and specialised vector/matrix acceleration under commercial constraints. Rather than cycle-accurate emulation or commercial reverse engineering, we advocate a first-principles reconstruction: one or two 32-bit RISC-V cores equipped with a practical Vector Extension (VEX / RVV subset), realised in synthesizable Bluespec SystemVerilog (BSV) and targeted at contemporary FPGA platforms. The resulting architecture preserves the essential dual-core and vector-math spirit of the originals while replacing the proprietary SuperH cores with an open, modern ISA. VEX on BX-32 is the direct continuation of the VEX model first defined for the 16-bit R1600; the same length-agnostic programming style and element-type hierarchy are retained. The work is offered as a pure computer-architecture exercise---one that Sega and Hitachi engineers of the era may find technically interesting and, we hope, worthy of professional respect.
 \end{abstract}
 
 \section{Motivation and Respect for the Original Designs}
@@ -84,13 +84,13 @@ We propose a 32-bit RISC-V organisation that captures the spirit of both machine
   \item \textbf{Dual-core mode} --- two RV32 cores with lighter vector support and a clean inter-processor messaging / shared-memory fabric, modelling the Saturn dual SH-2 + SCU relationship.
 \end{itemize}
 
-Both configurations implement RV32IMAFD (or a suitable subset) plus a practical Vector Extension (RVV 1.0 subset or a custom VEX tuned for 32-bit media workloads). Recommended parameters:
+Both configurations implement RV32IMAFD (or a suitable subset) plus a practical Vector Extension belonging to the RISC-V embedded vector family (Zve32f or Zve64f class). This choice deliberately continues the scalable vector model introduced on BX-16: the same configuration mechanism, the same length-agnostic loops and the same element-type hierarchy appear here, now with wider elements and single-precision floating-point support. Recommended parameters:
 
 \begin{itemize}[leftmargin=1.5em]
-  \item VLEN $\ge$ 128\,bits (sufficient for 4$\times$32-bit single-precision vectors),
-  \item native support for SEW = 16 and SEW = 32,
-  \item fused multiply-add, dot-product, and matrix-oriented sequences,
-  \item saturating and widening fixed-point operations where useful for legacy fixed-point paths,
+  \item VLEN $\ge$ 64\,bits (128 preferred),
+  \item native support for SEW = 8, 16 and 32,
+  \item single-precision floating-point vector arithmetic (FMA, dot-product, matrix-oriented sequences),
+  \item saturating and widening fixed-point operations (continuity with the BX-16 integer vector unit),
   \item efficient vector loads/stores and modest gather support.
 \end{itemize}
 
@@ -109,17 +109,18 @@ FPGA implementation is chosen for three pragmatic reasons:
 
 The resulting artefact is readable, synthesizable source that can be inspected, modified and verified by any competent hardware designer.
 
-\section{Vector Extension Mapping}
+\section{Vector Extension Mapping (VEX $\rightarrow$ Zve32f / Zve64f)}
 
-The essential arithmetic patterns of both original machines fall comfortably inside a well-chosen 32-bit vector extension:
+The essential arithmetic patterns of both original machines fall comfortably inside a well-chosen 32-bit vector extension that is the direct continuation of VEX:
 
 \begin{itemize}[leftmargin=1.5em]
   \item Dreamcast-style 4-wide single-precision matrix--vector and lighting calculations become short sequences of fused multiply-adds, dot-products and reductions---exactly the class of operations the SH-4 FPU was designed to accelerate.
-  \item Saturn-style integer and fixed-point workloads map onto SEW=16/32 integer vector operations with optional saturating arithmetic.
+  \item Saturn-style integer and fixed-point workloads map onto SEW=16/32 integer vector operations with optional saturating arithmetic (identical numerical behaviour to the Q16.16 paths of BX-16 VEX).
   \item Inter-processor coordination (Saturn master/slave) is expressed with lightweight message queues or shared scratchpad regions rather than a proprietary SCU DSP, while still preserving the dual-core programming model.
+  \item The domain-specific accelerators defined on BX-16 (VMAT4VEC, VCROSS, \ldots) are either retained as custom opcodes under the RVV custom-0/1 space or expanded by the compiler into short standard sequences.
 \end{itemize}
 
-No proprietary instruction encodings are required. The design therefore remains fully compatible with the growing RISC-V software ecosystem while still delivering the parallel throughput that made the original platforms distinctive.
+No proprietary instruction encodings are required. The design therefore remains fully compatible with the growing RISC-V software ecosystem while still delivering the parallel throughput that made the original platforms distinctive. Software written against the BX-16 VEX model continues to run; only VLMAX and the available SEW values increase.
 
 \section{Intended Audience and Professional Stance}
 
@@ -129,7 +130,7 @@ If the resulting FPGA implementation proves educationally useful, if it clarifie
 
 \section{Conclusion}
 
-The Sega Saturn and Dreamcast remain landmarks of 32-bit console architecture. By re-expressing their dual-core and graphics-oriented floating-point organisations in RISC-V with a practical Vector Extension, and by realising the design in Bluespec SystemVerilog for FPGA, we obtain a clean, inspectable, and experimentally accessible platform that honours the original engineering while remaining fully open. The \texttt{btron-bx32} (VEX BX-32) design is presented in that spirit.
+The Sega Saturn and Dreamcast remain landmarks of 32-bit console architecture. By re-expressing their dual-core and graphics-oriented floating-point organisations in RISC-V with a practical Vector Extension that continues the VEX model of BX-16, and by realising the design in Bluespec SystemVerilog for FPGA, we obtain a clean, inspectable, and experimentally accessible platform that honours the original engineering while remaining fully open. The \texttt{btron-bx32} (VEX BX-32) design is presented in that spirit.
 
 \vspace{1.5em}
 \noindent\textit{Technical note prepared for professional consideration.\\

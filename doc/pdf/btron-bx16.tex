@@ -46,7 +46,8 @@
 
 \title{
 A Natural 16-bit Evolutionary Path for the MSX turboR:\\
-The BX-8 3D and BX-16 Architectures
+The BX-8 3D and BX-16 Architectures\\
+(with Authoritative VEX Definition)
 }
 
 \author{
@@ -62,7 +63,7 @@ B-MSX / tronMSX Project\\
 \maketitle
 
 \begin{abstract}
-We present a coherent, hardware-compatible evolutionary path for the MSX turboR architecture that extends the R800 into a practical 16-bit platform capable of supporting software 3D rendering (tinyGL-class workloads) while preserving full binary and bus compatibility with existing MSX software and cartridges. Two complementary designs are defined: BX-8 3D, a minimal-change extension of the classic turboR that adds a tightly-coupled 16-bit vector coprocessor, and BX-16, a dual-processor hybrid system in which two identical 16-bit cores (one scalar, one vector/GPU) deliver substantially higher 3D performance. Both designs reuse a single carefully specified 16-bit core (R1600) with a clean orthogonal ISA and a 4-wide SIMD vector extension (VEX). The proposal is grounded in the existing open-source BX-8 FPGA implementation and the tronMSX verifying emulator, and is offered as a practical alternative to more radical departures from the MSX architectural lineage.
+We present a coherent, hardware-compatible evolutionary path for the MSX turboR architecture that extends the R800 into a practical 16-bit platform capable of supporting software 3D rendering (tinyGL-class workloads) while preserving full binary and bus compatibility with existing MSX software and cartridges. Two complementary designs are defined: BX-8 3D, a minimal-change extension of the classic turboR that adds a tightly-coupled 16-bit vector coprocessor, and BX-16, a dual-processor hybrid system in which two identical 16-bit cores (one scalar, one vector/GPU) deliver substantially higher 3D performance. Both designs reuse a single carefully specified 16-bit core (R1600) with a clean orthogonal ISA and a 4-wide SIMD vector extension named \textbf{VEX}. VEX is the foundational vector architecture of the entire BTRON BX series; its programming model, configuration mechanism and element-type hierarchy are deliberately designed so that kernels remain source-compatible when the design is later retargeted to the RVV / Zve* subsets used by BX-32 and BX-64. The proposal is grounded in the existing open-source BX-8 FPGA implementation and the tronMSX verifying emulator, and is offered as a practical alternative to more radical departures from the MSX architectural lineage.
 \end{abstract}
 
 \tableofcontents
@@ -84,6 +85,8 @@ This paper answers that question with two concrete proposals:
 Both designs share the same R1600 microarchitecture and the same VEX vector instruction set. The difference lies only in system organisation and the degree of departure from the classic 8-bit external bus.
 
 The work is carried out in the context of the open-source B-MSX / tronMSX project, which already contains a cycle-accurate verifying emulator and an FPGA implementation of a turboR-class machine (BX-8). The proposals are therefore not purely theoretical; they are intended to be implemented by extending existing, publicly available hardware and software artefacts.
+
+VEX, as defined here, is the first concrete realisation of the scalable vector architecture that later appears (under the RVV / Zve* umbrella) on BX-32 and BX-64. The length-agnostic programming style and the element-type hierarchy are intentionally identical, so that the same source kernels compile and run across the whole family.
 
 \section{Background and Design Constraints}
 
@@ -170,7 +173,23 @@ Bits 15--12 & Group & Purpose \\
 
 A complete bit-field definition for every group is maintained in the project documentation; the most frequently used vector operations appear below.
 
-\subsection{VEX Vector Extensions (Selected Operations)}
+\section{VEX --- Authoritative Definition for the BX Series}
+
+VEX is the vector extension of the BX family. On BX-16 it is realised natively on the R1600; on BX-32 and BX-64 it is realised by mapping onto the corresponding RVV / Zve* subset while preserving the same programming model.
+
+\subsection{Architectural State}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item 16 vector registers VR0--VR15, each of width VLEN (on BX-16, VLEN = 128 bits).
+  \item A configuration register pair that is isomorphic to RVV's \texttt{vtype} and \texttt{vl}:
+    \begin{itemize}
+      \item SEW (selected element width) $\in$ \{8, 16\} on BX-16; later \{8, 16, 32, 64\}.
+      \item VL (vector length in elements) set by a \texttt{vsetvl}-style instruction.
+    \end{itemize}
+  \item A vector accumulator (VACC) for high-precision multiply-accumulate chains.
+\end{itemize}
+
+\subsection{Selected Operations (BX-16 encoding class)}
 
 \begin{center}
 \begin{tabular}{@{}llp{5.5cm}@{}}
@@ -193,6 +212,16 @@ VWAIT & 1110 & wait until vector unit idle \\
 \end{center}
 
 The special instruction \texttt{VMAT4VEC} implements a complete 4$\times$4 matrix-by-vector multiply using the matrix already resident in VR0--VR3, dramatically reducing instruction count for the most common 3D transform.
+
+\subsection{Source Compatibility with Later RVV Subsets}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Length-agnostic loops written against VL and SEW compile unchanged when the host becomes RV32 or RV64.
+  \item The domain-specific accelerators (VMAT4VEC, VCROSS, \ldots) are either retained as custom opcodes in the RVV custom-0/1 space or expanded by the compiler into short standard RVV sequences.
+  \item Element-type hierarchy, saturating arithmetic and widening multiplies are identical across the family.
+\end{itemize}
+
+This is the precise mechanism that allows the BX series to claim a single scalable vector programming model from 16-bit to 64-bit.
 
 \section{System Organisation}
 
@@ -292,7 +321,9 @@ BX-8 3D maximises compatibility and minimises risk; it is the natural next step 
 
 The MSX architecture has always favoured careful, compatibility-preserving evolution over radical breaks. The R800 itself was an embodiment of that principle. The BX-8 3D and BX-16 proposals continue the same tradition into the era of software 3D.
 
-By defining a single reusable 16-bit core with a practical vector extension, and by offering two system organisations that differ only in the degree of coupling and bus width, we obtain a scalable family: a highly compatible turboR successor on one hand, and a more powerful dual-processor hybrid on the other. Both can share algorithms, libraries and even substantial amounts of implementation IP.
+By defining a single reusable 16-bit core with a practical vector extension (VEX), and by offering two system organisations that differ only in the degree of coupling and bus width, we obtain a scalable family: a highly compatible turboR successor on one hand, and a more powerful dual-processor hybrid on the other. Both can share algorithms, libraries and even substantial amounts of implementation IP.
+
+VEX, as specified in this note, is the authoritative foundation of the vector architecture used throughout the BTRON BX series. The same programming model scales cleanly to the Zve* and full RVV implementations of BX-32 and BX-64.
 
 The designs are offered for discussion, refinement and, we hope, eventual realisation within the open-source MSX research community and beyond.
 

@@ -2,10 +2,10 @@
  * Blitter.bsv — Yamaha V9938 / V9958 VDP Command Engine.
  *
  * Implements:
- *   - 11 VDP command engine commands:
+ *   - 12 VDP command engine commands:
  *       HMMV (0x0C), HMMM (0x0D), YMMM (0x0E), HMMC (0x0F)
  *       LMMV (0x08), LMMM (0x09), LMMC (0x0B)
- *       LINE (0x07), PSET (0x05), POINT (0x04), STOP (0x00)
+ *       LRMM (0x03), LINE (0x07), PSET (0x05), POINT (0x04), STOP (0x00)
  *   - Alex Wulms Bresenham line algorithm (major/minor axis, error accumulator)
  *   - Full 10-bit coordinate wrapping (SX, SY, DX, DY, NX, NY)
  *   - 16 logical operations (IMP, AND, OR, XOR, NOT, TIMP, TAND, TOR, TXOR, TNOT)
@@ -28,6 +28,7 @@ Bit#(4) cmdPOINT = 4'h4;
 Bit#(4) cmdPSET  = 4'h5;
 Bit#(4) cmdSRCH  = 4'h6;
 Bit#(4) cmdLINE  = 4'h7;
+Bit#(4) cmdLRMM  = 4'h3; // V9968 rectangle copy. v9938.c runs it as LMMM.
 Bit#(4) cmdLMMV  = 4'h8;
 Bit#(4) cmdLMMM  = 4'h9;
 Bit#(4) cmdLMCM  = 4'hA;
@@ -267,7 +268,7 @@ module mkBlitter(Blitter);
         end else if (code == cmdLMMV) begin
             count_x <= effNx;
             state   <= BlitPixel_Read;
-        end else if (code == cmdLMMM) begin
+        end else if (code == cmdLMMM || code == cmdLRMM) begin
             // Source pixel first, then the existing dest read/modify/write.
             count_x <= effNx;
             state   <= BlitLMMM_ReadSrc;
@@ -441,7 +442,7 @@ module mkBlitter(Blitter);
             Bit#(8) oldC = (reg_mode == 5'h1C) ? resp.data :
                            (x[0] == 1'b1) ? (resp.data & 8'h0F) : ((resp.data >> 4) & 8'h0F);
             // LMMM's ink is the source pixel. LMMV, PSET and LINE use R#44.
-            Bit#(8) ink = (code == cmdLMMM) ? src_pix : reg_col;
+            Bit#(8) ink = (code == cmdLMMM || code == cmdLRMM) ? src_pix : reg_col;
             Bit#(8) newC = applyOp(op, oldC, ink);
 
             Bit#(8) outData = resp.data;
@@ -523,8 +524,8 @@ module mkBlitter(Blitter);
                 line_step <= line_step + 1;
                 state     <= BlitPixel_Read;
             end
-        end else if (code == cmdLMMV || code == cmdLMMM) begin
-            BlitState next = (code == cmdLMMM) ? BlitLMMM_ReadSrc : BlitPixel_Read;
+        end else if (code == cmdLMMV || code == cmdLMMM || code == cmdLRMM) begin
+            BlitState next = (code == cmdLMMM || code == cmdLRMM) ? BlitLMMM_ReadSrc : BlitPixel_Read;
             if (cur_xi + 1 >= count_x) begin
                 cur_xi <= 0;
                 if (cur_yi + 1 >= count_y) begin

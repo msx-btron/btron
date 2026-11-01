@@ -22,7 +22,8 @@
 
 \title{\textbf{Clean Architectural Revival of the Emotion Engine\\
 and Reality Co-Processor on FPGA:\\
-A RISC-V Vector Design in Bluespec SystemVerilog}}
+A RISC-V Vector Design in Bluespec SystemVerilog\\
+(\texttt{btron-bx64} / VEX BX-64)}}
 
 \author{
   Independent Systems Architecture Study\\
@@ -36,7 +37,7 @@ A RISC-V Vector Design in Bluespec SystemVerilog}}
 \maketitle
 
 \begin{abstract}
-This article presents a respectful engineering analysis and a concrete proposal for the clean revival of the computational heart of the PlayStation~2 Emotion Engine and the Nintendo~64 Reality Co-Processor. The original designs remain exemplary demonstrations of specialized vector parallelism, tight local memory, and high-bandwidth DMA under severe transistor and power constraints. Rather than attempting cycle-accurate emulation or commercial reverse engineering, we advocate a first-principles reconstruction: two powerful RISC-V cores equipped with the standard Vector Extension (RVV), realized in synthesizable Bluespec SystemVerilog (BSV) and targeted at contemporary FPGA platforms. The resulting architecture preserves the essential dual-vector-unit organization and peripheral interfaces while replacing the proprietary MIPS cores with an open, modern ISA. The work is offered as a pure computer-architecture exercise---one that Sony engineers may find technically interesting and, we hope, worthy of professional respect.
+This article presents a respectful engineering analysis and a concrete proposal for the clean revival of the computational heart of the PlayStation~2 Emotion Engine and the Nintendo~64 Reality Co-Processor. The original designs remain exemplary demonstrations of specialized vector parallelism, tight local memory, and high-bandwidth DMA under severe transistor and power constraints. Rather than attempting cycle-accurate emulation or commercial reverse engineering, we advocate a first-principles reconstruction: two powerful RISC-V cores equipped with the standard Vector Extension (RVV), realized in synthesizable Bluespec SystemVerilog (BSV) and targeted at contemporary FPGA platforms. The resulting architecture preserves the essential dual-vector-unit organization and peripheral interfaces while replacing the proprietary MIPS cores with an open, modern ISA. VEX on BX-64 is the top of the scalable vector hierarchy that begins with the concrete definition on BX-16; the same length-agnostic programming model and element-type hierarchy are retained, now with the widest element support and both single- and double-precision floating-point. The work is offered as a pure computer-architecture exercise---one that Sony engineers may find technically interesting and, we hope, worthy of professional respect.
 \end{abstract}
 
 \section{Motivation and Respect for the Original Designs}
@@ -72,7 +73,7 @@ The RCP ran at 62.5\,MHz and comprised:
 \end{itemize}
 The RSP demonstrated that a modest number of parallel fixed-point MACs, combined with carefully engineered microcode, could sustain the transform, lighting and setup rates required by contemporary titles.
 
-\section{Proposed Clean Architecture}
+\section{Proposed Clean Architecture (VEX BX-64)}
 
 We propose a dual-core RISC-V organisation that mirrors the dual-VU structure while remaining fully standards-compliant.
 
@@ -81,13 +82,13 @@ We propose a dual-core RISC-V organisation that mirrors the dual-VU structure wh
   \item \textbf{Core~1} --- more independent vector engine intended for longer-running geometry or audio kernels (analogue of VU1 or RSP).  
 \end{itemize}
 
-Both cores implement RV64GC plus the RISC-V Vector Extension (RVV~1.0). The recommended configuration is:
+Both cores implement RV64GC plus the full RISC-V Vector Extension (RVV~1.0) or at least the Zve64d embedded subset. This is the top of the scalable vector hierarchy that begins on BX-16: the same configuration registers, the same length-agnostic programming model and the same element-type hierarchy are retained, now with the widest element support and both single- and double-precision floating-point. Recommended parameters:
 
 \begin{itemize}[leftmargin=1.5em]
   \item VLEN $\ge$ 128\,bits (Zvl128b or higher; 256 or 512 preferred),
-  \item support for SEW = 16 and SEW = 32 so that both 8-lane 16-bit fixed-point and 4-lane single-precision floating-point vectors are native,
-  \item full single-precision floating-point vector arithmetic including fused multiply-add,
-  \item saturating and widening fixed-point operations to recover the numerical behaviour of the original accumulators,
+  \item support for SEW = 8, 16, 32 and 64 so that both 8-lane 16-bit fixed-point and 4-lane single-precision floating-point vectors are native,
+  \item full single- and double-precision floating-point vector arithmetic including fused multiply-add,
+  \item saturating and widening fixed-point operations to recover the numerical behaviour of the original accumulators (and of the Q16.16 paths of BX-16 VEX),
   \item standard vector loads/stores, gathers, and reductions.
 \end{itemize}
 
@@ -106,17 +107,18 @@ FPGA implementation is chosen for three pragmatic reasons:
 
 The resulting artefact is therefore not a black-box binary; it is readable, synthesizable source that can be inspected, modified and verified by any competent hardware designer.
 
-\section{Vector Extension Mapping}
+\section{Vector Extension Mapping (VEX $\rightarrow$ full RVV / Zve64d)}
 
-The essential arithmetic patterns of both original machines fall comfortably inside RVV:
+The essential arithmetic patterns of both original machines fall comfortably inside RVV, which realises the top of the VEX hierarchy:
 
 \begin{itemize}[leftmargin=1.5em]
   \item EE-style 4-wide single-precision matrix--vector and lighting calculations become short sequences of \texttt{vfmacc}, \texttt{vfmul}, reductions and permutes.
-  \item N64-style 8-wide 16-bit fixed-point MAC loops map onto SEW=16 operations with widening multiplies or explicit high-precision accumulation.
+  \item N64-style 8-wide 16-bit fixed-point MAC loops map onto SEW=16 operations with widening multiplies or explicit high-precision accumulation (identical numerical behaviour to the saturating and widening paths already present in BX-16 VEX).
   \item Perspective division and reciprocal square-root, historically performed by the FDIV/EFU units, are covered by the standard reciprocal and reciprocal-sqrt estimates together with optional Newton--Raphson refinement or a small dedicated functional unit if higher throughput is required.
+  \item The domain-specific accelerators defined on BX-16 (VMAT4VEC, VCROSS, \ldots) are either retained as custom opcodes under the RVV custom-0/1 space or expanded by the compiler into short standard sequences.
 \end{itemize}
 
-No proprietary instruction encodings are required. The design therefore remains fully compatible with the growing RISC-V software ecosystem while still delivering the parallel throughput that made the original platforms distinctive.
+No proprietary instruction encodings are required. The design therefore remains fully compatible with the growing RISC-V software ecosystem while still delivering the parallel throughput that made the original platforms distinctive. Software written against the BX-16 or BX-32 VEX model continues to run; only VLMAX and the available SEW values increase.
 
 \section{Intended Audience and Professional Stance}
 
@@ -126,7 +128,7 @@ If the resulting FPGA implementation proves educationally useful, if it clarifie
 
 \section{Conclusion}
 
-The Emotion Engine and the Reality Co-Processor remain landmarks of specialised computer architecture. By re-expressing their dual-vector-unit organisation in RISC-V with the standard Vector Extension, and by realising the design in Bluespec SystemVerilog for FPGA, we obtain a clean, inspectable, and experimentally accessible platform that honours the original engineering while remaining fully open. The \texttt{btron-bx64} design is presented in that spirit.
+The Emotion Engine and the Reality Co-Processor remain landmarks of specialised computer architecture. By re-expressing their dual-vector-unit organisation in RISC-V with the standard Vector Extension that continues the VEX model of BX-16, and by realising the design in Bluespec SystemVerilog for FPGA, we obtain a clean, inspectable, and experimentally accessible platform that honours the original engineering while remaining fully open. The \texttt{btron-bx64} (VEX BX-64) design is presented in that spirit.
 
 \vspace{1.5em}
 \noindent\textit{Technical note prepared for professional consideration.\\
