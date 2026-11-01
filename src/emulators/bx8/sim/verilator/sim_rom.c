@@ -41,6 +41,20 @@ static uint8_t     g_bank2     = 0; // Page 2 (0x8000..0xBFFF)
 static uint16_t    g_cart_init = 0;
 static bool        g_cart_booted = false;
 
+/* A 48 KiB image whose "AB" header sits at file+0x4000, with INIT inside
+ * that page, occupies CPU pages 0..2. C-BIOS looks for the header at
+ * $4000, so the file's first byte must land at CPU address 0. */
+static int plain_48k_from_0000(void)
+{
+    uint16_t init;
+    if (g_cart_size <= 32768u || g_cart_size > 49152u) return 0;
+    if (g_cart_size < 0x4004u) return 0;
+    if (g_cart_buf[0x4000] != (uint8_t)'A' || g_cart_buf[0x4001] != (uint8_t)'B')
+        return 0;
+    init = (uint16_t)(g_cart_buf[0x4002] | ((uint16_t)g_cart_buf[0x4003] << 8));
+    return init >= 0x4000u && init < 0x8000u;
+}
+
 // ── Framebuffer Capture ─────────────────────────────────────────────────────
 #define FB_W 256
 #define FB_H 212
@@ -124,8 +138,8 @@ static const char *find_file(const char *rel_path)
     FILE *f = fopen(rel_path, "rb");
     if (f) { fclose(f); return rel_path; }
 
-    // Check with ../../../
-    snprintf(buf, sizeof(buf), "../../../%s", rel_path);
+    /* bx8/sim/verilator sits five levels under the depot root. */
+    snprintf(buf, sizeof(buf), "../../../../../%s", rel_path);
     f = fopen(buf, "rb");
     if (f) { fclose(f); return buf; }
 
@@ -233,6 +247,13 @@ int main(int argc, char **argv)
         printf("  [MAPPER] Detected Plain 16KB ROM. Mapped to Page 1 and mirrored to Page 2.\n");
         mem_model_load_buf(&g_mem, ADDR_CART_A + 0x4000, g_cart_buf, g_cart_size);
         mem_model_load_buf(&g_mem, ADDR_CART_A + 0x8000, g_cart_buf, g_cart_size);
+    } else if (plain_48k_from_0000()) {
+        uint16_t init = (uint16_t)(g_cart_buf[0x4002] | ((uint16_t)g_cart_buf[0x4003] << 8));
+        g_cart_type = MAP_PLAIN;
+        g_cart_init = init;
+        printf("  [MAPPER] Plain 48KB image mapped from CPU page 0. Init Vector: 0x%04X\n",
+               g_cart_init);
+        mem_model_load_buf(&g_mem, ADDR_CART_A, g_cart_buf, g_cart_size);
     } else {
         g_cart_type = MAP_PLAIN;
         printf("  [MAPPER] Detected Plain %zuKB ROM. Mapped linearly from page 1.\n",
@@ -251,6 +272,8 @@ int main(int argc, char **argv)
     uint32_t retired_insts = 0;
     uint32_t frame_count = 0;
     uint32_t frames_after_boot = 0;
+    const char *frames_env = getenv("MSX_FRAMES");
+    uint32_t frames_limit = frames_env ? (uint32_t)atoi(frames_env) : 20;
     bool     prev_vsync = false;
     trace_regs_t regs;
 
@@ -285,9 +308,16 @@ int main(int argc, char **argv)
             uint8_t  by = vl_p6_video_beam_y(vl);
             if (bx < FB_W && by < FB_H) {
                 /* The raster steps 168 times across 256 pixels, so beam_x
-                 * skips. Paint the gap with this sample so the frame is solid. */
+                 * skips. Paint the gap with this sample so the frame is solid.
+                 * The last sample of a line is short of x=255; finish that
+                 * line when y advances. */
                 static int prev_x = -1, prev_y = -1;
+                static uint16_t prev_color = 0;
                 uint16_t color = vl_p6_video_rgb565(vl);
+                if (prev_y >= 0 && prev_y != (int)by && prev_x >= 0 && prev_x < FB_W - 1) {
+                    for (int x = prev_x + 1; x < FB_W; x++)
+                        g_fb[prev_y * FB_W + x] = prev_color;
+                }
                 int x0 = (int)bx;
                 if (prev_y == (int)by && prev_x >= 0 && prev_x < (int)bx)
                     x0 = prev_x + 1;
@@ -295,6 +325,7 @@ int main(int argc, char **argv)
                     g_fb[by * FB_W + x] = color;
                 prev_x = (int)bx;
                 prev_y = (int)by;
+                prev_color = color;
             }
         }
 
@@ -316,7 +347,7 @@ int main(int argc, char **argv)
         /* MSX_LOGO spends several frames copying VRAM after the init
          * vector. Keep two extra frames so the dumped picture is the
          * finished screen, not the first instruction of the cartridge. */
-        if (g_cart_booted && frames_after_boot >= 20) break;
+        if (g_cart_booted && frames_after_boot >= frames_limit) break;
 
         // Periodic heartbeat
         if (cycles % 2500000 == 0 && frame_count == 0) {
@@ -332,6 +363,26 @@ int main(int argc, char **argv)
 
     // Dump active display frame to PPM
     dump_frame_ppm(out_ppm);
+
+    if (getenv("MSX_VRAM")) {
+        static const struct { const char *name; uint32_t off; uint32_t len; } areas[] = {
+            { "name",  0x1800, 768 },
+            { "color", 0x2000, 0x1800 },
+            { "pgen",  0x0000, 0x1800 },
+            { "sat",   0x1B00, 128 },
+            { "spat",  0x3800, 0x800 },
+        };
+        for (unsigned a = 0; a < 5; a++) {
+            uint32_t nonzero = 0;
+            printf("  [VRAM %s]", areas[a].name);
+            for (uint32_t i = 0; i < areas[a].len; i++) {
+                uint8_t v = mem_model_read(&g_mem, ADDR_VRAM + areas[a].off + i);
+                if (i < 8) printf(" %02X", v);
+                if (v) nonzero++;
+            }
+            printf(" ... nonzero %u/%u\n", nonzero, areas[a].len);
+        }
+    }
 
     // Cleanup
     vl_p6_destroy(vl);

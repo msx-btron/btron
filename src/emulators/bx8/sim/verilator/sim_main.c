@@ -15,10 +15,10 @@
  *   ./fpga_sim_phase1 [master_cycles]   (default 1000000)
  *
  * References:
- *   fpga/bsv/MSXClocks.bsv
- *   fpga/bsv/Bus.bsv
- *   fpga/bsv/memory/MemoryArbiter.bsv
- *   fpga/bsv/TopPhase1.bsv
+ *   src/emulators/bx8/bsv/MSXClocks.bsv
+ *   src/emulators/bx8/bsv/Bus.bsv
+ *   src/emulators/bx8/bsv/memory/MemoryArbiter.bsv
+ *   src/emulators/bx8/bsv/TopPhase1.bsv
  */
 
 #include <stdio.h>

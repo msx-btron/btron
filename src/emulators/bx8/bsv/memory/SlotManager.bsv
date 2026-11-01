@@ -110,8 +110,10 @@ module mkSlotManager(SlotManager);
             // Slot 0-0 pages 0 and 1 are the main BIOS. Everything else in
             // slot 0 is empty: C-BIOS will not search slot 0's other subslots.
             2'd0: return (sub != 2'd0) || (page >= 2);
-            // Slot 1 page 0 is empty. Pages 1-3 hold a 16/32/48 KB cartridge.
-            2'd1: return (page == 2'd0);
+            // Slot 1 is the cartridge window. A 48 KB image occupies pages
+            // 0-2. Smaller images leave page 0 unread, and the memory model
+            // answers that with 0xFF, which is what CHKRAM treats as empty.
+            2'd1: return False;
             // Slot 2 has no cartridge in this machine.
             2'd2: return True;
             // Slot 3-0 is the memory mapper. Slot 3-1 page 0 is the sub-ROM.

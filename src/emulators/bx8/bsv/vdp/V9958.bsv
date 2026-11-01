@@ -35,6 +35,16 @@ import Raster::*;
 import Blitter::*;
 import YJK::*;
 
+// One scanline of screen 1 or screen 2 is three bursts of 32 bytes:
+// the name row, then the pattern bytes those names select, then the
+// color bytes. Screen 5 is a flat 128-byte bitmap burst.
+typedef enum {
+    ScanIdle,
+    ScanS5,
+    ScanG1Name, ScanG1Pat, ScanG1Col,
+    ScanG2Name, ScanG2Pat, ScanG2Col
+} ScanKind deriving (Bits, Eq);
+
 interface V9958;
     // Clock tick enables
     method Action tick_3m58();
@@ -128,11 +138,17 @@ module mkV9958(V9958);
     // Screen 5 scanline. Filled from VRAM at the start of each line.
     // One buffer is enough: the fetch finishes before the beam crosses it.
     Reg#(Vector#(128, Bit#(8))) line_buf <- mkReg(replicate(0));
+    // Screen 1 / 2: 32 name bytes, then the pattern and color they select.
+    Reg#(Vector#(32, Bit#(8))) name_buf <- mkReg(replicate(0));
+    Reg#(Vector#(32, Bit#(8))) pat_buf  <- mkReg(replicate(0));
+    Reg#(Vector#(32, Bit#(8))) col_buf  <- mkReg(replicate(0));
     Reg#(Bit#(8))  seen_t     <- mkReg(8'hFF);
     Reg#(Bool)     scanning   <- mkReg(False);
     Reg#(Bool)     scan_wait  <- mkReg(False);
     Reg#(Bit#(8))  scan_i     <- mkReg(0);
     Reg#(Bit#(18)) scan_addr  <- mkReg(0);
+    Reg#(ScanKind) scan_kind  <- mkReg(ScanIdle);
+    Reg#(Bit#(8))  tile_y     <- mkReg(0);
 
     // Full 18-bit CPU VRAM address: (R#14[3:0] << 14) | vram_ptr
     function Bit#(18) getCpuVramAddr();
@@ -208,17 +224,60 @@ module mkV9958(V9958);
     // Screen 5 (mode 0x0C): 128 bytes per line, high nibble is the even pixel.
     // Page comes from R#2[6:5]. The fetch runs once per scanline and stays
     // ahead of the beam, which steps 168 times across 256 pixels.
+    //
+    // Screen 2 (mode 0x04, M3) and screen 1 (mode 0x00) share the 32-cell
+    // line. Addresses follow v9938.c: screen 2 pattern base is only R#4[2],
+    // and its color base is only R#3[7], so the VDPRegs table helpers (which
+    // are the bitmap / MSX2 forms) are not used here.
+    function Bit#(18) tile_scan_addr(ScanKind kind);
+        Bit#(8) r2 = regs.read_reg(6'd2);
+        Bit#(8) r3 = regs.read_reg(6'd3);
+        Bit#(8) r4 = regs.read_reg(6'd4);
+        Bit#(5) tile_i = scan_i[4:0];
+        Bit#(8) name = name_buf[tile_i];
+        Bit#(3) row = tile_y[2:0];
+        Bit#(2) chunk = tile_y[7:6];
+        Bit#(18) nt = {1'b0, r2[6:0], 10'd0};
+        Bit#(10) name_off = {tile_y[7:3], tile_i};
+        Bit#(13) g2_gen = {chunk & r4[1:0], name, row};
+        Bit#(14) g2_pt = {r4[2], 13'd0};
+        Bit#(14) g2_ct = {r3[7], 13'd0};
+        Bit#(13) g2_mask = {r3[6:0], 6'b111111};
+        Bit#(13) g2_col = {chunk, name, row} & g2_mask;
+        Bit#(17) g1_pt = {r4[5:0], 11'd0};
+        Bit#(11) g1_poff = {name, row};
+        Bit#(14) g1_ct = {r3, 6'd0};
+        return case (kind)
+            ScanG1Name: nt + zeroExtend(name_off);
+            ScanG2Name: nt + zeroExtend(name_off);
+            ScanG2Pat:  zeroExtend(g2_pt) + zeroExtend(g2_gen);
+            ScanG2Col:  zeroExtend(g2_ct) + zeroExtend(g2_col);
+            ScanG1Pat:  zeroExtend(g1_pt) + zeroExtend(g1_poff);
+            ScanG1Col:  zeroExtend(g1_ct) + zeroExtend(name[7:3]);
+            default:    18'd0;
+        endcase;
+    endfunction
+
     rule start_scanline (raster.current_t_line() == 0 && seen_t != 0 && !scan_wait);
         seen_t <= 0;
-        if (regs.display_mode() == 5'b01100 && regs.display_enabled()) begin
-            Bit#(2)  page = regs.read_reg(6'd2)[6:5];
-            Bit#(8)  sy   = truncate(raster.current_line()) + regs.vscroll();
+        Bit#(5) mode = regs.display_mode();
+        Bit#(8) sy = truncate(raster.current_line()) + regs.vscroll();
+        if (regs.display_enabled() && mode == 5'b01100) begin
+            Bit#(2) page = regs.read_reg(6'd2)[6:5];
             scanning  <= True;
             scan_wait <= False;
             scan_i    <= 0;
+            scan_kind <= ScanS5;
             scan_addr <= {page, 16'd0} + zeroExtend(sy) * 18'd128;
+        end else if (regs.display_enabled() && (mode == 5'b00100 || mode == 5'b00000)) begin
+            scanning  <= True;
+            scan_wait <= False;
+            scan_i    <= 0;
+            scan_kind <= (mode == 5'b00100) ? ScanG2Name : ScanG1Name;
+            tile_y    <= sy;
         end else begin
-            scanning <= False;
+            scanning  <= False;
+            scan_kind <= ScanIdle;
         end
     endrule
 
@@ -227,9 +286,10 @@ module mkV9958(V9958);
     endrule
 
     rule issue_scan (scanning && !scan_wait);
+        Bit#(18) addr = (scan_kind == ScanS5) ? scan_addr : tile_scan_addr(scan_kind);
         q_scan_req.enq(BusReq {
             tag:   tagVDPScan,
-            addr:  vramBase + zeroExtend(scan_addr),
+            addr:  vramBase + zeroExtend(addr),
             data:  0,
             write: False,
             is_io: False
@@ -239,13 +299,49 @@ module mkV9958(V9958);
 
     rule take_scan (scan_wait);
         let resp <- toGet(q_scan_resp).get();
-        let next_line = line_buf;
-        next_line[scan_i[6:0]] = resp.data;
-        line_buf <= next_line;
-        scan_addr <= scan_addr + 1;
-        scan_i    <= scan_i + 1;
         scan_wait <= False;
-        if (scan_i == 8'd127) scanning <= False;
+        if (scan_kind == ScanS5) begin
+            let next_line = line_buf;
+            next_line[scan_i[6:0]] = resp.data;
+            line_buf <= next_line;
+            scan_addr <= scan_addr + 1;
+            if (scan_i == 8'd127) begin
+                scanning <= False;
+                scan_kind <= ScanIdle;
+            end else begin
+                scan_i <= scan_i + 1;
+            end
+        end else if (scan_kind == ScanG1Name || scan_kind == ScanG2Name) begin
+            let nb = name_buf;
+            nb[scan_i[4:0]] = resp.data;
+            name_buf <= nb;
+            if (scan_i == 8'd31) begin
+                scan_i <= 0;
+                scan_kind <= (scan_kind == ScanG2Name) ? ScanG2Pat : ScanG1Pat;
+            end else begin
+                scan_i <= scan_i + 1;
+            end
+        end else if (scan_kind == ScanG1Pat || scan_kind == ScanG2Pat) begin
+            let pb = pat_buf;
+            pb[scan_i[4:0]] = resp.data;
+            pat_buf <= pb;
+            if (scan_i == 8'd31) begin
+                scan_i <= 0;
+                scan_kind <= (scan_kind == ScanG2Pat) ? ScanG2Col : ScanG1Col;
+            end else begin
+                scan_i <= scan_i + 1;
+            end
+        end else begin
+            let cb = col_buf;
+            cb[scan_i[4:0]] = resp.data;
+            col_buf <= cb;
+            if (scan_i == 8'd31) begin
+                scanning <= False;
+                scan_kind <= ScanIdle;
+            end else begin
+                scan_i <= scan_i + 1;
+            end
+        end
     endrule
 
     // Update S#7 with POINT color when blitter completes a POINT command
@@ -454,10 +550,23 @@ module mkV9958(V9958);
             return regs.read_palette(regs.border_color()[3:0]);
         end else if (regs.display_mode() == 5'b01100) begin
             // Screen 5: two 4-bit pixels per byte. Even x is the high nibble.
+            // Nibble 0 is a real color on a bitmap plane.
             Bit#(8) x   = truncate(raster.beam_x());
             Bit#(8) b   = line_buf[x[7:1]];
             Bit#(4) pix = (x[0] == 1'b0) ? b[7:4] : b[3:0];
             return regs.read_palette(pix);
+        end else if (regs.display_mode() == 5'b00100 || regs.display_mode() == 5'b00000) begin
+            // Screen 2 and screen 1: pattern bit selects the color nibble.
+            // A zero nibble is transparent and shows the border.
+            Bit#(8) x = truncate(raster.beam_x());
+            Bit#(8) pat = pat_buf[x[7:3]];
+            Bit#(8) cb  = col_buf[x[7:3]];
+            Bool on = pat[3'd7 - x[2:0]] == 1'b1;
+            Bit#(4) c = on ? cb[7:4] : cb[3:0];
+            if (c == 4'd0)
+                return regs.read_palette(regs.border_color()[3:0]);
+            else
+                return regs.read_palette(c);
         end else begin
             return regs.read_palette(regs.read_reg(6'd7)[7:4]);
         end

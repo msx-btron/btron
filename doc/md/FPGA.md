@@ -6,10 +6,10 @@
 
 ## 1. Minimalist Design Philosophy & Architectural Principles
 
-To ensure rapid bootstrapping, zero architectural drift, and high maintainability, the hardware implementation in **`./fpga/`** is grounded directly in the verified clean-room C99 implementation in **`./src/emulators/msx/`**:
+To ensure rapid bootstrapping, zero architectural drift, and high maintainability, the hardware implementation in **`./src/emulators/bx8/`** is grounded directly in the verified clean-room C99 implementation in **`./src/emulators/msx/`**:
 
 1. **Direct Isomorphic Hardware Mapping:**
-   - Every hardware module in `./fpga/bsv/` is an isomorphic, cycle-accurate translation of the battle-tested algorithms, state machines, and register interfaces in `./src/emulators/msx/` (`r800.c`, `t9769c.c`, `slots.c`, `v9938.c`, `pcm.c`, `opll.c`, `scc.c`, `psg.c`, `ppi.c`).
+   - Every hardware module in `./src/emulators/bx8/bsv/` is an isomorphic, cycle-accurate translation of the battle-tested algorithms, state machines, and register interfaces in `./src/emulators/msx/` (`r800.c`, `t9769c.c`, `slots.c`, `v9938.c`, `pcm.c`, `opll.c`, `scc.c`, `psg.c`, `ppi.c`).
 2. **Pure C99 Verification Harness & Lock-Step Co-Simulation:**
    - The entire simulation testbench, memory model, ROM loader, frame capture, and lock-step comparator are written in **pure C99** (`sim_main.c`, `mem_model.c`, `frame_dump.c`, `trace_compare.c`), linking directly with `./src/emulators/msx/*.c`.
    - A razor-thin C++ bridge (`vl_bridge.cpp`, $\le 60$ lines of `extern "C"`) isolates Verilator's C++ class instantiation, exposing clean C-linkage functions (`vl_create`, `vl_step`, `vl_destroy`) to the C99 harness.
@@ -30,11 +30,11 @@ To ensure rapid bootstrapping, zero architectural drift, and high maintainabilit
 
 ---
 
-## 2. Reference Implementation Mapping: `./src/emulators/msx` $\to$ `./fpga/bsv`
+## 2. Reference Implementation Mapping: `./src/emulators/msx` $\to$ `./src/emulators/bx8/bsv`
 
-The hardware packages in `./fpga/bsv/` map 1:1 to the C99 modules in `./src/emulators/msx/`:
+The hardware packages in `./src/emulators/bx8/bsv/` map 1:1 to the C99 modules in `./src/emulators/msx/`:
 
-| Subsystem | Reference C99 Source (`./src/emulators/msx/`) | Target BSV Package (`./fpga/bsv/`) | Architectural Responsibilities |
+| Subsystem | Reference C99 Source (`./src/emulators/msx/`) | Target BSV Package (`./src/emulators/bx8/bsv/`) | Architectural Responsibilities |
 | :--- | :--- | :--- | :--- |
 | **CPU Core** | `r800.c`, `r800.h`, `z80.c`, `z80.h` | `cpu/CPUCore.bsv`, `cpu/ALU.bsv` | Unified register file, 16-bit ALU, 16x16 multiplier (`MULUB`, `MULUQ`), dual-mode sequencer |
 | **turboR Engine** | `t9769c.c`, `t9769c.h` | `cpu/T9769C.bsv` | S1990 Gate Array (Ports `0xE4`/`0xE5`), CPU mode switch, E6 timer counter (255.7 kHz), Kanji ROM latch |
@@ -55,7 +55,7 @@ To keep the codebase maintainable and strictly in line with C99 clean-room princ
 
 ```mermaid
 flowchart TD
-    subgraph C99_Harness["Pure C99 Verification Harness (./fpga/sim/verilator/)"]
+    subgraph C99_Harness["Pure C99 Verification Harness (./src/emulators/bx8/sim/verilator/)"]
         MAIN["sim_main.c\n(Test Runner & Main Loop)"]
         MEM["mem_model.c\n(Flat Memory & ROM Loader)"]
         FRAME["frame_dump.c\n(VRAM to PNG via stb_image_write.h)"]
@@ -149,10 +149,10 @@ sequenceDiagram
 
 ---
 
-## 5. Target Directory Structure in `./fpga/`
+## 5. Target Directory Structure in `./src/emulators/bx8/`
 
 ```
-./fpga/
+./src/emulators/bx8/
 ├── Makefile                       # Top-level build (Bluesim, Verilator, Yosys)
 ├── bsv/                           # Pure BSV Hardware Descriptions
 │   ├── Top.bsv                    # Top-level SoC integrating all subsystems
@@ -223,14 +223,14 @@ flowchart TD
 
 ### Detailed Milestone Schedule
 
-| Phase | Milestone | Deliverable in `./fpga/` | Co-Simulation Acceptance Criteria against `./src/emulators/msx/` |
+| Phase | Milestone | Deliverable in `./src/emulators/bx8/` | Co-Simulation Acceptance Criteria against `./src/emulators/msx/` |
 | :---: | :--- | :--- | :--- |
-| **1** | **C99 Co-Sim Harness & Clocks** | `fpga/sim/verilator/sim_main.c`, `vl_bridge.cpp`, `fpga/bsv/Clocks.bsv`, `fpga/bsv/memory/MemoryArbiter.bsv` | Pure C99 test harness compiles with `-std=c99`, links with `src/emulators/msx/` and `vl_bridge.o`, and executes synchronized clock ticks; memory arbiter passes concurrent read/write test. |
-| **2** | **Unified CPU & T9769C** | `fpga/bsv/cpu/CPUCore.bsv`, `fpga/bsv/cpu/ALU.bsv`, `fpga/bsv/cpu/T9769C.bsv` | 100% lock-step match on **ZEXALL** instruction trace between `CPUCore.bsv` and `z80.c`; verify `MULUB` and `MULUQ` against `r800.c`; verify S1990 mode switch via Port `0xE4`/`0xE5` against `t9769c.c`. |
-| **3** | **Slot Hierarchy & C-BIOS** | `fpga/bsv/memory/SlotManager.bsv`, `fpga/bsv/memory/Mapper.bsv`, `fpga/bsv/io/PPI.bsv` | Slot and subslot address translation matches `slots.c` on all 64 KB memory accesses; headless **C-BIOS turboR** boots to cold-init loop with identical register states. |
-| **4** | **Yamaha V9958 VDP** | `fpga/bsv/vdp/V9958.bsv`, `fpga/bsv/vdp/Raster.bsv`, `fpga/bsv/vdp/Blitter.bsv`, `fpga/bsv/vdp/YJK.bsv` | VDP status flags, register writes, and 11 blitter commands match `v9938.c`/`vdp.c`; headless C99 PNG frame dumps match pixel-for-pixel against `src/emulators/msx/` frame output. |
-| **5** | **Audio Matrix & Input** | `fpga/bsv/audio/PSG.bsv`, `audio/SCC.bsv`, `audio/OPLL.bsv`, `audio/PCM.bsv`, `io/Keyboard.bsv` | PCM 15.7 kHz sample counter and latch modes match `pcm.c` bit-for-bit; PSG, SCC, and OPLL wave accumulators match `psg.c`, `scc.c`, and `opll.c`; keyboard matrix reads match `kbd.c`. |
-| **6** | **Full turboR & Synthesis** | `fpga/syn/yosys/ecp5_synth.ys`, physical board wrappers | Commercial turboR titles (*Fray In Magical World*, *Illusion City*, *Xak III*) boot headlessly to title screens; Yosys timing closure achieved at 57.27 MHz on target FPGA. |
+| **1** | **C99 Co-Sim Harness & Clocks** | `src/emulators/bx8/sim/verilator/sim_main.c`, `vl_bridge.cpp`, `src/emulators/bx8/bsv/Clocks.bsv`, `src/emulators/bx8/bsv/memory/MemoryArbiter.bsv` | Pure C99 test harness compiles with `-std=c99`, links with `src/emulators/msx/` and `vl_bridge.o`, and executes synchronized clock ticks; memory arbiter passes concurrent read/write test. |
+| **2** | **Unified CPU & T9769C** | `src/emulators/bx8/bsv/cpu/CPUCore.bsv`, `src/emulators/bx8/bsv/cpu/ALU.bsv`, `src/emulators/bx8/bsv/cpu/T9769C.bsv` | 100% lock-step match on **ZEXALL** instruction trace between `CPUCore.bsv` and `z80.c`; verify `MULUB` and `MULUQ` against `r800.c`; verify S1990 mode switch via Port `0xE4`/`0xE5` against `t9769c.c`. |
+| **3** | **Slot Hierarchy & C-BIOS** | `src/emulators/bx8/bsv/memory/SlotManager.bsv`, `src/emulators/bx8/bsv/memory/Mapper.bsv`, `src/emulators/bx8/bsv/io/PPI.bsv` | Slot and subslot address translation matches `slots.c` on all 64 KB memory accesses; headless **C-BIOS turboR** boots to cold-init loop with identical register states. |
+| **4** | **Yamaha V9958 VDP** | `src/emulators/bx8/bsv/vdp/V9958.bsv`, `src/emulators/bx8/bsv/vdp/Raster.bsv`, `src/emulators/bx8/bsv/vdp/Blitter.bsv`, `src/emulators/bx8/bsv/vdp/YJK.bsv` | VDP status flags, register writes, and 11 blitter commands match `v9938.c`/`vdp.c`; headless C99 PNG frame dumps match pixel-for-pixel against `src/emulators/msx/` frame output. |
+| **5** | **Audio Matrix & Input** | `src/emulators/bx8/bsv/audio/PSG.bsv`, `audio/SCC.bsv`, `audio/OPLL.bsv`, `audio/PCM.bsv`, `io/Keyboard.bsv` | PCM 15.7 kHz sample counter and latch modes match `pcm.c` bit-for-bit; PSG, SCC, and OPLL wave accumulators match `psg.c`, `scc.c`, and `opll.c`; keyboard matrix reads match `kbd.c`. |
+| **6** | **Full turboR & Synthesis** | `src/emulators/bx8/syn/yosys/ecp5_synth.ys`, physical board wrappers | Commercial turboR titles (*Fray In Magical World*, *Illusion City*, *Xak III*) boot headlessly to title screens; Yosys timing closure achieved at 57.27 MHz on target FPGA. |
 
 ---
 
@@ -377,12 +377,12 @@ The in-tree C99 codebase already has all major components for these ROMs:
 
 ---
 
-## 4. FPGA Clean-Room Reincarnation Plan (`fpga/bsv/`)
+## 4. FPGA Clean-Room Reincarnation Plan (`src/emulators/bx8/bsv/`)
 
 To synthesize these games in the hardware FPGA design, the corresponding BSV modules and testbench harness are mapped as follows:
 
 ```
-fpga/
+src/emulators/bx8/
 ├── bsv/
 │   ├── cpu/
 │   │   ├── CPUCore.bsv          # Dual R800 + Z80A execution engines & S1990 arbiter
@@ -456,7 +456,7 @@ flowchart LR
 ```
 
 #### Stage 1: Build the Headless ROM Runner (`fpga_rom_runner`)
-Create a CLI test harness in `fpga/sim/verilator/sim_rom.c` utilizing the existing [`vl_bridge_p6`](file:///Users/tonpa/depot/bitedits/btron/fpga/sim/verilator/vl_bridge_p6.h) and [`mem_model.c`](file:///Users/tonpa/depot/bitedits/btron/fpga/sim/verilator/mem_model.c):
+Create a CLI test harness in `src/emulators/bx8/sim/verilator/sim_rom.c` utilizing the existing [`vl_bridge_p6`](file:///Users/tonpa/depot/bitedits/btron/src/emulators/bx8/sim/verilator/vl_bridge_p6.h) and [`mem_model.c`](file:///Users/tonpa/depot/bitedits/btron/src/emulators/bx8/sim/verilator/mem_model.c):
 1. **Load C-BIOS turboR**:
    - `cbios_main_msxtr.rom` (32 KB from `third_party/cbios-nextor_FDD-and-turboR/`) into physical BIOS address `0x000000..0x007FFF`.
    - `cbios_sub.rom` (16 KB) into `0x008000..0x00BFFF`.
@@ -490,4 +490,4 @@ Create a CLI test harness in `fpga/sim/verilator/sim_rom.c` utilizing the existi
 
 ### Recommended Immediate Next Step
 
-Would you like to build **Stage 1 & 2** now by creating `fpga/sim/verilator/sim_rom.c` and a `make run_rom ROM=...` target, so we can boot `MSX_LOGO.rom` and `Dynamite Go! Go!` headlessly and dump the resulting framebuffers?
+Would you like to build **Stage 1 & 2** now by creating `src/emulators/bx8/sim/verilator/sim_rom.c` and a `make run_rom ROM=...` target, so we can boot `MSX_LOGO.rom` and `Dynamite Go! Go!` headlessly and dump the resulting framebuffers?

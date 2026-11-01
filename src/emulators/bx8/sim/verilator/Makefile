@@ -1,4 +1,4 @@
-# fpga/sim/verilator/Makefile
+# src/emulators/bx8/sim/verilator/Makefile
 # MSX turboR FPGA Co-Simulation Makefile (Phases 1, 2, 3).
 #
 # Targets:
@@ -15,6 +15,8 @@ CXX        ?= clang++
 
 # ── Directories ────────────────────────────────────────────────────────────
 FPGA_ROOT  := $(realpath $(CURDIR)/../..)
+# bx8/sim/verilator is five levels under the depot (src/emulators/bx8/sim/verilator).
+REPO_ROOT  := $(realpath $(FPGA_ROOT)/../../..)
 BSV_ROOT   := $(FPGA_ROOT)/bsv
 SIM_DIR    := $(CURDIR)
 VL_OBJ     := $(SIM_DIR)/obj_dir
@@ -383,7 +385,7 @@ $(BIN_ROM): $(VL_OBJ)/VmkTopMSXTurboR__ALL.a $(SIM_DIR)/sim_rom.c $(SIM_DIR)/mem
 	    $(VL_OBJ)/VmkTopMSXTurboR__ALL.a $(VL_OBJ)/VmkTopMSXTurboR.o $(VL_OBJ)/verilated.o $(VL_OBJ)/verilated_threads.o \
 	    -o $@
 
-ROM ?= $(FPGA_ROOT)/../assets/msx/MSX_LOGO.rom
+ROM ?= $(REPO_ROOT)/assets/msx/MSX_LOGO.rom
 CYCLES ?= 200000000
 PPM ?= cart_frame.ppm
 
