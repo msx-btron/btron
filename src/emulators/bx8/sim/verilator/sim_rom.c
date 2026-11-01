@@ -369,10 +369,39 @@ int main(int argc, char **argv)
             if (retired_insts <= 24 || (retired_insts % 20000) == 0)
                 printf("  RET %-7u PC=%04X SP=%04X\n", retired_insts, regs.pc, regs.sp);
 
+            /* MSX_TRACE=1: the C-BIOS multiply at $3196 is DEC DE / OR D / JR Z.
+             * A capture that sits there is either DE wrapping through 0
+             * (the exit never taken) or one long 16-bit count. Page 1 is
+             * the cartridge window, so an SP there means the stack writes
+             * are being discarded. */
+            if (g_cart_booted && getenv("MSX_TRACE")) {
+                /* The driver parks a private stack at $7F77 while page 1 is
+                 * RAM, then puts the caller's SP back. The break is the later
+                 * drop into $4xxx while PPI page 1 is the cartridge. */
+                static uint16_t prev_sp = 0xFFFF;
+                static int trace_n = 0;
+                int mark = (regs.pc == 0xC08Fu || regs.pc == 0xC092u ||
+                            regs.pc == 0xC0A9u || regs.pc == 0xC0D1u ||
+                            regs.pc == 0x6277u || regs.pc == 0x654Au ||
+                            regs.pc == 0x656Eu || regs.pc == 0x36B5u ||
+                            regs.pc == 0x3196u);
+                int sp_cross = ((prev_sp >= 0xC000u) != (regs.sp >= 0xC000u)) ||
+                               ((prev_sp >= 0x8000u) != (regs.sp >= 0x8000u));
+                if ((mark || sp_cross) && trace_n < 80) {
+                    printf("  [TRACE] PC=%04X SP=%04X->%04X A=%02X HL=%02X%02X PPI=%02X banks=%02X/%02X ret %u\n",
+                           regs.pc, prev_sp, regs.sp, regs.a, regs.h, regs.l,
+                           vl_p6_ppi_read_a(vl), g_bank1, g_bank2, retired_insts);
+                    trace_n++;
+                }
+                prev_sp = regs.sp;
+                if (regs.pc == 0x36B5u || (regs.pc == 0x3196u && trace_n > 2))
+                    break;
+            }
+
             /* MSX_HUNT=1: after the cartridge is entered, keep a short
              * window and dump it when PC falls into the interrupt page
              * or SP leaves the stack RAM. That is the Bad Apple break. */
-            if (g_cart_booted && getenv("MSX_HUNT")) {
+            if (g_cart_booted && getenv("MSX_HUNT") && getenv("MSX_HUNT")[0]) {
                 static trace_regs_t ring[64];
                 static uint32_t ring_n = 0;
                 static int hunt = 0;

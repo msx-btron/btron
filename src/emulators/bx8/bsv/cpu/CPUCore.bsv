@@ -418,6 +418,10 @@ module mkCPUCore(CPUCore);
                     halted    <= False;
                     iff1      <= False;
                     iff2      <= False;
+                    // A prefix that has not yet fetched its opcode is discarded,
+                    // the same way a Z80 interrupt response drops it. Otherwise
+                    // the byte at $0038 (JP) runs as ED C3, the R800 multiply.
+                    prefix    <= 8'h00;
                     reg_r     <= reg_r + 1;
                     reg_sp    <= reg_sp - 1;
                     send_bus_req(zeroExtend(reg_sp - 1), reg_pc[15:8], True, False);
@@ -939,6 +943,19 @@ module mkCPUCore(CPUCore);
                     else if (opcode == 8'hE3) begin mult.start_muluq(get_hl(), get_hl()); state <= ExecMul; end
                     else if (opcode == 8'hF3) begin mult.start_muluq(get_hl(), reg_sp);   state <= ExecMul; end
 
+                    // RETN (ED 45) and RETI (ED 4D).
+                    // $0066 is JP $1A2A, and $1A2D is RETN. A NOP there
+                    // falls into the keyboard scanner and leaves the
+                    // interrupt frame on the stack. IFF1 is restored
+                    // from IFF2; this machine has no interrupt daisy.
+                    else if (opcode == 8'h45 || opcode == 8'h4D) begin
+                        iff1 <= iff2;
+                        op_target <= TargetNone;
+                        send_bus_req(zeroExtend(reg_sp), 8'h00, False, False);
+                        reg_sp <= reg_sp + 1;
+                        state <= PopLo;
+                    end
+
                     // NEG
                     else if (opcode == 8'h44) begin
                         let alu_res = evalAlu8(AluSUB, 8'h00, reg_a, False);
@@ -1390,7 +1407,10 @@ module mkCPUCore(CPUCore);
                     TargetPairIX: reg_ix <= v;
                     TargetPairIY: reg_iy <= v;
                     TargetNone: begin // POP AF or RET
-                        if (opcode == 8'hC9 || dec.z == 3'b000) begin // RET
+                        // ED 45 / ED 4D are RETN / RETI. Their z field is not 0,
+                        // so the RET cc test does not see them.
+                        if (opcode == 8'hC9 || opcode == 8'h45 || opcode == 8'h4D ||
+                            dec.z == 3'b000) begin // RET
                             reg_pc <= v;
                         end else begin // POP AF
                             reg_a <= v[15:8];

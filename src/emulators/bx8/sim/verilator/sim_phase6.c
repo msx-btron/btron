@@ -284,17 +284,30 @@ static bool test_audio_mixer(void *vl)
 
     run_instructions(vl, 22);
 
-    // Advance 10,000 cycles for PSG and PCM to update
+    /* Period 1 toggles the tone every PSG tick (256 master clocks) and the
+     * raw sample holds that half-cycle. One read after a fixed delay lands
+     * on the silent half whenever the tick count is odd. Walk two ticks. */
     step_cycles(vl, 10000);
+    uint16_t psg_peak = 0;
+    uint16_t audio_peak = 0;
+    uint8_t pcm = 0;
+    for (int i = 0; i < 512; i++) {
+        step_cycles(vl, 1);
+        uint16_t psg = vl_p6_psg_sample(vl);
+        uint16_t audio = vl_p6_audio_pcm_sample(vl);
+        if (psg > psg_peak) psg_peak = psg;
+        if (audio > audio_peak) audio_peak = audio;
+        pcm = vl_p6_pcm_sample(vl);
+    }
 
-    uint16_t audio = vl_p6_audio_pcm_sample(vl);
-    uint16_t psg   = vl_p6_psg_sample(vl);
-    uint8_t  pcm   = vl_p6_pcm_sample(vl);
+    printf("  PSG peak = 0x%04X, PCM raw = 0x%02X\n", psg_peak, pcm);
+    printf("  Mixed 16-bit PCM Stream peak = 0x%04X\n", audio_peak);
+    printf("  PSG R0=0x%02X R7=0x%02X R8=0x%02X\n",
+           vl_p6_psg_peek_reg(vl, 0),
+           vl_p6_psg_peek_reg(vl, 7),
+           vl_p6_psg_peek_reg(vl, 8));
 
-    printf("  PSG raw = 0x%04X, PCM raw = 0x%02X\n", psg, pcm);
-    printf("  Mixed 16-bit PCM Stream = 0x%04X\n", audio);
-
-    if (psg == 0 || pcm != 0xAA) {
+    if (psg_peak == 0 || pcm != 0xAA) {
         printf("  [FAIL] Audio generators inactive!\n");
         return false;
     }

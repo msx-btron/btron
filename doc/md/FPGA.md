@@ -197,8 +197,11 @@ sequenceDiagram
     ├── yosys/
     │   └── ecp5_synth.ys          # Open-source ECP5 synthesis flow
     └── boards/
-        ├── ulx3s/                 # Lattice ECP5 ULX3S pinouts & top wrapper
-        └── tang_primer_20k/       # Gowin GW2A-LV18 pinouts & top wrapper
+        ├── msx_soc_shell.v       # mkTopMSXTurboR stub shell (no memory controller)
+        ├── qmtech_ep4ce55/        # Cyclone IV EP4CE55F23C8N, 32 MB SDRAM
+        ├── icesugar_pro/          # ECP5 LFE5U-25F, 32 MB SDRAM, Yosys top
+        ├── qmtech_xc7a35t/        # Artix-7 XC7A35T, 32 MB SDRAM
+        └── tang_mega_60k/         # Gowin GW5AT-60, 512 MB DDR3 on the SOM
 ```
 
 ---
@@ -230,7 +233,7 @@ flowchart TD
 | **3** | **Slot Hierarchy & C-BIOS** | `src/emulators/bx8/bsv/memory/SlotManager.bsv`, `src/emulators/bx8/bsv/memory/Mapper.bsv`, `src/emulators/bx8/bsv/io/PPI.bsv` | Slot and subslot address translation matches `slots.c` on all 64 KB memory accesses; headless **C-BIOS turboR** boots to cold-init loop with identical register states. |
 | **4** | **Yamaha V9958 VDP** | `src/emulators/bx8/bsv/vdp/V9958.bsv`, `src/emulators/bx8/bsv/vdp/Raster.bsv`, `src/emulators/bx8/bsv/vdp/Blitter.bsv`, `src/emulators/bx8/bsv/vdp/YJK.bsv` | VDP status flags, register writes, and 11 blitter commands match `v9938.c`/`vdp.c`; headless C99 PNG frame dumps match pixel-for-pixel against `src/emulators/msx/` frame output. |
 | **5** | **Audio Matrix & Input** | `src/emulators/bx8/bsv/audio/PSG.bsv`, `audio/SCC.bsv`, `audio/OPLL.bsv`, `audio/PCM.bsv`, `io/Keyboard.bsv` | PCM 15.7 kHz sample counter and latch modes match `pcm.c` bit-for-bit; PSG, SCC, and OPLL wave accumulators match `psg.c`, `scc.c`, and `opll.c`; keyboard matrix reads match `kbd.c`. |
-| **6** | **Full turboR & Synthesis** | `src/emulators/bx8/syn/yosys/ecp5_synth.ys`, physical board wrappers | Commercial turboR titles (*Fray In Magical World*, *Illusion City*, *Xak III*) boot headlessly to title screens; Yosys timing closure achieved at 57.27 MHz on target FPGA. |
+| **6** | **Full turboR & Synthesis** | `src/emulators/bx8/syn/yosys/ecp5_synth.ys`, physical board wrappers | Commercial turboR titles (*Fray In Magical World*, *Illusion City*, *Xak III*) boot headlessly to title screens; Yosys timing closure achieved at 57.27 MHz on the iCESugar-Pro (LFE5U-25F). |
 
 ---
 
@@ -269,9 +272,12 @@ All phase enables are synchronous single-cycle pulses (`tick_*`) derived from an
 ### 8.2 Memory Hierarchy & BRAM vs. External SDRAM Partitioning
 - **Simulation (Verilator / Bluesim)**:
   - Backed by `mem_model.c` (flat 16 MB host C array, 0 wait-state virtual DRAM).
-- **Physical FPGA (ULX3S ECP5 / Tang Primer 20K GW2A)**:
-  - **VRAM (128 KB)**: Implemented in on-chip Block RAM (Dual-Port: Port A for scanout rasterizer, Port B for VDP blitter/CPU/Geo3D).
-  - **Main RAM (512 KB–4 MB)** & **Cartridge MegaROM (1 MB–4 MB)**: Stored in external SDRAM / HyperRAM.
+- **Physical FPGA**:
+  - EP4CE15F17C8 is not a target. The die has 15,408 LEs and 504 Kbit of M9K (63 KB), the F17 package bonds 165 user I/Os, and C8 is the slow grade. 63 KB is smaller than the 128 KB VRAM.
+  - The Cyclone IV replacement is the QMTECH EP4CE55F23C8N card: 55,856 LEs, 2,340 Kbit on chip, 32 MB SDRAM, 50 MHz.
+  - Three cheap boards cover a 4 MB MegaROM plus the 512 KB mapper plus the 128 KB VRAM: Muse Lab iCESugar-Pro (LFE5U-25F, 32 MB SDRAM, the Yosys top), QMTECH XC7A35T (33,280 logic cells, 32 MB SDRAM), and Sipeed Tang Mega 60K (GW5AT-60, 512 MB DDR3 on the SOM). See `src/emulators/bx8/syn/boards/README.md`.
+  - **VRAM (128 KB), mapper RAM, and the MegaROM** live in that external RAM. iCESugar-Pro block RAM is 1,008 Kbit (126 KB), so VRAM does not fit on that die.
+  - The board wrappers do not contain a memory controller and do not assign balls. No bitstream is programmed.
   - `MemoryArbiter.bsv` exposes a split-phase `Client#(BusReq, BusResp)` interface with `tag`, allowing memory transactions to complete in variable latency without locking the core pipeline.
 
 ### 8.3 R800 Hardware Multiplier Specifications
@@ -452,7 +458,7 @@ An inspection of `./assets/msx/` reveals three distinct tiers of ROM images:
 flowchart LR
     A["Stage 1: C99 ROM Runner\n(CLI tool + C-BIOS TurboR boot)"] --> B["Stage 2: Headless Frame & Audio Dump\n(PPM screenshot verification)"]
     B --> C["Stage 3: Interactive macOS Window\n(SDL2 real-time display & keyboard)"]
-    C --> D["Stage 4: Physical Bitstream Flashing\n(ULX3S / Tang Primer 20K)"]
+    C --> D["Stage 4: Physical Bitstream Flashing\n(iCESugar-Pro / EP4CE55 / XC7A35T / Tang Mega 60K)"]
 ```
 
 #### Stage 1: Build the Headless ROM Runner (`fpga_rom_runner`)

@@ -82,7 +82,11 @@ COMMON_INC := -I$(SIM_DIR) -I$(VL_OBJ) -I$(VL_INCLUDE)
 CFLAGS     := -std=c99  -O2 -Wall $(COMMON_INC) -DVERILATOR=1
 CXXFLAGS   := -std=c++17 -O2 -Wall $(COMMON_INC) -DVERILATOR=1
 
-VL_FLAGS   := -Wall -Wno-WIDTHTRUNC -Wno-PINCONNECTEMPTY -Wno-UNUSEDSIGNAL -Wno-CASEOVERLAP --error-limit 99 \
+# WIDTHEXPAND, UNSIGNED, and CMPCONST are bsc's RegFile.v bounds checks.
+# pal256's address is narrower than that library compare, and -Wall
+# turns the thirteen notes into a hard stop.
+VL_FLAGS   := -Wall -Wno-WIDTHTRUNC -Wno-PINCONNECTEMPTY -Wno-UNUSEDSIGNAL -Wno-CASEOVERLAP \
+              -Wno-WIDTHEXPAND -Wno-UNSIGNED -Wno-CMPCONST --error-limit 99 \
               +incdir+$(BSC_LIBDIR) $(foreach v,$(BSC_LIB_V),-v $(v))
 
 # ── Binaries ───────────────────────────────────────────────────────────────
@@ -395,9 +399,9 @@ fpga_rom_runner: $(BIN_ROM)
 run_rom: $(BIN_ROM)
 	$(BIN_ROM) "$(ROM)" --cycles $(CYCLES) --ppm "$(PPM)"
 
-# ── Physical Synthesis Flow (Yosys ECP5) ────────────────────────────────────
+# ── Physical Synthesis Flow (Yosys, iCESugar-Pro ECP5) ─────────────────────
 synth_ecp5: $(TOP_P6_V)
-	@echo "=== Running Yosys Synthesis for Lattice ECP5 ==="
+	@echo "=== Running Yosys Synthesis for iCESugar-Pro (ECP5 LFE5U-25F) ==="
 	yosys $(FPGA_ROOT)/syn/yosys/ecp5_synth.ys
 
 clean:

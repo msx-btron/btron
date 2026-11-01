@@ -177,17 +177,24 @@ static bool test_psg_sample(void *vl)
 
     run_instructions(vl, 9);
 
-    /* Run many cycles for PSG divider to fire several times */
+    /* Period 1 is a square wave: the sample holds one half-cycle and a
+     * single read is zero on the low half. Two PSG ticks are 512 clocks. */
     for (int i = 0; i < 2000; i++) {
         vl_p5_step(vl);
         service_mem(vl);
     }
 
-    uint16_t samp = vl_p5_psg_sample(vl);
-    printf("  PSG sample = 0x%04X (expected > 0)\n", samp);
+    uint16_t samp = 0;
+    for (int i = 0; i < 512; i++) {
+        vl_p5_step(vl);
+        service_mem(vl);
+        uint16_t s = vl_p5_psg_sample(vl);
+        if (s > samp) samp = s;
+    }
+    printf("  PSG peak = 0x%04X (expected > 0)\n", samp);
 
     if (samp == 0) {
-        printf("  [FAIL] PSG sample still zero after 2000 cycles!\n\n");
+        printf("  [FAIL] PSG sample still zero after a full period!\n\n");
         return false;
     }
     printf("  [PASS] Test 3: PSG PCM sample is non-zero.\n\n");

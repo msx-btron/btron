@@ -1,5 +1,7 @@
 # Yosys Open-Source Synthesis Script for MSX turbo R on Lattice ECP5
-# Reads generated Verilog from BSC and synthesizes for LFE5U-85F
+# Target board: Muse Lab iCESugar-Pro, device LFE5U-25F-6BG256C.
+# Reads generated Verilog from BSC. This script is not a bitstream,
+# and it does not program the board.
 
 # Read ECP5 blackbox cell library
 read_verilog -lib +/ecp5/cells_bb.v
@@ -26,10 +28,11 @@ read_verilog -sv /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/sim/verilat
 read_verilog -sv /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/sim/verilator/mkPCM.v
 read_verilog -sv /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/sim/verilator/mkPPI.v
 read_verilog -sv /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/sim/verilator/mkKeyboard.v
-read_verilog -sv /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/syn/boards/ulx3s/TopULX3S.v
+read_verilog -sv /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/syn/boards/msx_soc_shell.v
+read_verilog -sv /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/syn/boards/icesugar_pro/TopIceSugarPro.v
 
 # Hierarchy elaboration
-hierarchy -check -top TopULX3S
+hierarchy -check -top TopIceSugarPro
 
 # High-level synthesis optimizations
 proc
@@ -40,7 +43,7 @@ memory
 opt
 
 # ECP5 gate mapping
-synth_ecp5 -top TopULX3S -json /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/syn/yosys/msx_turbor_ecp5.json
+synth_ecp5 -top TopIceSugarPro -json /Users/tonpa/depot/bitedits/btron/src/emulators/bx8/syn/yosys/msx_turbor_ecp5.json
 
 # Resource utilization report
 stat
