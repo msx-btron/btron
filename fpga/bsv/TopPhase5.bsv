@@ -164,7 +164,7 @@ module mkTopPhase5(TopPhase5);
     endrule
 
     rule sync_dram_mode;
-        slot_mgr.set_dram_mode(cpu.is_r800_mode());
+        slot_mgr.set_dram_mode(cpu.is_dram_mode());
     endrule
 
     // ---- CPU bus request routing ----

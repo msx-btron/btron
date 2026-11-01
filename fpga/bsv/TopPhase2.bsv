@@ -55,7 +55,7 @@ interface TopPhase2;
     (* always_ready *) method Bit#(16) cpu_sp();
     (* always_ready *) method Bool    cpu_inst_retired();
     (* always_ready *) method Bool    cpu_is_r800();
-    (* always_ready *) method Bit#(5) cpu_state();
+    (* always_ready *) method Bit#(6) cpu_state();
     (* always_ready *) method Bit#(8) cpu_opcode();
 endinterface: TopPhase2
 
@@ -131,7 +131,7 @@ module mkTopPhase2(TopPhase2);
     method Bit#(16) cpu_sp()           = cpu.get_regs().sp;
     method Bool     cpu_inst_retired() = cpu.inst_retired();
     method Bool     cpu_is_r800()      = cpu.is_r800_mode();
-    method Bit#(5)  cpu_state()        = cpu.get_state();
+    method Bit#(6)  cpu_state()        = cpu.get_state();
     method Bit#(8)  cpu_opcode()       = cpu.get_opcode();
 endmodule: mkTopPhase2
 

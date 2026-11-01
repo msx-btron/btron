@@ -384,7 +384,7 @@ $(BIN_ROM): $(VL_OBJ)/VmkTopMSXTurboR__ALL.a $(SIM_DIR)/sim_rom.c $(SIM_DIR)/mem
 	    -o $@
 
 ROM ?= $(FPGA_ROOT)/../assets/msx/MSX_LOGO.rom
-CYCLES ?= 15000000
+CYCLES ?= 200000000
 PPM ?= cart_frame.ppm
 
 fpga_rom_runner: $(BIN_ROM)

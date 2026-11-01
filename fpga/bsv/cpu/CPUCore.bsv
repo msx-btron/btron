@@ -74,7 +74,17 @@ typedef enum {
     // Multiplier
     ExecMul,
     // Complete
-    RetireInst
+    RetireInst,
+    // Absolute (nn) data phase, block transfer, IX/IY displacement, CB (HL)
+    AbsReadLo,
+    AbsReadHi,
+    AbsWriteHi,
+    BlkSrc,
+    BlkDst,
+    IdxDisp,
+    IdxCB,
+    CbMem,
+    InPort
 } CpuState deriving (Bits, Eq);
 
 // ── Sub-target for pending memory or immediate operation ────────────────────
@@ -96,7 +106,16 @@ typedef enum {
     TargetCall,
     TargetOutA,
     TargetInA,
-    TargetAluImm
+    TargetAluImm,
+    // LD A,(nn) / LD (nn),A and LD rr,(nn) / LD (nn),rr (HL, IX, IY, SP, BC, DE)
+    TargetLdAInd,
+    TargetStAInd,
+    TargetLdPairInd,
+    TargetStPairInd,
+    TargetPairIX,
+    TargetPairIY,
+    TargetMemAbs,   // INC/DEC (IX+d) read-modify-write at temp_addr
+    TargetStIndex   // LD (IX+d), n
 } OpTarget deriving (Bits, Eq);
 
 // ── CPU Core Interface ──────────────────────────────────────────────────────
@@ -113,11 +132,15 @@ interface CPUCore;
     // Inbound memory/IO bus response from MemoryArbiter
     interface Put#(BusResp) bus_resp;
 
+    // Level-sensitive maskable interrupt (MSX VDP INT, data bus pulled to 0xFF).
+    method Action set_irq(Bool level);
+
     // Architectural state introspection
     (* always_ready *) method CPURegs get_regs();
     (* always_ready *) method Bool    inst_retired();
     (* always_ready *) method Bool    is_r800_mode();
-    (* always_ready *) method Bit#(5) get_state();
+    (* always_ready *) method Bool    is_dram_mode();
+    (* always_ready *) method Bit#(6) get_state();
     (* always_ready *) method Bit#(8) get_opcode();
 endinterface: CPUCore
 
@@ -161,10 +184,13 @@ module mkCPUCore(CPUCore);
     Reg#(Bit#(8))  reg_r  <- mkReg(8'h00);
 
     // Interrupt Controls
-    Reg#(Bool)     iff1   <- mkReg(False);
-    Reg#(Bool)     iff2   <- mkReg(False);
-    Reg#(Bit#(2))  im     <- mkReg(0);
-    Reg#(Bool)     halted <- mkReg(False);
+    // iff_delay: EI arms IFF only after the following instruction retires.
+    Reg#(Bool)     iff1      <- mkReg(False);
+    Reg#(Bool)     iff2      <- mkReg(False);
+    Reg#(Bit#(2))  iff_delay <- mkReg(0);
+    Reg#(Bit#(2))  im        <- mkReg(0);
+    Reg#(Bool)     halted    <- mkReg(False);
+    RWire#(Bool)   irq_w     <- mkRWire;
 
     // Micro-Sequencer Control Registers
     Reg#(CpuState) state       <- mkReg(FetchOp);
@@ -181,6 +207,11 @@ module mkCPUCore(CPUCore);
     RWire#(Bool) tick_3m58_w <- mkRWire;
     RWire#(Bool) tick_7m_w   <- mkRWire;
     RWire#(Bool) tick_28m_w  <- mkRWire;
+
+    // One T9769C write port per cycle. The CPU rule only posts the request.
+    Wire#(Bool)    t_wr_en   <- mkDWire(False);
+    Wire#(Bit#(8)) t_wr_port <- mkDWire(0);
+    Wire#(Bit#(8)) t_wr_data <- mkDWire(0);
 
     // Determine if CPU should advance this master clock cycle
     Bool is_r800 = t9769c.is_r800();
@@ -262,6 +293,69 @@ module mkCPUCore(CPUCore);
         endaction
     endfunction
 
+    // ind_sel: 0 HL, 1 IX, 2 IY, 3 SP, 4 BC, 5 DE
+    Reg#(Bit#(3)) ind_sel <- mkReg(0);
+
+    function Bit#(16) sel_pair(Bit#(3) s);
+        case (s)
+            3'd0: return get_hl();
+            3'd1: return reg_ix;
+            3'd2: return reg_iy;
+            3'd3: return reg_sp;
+            3'd4: return get_bc();
+            3'd5: return get_de();
+            default: return 16'h0000;
+        endcase
+    endfunction
+
+    function Action set_sel_pair(Bit#(3) s, Bit#(16) v);
+        action
+            case (s)
+                3'd0: set_hl(v);
+                3'd1: reg_ix <= v;
+                3'd2: reg_iy <= v;
+                3'd3: reg_sp <= v;
+                3'd4: set_bc(v);
+                3'd5: set_de(v);
+                default: noAction;
+            endcase
+        endaction
+    endfunction
+
+    // DD/FD replaces HL/(HL) with IX/IY/(IX+d). 8-bit IXH/IXL are not used
+    // by C-BIOS. EX DE,HL (EB) is not an index op. CB under DD/FD is (IX+d).
+    function Bool fn_index_mem(Bit#(8) op);
+        DecodedOp d = splitOpcode(op);
+        Bool cb  = (op == 8'hCB);
+        Bool inc = (d.x == 2'b00 && d.y == 3'b110 &&
+                    (d.z == 3'b100 || d.z == 3'b101 || d.z == 3'b110));
+        Bool ld  = (d.x == 2'b01 && (d.y == 3'b110 || d.z == 3'b110));
+        Bool alu = (d.x == 2'b10 && d.z == 3'b110);
+        return cb || inc || ld || alu;
+    endfunction
+
+    function Bool fn_index_pair(Bit#(8) op);
+        DecodedOp d = splitOpcode(op);
+        Bool add = (d.x == 2'b00 && d.z == 3'b001 && d.q == 1'b1);
+        Bool ops = (op == 8'h21 || op == 8'h22 || op == 8'h2A ||
+                    op == 8'h23 || op == 8'h2B ||
+                    op == 8'hE1 || op == 8'hE3 || op == 8'hE5 ||
+                    op == 8'hE9 || op == 8'hF9);
+        return add || ops;
+    endfunction
+
+    function Bool fn_index_op(Bit#(8) op);
+        return fn_index_mem(op) || fn_index_pair(op);
+    endfunction
+
+    function Z80Flags fn_in_flags(Bit#(8) val, Z80Flags oldf);
+        return Z80Flags {
+            sf: unpack(val[7]), zf: (val == 0), yf: unpack(val[5]),
+            hf: False, xf: unpack(val[3]), pf: calcParity(val),
+            nf: False, cf: oldf.cf
+        };
+    endfunction
+
     // ── Bus Request Helper ──────────────────────────────────────────────────
     function Action send_bus_req(BusAddr addr, BusData data, Bool write, Bool is_io);
         action
@@ -275,15 +369,51 @@ module mkCPUCore(CPUCore);
         endaction
     endfunction
 
+    rule apply_t9769c_write (t_wr_en);
+        t9769c.io_write(t_wr_port, t_wr_data);
+    endrule
+
     // ── Instruction Execution FSM ───────────────────────────────────────────
     rule cpu_fsm if (clk_adv);
         let dec = splitOpcode(opcode);
 
         case (state)
-            // ── Opcode Fetch ────────────────────────────────────────────────
+            // ── Opcode Fetch / HALT / maskable interrupt ───────────────────
+            // The VDP pulls the interrupt bus to 0xFF, so IM 0 executes
+            // RST 38h and IM 1 jumps to the same vector. Push PC, then 0x0038.
+            // EI opens IFF on the fetch of the following instruction; the
+            // line is sampled on the fetch after that instruction retires.
             FetchOp: begin
-                send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
-                state <= WaitOp;
+                Bool irq = fromMaybe(False, irq_w.wget());
+                if (iff_delay != 0) begin
+                    iff_delay <= iff_delay - 1;
+                    if (iff_delay == 1) begin
+                        iff1 <= True;
+                        iff2 <= True;
+                    end
+                    if (halted) begin
+                        reg_r <= reg_r + 1;
+                    end else begin
+                        send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                        state <= WaitOp;
+                    end
+                end else if (irq && iff1) begin
+                    halted    <= False;
+                    iff1      <= False;
+                    iff2      <= False;
+                    reg_r     <= reg_r + 1;
+                    reg_sp    <= reg_sp - 1;
+                    send_bus_req(zeroExtend(reg_sp - 1), reg_pc[15:8], True, False);
+                    temp_data8 <= reg_pc[7:0];
+                    temp_addr  <= 16'h0038;
+                    op_target  <= TargetCall;
+                    state      <= PushHi;
+                end else if (halted) begin
+                    reg_r <= reg_r + 1;
+                end else begin
+                    send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                    state <= WaitOp;
+                end
             end
 
             WaitOp: begin
@@ -299,8 +429,15 @@ module mkCPUCore(CPUCore);
             DecodeOp: begin
                 let d = dec;
 
-                // ── Non-prefixed instructions ───────────────────────────────
-                if (prefix == 8'h00) begin
+                // ── Unprefixed, or a DD/FD that does not touch IX/IY ──────
+                // A DD/FD prefix on an unrelated opcode is a 4-cycle no-op.
+                // The prefixed opcode itself still executes.
+                Bool idx    = (prefix == 8'hDD || prefix == 8'hFD);
+                Bool idx_op = idx && fn_index_op(opcode);
+                if (prefix == 8'h00 || (idx && !idx_op)) begin
+                    if (idx && opcode != 8'hCB && opcode != 8'hED &&
+                        opcode != 8'hDD && opcode != 8'hFD)
+                        prefix <= 8'h00;
                     case (d.x)
                         // ── x = 0: Relative jumps, 16-bit load/add, 8-bit inc/dec/ld imm
                         2'b00: begin
@@ -318,9 +455,24 @@ module mkCPUCore(CPUCore);
                                             retired_w.wset(True);
                                             state  <= FetchOp;
                                         end
-                                        default: begin // JR / DJNZ
+                                        default: begin // DJNZ / JR e / JR cc,e
+                                            // Always read the displacement. A jump that
+                                            // is not taken leaves TargetNone, so WaitImm8
+                                            // steps over the byte and falls through.
+                                            // DJNZ decrements B and jumps when the new B
+                                            // is not zero. JR cc uses the same flags as JP cc.
+                                            Bool take = case (d.y)
+                                                3'b010: ((reg_b - 1) != 0);                 // DJNZ
+                                                3'b011: True;                               // JR e
+                                                3'b100: evalCondition(CondNZ, reg_f);       // JR NZ
+                                                3'b101: evalCondition(CondZ,  reg_f);       // JR Z
+                                                3'b110: evalCondition(CondNC, reg_f);       // JR NC
+                                                3'b111: evalCondition(CondC,  reg_f);       // JR C
+                                                default: True;
+                                            endcase;
+                                            if (d.y == 3'b010) reg_b <= reg_b - 1;
                                             send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
-                                            op_target <= TargetJp;
+                                            op_target <= take ? TargetJp : TargetNone;
                                             state <= WaitImm8;
                                         end
                                     endcase
@@ -346,7 +498,10 @@ module mkCPUCore(CPUCore);
                                     end
                                 end
 
-                                // z = 2: Indirect loads
+                                // z = 2: Indirect loads.
+                                // 22/2A/32/3A used to retire as a one-byte NOP, so the
+                                // operand of LD A,($FFFF) (3A FF FF) executed as RST 38h
+                                // and entered keyint during CHKRAM with IFF clear.
                                 3'b010: begin
                                     if (d.q == 1'b0) begin
                                         case (d.p)
@@ -358,9 +513,16 @@ module mkCPUCore(CPUCore);
                                                 send_bus_req(zeroExtend(get_de()), reg_a, True, False);
                                                 state <= WaitMemWrite8;
                                             end
-                                            default: begin
-                                                retired_w.wset(True);
-                                                state <= FetchOp;
+                                            2'b10: begin // LD (nn), HL
+                                                ind_sel <= 3'd0;
+                                                send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                                                op_target <= TargetStPairInd;
+                                                state <= WaitImm16Lo;
+                                            end
+                                            2'b11: begin // LD (nn), A
+                                                send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                                                op_target <= TargetStAInd;
+                                                state <= WaitImm16Lo;
                                             end
                                         endcase
                                     end else begin
@@ -375,9 +537,16 @@ module mkCPUCore(CPUCore);
                                                 op_target <= TargetRegA;
                                                 state <= WaitMemRead8;
                                             end
-                                            default: begin
-                                                retired_w.wset(True);
-                                                state <= FetchOp;
+                                            2'b10: begin // LD HL, (nn)
+                                                ind_sel <= 3'd0;
+                                                send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                                                op_target <= TargetLdPairInd;
+                                                state <= WaitImm16Lo;
+                                            end
+                                            2'b11: begin // LD A, (nn)
+                                                send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                                                op_target <= TargetLdAInd;
+                                                state <= WaitImm16Lo;
                                             end
                                         endcase
                                     end
@@ -560,6 +729,8 @@ module mkCPUCore(CPUCore);
                                 // z = 0: RET cc
                                 3'b000: begin
                                     if (evalCondition(unpack(d.y), reg_f)) begin
+                                        // RET must not inherit a stale TargetCall from the CALL.
+                                        op_target <= TargetNone;
                                         send_bus_req(zeroExtend(reg_sp), 8'h00, False, False);
                                         reg_sp <= reg_sp + 1;
                                         state  <= PopLo;
@@ -584,6 +755,7 @@ module mkCPUCore(CPUCore);
                                     end else begin
                                         case (d.p)
                                             2'b00: begin // RET
+                                                op_target <= TargetNone;
                                                 send_bus_req(zeroExtend(reg_sp), 8'h00, False, False);
                                                 reg_sp <= reg_sp + 1;
                                                 state <= PopLo;
@@ -653,11 +825,13 @@ module mkCPUCore(CPUCore);
                                         end
                                         3'b110: begin // DI
                                             iff1 <= False; iff2 <= False;
+                                            iff_delay <= 0;
                                             retired_w.wset(True);
                                             state <= FetchOp;
                                         end
                                         3'b111: begin // EI
-                                            iff1 <= True; iff2 <= True;
+                                            // IFF1 opens after the next instruction.
+                                            iff_delay <= 1;
                                             retired_w.wset(True);
                                             state <= FetchOp;
                                         end
@@ -683,6 +857,8 @@ module mkCPUCore(CPUCore);
                                         reg_sp <= reg_sp - 1;
                                         send_bus_req(zeroExtend(reg_sp - 1), v[15:8], True, False);
                                         temp_data8 <= v[7:0];
+                                        // A leftover TargetCall would reload PC on PushLo.
+                                        op_target <= TargetNone;
                                         state <= PushHi;
                                     end else begin
                                         case (d.p)
@@ -776,6 +952,48 @@ module mkCPUCore(CPUCore);
                                            hf: False, xf: unpack(reg_r[3]), pf: iff2, nf: False, cf: reg_f.cf };
                         retired_w.wset(True); state <= FetchOp;
                     end
+                    // LDI / LDD / LDIR / LDDR and OUTI family: read (HL) first.
+                    // INI family: B is the counter, port is C.
+                    else if (opcode == 8'hA0 || opcode == 8'hA8 ||
+                             opcode == 8'hB0 || opcode == 8'hB8 ||
+                             opcode == 8'hA3 || opcode == 8'hAB ||
+                             opcode == 8'hB3 || opcode == 8'hBB) begin
+                        send_bus_req(zeroExtend(get_hl()), 8'h00, False, False);
+                        state <= BlkSrc;
+                    end
+                    else if (opcode == 8'hA2 || opcode == 8'hAA ||
+                             opcode == 8'hB2 || opcode == 8'hBA) begin
+                        reg_b <= reg_b - 1;
+                        send_bus_req(zeroExtend(reg_c), 8'h00, False, True);
+                        state <= BlkSrc;
+                    end
+                    // IN r,(C) / OUT (C),r   (y == 6 is IN (C) / OUT (C),0)
+                    else if (d.x == 2'b01 && d.z == 3'b000) begin
+                        // IN r,(C). VDP and PPI ports come back on the bus.
+                        // E4-F4 are read by IN A,(n), which is what CHGCPU uses.
+                        send_bus_req(zeroExtend(reg_c), 8'h00, False, True);
+                        state <= InPort;
+                    end
+                    else if (d.x == 2'b01 && d.z == 3'b001) begin
+                        Bit#(8) val = (d.y == 3'b110) ? 8'h00 : read_reg8(unpack(d.y));
+                        t_wr_en <= True;
+                        t_wr_port <= reg_c;
+                        t_wr_data <= val;
+                        send_bus_req(zeroExtend(reg_c), val, True, True);
+                        state <= WaitMemWrite8;
+                    end
+                    // LD (nn), BC/DE/SP and LD BC/DE/SP, (nn)
+                    else if (opcode == 8'h43 || opcode == 8'h53 || opcode == 8'h73 ||
+                             opcode == 8'h4B || opcode == 8'h5B || opcode == 8'h7B) begin
+                        ind_sel <= case (opcode)
+                            8'h43, 8'h4B: 3'd4; // BC
+                            8'h53, 8'h5B: 3'd5; // DE
+                            default:      3'd3; // SP
+                        endcase;
+                        send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                        op_target <= (opcode[3] == 1'b1) ? TargetLdPairInd : TargetStPairInd;
+                        state <= WaitImm16Lo;
+                    end
                     else begin
                         retired_w.wset(True);
                         state <= FetchOp;
@@ -784,48 +1002,126 @@ module mkCPUCore(CPUCore);
                 // ── Prefix CB (Bit Manipulations) ───────────────────────────
                 else if (prefix == 8'hCB) begin
                     prefix <= 8'h00;
-                    let r8 = unpack(d.z);
-                    let val = read_reg8(r8);
-                    case (d.x)
-                        // Shift / Rotate
-                        2'b00: begin
-                            let s_res = evalShift8(unpack(d.y), val, reg_f.cf);
-                            write_reg8(r8, s_res.res);
-                            reg_f <= s_res.flags;
-                        end
-                        // BIT y, r
-                        2'b01: begin
-                            Bit#(1) bit_val = val[d.y];
-                            reg_f <= Z80Flags {
-                                sf: (d.y == 3'd7) && (bit_val == 1'b1),
-                                zf: (bit_val == 1'b0),
-                                yf: unpack(val[5]),
-                                hf: True,
-                                xf: unpack(val[3]),
-                                pf: (bit_val == 1'b0),
-                                nf: False,
-                                cf: reg_f.cf
-                            };
-                        end
-                        // RES y, r
-                        2'b10: begin
-                            Bit#(8) mask = ~(8'd1 << d.y);
-                            write_reg8(r8, val & mask);
-                        end
-                        // SET y, r
-                        2'b11: begin
-                            Bit#(8) mask = (8'd1 << d.y);
-                            write_reg8(r8, val | mask);
-                        end
-                    endcase
-                    retired_w.wset(True);
-                    state <= FetchOp;
+                    if (d.z == 3'b110) begin
+                        temp_addr <= get_hl();
+                        send_bus_req(zeroExtend(get_hl()), 8'h00, False, False);
+                        state <= CbMem;
+                    end else begin
+                        let r8 = unpack(d.z);
+                        let val = read_reg8(r8);
+                        case (d.x)
+                            2'b00: begin
+                                let s_res = evalShift8(unpack(d.y), val, reg_f.cf);
+                                write_reg8(r8, s_res.res);
+                                reg_f <= s_res.flags;
+                            end
+                            2'b01: begin
+                                Bit#(1) bit_val = val[d.y];
+                                reg_f <= Z80Flags {
+                                    sf: (d.y == 3'd7) && (bit_val == 1'b1),
+                                    zf: (bit_val == 1'b0),
+                                    yf: unpack(val[5]),
+                                    hf: True,
+                                    xf: unpack(val[3]),
+                                    pf: (bit_val == 1'b0),
+                                    nf: False,
+                                    cf: reg_f.cf
+                                };
+                            end
+                            2'b10: begin
+                                Bit#(8) mask = ~(8'd1 << d.y);
+                                write_reg8(r8, val & mask);
+                            end
+                            2'b11: begin
+                                Bit#(8) mask = (8'd1 << d.y);
+                                write_reg8(r8, val | mask);
+                            end
+                        endcase
+                        retired_w.wset(True);
+                        state <= FetchOp;
+                    end
                 end
                 else begin
-                    // Other prefixes (DD, FD) fall-through
-                    prefix <= 8'h00;
-                    retired_w.wset(True);
-                    state  <= FetchOp;
+                    // DD/FD index operation. Displacement forms fetch d first.
+                    Bit#(16) ixv = (prefix == 8'hFD) ? reg_iy : reg_ix;
+                    if (fn_index_mem(opcode)) begin
+                        send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                        state <= IdxDisp;
+                    end else begin
+                        prefix <= 8'h00;
+                        case (opcode)
+                            8'h21: begin // LD IX/IY, nn
+                                send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                                op_target <= (prefix == 8'hFD) ? TargetPairIY : TargetPairIX;
+                                state <= WaitImm16Lo;
+                            end
+                            8'h22: begin // LD (nn), IX/IY
+                                ind_sel <= (prefix == 8'hFD) ? 3'd2 : 3'd1;
+                                send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                                op_target <= TargetStPairInd;
+                                state <= WaitImm16Lo;
+                            end
+                            8'h2A: begin // LD IX/IY, (nn)
+                                ind_sel <= (prefix == 8'hFD) ? 3'd2 : 3'd1;
+                                send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                                op_target <= TargetLdPairInd;
+                                state <= WaitImm16Lo;
+                            end
+                            8'h23: begin
+                                if (prefix == 8'hFD) reg_iy <= ixv + 1;
+                                else reg_ix <= ixv + 1;
+                                retired_w.wset(True);
+                                state <= FetchOp;
+                            end
+                            8'h2B: begin
+                                if (prefix == 8'hFD) reg_iy <= ixv - 1;
+                                else reg_ix <= ixv - 1;
+                                retired_w.wset(True);
+                                state <= FetchOp;
+                            end
+                            8'h09, 8'h19, 8'h29, 8'h39: begin
+                                Bit#(16) ss = case (opcode[5:4])
+                                    2'b00: get_bc();
+                                    2'b01: get_de();
+                                    2'b10: ixv;
+                                    2'b11: reg_sp;
+                                endcase;
+                                let radd = evalAdd16(ixv, ss, reg_f);
+                                if (prefix == 8'hFD) reg_iy <= radd.res;
+                                else reg_ix <= radd.res;
+                                reg_f <= radd.flags;
+                                retired_w.wset(True);
+                                state <= FetchOp;
+                            end
+                            8'hE5: begin // PUSH IX/IY
+                                reg_sp <= reg_sp - 1;
+                                send_bus_req(zeroExtend(reg_sp - 1), ixv[15:8], True, False);
+                                temp_data8 <= ixv[7:0];
+                                op_target <= TargetNone;
+                                state <= PushHi;
+                            end
+                            8'hE1: begin // POP IX/IY
+                                send_bus_req(zeroExtend(reg_sp), 8'h00, False, False);
+                                reg_sp <= reg_sp + 1;
+                                op_target <= (prefix == 8'hFD) ? TargetPairIY : TargetPairIX;
+                                state <= PopLo;
+                            end
+                            8'hE9: begin // JP (IX/IY)
+                                reg_pc <= ixv;
+                                retired_w.wset(True);
+                                state <= FetchOp;
+                            end
+                            8'hF9: begin // LD SP, IX/IY
+                                reg_sp <= ixv;
+                                retired_w.wset(True);
+                                state <= FetchOp;
+                            end
+                            default: begin
+                                retired_w.wset(True);
+                                state <= FetchOp;
+                            end
+                        endcase
+                    end
                 end
             end
 
@@ -858,9 +1154,10 @@ module mkCPUCore(CPUCore);
                         state <= WaitMemWrite8;
                     end
                     TargetOutA: begin
-                        // I/O write OUT (n), A: check internal T9769C ports first
-                        t9769c.io_write(imm, reg_a);
-                        // Also broadcast on bus
+                        // I/O write OUT (n), A: internal T9769C and the external bus.
+                        t_wr_en <= True;
+                        t_wr_port <= imm;
+                        t_wr_data <= reg_a;
                         send_bus_req(zeroExtend(imm), reg_a, True, True);
                         state <= WaitMemWrite8;
                     end
@@ -883,11 +1180,16 @@ module mkCPUCore(CPUCore);
                         retired_w.wset(True);
                         state <= FetchOp;
                     end
+                    TargetStIndex: begin
+                        send_bus_req(zeroExtend(temp_addr), imm, True, False);
+                        state <= WaitMemWrite8;
+                    end
                     default: noAction;
                 endcase
 
                 if (op_target != TargetMemHL && op_target != TargetOutA &&
                     op_target != TargetInA && op_target != TargetAluImm &&
+                    op_target != TargetStIndex &&
                     op_target != TargetJp) begin
                     retired_w.wset(True);
                     state <= FetchOp;
@@ -921,6 +1223,28 @@ module mkCPUCore(CPUCore);
                     TargetPairDE: set_de(imm16);
                     TargetPairHL: set_hl(imm16);
                     TargetPairSP: reg_sp <= imm16;
+                    TargetPairIX: reg_ix <= imm16;
+                    TargetPairIY: reg_iy <= imm16;
+                    TargetLdAInd: begin
+                        send_bus_req(zeroExtend(imm16), 8'h00, False, False);
+                        op_target <= TargetRegA;
+                        state <= WaitMemRead8;
+                    end
+                    TargetStAInd: begin
+                        send_bus_req(zeroExtend(imm16), reg_a, True, False);
+                        state <= WaitMemWrite8;
+                    end
+                    TargetLdPairInd: begin
+                        temp_addr <= imm16;
+                        send_bus_req(zeroExtend(imm16), 8'h00, False, False);
+                        state <= AbsReadLo;
+                    end
+                    TargetStPairInd: begin
+                        temp_addr  <= imm16;
+                        temp_data8 <= sel_pair(ind_sel)[15:8];
+                        send_bus_req(zeroExtend(imm16), sel_pair(ind_sel)[7:0], True, False);
+                        state <= AbsWriteHi;
+                    end
                     TargetCall: begin
                         // Push return address (current PC) and jump to imm16
                         reg_sp <= reg_sp - 1;
@@ -932,7 +1256,9 @@ module mkCPUCore(CPUCore);
                     default: noAction;
                 endcase
 
-                if (op_target != TargetCall) begin
+                if (op_target != TargetCall &&
+                    op_target != TargetLdAInd && op_target != TargetStAInd &&
+                    op_target != TargetLdPairInd && op_target != TargetStPairInd) begin
                     retired_w.wset(True);
                     state <= FetchOp;
                 end
@@ -964,10 +1290,17 @@ module mkCPUCore(CPUCore);
                         send_bus_req(zeroExtend(get_hl()), new_d, True, False);
                         state <= WaitMemWrite8;
                     end
+                    TargetMemAbs: begin // INC/DEC (IX+d)
+                        let new_d = (alu_subop == AluADD) ? d + 1 : d - 1;
+                        let flags = (alu_subop == AluADD) ? evalInc8(d, reg_f).flags : evalDec8(d, reg_f).flags;
+                        reg_f <= flags;
+                        send_bus_req(zeroExtend(temp_addr), new_d, True, False);
+                        state <= WaitMemWrite8;
+                    end
                     default: noAction;
                 endcase
 
-                if (op_target != TargetMemHL) begin
+                if (op_target != TargetMemHL && op_target != TargetMemAbs) begin
                     retired_w.wset(True);
                     state <= FetchOp;
                 end
@@ -1017,6 +1350,8 @@ module mkCPUCore(CPUCore);
                     TargetPairBC: set_bc(v);
                     TargetPairDE: set_de(v);
                     TargetPairHL: set_hl(v);
+                    TargetPairIX: reg_ix <= v;
+                    TargetPairIY: reg_iy <= v;
                     TargetNone: begin // POP AF or RET
                         if (opcode == 8'hC9 || dec.z == 3'b000) begin // RET
                             reg_pc <= v;
@@ -1028,6 +1363,198 @@ module mkCPUCore(CPUCore);
                     default: noAction;
                 endcase
 
+                retired_w.wset(True);
+                state <= FetchOp;
+            end
+
+            // ── LD rr,(nn) / LD (nn),rr data phase ──────────────────────
+            AbsReadLo: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                temp_data8 <= resp.data;
+                send_bus_req(zeroExtend(temp_addr + 1), 8'h00, False, False);
+                state <= AbsReadHi;
+            end
+
+            AbsReadHi: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                set_sel_pair(ind_sel, {resp.data, temp_data8});
+                retired_w.wset(True);
+                state <= FetchOp;
+            end
+
+            AbsWriteHi: begin
+                q_resp_in.deq;
+                send_bus_req(zeroExtend(temp_addr + 1), temp_data8, True, False);
+                state <= WaitMemWrite8;
+            end
+
+            // ── LDI/LDIR/LDD/LDDR, INI/INIR, OUTI/OTIR ──────────────────────
+            BlkSrc: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                Bool is_ld = (opcode == 8'hA0 || opcode == 8'hA8 ||
+                              opcode == 8'hB0 || opcode == 8'hB8);
+                Bool is_out = (opcode == 8'hA3 || opcode == 8'hAB ||
+                               opcode == 8'hB3 || opcode == 8'hBB);
+                if (is_ld) begin
+                    temp_data8 <= resp.data;
+                    send_bus_req(zeroExtend(get_de()), resp.data, True, False);
+                    state <= BlkDst;
+                end else if (is_out) begin
+                    reg_b <= reg_b - 1;
+                    t_wr_en <= True;
+                    t_wr_port <= reg_c;
+                    t_wr_data <= resp.data;
+                    send_bus_req(zeroExtend(reg_c), resp.data, True, True);
+                    state <= BlkDst;
+                end else begin
+                    send_bus_req(zeroExtend(get_hl()), resp.data, True, False);
+                    state <= BlkDst;
+                end
+            end
+
+            BlkDst: begin
+                q_resp_in.deq;
+                Bool is_ld = (opcode == 8'hA0 || opcode == 8'hA8 ||
+                              opcode == 8'hB0 || opcode == 8'hB8);
+                Bool down = (opcode == 8'hA8 || opcode == 8'hB8 ||
+                             opcode == 8'hAA || opcode == 8'hBA ||
+                             opcode == 8'hAB || opcode == 8'hBB);
+                Bit#(16) step = down ? 16'hFFFF : 16'h0001;
+                if (is_ld) begin
+                    set_hl(get_hl() + step);
+                    set_de(get_de() + step);
+                    Bit#(16) bc1 = get_bc() - 1;
+                    set_bc(bc1);
+                    Bit#(8) n = temp_data8 + reg_a;
+                    reg_f <= Z80Flags {
+                        sf: reg_f.sf, zf: reg_f.zf,
+                        yf: unpack(n[1]), hf: False, xf: unpack(n[3]),
+                        pf: (bc1 != 0), nf: False, cf: reg_f.cf
+                    };
+                    if ((opcode == 8'hB0 || opcode == 8'hB8) && bc1 != 0)
+                        reg_pc <= reg_pc - 2;
+                end else begin
+                    set_hl(get_hl() + step);
+                    reg_f <= Z80Flags {
+                        sf: reg_f.sf, zf: (reg_b == 0),
+                        yf: reg_f.yf, hf: False, xf: reg_f.xf,
+                        pf: reg_f.pf, nf: True, cf: reg_f.cf
+                    };
+                    Bool rep = (opcode == 8'hB2 || opcode == 8'hBA ||
+                                opcode == 8'hB3 || opcode == 8'hBB);
+                    if (rep && reg_b != 0)
+                        reg_pc <= reg_pc - 2;
+                end
+                retired_w.wset(True);
+                state <= FetchOp;
+            end
+
+            // ── DD/FD displacement byte ─────────────────────────────────────
+            IdxDisp: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                Bit#(16) base = (prefix == 8'hFD) ? reg_iy : reg_ix;
+                Bit#(16) addr = base + signExtend(resp.data);
+                temp_addr <= addr;
+                reg_pc <= reg_pc + 1;
+                prefix <= 8'h00;
+                let id = splitOpcode(opcode);
+                if (opcode == 8'h76) begin
+                    retired_w.wset(True);
+                    state <= FetchOp;
+                end else if (opcode == 8'hCB) begin
+                    send_bus_req(zeroExtend(reg_pc + 1), 8'h00, False, False);
+                    state <= IdxCB;
+                end else if (opcode == 8'h36) begin
+                    send_bus_req(zeroExtend(reg_pc + 1), 8'h00, False, False);
+                    op_target <= TargetStIndex;
+                    state <= WaitImm8;
+                end else if (opcode == 8'h34 || opcode == 8'h35) begin
+                    send_bus_req(zeroExtend(addr), 8'h00, False, False);
+                    op_target <= TargetMemAbs;
+                    alu_subop <= (opcode == 8'h34) ? AluADD : AluSUB;
+                    state <= WaitMemRead8;
+                end else if (id.x == 2'b01 && id.z == 3'b110) begin
+                    send_bus_req(zeroExtend(addr), 8'h00, False, False);
+                    op_target <= case (id.y)
+                        3'b000: TargetRegB;
+                        3'b001: TargetRegC;
+                        3'b010: TargetRegD;
+                        3'b011: TargetRegE;
+                        3'b100: TargetRegH;
+                        3'b101: TargetRegL;
+                        default: TargetRegA;
+                    endcase;
+                    state <= WaitMemRead8;
+                end else if (id.x == 2'b01 && id.y == 3'b110) begin
+                    send_bus_req(zeroExtend(addr), read_reg8(unpack(id.z)), True, False);
+                    state <= WaitMemWrite8;
+                end else if (id.x == 2'b10 && id.z == 3'b110) begin
+                    send_bus_req(zeroExtend(addr), 8'h00, False, False);
+                    alu_subop <= unpack(id.y);
+                    op_target <= TargetAluImm;
+                    state <= WaitMemRead8;
+                end else begin
+                    retired_w.wset(True);
+                    state <= FetchOp;
+                end
+            end
+
+            IdxCB: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                opcode <= resp.data;
+                reg_pc <= reg_pc + 1;
+                send_bus_req(zeroExtend(temp_addr), 8'h00, False, False);
+                state <= CbMem;
+            end
+
+            // CB operation on (HL) or (IX+d). Address is temp_addr.
+            CbMem: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                let cd = splitOpcode(opcode);
+                Bit#(8) val = resp.data;
+                let sh = evalShift8(unpack(cd.y), val, reg_f.cf);
+                Bit#(8) res = case (cd.x)
+                    2'b00: sh.res;
+                    2'b01: val;
+                    2'b10: (val & ~(8'd1 << cd.y));
+                    2'b11: (val | (8'd1 << cd.y));
+                endcase;
+                if (cd.x == 2'b00) reg_f <= sh.flags;
+                else if (cd.x == 2'b01) begin
+                    Bit#(1) bit_val = val[cd.y];
+                    reg_f <= Z80Flags {
+                        sf: (cd.y == 3'd7) && (bit_val == 1'b1),
+                        zf: (bit_val == 1'b0),
+                        yf: unpack(val[5]),
+                        hf: True,
+                        xf: unpack(val[3]),
+                        pf: (bit_val == 1'b0),
+                        nf: False,
+                        cf: reg_f.cf
+                    };
+                end
+                if (cd.x == 2'b01) begin
+                    retired_w.wset(True);
+                    state <= FetchOp;
+                end else begin
+                    send_bus_req(zeroExtend(temp_addr), res, True, False);
+                    state <= WaitMemWrite8;
+                end
+            end
+
+            // IN r,(C) bus response
+            InPort: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                let id = splitOpcode(opcode);
+                if (id.y != 3'b110) write_reg8(unpack(id.y), resp.data);
+                reg_f <= fn_in_flags(resp.data, reg_f);
                 retired_w.wset(True);
                 state <= FetchOp;
             end
@@ -1069,6 +1596,10 @@ module mkCPUCore(CPUCore);
         t9769c.tick_e6();
     endmethod
 
+    method Action set_irq(Bool level);
+        irq_w.wset(level);
+    endmethod
+
     // ── Arbiter Memory Bus Client Interface ─────────────────────────────────
     interface bus_req  = toGet(q_req_out);
     interface bus_resp = toPut(q_resp_in);
@@ -1093,7 +1624,8 @@ module mkCPUCore(CPUCore);
 
     method Bool inst_retired() = isValid(retired_w.wget());
     method Bool is_r800_mode() = t9769c.is_r800();
-    method Bit#(5) get_state() = pack(state);
+    method Bool is_dram_mode() = t9769c.is_dram_mode();
+    method Bit#(6) get_state() = pack(state);
     method Bit#(8) get_opcode() = opcode;
 endmodule: mkCPUCore
 

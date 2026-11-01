@@ -182,9 +182,14 @@ module mkTopMSXTurboR(TopMSXTurboR);
         ppi.set_kbd_data(kbd.kbd_row_bits(row));
     endrule
 
-    // Synchronize DRAM shadow mode with CPU mode (R800 vs Z80A)
+    // DRAM shadow follows S1990 register 6 bit 6, not the R800 select.
+    // R800 ROM mode (port E5 = 0x40) must keep the BIOS ROM visible.
     rule sync_dram_mode;
-        slot_mgr.set_dram_mode(cpu.is_r800_mode());
+        slot_mgr.set_dram_mode(cpu.is_dram_mode());
+    endrule
+
+    rule drive_irq;
+        cpu.set_irq(vdp.irq());
     endrule
 
     // ── CPU Bus Request Decoding & Routing ──────────────────────────────────
@@ -236,9 +241,13 @@ module mkTopMSXTurboR(TopMSXTurboR);
                     let rdata <- ppi.io_read(port);
                     q_cpu_resp_mux.enq(BusResp { tag: tagCPU, data: rdata, ready: True });
                 end
-            end else if (req.write && is_map) begin
-                mapper.io_write(port, req.data);
-                q_cpu_resp_mux.enq(BusResp { tag: tagCPU, data: 0, ready: True });
+            end else if (is_map) begin
+                if (req.write) begin
+                    mapper.io_write(port, req.data);
+                    q_cpu_resp_mux.enq(BusResp { tag: tagCPU, data: 0, ready: True });
+                end else begin
+                    q_cpu_resp_mux.enq(BusResp { tag: tagCPU, data: mapper.io_read(port), ready: True });
+                end
             end else if (req.write && port == 8'hA8) begin
                 slot_mgr.write_ppi_a(req.data);
                 q_cpu_resp_mux.enq(BusResp { tag: tagCPU, data: 0, ready: True });
@@ -258,19 +267,31 @@ module mkTopMSXTurboR(TopMSXTurboR);
                 2'd3: ppi_val[7:6];
             endcase;
 
-            BusAddr paddr;
-            if (prim == 2'd3)
-                paddr = mapper.translate_ram(vaddr);
-            else
-                paddr = slot_mgr.translate(vaddr);
+            // 0xFFFF of an expanded slot is the secondary slot register.
+            // C-BIOS probes it from CHKRAM and check_expanded before any
+            // cartridge scan. The read value is the inverse of the latch.
+            if (vaddr == 16'hFFFF && slot_mgr.ssl_selected()) begin
+                let rdata <- slot_mgr.ssl_access(req.write, req.data);
+                q_cpu_resp_mux.enq(BusResp { tag: tagCPU, data: req.write ? 0 : rdata, ready: True });
+            end else if (slot_mgr.open_bus(vaddr) || (req.write && slot_mgr.rom_write(vaddr))) begin
+                Bit#(8) rdata = req.write ? 0 : 8'hFF;
+                q_cpu_resp_mux.enq(BusResp { tag: tagCPU, data: rdata, ready: True });
+            end else begin
+                Bit#(2) sub = slot_mgr.subslot_of(vaddr);
+                BusAddr paddr;
+                if (prim == 2'd3 && sub == 2'd0)
+                    paddr = mapper.translate_ram(vaddr);
+                else
+                    paddr = slot_mgr.translate(vaddr);
 
-            arbiter.cpu_req.put(BusReq {
-                tag:   tagCPU,
-                addr:  paddr,
-                data:  req.data,
-                write: req.write,
-                is_io: False
-            });
+                arbiter.cpu_req.put(BusReq {
+                    tag:   tagCPU,
+                    addr:  paddr,
+                    data:  req.data,
+                    write: req.write,
+                    is_io: False
+                });
+            end
         end
     endrule
 

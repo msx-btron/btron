@@ -84,7 +84,7 @@ module mkTopPhase3(TopPhase3);
     // Keep SlotManager DRAM shadow mode synced with CPU mode
     rule sync_dram_mode;
         // In turboR, DRAM mode is active when not in ROM mode
-        slot_mgr.set_dram_mode(cpu.is_r800_mode());
+        slot_mgr.set_dram_mode(cpu.is_dram_mode());
     endrule
 
     // Intercept and translate CPU bus requests through SlotManager & Mapper

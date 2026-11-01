@@ -115,7 +115,7 @@ module mkTopPhase4(TopPhase4);
 
     // Keep SlotManager DRAM shadow mode synced with CPU mode
     rule sync_dram_mode;
-        slot_mgr.set_dram_mode(cpu.is_r800_mode());
+        slot_mgr.set_dram_mode(cpu.is_dram_mode());
     endrule
 
     // Intercept and translate CPU bus requests through SlotManager, Mapper & VDP

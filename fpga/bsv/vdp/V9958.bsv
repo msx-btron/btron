@@ -27,6 +27,7 @@ package V9958;
 
 import FIFOF::*;
 import GetPut::*;
+import Vector::*;
 
 import Bus::*;
 import VDPRegs::*;
@@ -106,6 +107,11 @@ module mkV9958(V9958);
     FIFOF#(BusResp) q_scan_resp <- mkFIFOF;
     FIFOF#(BusReq)  q_cmd_mux   <- mkFIFOF;
     FIFOF#(BusResp) q_cmd_resp  <- mkFIFOF;
+    // Lockstep with q_cmd_mux. True = CPU VRAM access, False = blitter.
+    // Responses are in order on this one arbiter client, and a CPU write
+    // must not be delivered to the blitter: its response FIFO is only two
+    // deep and is not drained while idle, which stalls every later OUT ($98).
+    FIFOF#(Bool)    q_cmd_src   <- mkFIFOF;
 
     // CPU VRAM Write Queue (muxed with blitter into q_cmd_mux)
     FIFOF#(BusReq)  q_cpu_vram  <- mkFIFOF;
@@ -118,6 +124,15 @@ module mkV9958(V9958);
 
     // Physical VRAM Base Address
     Bit#(24) vramBase = 24'h300000;
+
+    // Screen 5 scanline. Filled from VRAM at the start of each line.
+    // One buffer is enough: the fetch finishes before the beam crosses it.
+    Reg#(Vector#(128, Bit#(8))) line_buf <- mkReg(replicate(0));
+    Reg#(Bit#(8))  seen_t     <- mkReg(8'hFF);
+    Reg#(Bool)     scanning   <- mkReg(False);
+    Reg#(Bool)     scan_wait  <- mkReg(False);
+    Reg#(Bit#(8))  scan_i     <- mkReg(0);
+    Reg#(Bit#(18)) scan_addr  <- mkReg(0);
 
     // Full 18-bit CPU VRAM address: (R#14[3:0] << 14) | vram_ptr
     function Bit#(18) getCpuVramAddr();
@@ -173,15 +188,64 @@ module mkV9958(V9958);
         end
     endrule
 
-    // Mux CPU VRAM accesses and Blitter requests into arbiter client 2
+    // Mux CPU VRAM accesses and Blitter requests into arbiter client 2.
+    // The source tag is pushed in the same rule as the request so a response
+    // can be steered back to the client that issued it.
     rule route_blitter_req;
         let req <- blitter.vram_req.get();
         q_cmd_mux.enq(req);
+        q_cmd_src.enq(False);
     endrule
 
-    rule route_blitter_resp;
+    rule route_cmd_resp;
+        let from_cpu = q_cmd_src.first;
         let resp <- toGet(q_cmd_resp).get();
-        blitter.vram_resp.put(resp);
+        q_cmd_src.deq;
+        if (!from_cpu)
+            blitter.vram_resp.put(resp);
+    endrule
+
+    // Screen 5 (mode 0x0C): 128 bytes per line, high nibble is the even pixel.
+    // Page comes from R#2[6:5]. The fetch runs once per scanline and stays
+    // ahead of the beam, which steps 168 times across 256 pixels.
+    rule start_scanline (raster.current_t_line() == 0 && seen_t != 0 && !scan_wait);
+        seen_t <= 0;
+        if (regs.display_mode() == 5'b01100 && regs.display_enabled()) begin
+            Bit#(2)  page = regs.read_reg(6'd2)[6:5];
+            Bit#(8)  sy   = truncate(raster.current_line()) + regs.vscroll();
+            scanning  <= True;
+            scan_wait <= False;
+            scan_i    <= 0;
+            scan_addr <= {page, 16'd0} + zeroExtend(sy) * 18'd128;
+        end else begin
+            scanning <= False;
+        end
+    endrule
+
+    rule note_scan_t (raster.current_t_line() != 0);
+        seen_t <= raster.current_t_line();
+    endrule
+
+    rule issue_scan (scanning && !scan_wait);
+        q_scan_req.enq(BusReq {
+            tag:   tagVDPScan,
+            addr:  vramBase + zeroExtend(scan_addr),
+            data:  0,
+            write: False,
+            is_io: False
+        });
+        scan_wait <= True;
+    endrule
+
+    rule take_scan (scan_wait);
+        let resp <- toGet(q_scan_resp).get();
+        let next_line = line_buf;
+        next_line[scan_i[6:0]] = resp.data;
+        line_buf <= next_line;
+        scan_addr <= scan_addr + 1;
+        scan_i    <= scan_i + 1;
+        scan_wait <= False;
+        if (scan_i == 8'd127) scanning <= False;
     endrule
 
     // Update S#7 with POINT color when blitter completes a POINT command
@@ -258,6 +322,7 @@ module mkV9958(V9958);
                         write: True,
                         is_io: False
                     });
+                    q_cmd_src.enq(True);
                     stepCpuPtr();
                 end
             end
@@ -385,10 +450,15 @@ module mkV9958(V9958);
     method Bit#(16) pixel_rgb565();
         if (raster.blank()) begin
             return 16'h0000;
-        end else if (!raster.is_active_display() || !regs.display_enabled()) begin
+        end else if (!regs.display_enabled()) begin
             return regs.read_palette(regs.border_color()[3:0]);
+        end else if (regs.display_mode() == 5'b01100) begin
+            // Screen 5: two 4-bit pixels per byte. Even x is the high nibble.
+            Bit#(8) x   = truncate(raster.beam_x());
+            Bit#(8) b   = line_buf[x[7:1]];
+            Bit#(4) pix = (x[0] == 1'b0) ? b[7:4] : b[3:0];
+            return regs.read_palette(pix);
         end else begin
-            // Foreground / active palette lookup
             return regs.read_palette(regs.read_reg(6'd7)[7:4]);
         end
     endmethod
