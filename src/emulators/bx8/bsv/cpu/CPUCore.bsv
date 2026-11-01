@@ -986,11 +986,17 @@ module mkCPUCore(CPUCore);
                         retired_w.wset(True); state <= FetchOp;
                     end
                     // LDI / LDD / LDIR / LDDR and OUTI family: read (HL) first.
+                    // CPI / CPD / CPIR / CPDR read (HL) and do not write it.
+                    // Bad Apple's driver finds the song base with CPIR. A NOP
+                    // there stores the start address and the sequencer jumps
+                    // into the BIOS font.
                     // INI family: B is the counter, port is C.
                     else if (opcode == 8'hA0 || opcode == 8'hA8 ||
                              opcode == 8'hB0 || opcode == 8'hB8 ||
                              opcode == 8'hA3 || opcode == 8'hAB ||
-                             opcode == 8'hB3 || opcode == 8'hBB) begin
+                             opcode == 8'hB3 || opcode == 8'hBB ||
+                             opcode == 8'hA1 || opcode == 8'hA9 ||
+                             opcode == 8'hB1 || opcode == 8'hB9) begin
                         send_bus_req(zeroExtend(get_hl()), 8'h00, False, False);
                         state <= BlkSrc;
                     end
@@ -1471,15 +1477,38 @@ module mkCPUCore(CPUCore);
                 state <= WaitMemWrite8;
             end
 
-            // ── LDI/LDIR/LDD/LDDR, INI/INIR, OUTI/OTIR ──────────────────────
+            // ── LDI/LDIR/LDD/LDDR, CPI/CPIR, INI/INIR, OUTI/OTIR ───────────
             BlkSrc: begin
                 let resp = q_resp_in.first;
                 q_resp_in.deq;
+                Bool is_cp = (opcode == 8'hA1 || opcode == 8'hB1 ||
+                              opcode == 8'hA9 || opcode == 8'hB9);
                 Bool is_ld = (opcode == 8'hA0 || opcode == 8'hA8 ||
                               opcode == 8'hB0 || opcode == 8'hB8);
                 Bool is_out = (opcode == 8'hA3 || opcode == 8'hAB ||
                                opcode == 8'hB3 || opcode == 8'hBB);
-                if (is_ld) begin
+                // CPI compares A with (HL), then HL steps and BC decrements.
+                // CF is left alone. CPIR/CPDR repeat while BC != 0 and Z == 0.
+                // XF/YF are bits of (result - HF), as in the reference cpi().
+                if (is_cp) begin
+                    Bool down = (opcode == 8'hA9 || opcode == 8'hB9);
+                    let cmp = evalAlu8(AluCP, reg_a, resp.data, False);
+                    set_hl(get_hl() + (down ? 16'hFFFF : 16'h0001));
+                    Bit#(16) bc1 = get_bc() - 1;
+                    set_bc(bc1);
+                    Bit#(8) n = cmp.res - (cmp.flags.hf ? 8'd1 : 8'd0);
+                    reg_f <= Z80Flags {
+                        sf: cmp.flags.sf, zf: cmp.flags.zf,
+                        yf: unpack(n[1]), hf: cmp.flags.hf,
+                        xf: unpack(n[3]), pf: (bc1 != 0),
+                        nf: True, cf: reg_f.cf
+                    };
+                    Bool rep = (opcode == 8'hB1 || opcode == 8'hB9);
+                    if (rep && bc1 != 0 && !cmp.flags.zf)
+                        reg_pc <= reg_pc - 2;
+                    retired_w.wset(True);
+                    state <= FetchOp;
+                end else if (is_ld) begin
                     temp_data8 <= resp.data;
                     send_bus_req(zeroExtend(get_de()), resp.data, True, False);
                     state <= BlkDst;

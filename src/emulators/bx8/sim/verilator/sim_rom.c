@@ -62,6 +62,35 @@ static void print_vdp_mode(void *vl, const char *tag)
 static uint16_t    g_cart_init = 0;
 static bool        g_cart_booted = false;
 
+/* MSX_KEY=space|a|both. Pressed only after the cartridge has run for two
+ * frames, so C-BIOS's boot HALT is left alone. Each press is one master
+ * clock in place of vl_p6_step, so a memory request from that clock is
+ * still serviced. SPACE is row 8 col 0 (0xFE). A is row 2 col 6 (0xBF). */
+static int g_key_space = 0;
+static int g_key_a = 0;
+static int g_key_arm = 0;
+static int g_space_sent = 0;
+static int g_a_sent = 0;
+static int g_keys_down = 0;
+static uint32_t g_kbd_strobe_r8 = 0;
+static uint32_t g_kbd_strobe_r2 = 0;
+static int g_kbd_saw_r8 = 0;
+static int g_kbd_saw_r2 = 0;
+
+static void parse_msx_key(void)
+{
+    const char *k = getenv("MSX_KEY");
+    if (!k || !k[0]) return;
+    if (!strcmp(k, "space") || !strcmp(k, "SPACE")) g_key_space = 1;
+    else if (!strcmp(k, "a") || !strcmp(k, "A")) g_key_a = 1;
+    else if (!strcmp(k, "both") || !strcmp(k, "BOTH")) {
+        g_key_space = 1;
+        g_key_a = 1;
+    } else {
+        fprintf(stderr, "MSX_KEY=%s ignored (space, a, or both)\n", k);
+    }
+}
+
 /* A 48 KiB image whose "AB" header sits at file+0x4000, with INIT inside
  * that page, occupies CPU pages 0..2. C-BIOS looks for the header at
  * $4000, so the file's first byte must land at CPU address 0. */
@@ -90,15 +119,120 @@ typedef struct { uint32_t addr; uint8_t data; uint8_t wr; uint16_t pc; } mem_tr_
 static mem_tr_t g_mring[64];
 static uint32_t g_mring_n = 0;
 
+static int g_do_trace = 0;
+
 static void note_mem(void *vl, uint32_t addr, uint8_t data, int wr)
 {
     /* Always keep the last transactions. PC is filled in only for the hunt. */
     g_mring[g_mring_n & 63] = (mem_tr_t){ addr, data, (uint8_t)wr, 0 };
     g_mring_n++;
-    if (!getenv("MSX_HUNT")) return;
+    /* PC tagging is only needed once the cartridge is in the trace.
+     * Doing it on every fetch from reset dominates the run. */
+    if (!(g_do_trace && g_cart_booted) && !getenv("MSX_HUNT")) return;
     trace_regs_t r;
     vl_p6_get_regs(vl, &r);
     g_mring[(g_mring_n - 1) & 63].pc = r.pc;
+}
+
+/* MSX_TRACE records every retirement, including the steps service_mem
+ * takes while a request is in flight. The outer loop only samples the
+ * last step, so the instruction that enters the $4849 data blob was
+ * invisible. Stop on that entry and dump the ring. */
+static int g_trace_stop = 0;
+static uint16_t g_trace_prev_pc = 0xFFFF;
+static int g_mile = 0;
+
+typedef struct {
+    uint16_t pc, sp, hl, ix, bc, de;
+    uint8_t a, ppi;
+} rsnap_t;
+static rsnap_t g_rsnap[64];
+static uint32_t g_rsnap_n = 0;
+
+static void trace_dump(const char *why)
+{
+    uint32_t n = g_rsnap_n < 64 ? g_rsnap_n : 64;
+    uint32_t start = g_rsnap_n - n;
+    printf("  [TRACE] %s\n", why);
+    for (uint32_t i = 0; i < n; i++) {
+        rsnap_t *s = &g_rsnap[(start + i) & 63];
+        printf("  R-%02u PC=%04X SP=%04X A=%02X HL=%04X DE=%04X BC=%04X PPI=%02X\n",
+               n - 1 - i, s->pc, s->sp, s->a, s->hl, s->de, s->bc, s->ppi);
+    }
+    if (n >= 1) {
+        rsnap_t *cur = &g_rsnap[(g_rsnap_n - 1) & 63];
+        uint16_t prev_pc = (n >= 2) ? g_rsnap[(g_rsnap_n - 2) & 63].pc : 0;
+        uint16_t pcs[2] = { prev_pc, cur->pc };
+        uint16_t sps[2] = { (n >= 2) ? g_rsnap[(g_rsnap_n - 2) & 63].sp : cur->sp, cur->sp };
+        for (int k = 0; k < 2; k++) {
+            uint16_t pc = pcs[k];
+            uint16_t off = (uint16_t)(pc & 0x3FFF);
+            printf("  [OPC] PC=%04X", pc);
+            for (int seg = 0; seg < 8; seg++) {
+                uint32_t phys = ADDR_RAM + (uint32_t)seg * 0x4000u + off;
+                printf(" s%02X:", seg);
+                for (int i = 0; i < 4; i++)
+                    printf("%02X", mem_model_read(&g_mem, phys + (uint32_t)i));
+            }
+            printf("\n");
+            uint16_t sp = sps[k];
+            off = (uint16_t)(sp & 0x3FFF);
+            printf("  [STK] SP=%04X", sp);
+            for (int seg = 0; seg < 8; seg++) {
+                uint32_t phys = ADDR_RAM + (uint32_t)seg * 0x4000u + off;
+                uint8_t lo = mem_model_read(&g_mem, phys);
+                uint8_t hi = mem_model_read(&g_mem, phys + 1);
+                printf(" s%02X:%02X%02X", seg, hi, lo);
+            }
+            printf("\n");
+        }
+    }
+    {
+        uint32_t mn = g_mring_n < 40 ? g_mring_n : 40;
+        uint32_t ms = g_mring_n - mn;
+        for (uint32_t i = 0; i < mn; i++) {
+            mem_tr_t *t = &g_mring[(ms + i) & 63];
+            printf("  MEM %s phys=%06X data=%02X PC=%04X\n",
+                   t->wr ? "W" : "R", t->addr, t->data, t->pc);
+        }
+    }
+    fflush(stdout);
+}
+
+static void trace_step(void *vl)
+{
+    if (!g_do_trace || !g_cart_booted || g_trace_stop) return;
+    if (!vl_p6_inst_retired(vl)) return;
+    trace_regs_t r;
+    vl_p6_get_regs(vl, &r);
+    uint8_t ppi = vl_p6_ppi_read_a(vl);
+    uint16_t hl = (uint16_t)(((uint16_t)r.h << 8) | r.l);
+    uint16_t bc = (uint16_t)(((uint16_t)r.b << 8) | r.c);
+    uint16_t de = (uint16_t)(((uint16_t)r.d << 8) | r.e);
+    g_rsnap[g_rsnap_n & 63] = (rsnap_t){ r.pc, r.sp, hl, r.ix, bc, de, r.a, ppi };
+    g_rsnap_n++;
+
+    int mile = (r.pc == 0x6016u || r.pc == 0x6277u || r.pc == 0x654Au ||
+                r.pc == 0x656Eu || r.pc == 0x6594u || r.pc == 0xC092u ||
+                r.pc == 0xC097u || r.pc == 0xC0A9u || r.pc == 0xC0D1u);
+    if (mile && g_mile < 60) {
+        printf("  [MILE] PC=%04X prev=%04X SP=%04X A=%02X HL=%04X IX=%04X PPI=%02X banks=%02X/%02X\n",
+               r.pc, g_trace_prev_pc, r.sp, r.a, hl, r.ix, ppi, g_bank1, g_bank2);
+        g_mile++;
+        fflush(stdout);
+    }
+
+    int page1_ram = ((ppi & 0x0Cu) == 0x0Cu);
+    int in_blob = (r.pc >= 0x4800u && r.pc < 0x4900u);
+    int prev_in = (g_trace_prev_pc >= 0x4800u && g_trace_prev_pc < 0x4900u);
+    if ((page1_ram && in_blob && !prev_in && g_rsnap_n > 8) || r.pc == 0x36B5u) {
+        char why[96];
+        snprintf(why, sizeof(why), "stop PC=%04X prev=%04X PPI=%02X banks=%02X/%02X",
+                 r.pc, g_trace_prev_pc, ppi, g_bank1, g_bank2);
+        trace_dump(why);
+        g_trace_stop = 1;
+    }
+    g_trace_prev_pc = r.pc;
 }
 
 /* Screen 8 byte is GGGRRRBB. Same expansion as v9938.c. */
@@ -183,6 +317,7 @@ static void service_mem(void *vl)
             }
         }
         vl_p6_step(vl);
+        trace_step(vl);
     }
 }
 
@@ -357,9 +492,37 @@ int main(int argc, char **argv)
 
     memset(g_fb, 0, sizeof(g_fb));
 
-    while (cycles < max_cycles) {
-        vl_p6_step(vl);
+    g_do_trace = getenv("MSX_TRACE") && getenv("MSX_TRACE")[0];
+    parse_msx_key();
+
+    while (cycles < max_cycles && !g_trace_stop) {
+        int injected = 0;
+        if (g_key_arm) {
+            if (g_key_space && !g_space_sent) {
+                vl_p6_kbd_key_down(vl, 8, 0);
+                g_space_sent = 1;
+                injected = 1;
+            } else if (g_key_a && !g_a_sent) {
+                vl_p6_kbd_key_down(vl, 2, 6);
+                g_a_sent = 1;
+                injected = 1;
+            }
+            if ((!g_key_space || g_space_sent) && (!g_key_a || g_a_sent)) {
+                g_key_arm = 0;
+                g_keys_down = 1;
+                vl_p6_get_regs(vl, &regs);
+                printf("  [KBD] latched space=%d A=%d row8=%02X row2=%02X PC=%04X\n",
+                       g_key_space, g_key_a,
+                       vl_p6_kbd_peek_row(vl, 8),
+                       vl_p6_kbd_peek_row(vl, 2),
+                       regs.pc);
+            }
+        }
+        if (!injected)
+            vl_p6_step(vl);
+        trace_step(vl);
         service_mem(vl);
+        if (g_trace_stop) break;
         cycles++;
 
         // Track CPU Instruction Retirement
@@ -368,35 +531,6 @@ int main(int argc, char **argv)
             vl_p6_get_regs(vl, &regs);
             if (retired_insts <= 24 || (retired_insts % 20000) == 0)
                 printf("  RET %-7u PC=%04X SP=%04X\n", retired_insts, regs.pc, regs.sp);
-
-            /* MSX_TRACE=1: the C-BIOS multiply at $3196 is DEC DE / OR D / JR Z.
-             * A capture that sits there is either DE wrapping through 0
-             * (the exit never taken) or one long 16-bit count. Page 1 is
-             * the cartridge window, so an SP there means the stack writes
-             * are being discarded. */
-            if (g_cart_booted && getenv("MSX_TRACE")) {
-                /* The driver parks a private stack at $7F77 while page 1 is
-                 * RAM, then puts the caller's SP back. The break is the later
-                 * drop into $4xxx while PPI page 1 is the cartridge. */
-                static uint16_t prev_sp = 0xFFFF;
-                static int trace_n = 0;
-                int mark = (regs.pc == 0xC08Fu || regs.pc == 0xC092u ||
-                            regs.pc == 0xC0A9u || regs.pc == 0xC0D1u ||
-                            regs.pc == 0x6277u || regs.pc == 0x654Au ||
-                            regs.pc == 0x656Eu || regs.pc == 0x36B5u ||
-                            regs.pc == 0x3196u);
-                int sp_cross = ((prev_sp >= 0xC000u) != (regs.sp >= 0xC000u)) ||
-                               ((prev_sp >= 0x8000u) != (regs.sp >= 0x8000u));
-                if ((mark || sp_cross) && trace_n < 80) {
-                    printf("  [TRACE] PC=%04X SP=%04X->%04X A=%02X HL=%02X%02X PPI=%02X banks=%02X/%02X ret %u\n",
-                           regs.pc, prev_sp, regs.sp, regs.a, regs.h, regs.l,
-                           vl_p6_ppi_read_a(vl), g_bank1, g_bank2, retired_insts);
-                    trace_n++;
-                }
-                prev_sp = regs.sp;
-                if (regs.pc == 0x36B5u || (regs.pc == 0x3196u && trace_n > 2))
-                    break;
-            }
 
             /* MSX_HUNT=1: after the cartridge is entered, keep a short
              * window and dump it when PC falls into the interrupt page
@@ -492,6 +626,10 @@ int main(int argc, char **argv)
         if (prev_vsync && !vsync) {
             frame_count++;
             if (g_cart_booted) frames_after_boot++;
+            if (!g_keys_down && !g_key_arm &&
+                g_cart_booted && frames_after_boot >= 2 &&
+                (g_key_space || g_key_a))
+                g_key_arm = 1;
             if (frame_count % 5 == 0) {
                 vl_p6_get_regs(vl, &regs);
                 printf("  [FRAME %02u] Cycle %-9llu | Ret: %-7u | PC=0x%04X SP=0x%04X Mode=%s TurboLED=%d\n",
@@ -506,6 +644,29 @@ int main(int argc, char **argv)
             }
         }
         prev_vsync = vsync;
+
+        if (g_keys_down) {
+            uint8_t row = (uint8_t)(vl_p6_ppi_peek_pc(vl) & 0x0Fu);
+            if (row == 8) {
+                g_kbd_strobe_r8++;
+                if (!g_kbd_saw_r8) {
+                    trace_regs_t kr;
+                    vl_p6_get_regs(vl, &kr);
+                    printf("  [KBD] scan row 8 matrix=%02X PC=%04X\n",
+                           vl_p6_kbd_peek_row(vl, 8), kr.pc);
+                    g_kbd_saw_r8 = 1;
+                }
+            } else if (row == 2) {
+                g_kbd_strobe_r2++;
+                if (!g_kbd_saw_r2) {
+                    trace_regs_t kr;
+                    vl_p6_get_regs(vl, &kr);
+                    printf("  [KBD] scan row 2 matrix=%02X PC=%04X\n",
+                           vl_p6_kbd_peek_row(vl, 2), kr.pc);
+                    g_kbd_saw_r2 = 1;
+                }
+            }
+        }
 
         /* MSX_LOGO spends several frames copying VRAM after the init
          * vector. Keep two extra frames so the dumped picture is the
@@ -549,6 +710,11 @@ int main(int argc, char **argv)
         vl_p6_get_regs(vl, &endr);
         printf("  [PPI] A=%02X PC=%04X banks=%02X/%02X\n",
                vl_p6_ppi_read_a(vl), endr.pc, g_bank1, g_bank2);
+        if (g_key_space || g_key_a) {
+            printf("  [KBD] end row8=%02X strobe_cycles=%u row2=%02X strobe_cycles=%u\n",
+                   vl_p6_kbd_peek_row(vl, 8), g_kbd_strobe_r8,
+                   vl_p6_kbd_peek_row(vl, 2), g_kbd_strobe_r2);
+        }
         uint32_t n = g_mring_n < 16 ? g_mring_n : 16;
         uint32_t start = g_mring_n - n;
         printf("  [MEM tail]\n");

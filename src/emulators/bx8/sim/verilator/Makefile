@@ -146,9 +146,14 @@ BSV_P6_SRCS := $(BSV_ROOT)/Bus.bsv \
 TOP_P6_V   := $(SIM_DIR)/mkTopMSXTurboR.v
 BIN_P6     := $(SIM_DIR)/fpga_sim_phase6
 
-.PHONY: all phase1 phase2 phase3 phase4 phase5 phase6 synth_ecp5 run clean
+.PHONY: all phase1 phase2 phase3 phase4 phase5 phase6 synth_ecp5 run clean publish_plates
+
+# Publishing is a palette-PNG copy into the book. It does not run a cartridge.
+publish_plates:
+	python3 $(FPGA_ROOT)/publish_plates.py
 
 all: phase1 phase2 phase3 phase4 phase5 phase6
+	python3 $(FPGA_ROOT)/publish_plates.py
 
 # ── Phase 1 Build & Run ────────────────────────────────────────────────────
 $(TOP_P1_V): $(BSV_P1_SRCS)
@@ -398,6 +403,7 @@ fpga_rom_runner: $(BIN_ROM)
 
 run_rom: $(BIN_ROM)
 	$(BIN_ROM) "$(ROM)" --cycles $(CYCLES) --ppm "$(PPM)"
+	python3 $(FPGA_ROOT)/publish_plates.py --ppm "$(PPM)" --rom "$(ROM)"
 
 # ── Physical Synthesis Flow (Yosys, iCESugar-Pro ECP5) ─────────────────────
 synth_ecp5: $(TOP_P6_V)
