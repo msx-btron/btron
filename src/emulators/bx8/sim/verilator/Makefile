@@ -383,14 +383,19 @@ phase6: $(BIN_P6)
 	$(BIN_P6)
 
 # ── Cartridge ROM Verification Runner ──────────────────────────────────────
-$(BIN_ROM): $(VL_OBJ)/VmkTopMSXTurboR__ALL.a $(SIM_DIR)/sim_rom.c $(SIM_DIR)/mem_model.c $(SIM_DIR)/trace_compare.c $(SIM_DIR)/vl_bridge_p6.cpp $(SIM_DIR)/sc_stub.cpp
-	$(CC) $(CFLAGS) -c $(SIM_DIR)/sim_rom.c -o $(VL_OBJ)/sim_rom.o
+MSX_DIR := $(REPO_ROOT)/src/emulators/msx
+
+$(BIN_ROM): $(VL_OBJ)/VmkTopMSXTurboR__ALL.a $(SIM_DIR)/sim_rom.c $(SIM_DIR)/mem_model.c $(SIM_DIR)/trace_compare.c $(SIM_DIR)/vl_bridge_p6.cpp $(SIM_DIR)/sc_stub.cpp $(MSX_DIR)/geo3d.c $(MSX_DIR)/opll.c
+	$(CC) $(CFLAGS) -I$(MSX_DIR) -c $(SIM_DIR)/sim_rom.c -o $(VL_OBJ)/sim_rom.o
+	$(CC) $(CFLAGS) -I$(MSX_DIR) -c $(MSX_DIR)/geo3d.c -o $(VL_OBJ)/geo3d.o
+	$(CC) $(CFLAGS) -I$(MSX_DIR) -I$(REPO_ROOT)/include -c $(MSX_DIR)/opll.c -o $(VL_OBJ)/opll.o
 	$(CC) $(CFLAGS) -c $(SIM_DIR)/mem_model.c -o $(VL_OBJ)/mem_model.o
 	$(CC) $(CFLAGS) -c $(SIM_DIR)/trace_compare.c -o $(VL_OBJ)/trace_compare.o
 	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/vl_bridge_p6.cpp -o $(VL_OBJ)/vl_bridge_p6.o
 	$(CXX) $(CXXFLAGS) -c $(SIM_DIR)/sc_stub.cpp -o $(VL_OBJ)/sc_stub.o
 	$(CXX) -std=c++17 -O2 \
-	    $(VL_OBJ)/sim_rom.o $(VL_OBJ)/mem_model.o $(VL_OBJ)/trace_compare.o \
+	    $(VL_OBJ)/sim_rom.o $(VL_OBJ)/geo3d.o $(VL_OBJ)/opll.o \
+	    $(VL_OBJ)/mem_model.o $(VL_OBJ)/trace_compare.o \
 	    $(VL_OBJ)/vl_bridge_p6.o $(VL_OBJ)/sc_stub.o \
 	    $(VL_OBJ)/VmkTopMSXTurboR__ALL.a $(VL_OBJ)/VmkTopMSXTurboR.o $(VL_OBJ)/verilated.o $(VL_OBJ)/verilated_threads.o \
 	    -o $@

@@ -48,6 +48,9 @@ typedef struct {
     Bit#(8)  arg;
     Bit#(8)  cmd;
     Bit#(5)  mode;
+    // R#21 bit 0 = 0. The command addresses 256 KiB. Otherwise the
+    // V9958 128 KiB window wraps at bit 16.
+    Bool     wide;
 } BlitCmdReq deriving (Bits, Eq);
 
 // ── Blitter FSM States ──────────────────────────────────────────────────────
@@ -83,7 +86,7 @@ interface Blitter;
         Bit#(10) dx, Bit#(10) dy,
         Bit#(10) nx, Bit#(10) ny,
         Bit#(8)  col, Bit#(8) arg, Bit#(8) cmd,
-        Bit#(5)  mode
+        Bit#(5)  mode, Bool wide
     );
 
     // CPU Transfer Data feed (for HMMC / LMMC)
@@ -112,9 +115,15 @@ module mkBlitter(Blitter);
     Reg#(Bit#(8))  reg_arg <- mkReg(0);
     Reg#(Bit#(8))  reg_cmd <- mkReg(0);
     Reg#(Bit#(5))  reg_mode<- mkReg(0);
+    // Latched with the command. V9958 wraps at 128 KiB. V9968 does not.
+    Reg#(Bool)     reg_wide <- mkReg(False);
 
     // State & Iteration Counters
     Reg#(BlitState) state    <- mkReg(BlitIdle);
+    // S#2 bit 7. tronMSX sets it when a bitmap command finishes and
+    // clears it on STOP or when an HMMC/LMMC finishes. C-BIOS reads
+    // whichever status R#15 selects and skips JIFFY when bit 7 is 0.
+    Reg#(Bool)      tr_ready <- mkReg(False);
     Reg#(Bit#(10))  cur_xi   <- mkReg(0);
     Reg#(Bit#(10))  cur_yi   <- mkReg(0);
     Reg#(Bit#(10))  count_x  <- mkReg(0);
@@ -146,6 +155,24 @@ module mkBlitter(Blitter);
     // Line pitch: Screen 7 (0x14) and Screen 8 (0x1C) = 256 bytes; Screen 5 (0x0C) and Screen 6 (0x10) = 128 bytes
     Bool pitch256 = (reg_mode == 5'h14 || reg_mode == 5'h1C);
     Bit#(10) linePitch = pitch256 ? 10'd256 : 10'd128;
+
+    // Y=512 on screen 8 is byte 0x20000. A 17-bit mask wraps that onto
+    // Y=0. The V9968 window keeps it, which is the page Neon copies from.
+    function Bit#(24) vramByte(Bit#(10) y, Bit#(10) pitch, Bit#(10) xbyte);
+        Bit#(19) yb = zeroExtend(y);
+        Bit#(19) pb = zeroExtend(pitch);
+        Bit#(19) xb = zeroExtend(xbyte);
+        Bit#(19) off = yb * pb + xb;
+        Bit#(18) m = reg_wide ? off[17:0] : {1'b0, off[16:0]};
+        return vramBase + zeroExtend(m);
+    endfunction
+
+    function Bit#(24) pixAddr(Bit#(10) y, Bit#(10) x);
+        // Screen 7 is 512 pixels, 4bpp, 256 bytes/line. x[0] still selects the nibble.
+        Bit#(10) pitch = (reg_mode == 5'h1C || reg_mode == 5'h14) ? 10'd256 : 10'd128;
+        Bit#(10) xb = (reg_mode == 5'h1C) ? zeroExtend(x[7:0]) : zeroExtend(x[8:1]);
+        return vramByte(y, pitch, xb);
+    endfunction
 
     // DIX and DIY direction flags from ARG
     Bool dixNegative = (reg_arg[2] == 1'b1);
@@ -192,8 +219,10 @@ module mkBlitter(Blitter);
         reg_arg  <= req.arg;
         reg_cmd  <= req.cmd;
         reg_mode <= req.mode;
+        reg_wide <= req.wide;
 
         if (req.cmd[7:4] == cmdSTOP) begin
+            tr_ready <= False;
             state <= BlitIdle;
         end else begin
             state <= BlitStart;
@@ -256,7 +285,7 @@ module mkBlitter(Blitter);
         Bit#(10) startX = (reg_mode == 5'h1C) ? reg_dx :
                           (reg_mode == 5'h10) ? (reg_dx >> 2) : (reg_dx >> 1);
         Bit#(10) x = stepX(startX, cur_xi, dixNegative) & (linePitch - 1);
-        Bit#(24) addr = vramBase + zeroExtend(y) * zeroExtend(linePitch) + zeroExtend(x);
+        Bit#(24) addr = vramByte(y, linePitch, x);
 
         q_req.enq(BusReq {
             tag:   tagVDPCmd,
@@ -292,7 +321,7 @@ module mkBlitter(Blitter);
                            ((reg_mode == 5'h1C) ? reg_sx :
                             (reg_mode == 5'h10) ? (reg_sx >> 2) : (reg_sx >> 1));
         Bit#(10) sx = stepX(startSx, cur_xi, dixNegative) & (linePitch - 1);
-        Bit#(24) sAddr = vramBase + zeroExtend(sy) * zeroExtend(linePitch) + zeroExtend(sx);
+        Bit#(24) sAddr = vramByte(sy, linePitch, sx);
 
         q_req.enq(BusReq {
             tag:   tagVDPCmd,
@@ -316,7 +345,7 @@ module mkBlitter(Blitter);
                            ((reg_mode == 5'h1C) ? reg_dx :
                             (reg_mode == 5'h10) ? (reg_dx >> 2) : (reg_dx >> 1));
         Bit#(10) dx = stepX(startDx, cur_xi, dixNegative) & (linePitch - 1);
-        Bit#(24) dAddr = vramBase + zeroExtend(dy) * zeroExtend(linePitch) + zeroExtend(dx);
+        Bit#(24) dAddr = vramByte(dy, linePitch, dx);
 
         q_req.enq(BusReq {
             tag:   tagVDPCmd,
@@ -348,9 +377,7 @@ module mkBlitter(Blitter);
     rule blit_lmmm_read_src (state == BlitLMMM_ReadSrc);
         Bit#(10) x = stepX(reg_sx, cur_xi, dixNegative);
         Bit#(10) y = stepY(reg_sy, cur_yi, diyNegative);
-        Bit#(24) byteAddr = (reg_mode == 5'h1C) ?
-            (vramBase + zeroExtend(y) * 256 + zeroExtend(x[7:0])) :
-            (vramBase + zeroExtend(y) * 128 + zeroExtend(x[8:1]));
+        Bit#(24) byteAddr = pixAddr(y, x);
 
         q_req.enq(BusReq {
             tag:   tagVDPCmd,
@@ -382,9 +409,7 @@ module mkBlitter(Blitter);
                      (code == cmdPSET)  ? reg_dy :
                      stepY(reg_dy, cur_yi, diyNegative);
 
-        Bit#(24) byteAddr = (reg_mode == 5'h1C) ?
-            (vramBase + zeroExtend(y) * 256 + zeroExtend(x[7:0])) :
-            (vramBase + zeroExtend(y) * 128 + zeroExtend(x[8:1]));
+        Bit#(24) byteAddr = pixAddr(y, x);
 
         q_req.enq(BusReq {
             tag:   tagVDPCmd,
@@ -442,9 +467,7 @@ module mkBlitter(Blitter);
                      (code == cmdPSET) ? reg_dy :
                      stepY(reg_dy, cur_yi, diyNegative);
 
-        Bit#(24) byteAddr = (reg_mode == 5'h1C) ?
-            (vramBase + zeroExtend(y) * 256 + zeroExtend(x[7:0])) :
-            (vramBase + zeroExtend(y) * 128 + zeroExtend(x[8:1]));
+        Bit#(24) byteAddr = pixAddr(y, x);
 
         q_req.enq(BusReq {
             tag:   tagVDPCmd,
@@ -528,7 +551,7 @@ module mkBlitter(Blitter);
         Bit#(10) startDx = (reg_mode == 5'h1C) ? reg_dx :
                            (reg_mode == 5'h10) ? (reg_dx >> 2) : (reg_dx >> 1);
         Bit#(10) dx = stepX(startDx, cur_xi, dixNegative) & (linePitch - 1);
-        Bit#(24) dAddr = vramBase + zeroExtend(dy) * zeroExtend(linePitch) + zeroExtend(dx);
+        Bit#(24) dAddr = vramByte(dy, linePitch, dx);
 
         q_req.enq(BusReq {
             tag:   tagVDPCmd,
@@ -557,6 +580,8 @@ module mkBlitter(Blitter);
     endrule
 
     rule blit_finish (state == BlitDone);
+        Bit#(4) code = reg_cmd[7:4];
+        tr_ready <= (code != cmdHMMC && code != cmdLMMC);
         state <= BlitIdle;
     endrule
 
@@ -572,14 +597,14 @@ module mkBlitter(Blitter);
         Bit#(10) dx, Bit#(10) dy,
         Bit#(10) nx, Bit#(10) ny,
         Bit#(8)  col, Bit#(8) arg, Bit#(8) cmd,
-        Bit#(5)  mode
+        Bit#(5)  mode, Bool wide
     );
         q_cmd_start.enq(BlitCmdReq {
             sx: sx, sy: sy,
             dx: dx, dy: dy,
             nx: nx, ny: ny,
             col: col, arg: arg, cmd: cmd,
-            mode: mode
+            mode: mode, wide: wide
         });
     endmethod
 
@@ -588,7 +613,7 @@ module mkBlitter(Blitter);
     endmethod
 
     method Bool is_busy()     = (state != BlitIdle) || q_cmd_start.notEmpty;
-    method Bool is_tr()       = (state == BlitTransfer_WaitCPU);
+    method Bool is_tr()       = tr_ready || (state == BlitTransfer_WaitCPU);
     method Bit#(8) point_color() = pt_color;
 
     interface Get vram_req  = toGet(q_req);

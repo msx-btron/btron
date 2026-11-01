@@ -1,0 +1,135 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{times}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\title{\textbf{Clean Architectural Revival of the Emotion Engine\\
+and Reality Co-Processor on FPGA:\\
+A RISC-V Vector Design in Bluespec SystemVerilog}}
+
+\author{
+  Independent Systems Architecture Study\\
+  \texttt{btron-bx64} Technical Note
+}
+
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This article presents a respectful engineering analysis and a concrete proposal for the clean revival of the computational heart of the PlayStation~2 Emotion Engine and the Nintendo~64 Reality Co-Processor. The original designs remain exemplary demonstrations of specialized vector parallelism, tight local memory, and high-bandwidth DMA under severe transistor and power constraints. Rather than attempting cycle-accurate emulation or commercial reverse engineering, we advocate a first-principles reconstruction: two powerful RISC-V cores equipped with the standard Vector Extension (RVV), realized in synthesizable Bluespec SystemVerilog (BSV) and targeted at contemporary FPGA platforms. The resulting architecture preserves the essential dual-vector-unit organization and peripheral interfaces while replacing the proprietary MIPS cores with an open, modern ISA. The work is offered as a pure computer-architecture exercise---one that Sony engineers may find technically interesting and, we hope, worthy of professional respect.
+\end{abstract}
+
+\section{Motivation and Respect for the Original Designs}
+
+The Emotion Engine (EE) and the Reality Co-Processor (RCP) were not merely ``game console CPUs.'' They were carefully balanced media processors that extracted extraordinary real-time 3D and behavioural performance from the silicon budgets of the late 1990s. The EE's dual Vector Units (VU0/VU1), each organised around four floating-point multiply-accumulate pipelines operating on 128-bit XYZW registers, together with a sophisticated ten-channel DMA fabric and carefully sized local micro-memories, remain a textbook illustration of domain-specific architecture. Likewise, the N64 RSP's eight-lane 16-bit fixed-point vector unit, microcode programmability, and tight coupling to the Reality Display Processor demonstrated how a modest transistor count could still deliver a programmable geometry and audio engine.
+
+Any revival that seeks the attention of the engineers who created these systems must therefore begin from a position of technical humility and intellectual honesty. The goal is not to claim superiority, nor to produce a commercial product that competes with contemporary silicon. The goal is to show that the architectural ideas themselves---dual independent vector engines, streaming DMA, local scratchpad memories, and a clean separation between control and data-parallel work---remain sound when expressed in a modern open instruction-set architecture and a high-level hardware description language.
+
+Bluespec SystemVerilog supplies the necessary discipline: rule-based concurrency, strong static typing, and parametric elaboration allow the dual-core, dual-vector-unit organisation to be expressed cleanly and verified modularly. RISC-V supplies an open, extensible ISA whose Vector Extension maps naturally onto the 4-wide single-precision and 8-wide 16-bit workloads of the original machines. FPGA implementation then provides an immediately accessible experimental platform on which the design can be measured, refined, and demonstrated without the capital cost of an ASIC.
+
+\section{Architectural Summary of the Source Platforms}
+
+\subsection{Emotion Engine (PlayStation 2)}
+
+At approximately 295--300\,MHz the EE integrated:
+\begin{itemize}[leftmargin=1.5em]
+  \item a two-way superscalar MIPS~III/IV core with 128-bit multimedia integer extensions,
+  \item a scalar FPU (COP1),
+  \item two Vector Units (VU0 tightly coupled, VU1 largely independent),
+  \item each VU possessing 32$\times$128-bit floating-point registers, four FMAC units, one FDIV unit (VU1 augmented by an Elementary Functional Unit), and private instruction/data micro-memories (4\,KB/4\,KB for VU0, 16\,KB/16\,KB for VU1),
+  \item a ten-channel DMA controller and a Graphics Interface (GIF) feeding the external Graphics Synthesizer.
+\end{itemize}
+Peak floating-point throughput was quoted in the region of 6.2\,GFLOPS. The design philosophy was explicit: geometry and ``emotion synthesis'' (physics, character animation, behavioural simulation) were first-class citizens, not afterthoughts.
+
+\subsection{Reality Co-Processor (Nintendo 64)}
+
+The RCP ran at 62.5\,MHz and comprised:
+\begin{itemize}[leftmargin=1.5em]
+  \item the Reality Signal Processor (RSP)---a reduced MIPS scalar unit plus an eight-lane 16-bit fixed-point vector unit with 48-bit accumulators,
+  \item 4\,KB instruction and 4\,KB data local memories,
+  \item the Reality Display Processor (RDP), a fixed-function rasterizer with perspective-correct texturing,
+  \item microcode-driven task switching between geometry and audio workloads.
+\end{itemize}
+The RSP demonstrated that a modest number of parallel fixed-point MACs, combined with carefully engineered microcode, could sustain the transform, lighting and setup rates required by contemporary titles.
+
+\section{Proposed Clean Architecture}
+
+We propose a dual-core RISC-V organisation that mirrors the dual-VU structure while remaining fully standards-compliant.
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Core~0} --- general-purpose control and tightly-coupled vector work (analogue of EE CPU + VU0).  
+  \item \textbf{Core~1} --- more independent vector engine intended for longer-running geometry or audio kernels (analogue of VU1 or RSP).  
+\end{itemize}
+
+Both cores implement RV64GC plus the RISC-V Vector Extension (RVV~1.0). The recommended configuration is:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item VLEN $\ge$ 128\,bits (Zvl128b or higher; 256 or 512 preferred),
+  \item support for SEW = 16 and SEW = 32 so that both 8-lane 16-bit fixed-point and 4-lane single-precision floating-point vectors are native,
+  \item full single-precision floating-point vector arithmetic including fused multiply-add,
+  \item saturating and widening fixed-point operations to recover the numerical behaviour of the original accumulators,
+  \item standard vector loads/stores, gathers, and reductions.
+\end{itemize}
+
+Local scratchpad memories of sizes comparable to the original micro-memories are retained, together with a multi-channel DMA engine whose programming model is deliberately close to the EE DMAC. Peripheral libraries---IDE-style storage, PS/2-style input, cartridge ROM interfaces, controller ports, simple video and audio output---are implemented as selectable BSV packages so that a single RTL codebase can instantiate a PS2-oriented, N64-oriented, or hybrid configuration.
+
+\section{Why Bluespec SystemVerilog and FPGA}
+
+Bluespec's rule semantics map directly onto the concurrent behaviour of two vector units, a DMA fabric, and multiple peripheral masters. Atomic rules eliminate a large class of race conditions that would otherwise require careful hand-written arbitration in Verilog. Parametric modules allow the same source to generate designs with different VLEN, different numbers of vector lanes, or different peripheral sets without textual duplication.
+
+FPGA implementation is chosen for three pragmatic reasons:
+\begin{enumerate}[leftmargin=1.5em]
+  \item immediate measurability of latency, throughput and resource usage;
+  \item the ability to iterate micro-architectural decisions (pipeline depth of the FMA units, DMA descriptor formats, local-memory banking) without mask costs;
+  \item open accessibility---any laboratory or individual engineer can synthesise, place-and-route, and run the design on commodity boards.
+\end{enumerate}
+
+The resulting artefact is therefore not a black-box binary; it is readable, synthesizable source that can be inspected, modified and verified by any competent hardware designer.
+
+\section{Vector Extension Mapping}
+
+The essential arithmetic patterns of both original machines fall comfortably inside RVV:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item EE-style 4-wide single-precision matrix--vector and lighting calculations become short sequences of \texttt{vfmacc}, \texttt{vfmul}, reductions and permutes.
+  \item N64-style 8-wide 16-bit fixed-point MAC loops map onto SEW=16 operations with widening multiplies or explicit high-precision accumulation.
+  \item Perspective division and reciprocal square-root, historically performed by the FDIV/EFU units, are covered by the standard reciprocal and reciprocal-sqrt estimates together with optional Newton--Raphson refinement or a small dedicated functional unit if higher throughput is required.
+\end{itemize}
+
+No proprietary instruction encodings are required. The design therefore remains fully compatible with the growing RISC-V software ecosystem while still delivering the parallel throughput that made the original platforms distinctive.
+
+\section{Intended Audience and Professional Stance}
+
+This work is written first for the engineers who designed, verified and programmed the original Emotion Engine and Reality Co-Processor. It is offered as a serious architectural study, not as marketing, nostalgia, or competitive claim. The original designs solved a difficult set of constraints with elegance and foresight. A clean reconstruction in an open ISA and a high-level HDL is one way of keeping those ideas alive and accessible for the next generation of architects.
+
+If the resulting FPGA implementation proves educationally useful, if it clarifies the relationship between classic media-processor organisation and modern vector ISAs, or if it simply earns a quiet nod of professional recognition from those who lived the original projects, then the exercise will have succeeded.
+
+\section{Conclusion}
+
+The Emotion Engine and the Reality Co-Processor remain landmarks of specialised computer architecture. By re-expressing their dual-vector-unit organisation in RISC-V with the standard Vector Extension, and by realising the design in Bluespec SystemVerilog for FPGA, we obtain a clean, inspectable, and experimentally accessible platform that honours the original engineering while remaining fully open. The \texttt{btron-bx64} design is presented in that spirit.
+
+\vspace{1.5em}
+\noindent\textit{Technical note prepared for professional consideration.\\
+November 2026.}
+
+\end{document}

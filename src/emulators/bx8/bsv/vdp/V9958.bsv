@@ -2,11 +2,13 @@
  * V9958.bsv — Yamaha V9958 Video Display Processor (MSX2+ / MSX turbo R).
  *
  * Implements:
- *   - Ports 0x98..0x9B (and aliases 0x88..0x8B):
+ *   - Ports 0x98..0x9C (and aliases 0x88..0x8C):
  *       Port 0x98: VRAM Read / Write Data with read-ahead prefetch buffer
  *       Port 0x99: Control Register Write / VRAM Address Setup / Status Read
  *       Port 0x9A: RGB565 Palette RAM 2-Byte Sequence
  *       Port 0x9B: Indirect Register R#17 Access & CPU Transfer Stream
+ *       Port 0x9C: V9968 port 4. Frame, line, and command-end flags,
+ *                  write-1-to-clear. Bit 7 locks R#20/R#21 until a write of 00h.
  *   - S#0..S#9 status flags (ST_FG, ST_5S, ST_C, ST_TR, ST_VR, ST_HR, ST_CE)
  *   - Automatic interrupt generation:
  *       Frame IRQ: ST_FG set at end of display when R#1 IE0 = 1
@@ -25,9 +27,11 @@
 
 package V9958;
 
+import ConfigReg::*;
 import FIFOF::*;
 import GetPut::*;
 import RegFile::*;
+import RWire::*;
 import Vector::*;
 
 import Bus::*;
@@ -60,12 +64,15 @@ interface V9958;
     // Clock tick enables
     method Action tick_3m58();
 
-    // CPU I/O Port Interface (Ports 0x98..0x9B, 0x88..0x8B)
+    // CPU I/O Port Interface (Ports 0x98..0x9C, 0x88..0x8C)
     method ActionValue#(Bit#(8)) io_read(Bit#(8) port);
     method Action                io_write(Bit#(8) port, Bit#(8) data);
 
     // Interrupt Line (Active High)
     (* always_ready *) method Bool irq();
+    // One cycle at the end of the active display. The CPU uses it to
+    // accept the next frame interrupt while FH is still set.
+    (* always_ready *) method Bool vblank_edge();
 
     // Video Raster Output Signals
     (* always_ready *) method Bit#(9)  beam_x();
@@ -145,6 +152,20 @@ module mkV9958(V9958);
     // Tick request register
     Reg#(Bool) tick_req <- mkReg(False);
 
+    // V9968 port 4. Bits 2:0 are frame, line, and command-end, write-1-to-clear.
+    // Bit 7 starts set. A write of 00h clears it and lets R#20/R#21 through.
+    // Neon polls bit 0 from its IM 2 handler and acks it with OUT (9Ch), 1.
+    RWire#(Bit#(8)) p4_wr      <- mkRWire;
+    Reg#(Bit#(3))   p4_flags   <- mkConfigReg(0);
+    Reg#(Bool)      p4_lock    <- mkConfigReg(True);
+    Reg#(Bool)      ce_was     <- mkReg(False);
+    // One-cycle copies. The flag rule has to run after do_io_write so it
+    // sees the ack. Reading the raster or the blitter in that same rule
+    // closes a schedule cycle and Bluespec then drops every VDP write.
+    Reg#(Bool)      frame_edge <- mkConfigReg(False);
+    Reg#(Bool)      line_edge  <- mkConfigReg(False);
+    Reg#(Bool)      ce_edge    <- mkConfigReg(False);
+
     // Physical VRAM Base Address
     Bit#(24) vramBase = 24'h300000;
 
@@ -211,6 +232,39 @@ module mkV9958(V9958);
         regs.set_stat_bits(4'd1, 8'h01); // FH flag
     endrule
 
+    rule note_port4_frame;
+        frame_edge <= raster.vblank_edge();
+    endrule
+
+    rule note_port4_line;
+        line_edge <= raster.line_int_edge();
+    endrule
+
+    // Falling CE, sampled before do_io_write touches the blitter.
+    rule note_ce_fall;
+        Bool busy = blitter.is_busy();
+        ce_edge <= ce_was && !busy;
+        ce_was <= busy;
+    endrule
+
+    // Port 4 flags follow S#0 FG, S#1 FH, and S#2 CE, one cycle later.
+    // The ack is write-1-to-clear of the byte do_io_write just stored.
+    rule update_port4;
+        Bit#(3) f = p4_flags;
+        if (frame_edge)
+            f = f | 3'b001;
+        if (line_edge)
+            f = f | 3'b010;
+        if (ce_edge)
+            f = f | 3'b100;
+        if (p4_wr.wget() matches tagged Valid .d) begin
+            f = f & ~d[2:0];
+            if (d == 8'h00)
+                p4_lock <= False;
+        end
+        p4_flags <= f;
+    endrule
+
     // Mux CPU VRAM accesses and Blitter requests into arbiter client 2.
     // The source tag is pushed in the same rule as the request so a response
     // can be steered back to the client that issued it.
@@ -270,12 +324,13 @@ module mkV9958(V9958);
         Bit#(5) mode = regs.display_mode();
         Bit#(8) sy = truncate(raster.current_line()) + regs.vscroll();
         if (regs.display_enabled() && mode == 5'b01100) begin
+            // Screen 5 (G4): four 32 KiB pages. R#2[6:5] selects the page.
             Bit#(2) page = regs.read_reg(6'd2)[6:5];
             scanning  <= True;
             scan_wait <= False;
             scan_i    <= 0;
             scan_kind <= ScanS5;
-            scan_addr <= {page, 16'd0} + zeroExtend(sy) * 18'd128;
+            scan_addr <= {1'b0, page, 15'd0} + zeroExtend(sy) * 18'd128;
         end else if (regs.display_enabled() && mode == 5'b11100) begin
             // Screen 8 (G7): 256 bytes/line, RGB GGGRRRBB. R#2 bit 5 is A16.
             Bit#(1) page = regs.read_reg(6'd2)[5];
@@ -284,6 +339,14 @@ module mkV9958(V9958);
             scan_i    <= 0;
             scan_kind <= ScanS8;
             scan_addr <= {page, 17'd0} + zeroExtend(sy) * 18'd256;
+        end else if (regs.display_enabled() && mode == 5'b10100) begin
+            // Screen 7 (G6): 256 bytes/line, 4bpp. R#2 bit 5 is A16, same as screen 8.
+            Bit#(1) page = regs.read_reg(6'd2)[5];
+            scanning  <= True;
+            scan_wait <= False;
+            scan_i    <= 0;
+            scan_kind <= ScanS8;
+            scan_addr <= {1'b0, page, 16'd0} + zeroExtend(sy) * 18'd256;
         end else if (regs.display_enabled() && (mode == 5'b00100 || mode == 5'b00000)) begin
             scanning  <= True;
             scan_wait <= False;
@@ -368,7 +431,10 @@ module mkV9958(V9958);
     // Unified register write handler (called by Port 0x99 and Port 0x9B)
     function Action handleRegWrite(Bit#(6) r, Bit#(8) val);
         action
-            regs.write_reg(r, val);
+            // Generation C ignores R#20 and R#21 while port 4 bit 7 is set.
+            // Neon writes 00h to port 9Ch before the register table.
+            if (!(p4_lock && (r == 6'd20 || r == 6'd21)))
+                regs.write_reg(r, val);
 
             // R#16 reset palette write latch
             if (r == 6'd16) begin
@@ -402,7 +468,8 @@ module mkV9958(V9958);
                             blit_dx, blit_dy,
                             blit_nx, blit_ny,
                             blit_col, blit_arg, val,
-                            regs.display_mode()
+                            regs.display_mode(),
+                            regs.read_reg(6'd21)[0] == 1'b0
                         );
                     end
                 endcase
@@ -415,14 +482,17 @@ module mkV9958(V9958);
         match {.port, .data} = q_io_write.first;
         q_io_write.deq;
 
-        Bit#(2) idx = port[1:0];
+        Bit#(3) idx = port[2:0];
 
         case (idx)
-            2'd0: begin
+            3'd0: begin
                 // Port 0x98: VRAM Data Write
                 ctrl_pending <= False;
                 if (write_mode) begin
+                    // R#21 bit 0 = 0 keeps A17. Otherwise the V9958 wraps at 128 KiB.
                     Bit#(18) a = getCpuVramAddr();
+                    if (regs.read_reg(6'd21)[0] == 1'b1)
+                        a = a & 18'h1FFFF;
                     q_cmd_mux.enq(BusReq {
                         tag:   tagVDPCmd,
                         addr:  vramBase + zeroExtend(a),
@@ -435,7 +505,7 @@ module mkV9958(V9958);
                 end
             end
 
-            2'd1: begin
+            3'd1: begin
                 // Port 0x99: Control / Register Write / VRAM Address Setup
                 if (ctrl_pending) begin
                     ctrl_pending <= False;
@@ -452,7 +522,7 @@ module mkV9958(V9958);
                 end
             end
 
-            2'd2: begin
+            3'd2: begin
                 // Port 0x9A. R#20 bit 4 selects the V9968 256-color palette
                 // (three bytes, R then G then B, each 0..31). Otherwise the
                 // V9938 16-color palette is a two-byte RGB333 pair.
@@ -496,7 +566,7 @@ module mkV9958(V9958);
                 end
             end
 
-            2'd3: begin
+            3'd3: begin
                 // Port 0x9B: Indirect Register Write via R#17
                 Bit#(8) r17 = regs.read_reg(6'd17);
                 Bit#(6) targetReg = r17[5:0];
@@ -510,6 +580,14 @@ module mkV9958(V9958);
                     end
                 end
             end
+
+            3'd4: begin
+                // Port 0x9C / 0x8C. Write-1-to-clear of the three flags.
+                // The value 00h is also the generation-C unlock.
+                p4_wr.wset(data);
+            end
+
+            default: noAction;
         endcase
     endrule
 
@@ -522,10 +600,10 @@ module mkV9958(V9958);
     // ── CPU I/O Port Interface ──────────────────────────────────────────────
 
     method ActionValue#(Bit#(8)) io_read(Bit#(8) port);
-        Bit#(2) idx = port[1:0];
+        Bit#(3) idx = port[2:0];
         ctrl_pending <= False;
 
-        if (idx == 2'd0) begin
+        if (idx == 3'd0) begin
             // Port 0x98: VRAM Data Read
             Bit#(8) res = read_ahead;
             if (!write_mode) begin
@@ -533,7 +611,7 @@ module mkV9958(V9958);
                 stepCpuPtr();
             end
             return res;
-        end else if (idx == 2'd1) begin
+        end else if (idx == 3'd1) begin
             // Port 0x99: Status Register Read
             Bit#(4) sreg = regs.read_reg(6'd15)[3:0];
             Bit#(8) statVal = regs.read_stat(sreg);
@@ -543,7 +621,10 @@ module mkV9958(V9958);
                 // follows the flag, not a latch that outlives the read.
                 regs.clear_stat_bits(4'd0, stFG);
             end else if (sreg == 4'd1) begin
-                // Reading S#1 clears FH (line interrupt)
+                // Reading S#1 clears FH (line interrupt).
+                // Bits 5:1 are the ID. R#21 bit 0 = 0 reports V9968 (3).
+                Bit#(8) id = (regs.read_reg(6'd21)[0] == 1'b0) ? 8'h06 : 8'h04;
+                statVal = (statVal & 8'hC1) | id;
                 regs.clear_stat_bits(4'd1, 8'h01);
             end else if (sreg == 4'd2) begin
                 // S#2 dynamic status flags: TR, VR, HR, BD, 1, 1, EO, CE
@@ -555,6 +636,12 @@ module mkV9958(V9958);
                 statVal = dynS2;
             end
             return statVal;
+        end else if (idx == 3'd4) begin
+            // Port 0x9C / 0x8C. Bit 0 is the frame flag Neon tests.
+            Bit#(8) p4 = zeroExtend(p4_flags);
+            if (p4_lock)
+                p4 = p4 | 8'h80;
+            return p4;
         end else begin
             return 8'hFF;
         end
@@ -574,6 +661,8 @@ module mkV9958(V9958);
         Bool line_irq  = regs.ie1_enabled() && ((regs.read_stat(4'd1) & 8'h01) != 0);
         return frame_irq || line_irq;
     endmethod
+
+    method Bool vblank_edge() = raster.vblank_edge();
 
     method Bit#(9)  beam_x()       = raster.beam_x();
     method Bit#(8)  beam_y()       = raster.beam_y();
@@ -616,8 +705,17 @@ module mkV9958(V9958);
                 return pal256.sub(c);
             else
                 return rgb332_to_rgb565(c);
+        end else if (regs.display_mode() == 5'b10100) begin
+            // Screen 7 scaled to 256: the high nibble, unless it equals
+            // R#7[3:0], in which case the low nibble. Same rule as v9938.c.
+            Bit#(8) x  = truncate(raster.beam_x());
+            Bit#(8) b  = line_buf[x];
+            Bit#(4) bg = regs.read_reg(6'd7)[3:0];
+            Bit#(4) p0 = b[7:4];
+            Bit#(4) pix = (p0 != bg) ? p0 : b[3:0];
+            return regs.read_palette(pix);
         end else begin
-            // Screen 0, 3, 6, 7 and anything else: one flat color, R#7[7:4].
+            // Screen 0, 3, 6 and anything else: one flat color, R#7[7:4].
             return regs.read_palette(regs.read_reg(6'd7)[7:4]);
         end
     endmethod

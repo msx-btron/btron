@@ -1,0 +1,138 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{times}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\title{\textbf{Clean Architectural Revival of the Sega Saturn\\
+and Dreamcast on FPGA:\\
+A 32-bit RISC-V Vector Design in Bluespec SystemVerilog\\
+(\texttt{btron-bx32} / VEX BX-32)}}
+
+\author{
+  Independent Systems Architecture Study\\
+  \texttt{btron-bx32} Technical Note
+}
+
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This article presents a respectful engineering analysis and a concrete proposal for the clean revival of the computational organisation of the Sega Saturn and the Sega Dreamcast. Both platforms relied on Hitachi SuperH RISC cores---dual SH-2 processors in the Saturn and a single high-performance SH-4 with a powerful graphics-oriented floating-point unit in the Dreamcast. These designs remain instructive examples of 32-bit RISC efficiency, dual-processor coordination, and specialised vector/matrix acceleration under commercial constraints. Rather than cycle-accurate emulation or commercial reverse engineering, we advocate a first-principles reconstruction: one or two 32-bit RISC-V cores equipped with a practical Vector Extension (VEX / RVV subset), realised in synthesizable Bluespec SystemVerilog (BSV) and targeted at contemporary FPGA platforms. The resulting architecture preserves the essential dual-core and vector-math spirit of the originals while replacing the proprietary SuperH cores with an open, modern ISA. The work is offered as a pure computer-architecture exercise---one that Sega and Hitachi engineers of the era may find technically interesting and, we hope, worthy of professional respect.
+\end{abstract}
+
+\section{Motivation and Respect for the Original Designs}
+
+The Sega Saturn and Dreamcast occupy a unique place in the history of 32-bit console architecture. The Saturn's dual Hitachi SH-2 configuration was an ambitious attempt to extract parallelism from two modest RISC cores sharing a common bus, coordinated by the System Control Unit (SCU). The Dreamcast's SH-4 took a different path: a single, carefully tuned 200\,MHz superscalar core whose floating-point unit was explicitly optimised for 4-wide vector and matrix operations, delivering peak rates that still command respect for a late-1990s design.
+
+Any revival that seeks the attention of the engineers who created these systems must therefore begin from a position of technical humility. The goal is not to claim superiority, nor to produce a commercial product. The goal is to show that the architectural ideas themselves---compact 16-bit instruction encoding, dual-processor coordination, and a graphics-oriented floating-point unit capable of high-throughput matrix work---remain sound when expressed in a modern open instruction-set architecture and a high-level hardware description language.
+
+Bluespec SystemVerilog supplies the necessary discipline: rule-based concurrency, strong static typing, and parametric elaboration allow dual-core and vector-unit organisations to be expressed cleanly and verified modularly. RISC-V (RV32) supplies an open, extensible 32-bit ISA whose Vector Extension maps naturally onto the matrix and vector workloads that defined both platforms. FPGA implementation then provides an immediately accessible experimental platform.
+
+\section{Architectural Summary of the Source Platforms}
+
+\subsection{Sega Saturn (Dual SH-2)}
+
+The Saturn centred on two Hitachi SH-2 (SH7604-class) processors running at approximately 28.6\,MHz:
+\begin{itemize}[leftmargin=1.5em]
+  \item 32-bit SuperH RISC with 16-bit fixed instruction length (high code density),
+  \item five-stage pipeline, on-chip multiplier and divider,
+  \item 4\,KB cache per core,
+  \item master/slave configuration in which one core can issue commands to the other,
+  \item shared external bus arbitrated by the System Control Unit (SCU), which itself contained a DSP and multiple DMA channels.
+\end{itemize}
+The dual-CPU design was a pragmatic response to the need for higher aggregate integer throughput without a complete redesign of the SH-2. Graphics work was distributed between the two SH-2s and the VDP1/VDP2 pair; the programming model required careful bus and cache discipline.
+
+\subsection{Sega Dreamcast (SH-4)}
+
+The Dreamcast replaced the dual-SH-2 approach with a single Hitachi SH-4 running at 200\,MHz:
+\begin{itemize}[leftmargin=1.5em]
+  \item two-way superscalar 32-bit SuperH core,
+  \item 8\,KB instruction cache + 16\,KB data cache,
+  \item a 64-bit floating-point unit with dedicated graphics-oriented instructions,
+  \item 32 single-precision floating-point registers that could be treated as 4-wide vectors,
+  \item specialised operations including 4-element dot product (\texttt{FIPR}), matrix--vector multiply, and related vector arithmetic,
+  \item peak floating-point performance quoted at 1.4\,GFLOPS, with geometry rates in the multi-million polygon range when paired with the PowerVR2.
+\end{itemize}
+The SH-4 FPU was deliberately engineered for the 3D transform and lighting workload of the era; its vector-friendly register file and instructions remain a model of domain-specific acceleration within a general-purpose RISC pipeline.
+
+\section{Proposed Clean Architecture (VEX BX-32)}
+
+We propose a 32-bit RISC-V organisation that captures the spirit of both machines while remaining fully standards-compliant.
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Single-core mode} --- a high-performance RV32 core with a rich Vector Extension, modelling the Dreamcast SH-4 + graphics FPU.
+  \item \textbf{Dual-core mode} --- two RV32 cores with lighter vector support and a clean inter-processor messaging / shared-memory fabric, modelling the Saturn dual SH-2 + SCU relationship.
+\end{itemize}
+
+Both configurations implement RV32IMAFD (or a suitable subset) plus a practical Vector Extension (RVV 1.0 subset or a custom VEX tuned for 32-bit media workloads). Recommended parameters:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item VLEN $\ge$ 128\,bits (sufficient for 4$\times$32-bit single-precision vectors),
+  \item native support for SEW = 16 and SEW = 32,
+  \item fused multiply-add, dot-product, and matrix-oriented sequences,
+  \item saturating and widening fixed-point operations where useful for legacy fixed-point paths,
+  \item efficient vector loads/stores and modest gather support.
+\end{itemize}
+
+Local scratchpads, multi-channel DMA, and a clean peripheral library (controllers, CD/GD-ROM style storage interface, simple video and audio output, expansion/cartridge port) are implemented as selectable BSV packages. A single RTL codebase can therefore instantiate a Saturn-oriented dual-core configuration, a Dreamcast-oriented single high-performance core, or a hybrid.
+
+\section{Why Bluespec SystemVerilog and FPGA}
+
+Bluespec's rule semantics map directly onto the concurrent behaviour of dual cores, a DMA fabric, and multiple peripheral masters. Atomic rules eliminate a large class of race conditions that would otherwise require careful hand-written arbitration. Parametric modules allow the same source to generate designs with different core counts, different VLEN, or different peripheral sets without textual duplication.
+
+FPGA implementation is chosen for three pragmatic reasons:
+\begin{enumerate}[leftmargin=1.5em]
+  \item immediate measurability of latency, throughput and resource usage;
+  \item the ability to iterate micro-architectural decisions (pipeline depth of the vector unit, inter-core messaging latency, DMA descriptor formats) without mask costs;
+  \item open accessibility---any laboratory or individual engineer can synthesise, place-and-route, and run the design on commodity boards.
+\end{enumerate}
+
+The resulting artefact is readable, synthesizable source that can be inspected, modified and verified by any competent hardware designer.
+
+\section{Vector Extension Mapping}
+
+The essential arithmetic patterns of both original machines fall comfortably inside a well-chosen 32-bit vector extension:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Dreamcast-style 4-wide single-precision matrix--vector and lighting calculations become short sequences of fused multiply-adds, dot-products and reductions---exactly the class of operations the SH-4 FPU was designed to accelerate.
+  \item Saturn-style integer and fixed-point workloads map onto SEW=16/32 integer vector operations with optional saturating arithmetic.
+  \item Inter-processor coordination (Saturn master/slave) is expressed with lightweight message queues or shared scratchpad regions rather than a proprietary SCU DSP, while still preserving the dual-core programming model.
+\end{itemize}
+
+No proprietary instruction encodings are required. The design therefore remains fully compatible with the growing RISC-V software ecosystem while still delivering the parallel throughput that made the original platforms distinctive.
+
+\section{Intended Audience and Professional Stance}
+
+This work is written first for the engineers who designed, verified and programmed the original Saturn and Dreamcast hardware, and for those at Hitachi who created the SuperH family. It is offered as a serious architectural study, not as marketing, nostalgia, or competitive claim. The original designs solved difficult sets of constraints with ingenuity and pragmatism. A clean reconstruction in an open 32-bit ISA and a high-level HDL is one way of keeping those ideas alive and accessible.
+
+If the resulting FPGA implementation proves educationally useful, if it clarifies the relationship between classic SuperH media-processor organisation and modern vector ISAs, or if it simply earns a quiet nod of professional recognition from those who lived the original projects, then the exercise will have succeeded.
+
+\section{Conclusion}
+
+The Sega Saturn and Dreamcast remain landmarks of 32-bit console architecture. By re-expressing their dual-core and graphics-oriented floating-point organisations in RISC-V with a practical Vector Extension, and by realising the design in Bluespec SystemVerilog for FPGA, we obtain a clean, inspectable, and experimentally accessible platform that honours the original engineering while remaining fully open. The \texttt{btron-bx32} (VEX BX-32) design is presented in that spirit.
+
+\vspace{1.5em}
+\noindent\textit{Technical note prepared for professional consideration.\\
+November 2026.}
+
+\end{document}

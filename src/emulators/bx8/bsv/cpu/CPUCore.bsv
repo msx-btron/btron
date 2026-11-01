@@ -88,7 +88,12 @@ typedef enum {
     IdxDisp,
     IdxCB,
     CbMem,
-    InPort
+    InPort,
+    // IM 2: read the handler address from (I << 8) | 0xFF. MSX leaves
+    // 0xFF on the interrupt bus, so the table slot is the last byte of
+    // the I page. Neon fills that page with 0xF5 and plants JP at $F5F5.
+    Im2RdLo,
+    Im2RdHi
 } CpuState deriving (Bits, Eq);
 
 // ── Sub-target for pending memory or immediate operation ────────────────────
@@ -120,7 +125,8 @@ typedef enum {
     TargetPairIY,
     TargetMemAbs,   // INC/DEC (IX+d) read-modify-write at temp_addr
     TargetStIndex,  // LD (IX+d), n
-    TargetExSP      // EX (SP), rp — kept so a stale TargetRegA cannot swallow it
+    TargetExSP,     // EX (SP), rp — kept so a stale TargetRegA cannot swallow it
+    TargetIM2       // Interrupt push, then the indirect IM 2 jump
 } OpTarget deriving (Bits, Eq);
 
 // ── CPU Core Interface ──────────────────────────────────────────────────────
@@ -139,6 +145,8 @@ interface CPUCore;
 
     // Level-sensitive maskable interrupt (MSX VDP INT, data bus pulled to 0xFF).
     method Action set_irq(Bool level);
+    // One-cycle strobe at the end of the active display.
+    method Action note_vblank(Bool pulse);
 
     // Architectural state introspection
     (* always_ready *) method CPURegs get_regs();
@@ -196,6 +204,12 @@ module mkCPUCore(CPUCore);
     Reg#(Bit#(2))  im        <- mkReg(0);
     Reg#(Bool)     halted    <- mkReg(False);
     RWire#(Bool)   irq_w     <- mkRWire;
+    RWire#(Bool)   vblank_w  <- mkRWire;
+    // FH stays set when the ISR reads a status other than S#0. A level
+    // pin would then refill keyint after every EI/RET. Take one interrupt
+    // for each stretch of the pin, and another when the next vblank edge
+    // arrives, which is the pending bit tronMSX clears on accept.
+    Reg#(Bool)     irq_served <- mkReg(False);
 
     // Micro-Sequencer Control Registers
     Reg#(CpuState) state       <- mkReg(FetchOp);
@@ -393,15 +407,26 @@ module mkCPUCore(CPUCore);
     // ── Instruction Execution FSM ───────────────────────────────────────────
     rule cpu_fsm if (clk_adv);
         let dec = splitOpcode(opcode);
+        Bool irq = fromMaybe(False, irq_w.wget());
+        Bool vb  = fromMaybe(False, vblank_w.wget());
+        // The vblank strobe lasts one T-state. Do not accept on that
+        // cycle: the clear of irq_served is visible on the next fetch,
+        // which is still inside the same frame.
+        Bool irq_take = (state == FetchOp) && (iff_delay == 0) &&
+                        irq && !irq_served && !vb && iff1;
+        if (irq_take)
+            irq_served <= True;
+        else if (vb || !irq)
+            irq_served <= False;
 
         case (state)
             // ── Opcode Fetch / HALT / maskable interrupt ───────────────────
             // The VDP pulls the interrupt bus to 0xFF, so IM 0 executes
             // RST 38h and IM 1 jumps to the same vector. Push PC, then 0x0038.
+            // IM 2 pushes PC and reads the handler from (I << 8) | 0xFF.
             // EI opens IFF on the fetch of the following instruction; the
             // line is sampled on the fetch after that instruction retires.
             FetchOp: begin
-                Bool irq = fromMaybe(False, irq_w.wget());
                 if (iff_delay != 0) begin
                     iff_delay <= iff_delay - 1;
                     if (iff_delay == 1) begin
@@ -414,7 +439,7 @@ module mkCPUCore(CPUCore);
                         send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
                         state <= WaitOp;
                     end
-                end else if (irq && iff1) begin
+                end else if (irq_take) begin
                     halted    <= False;
                     iff1      <= False;
                     iff2      <= False;
@@ -426,8 +451,12 @@ module mkCPUCore(CPUCore);
                     reg_sp    <= reg_sp - 1;
                     send_bus_req(zeroExtend(reg_sp - 1), reg_pc[15:8], True, False);
                     temp_data8 <= reg_pc[7:0];
-                    temp_addr  <= 16'h0038;
-                    op_target  <= TargetCall;
+                    if (im == 2) begin
+                        op_target <= TargetIM2;
+                    end else begin
+                        temp_addr <= 16'h0038;
+                        op_target <= TargetCall;
+                    end
                     state      <= PushHi;
                 end else if (halted) begin
                     reg_r <= reg_r + 1;
@@ -1386,7 +1415,35 @@ module mkCPUCore(CPUCore);
             PushLo: begin
                 let resp = q_resp_in.first;
                 q_resp_in.deq;
-                if (op_target == TargetCall) reg_pc <= temp_addr;
+                if (op_target == TargetCall) begin
+                    reg_pc <= temp_addr;
+                    retired_w.wset(True);
+                    state <= FetchOp;
+                end else if (op_target == TargetIM2) begin
+                    Bit#(16) tbl = {reg_i, 8'hFF};
+                    temp_addr <= tbl;
+                    send_bus_req(zeroExtend(tbl), 8'h00, False, False);
+                    state <= Im2RdLo;
+                end else begin
+                    retired_w.wset(True);
+                    state <= FetchOp;
+                end
+            end
+
+            // Low byte at (I << 8) | 0xFF, high byte at the next address.
+            Im2RdLo: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                temp_data8 <= resp.data;
+                send_bus_req(zeroExtend(temp_addr + 1), 8'h00, False, False);
+                state <= Im2RdHi;
+            end
+
+            Im2RdHi: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                reg_pc <= {resp.data, temp_data8};
+                op_target <= TargetNone;
                 retired_w.wset(True);
                 state <= FetchOp;
             end
@@ -1708,6 +1765,10 @@ module mkCPUCore(CPUCore);
 
     method Action set_irq(Bool level);
         irq_w.wset(level);
+    endmethod
+
+    method Action note_vblank(Bool pulse);
+        vblank_w.wset(pulse);
     endmethod
 
     // ── Arbiter Memory Bus Client Interface ─────────────────────────────────

@@ -138,8 +138,11 @@ module mkVDPRegs(VDPRegs);
     Reg#(Bool) initialized <- mkReg(False);
     rule do_init (!initialized);
         initialized <= True;
-        // V9958 ID: S#1 bits 5..1 = 00010 (V9958 ID)
+        // V9958 ID: S#1 bits 5..1 = 00010 (V9958 ID).
+        // R#21 bit 0 defaults to 1, so a V9968 presents as that V9958
+        // until software writes the bit to 0 (S#1 ID 3, 256 KiB).
         stats[1] <= 8'h04;
+        regs[21] <= 8'h01;
         // S#2 bits 3 & 2 are always 1 on V9938/V9958
         stats[2] <= 8'h0C | stTR; // ready for transfer
         for (Integer i = 0; i < 16; i = i + 1) begin

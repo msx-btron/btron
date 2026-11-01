@@ -4,6 +4,7 @@
 
 #include "vl_bridge_p6.h"
 #include "VmkTopMSXTurboR.h"
+#include "VmkTopMSXTurboR___024root.h"
 
 extern "C" {
 
@@ -195,6 +196,14 @@ uint8_t vl_p6_vdp_peek_reg(void *handle, uint8_t idx) {
     return top->vdp_peek_reg;
 }
 
+uint16_t vl_p6_vdp_peek_palette(void *handle, uint8_t idx) {
+    VmkTopMSXTurboR *top = (VmkTopMSXTurboR *)handle;
+    if (!top) return 0;
+    top->vdp_peek_palette_idx = idx & 0x0F;
+    top->eval();
+    return top->vdp_peek_palette;
+}
+
 uint16_t vl_p6_vdp_peek_pal256(void *handle, uint8_t idx) {
     VmkTopMSXTurboR *top = (VmkTopMSXTurboR *)handle;
     if (!top) return 0;
@@ -206,6 +215,12 @@ uint16_t vl_p6_vdp_peek_pal256(void *handle, uint8_t idx) {
 uint32_t vl_p6_psg_peek_lfsr(void *handle) {
     VmkTopMSXTurboR *top = (VmkTopMSXTurboR *)handle;
     return top ? (uint32_t)top->psg_peek_lfsr : 0;
+}
+
+uint16_t vl_p6_e6_ticks(void *handle) {
+    VmkTopMSXTurboR *top = (VmkTopMSXTurboR *)handle;
+    if (!top || !top->rootp) return 0;
+    return top->rootp->mkTopMSXTurboR__DOT__cpu__DOT__t9769c__DOT__e6_ticks;
 }
 
 uint8_t vl_p6_kbd_peek_row(void *handle, uint8_t row) {

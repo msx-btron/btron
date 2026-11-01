@@ -17,6 +17,12 @@
 
 #include "vl_bridge_p6.h"
 #include "mem_model.h"
+#include "geo3d.h"
+
+void opll_init(void);
+void opll_address(uint8_t value);
+void opll_data(uint8_t value);
+void opll_mix(int32_t *acc, uint32_t frames);
 
 // ── Physical Address Constants ──────────────────────────────────────────────
 #define ADDR_BIOS        0x000000u // 32 KB Main BIOS
@@ -24,7 +30,7 @@
 #define ADDR_RAM         0x010000u // Base 512 KB RAM (Slot 3)
 #define ADDR_SHADOW_DRAM 0x080000u // turbo R fast DRAM shadow
 #define ADDR_CART_A      0x100000u // Primary Slot 1 Cartridge A
-#define ADDR_VRAM        0x300000u // 128 KB VRAM
+#define ADDR_VRAM        0x300000u // 256 KB VRAM (V9968). The model itself is 16 MB.
 
 // ── Cartridge Mapper State ──────────────────────────────────────────────────
 typedef enum {
@@ -51,13 +57,14 @@ static void print_vdp_mode(void *vl, const char *tag)
     uint8_t r8 = vl_p6_vdp_peek_reg(vl, 8);
     uint8_t r9 = vl_p6_vdp_peek_reg(vl, 9);
     uint8_t r20 = vl_p6_vdp_peek_reg(vl, 20);
+    uint8_t r21 = vl_p6_vdp_peek_reg(vl, 21);
     uint8_t r23 = vl_p6_vdp_peek_reg(vl, 23);
     uint8_t r25 = vl_p6_vdp_peek_reg(vl, 25);
     uint8_t mode = (uint8_t)((((r0 & 0x0Eu) << 1) |
                              ((r1 & 0x08u) >> 2) |
                              ((r1 & 0x10u) >> 4)) & 0x1Fu);
-    printf("  [VDP %s] R0=%02X R1=%02X R2=%02X R3=%02X R4=%02X R7=%02X R8=%02X R9=%02X R20=%02X R23=%02X R25=%02X mode=%02X disp=%u\n",
-           tag, r0, r1, r2, r3, r4, r7, r8, r9, r20, r23, r25, mode, (unsigned)((r1 >> 6) & 1));
+    printf("  [VDP %s] R0=%02X R1=%02X R2=%02X R3=%02X R4=%02X R7=%02X R8=%02X R9=%02X R20=%02X R21=%02X R23=%02X R25=%02X mode=%02X disp=%u\n",
+           tag, r0, r1, r2, r3, r4, r7, r8, r9, r20, r21, r23, r25, mode, (unsigned)((r1 >> 6) & 1));
 }
 static uint16_t    g_cart_init = 0;
 static bool        g_cart_booted = false;
@@ -119,6 +126,14 @@ static uint16_t g_rec_psg_peak = 0;
 static int32_t g_rec_scc_peak = 0;
 static int g_rec_pcm_lo = 256;
 static int g_rec_pcm_hi = -1;
+static int32_t g_opll_peak = 0;
+static uint32_t g_geo_wr = 0;
+static uint32_t g_geo_rd = 0;
+static uint32_t g_opll_wr = 0;
+static uint32_t g_px_writes = 0;
+static uint8_t g_draw_mode = 0x1C;
+static geo3d_t g_geo;
+static v9938_t g_geo_vdp;
 
 static void wav_header(FILE *f, uint32_t nsamp)
 {
@@ -177,14 +192,15 @@ static void wav_close(void)
         g_wav = NULL;
     }
     if (!g_wav_path) return;
-    printf("  [WAV] %s samples=%u sec=%.2f raw_peak=%d rec_peak=%d psg=%u/%u scc=%d/%d pcm=%d..%d rec_pcm=%d..%d\n",
+    printf("  [WAV] %s samples=%u sec=%.2f raw_peak=%d rec_peak=%d psg=%u/%u scc=%d/%d pcm=%d..%d rec_pcm=%d..%d opll=%d\n",
            g_wav_path, g_wav_n,
            (double)g_wav_n / (double)AUDIO_HZ,
            g_raw_peak, g_rec_peak,
            g_psg_peak, g_rec_psg_peak,
            g_scc_peak, g_rec_scc_peak,
            g_pcm_lo > 255 ? -1 : g_pcm_lo, g_pcm_hi,
-           g_rec_pcm_lo > 255 ? -1 : g_rec_pcm_lo, g_rec_pcm_hi);
+           g_rec_pcm_lo > 255 ? -1 : g_rec_pcm_lo, g_rec_pcm_hi,
+           g_opll_peak);
     fflush(stdout);
 }
 
@@ -224,6 +240,15 @@ static void audio_take(void *vl, int booted, uint32_t frames_after_boot)
     avg = g_audio_acc_n ? (int32_t)(g_audio_acc / (int64_t)g_audio_acc_n) : 0;
     g_audio_acc = 0;
     g_audio_acc_n = 0;
+    {
+        int32_t oacc[2] = { 0, 0 };
+        int32_t op;
+        opll_mix(oacc, 1);
+        op = oacc[0];
+        if (op < 0) op = -op;
+        if (op > g_opll_peak) g_opll_peak = op;
+        avg += oacc[0];
+    }
     if (avg > 32767) avg = 32767;
     if (avg < -32768) avg = -32768;
 
@@ -453,13 +478,181 @@ static void render_screen8(void *vl)
     }
 }
 
+/* Screen 5 is 128 bytes/line, two nibbles. The beam samples 168 of 256
+ * columns. A 212-line page is a bitmap, so paint every nibble. The
+ * 192-line logo plate stays the beam. */
+static void render_screen5(void *vl)
+{
+    uint8_t r1 = vl_p6_vdp_peek_reg(vl, 1);
+    uint8_t r2 = vl_p6_vdp_peek_reg(vl, 2);
+    uint8_t r9 = vl_p6_vdp_peek_reg(vl, 9);
+    uint8_t r23 = vl_p6_vdp_peek_reg(vl, 23);
+    int lines = (r9 & 0x80) ? 212 : 192;
+    uint32_t page = (uint32_t)((r2 >> 5) & 3u) * 0x8000u;
+    uint16_t pal[16];
+    if ((r1 & 0x40) == 0 || (r9 & 0x80) == 0) return;
+    for (int i = 0; i < 16; i++)
+        pal[i] = vl_p6_vdp_peek_palette(vl, (uint8_t)i);
+    for (int y = 0; y < lines && y < FB_H; y++) {
+        uint32_t sy = ((uint32_t)y + r23) & 0xFFu;
+        uint32_t base = ADDR_VRAM + page + sy * 128u;
+        for (int x = 0; x < FB_W; x += 2) {
+            uint8_t b = mem_model_read(&g_mem, base + (uint32_t)(x >> 1));
+            g_fb[y * FB_W + x] = pal[b >> 4];
+            g_fb[y * FB_W + x + 1] = pal[b & 0x0F];
+        }
+    }
+}
+
+/* Screen 7: 256 bytes/line. High nibble unless it equals R#7[3:0]. */
+static void render_screen7(void *vl)
+{
+    uint8_t r1 = vl_p6_vdp_peek_reg(vl, 1);
+    uint8_t r2 = vl_p6_vdp_peek_reg(vl, 2);
+    uint8_t r7 = vl_p6_vdp_peek_reg(vl, 7);
+    uint8_t r9 = vl_p6_vdp_peek_reg(vl, 9);
+    uint8_t r23 = vl_p6_vdp_peek_reg(vl, 23);
+    int lines = (r9 & 0x80) ? 212 : 192;
+    uint32_t page = (r2 & 0x20u) ? 0x10000u : 0u;
+    uint8_t bg = (uint8_t)(r7 & 0x0Fu);
+    uint16_t pal[16];
+    if ((r1 & 0x40) == 0) return;
+    for (int i = 0; i < 16; i++)
+        pal[i] = vl_p6_vdp_peek_palette(vl, (uint8_t)i);
+    for (int y = 0; y < lines && y < FB_H; y++) {
+        uint32_t sy = ((uint32_t)y + r23) & 0xFFu;
+        uint32_t base = ADDR_VRAM + page + sy * 256u;
+        for (int x = 0; x < FB_W; x++) {
+            uint8_t b = mem_model_read(&g_mem, base + (uint32_t)x);
+            uint8_t p0 = (uint8_t)(b >> 4);
+            uint8_t p1 = (uint8_t)(b & 0x0Fu);
+            g_fb[y * FB_W + x] = pal[(p0 != bg) ? p0 : p1];
+        }
+    }
+}
+
+/* Geo3D draws with the same screen-8 address the blitter uses:
+ * byte = y * 256 + x, y in 0..1023. Logical ops match v9938_pset_pixel. */
+static void pset_px(int x, int y, uint8_t color, uint8_t op)
+{
+    uint32_t addr;
+    uint8_t old_c, new_c;
+
+    x &= 511;
+    y &= 1023;
+    if (g_draw_mode == 0x0C) {
+        uint8_t nib, nn;
+        x &= 255;
+        addr = (uint32_t)y * 128u + (uint32_t)(x >> 1);
+        if (addr >= 0x40000u) return;
+        old_c = mem_model_read(&g_mem, ADDR_VRAM + addr);
+        nib = (x & 1) ? (uint8_t)(old_c & 0x0Fu) : (uint8_t)(old_c >> 4);
+        color = (uint8_t)(color & 0x0Fu);
+        switch (op & 0x0Fu) {
+        case 1: nn = (uint8_t)(nib & color); break;
+        case 2: nn = (uint8_t)(nib | color); break;
+        case 3: nn = (uint8_t)(nib ^ color); break;
+        case 4: nn = (uint8_t)((~color) & 0x0Fu); break;
+        case 8: nn = color ? color : nib; break;
+        default: nn = color; break;
+        }
+        if (x & 1)
+            new_c = (uint8_t)((old_c & 0xF0u) | nn);
+        else
+            new_c = (uint8_t)((old_c & 0x0Fu) | (nn << 4));
+    } else {
+        x &= 255;
+        addr = (uint32_t)y * 256u + (uint32_t)x;
+        if (addr >= 0x40000u) return;
+        old_c = mem_model_read(&g_mem, ADDR_VRAM + addr);
+        switch (op & 0x0Fu) {
+        case 1: new_c = (uint8_t)(old_c & color); break;
+        case 2: new_c = (uint8_t)(old_c | color); break;
+        case 3: new_c = (uint8_t)(old_c ^ color); break;
+        case 4: new_c = (uint8_t)~color; break;
+        case 8: new_c = color ? color : old_c; break;
+        default: new_c = color; break;
+        }
+    }
+    mem_model_write(&g_mem, ADDR_VRAM + addr, new_c);
+    g_px_writes++;
+}
+
+void v9938_draw_line(v9938_t *v, int x0, int y0, int x1, int y1, uint8_t color, uint8_t op)
+{
+    int dx, dy, sx, sy, err, x, y;
+    (void)v;
+    dx = (x1 >= x0) ? (x1 - x0) : (x0 - x1);
+    dy = (y1 >= y0) ? (y1 - y0) : (y0 - y1);
+    sx = (x0 < x1) ? 1 : -1;
+    sy = (y0 < y1) ? 1 : -1;
+    err = dx - dy;
+    x = x0;
+    y = y0;
+    for (;;) {
+        pset_px(x, y, color, op);
+        if (x == x1 && y == y1) break;
+        {
+            int e2 = 2 * err;
+            if (e2 > -dy) { err -= dy; x += sx; }
+            if (e2 < dx) { err += dx; y += sy; }
+        }
+    }
+}
+
+void v9938_draw_hline(v9938_t *v, int x0, int x1, int y, uint8_t color, uint8_t op)
+{
+    int x;
+    (void)v;
+    if (x0 > x1) { int t = x0; x0 = x1; x1 = t; }
+    for (x = x0; x <= x1; x++)
+        pset_px(x, y, color, op);
+}
+
+static int host_io(void *vl, const vl_mem_req_t *req)
+{
+    uint8_t port = (uint8_t)req->addr;
+    uint8_t data = req->data;
+
+    if (port == 0x8D || port == 0x9D || port == 0x8F || port == 0x9F) {
+        if (req->write) {
+            uint8_t r0 = vl_p6_vdp_peek_reg(vl, 0);
+            uint8_t r1 = vl_p6_vdp_peek_reg(vl, 1);
+            g_draw_mode = (uint8_t)((((r0 & 0x0Eu) << 1) |
+                                     ((r1 & 0x08u) >> 2) |
+                                     ((r1 & 0x10u) >> 4)) & 0x1Fu);
+            geo3d_write(&g_geo, port, data);
+            g_geo_wr++;
+            vl_p6_put_mem_resp(vl, req->tag, data, true);
+        } else {
+            vl_p6_put_mem_resp(vl, req->tag, geo3d_read(&g_geo, port), true);
+            g_geo_rd++;
+        }
+        return 1;
+    }
+    if (port == 0x7C || port == 0x7D) {
+        if (req->write) {
+            if (port == 0x7C) opll_address(data);
+            else opll_data(data);
+            g_opll_wr++;
+            vl_p6_put_mem_resp(vl, req->tag, data, true);
+        } else {
+            vl_p6_put_mem_resp(vl, req->tag, 0xFF, true);
+        }
+        return 1;
+    }
+    return 0;
+}
+
 // ── Intercepted Physical Memory Service ─────────────────────────────────────
 static void service_mem(void *vl)
 {
     vl_mem_req_t req;
     while (vl_p6_has_mem_req(vl)) {
         if (vl_p6_get_mem_req(vl, &req)) {
-            if (req.write) {
+            if (req.is_io && host_io(vl, &req)) {
+                note_mem(vl, req.addr, req.data, req.write ? 1 : 0);
+            } else if (req.write) {
                 // Cartridge ROM is not RAM. CHKRAM probes from 0xFF00 downward
                 // and would overwrite a plain image if these writes stuck.
                 // ASCII16 bank latches are the only writes that take effect.
@@ -582,6 +775,9 @@ int main(int argc, char **argv)
 
     // 1. Initialize physical memory model
     mem_model_init(&g_mem);
+    geo3d_init(&g_geo);
+    geo3d_attach_vdp(&g_geo, &g_geo_vdp);
+    opll_init();
 
     // 2. Load C-BIOS main & sub ROMs
     const char *actual_bios = find_file(bios_path);
@@ -713,6 +909,13 @@ int main(int argc, char **argv)
             vl_p6_get_regs(vl, &regs);
             if (retired_insts <= 24 || (retired_insts % 20000) == 0)
                 printf("  RET %-7u PC=%04X SP=%04X\n", retired_insts, regs.pc, regs.sp);
+            if (g_cart_booted && regs.pc == 0xE9D1) {
+                static uint32_t e7_n = 0;
+                if (e7_n < 6 || (e7_n % 2000000u) == 0)
+                    printf("  [E7] n=%u A=%02X F=%02X e6=%04X\n",
+                           e7_n, regs.a, regs.f, vl_p6_e6_ticks(vl));
+                e7_n++;
+            }
 
             /* MSX_HUNT=1: after the cartridge is entered, keep a short
              * window and dump it when PC falls into the interrupt page
@@ -876,13 +1079,17 @@ int main(int argc, char **argv)
                                  ((r1 & 0x10u) >> 4)) & 0x1Fu);
         if (mode == 0x1Cu && (r1 & 0x40))
             render_screen8(vl);
+        else if (mode == 0x0Cu && (r1 & 0x40))
+            render_screen5(vl);
+        else if (mode == 0x14u && (r1 & 0x40))
+            render_screen7(vl);
     }
     if (getenv("MSX_VRAM")) {
         char vpath[1024];
         snprintf(vpath, sizeof(vpath), "%s.vram", out_ppm);
         FILE *vf = fopen(vpath, "wb");
         if (vf) {
-            for (uint32_t i = 0; i < 0x20000u; i++)
+            for (uint32_t i = 0; i < 0x40000u; i++)
                 fputc(mem_model_read(&g_mem, ADDR_VRAM + i), vf);
             fclose(vf);
             printf("  [VRAM dump] %s\n", vpath);
@@ -891,8 +1098,13 @@ int main(int argc, char **argv)
     {
         trace_regs_t endr;
         vl_p6_get_regs(vl, &endr);
-        printf("  [PPI] A=%02X PC=%04X banks=%02X/%02X\n",
-               vl_p6_ppi_read_a(vl), endr.pc, g_bank1, g_bank2);
+        printf("  [PPI] A=%02X PC=%04X banks=%02X/%02X R15=%02X R26=%02X R27=%02X seg0_FC9E=%02X e6=%04X cpuA=%02X F=%02X\n",
+               vl_p6_ppi_read_a(vl), endr.pc, g_bank1, g_bank2,
+               vl_p6_vdp_peek_reg(vl, 15),
+               vl_p6_vdp_peek_reg(vl, 26),
+               vl_p6_vdp_peek_reg(vl, 27),
+               mem_model_read(&g_mem, ADDR_RAM + 0x3C9Eu),
+               vl_p6_e6_ticks(vl), endr.a, endr.f);
         if (g_key_space || g_key_a) {
             printf("  [KBD] end row8=%02X strobe_cycles=%u row2=%02X strobe_cycles=%u\n",
                    vl_p6_kbd_peek_row(vl, 8), g_kbd_strobe_r8,
@@ -904,6 +1116,19 @@ int main(int argc, char **argv)
                 printf(" R%d=%02X", ri, vl_p6_psg_peek_reg(vl, (uint8_t)ri));
             printf("\n");
         }
+        printf("  [GEO] wr=%u rd=%u px=%u\n", g_geo_wr, g_geo_rd, g_px_writes);
+        {
+            int uniq0 = 0, uniq512 = 0;
+            uint8_t s0[256] = {0}, s5[256] = {0};
+            for (uint32_t i = 0; i < 256u * 212u; i++) {
+                uint8_t a = mem_model_read(&g_mem, ADDR_VRAM + i);
+                uint8_t c = mem_model_read(&g_mem, ADDR_VRAM + 0x20000u + i);
+                if (!s0[a]) { s0[a] = 1; uniq0++; }
+                if (!s5[c]) { s5[c] = 1; uniq512++; }
+            }
+            printf("  [VRAM] page0_unique=%d y512_unique=%d\n", uniq0, uniq512);
+        }
+        printf("  [OPLL] wr=%u peak=%d\n", g_opll_wr, g_opll_peak);
         uint32_t n = g_mring_n < 16 ? g_mring_n : 16;
         uint32_t start = g_mring_n - n;
         printf("  [MEM tail]\n");

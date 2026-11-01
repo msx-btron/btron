@@ -111,6 +111,7 @@ interface TopMSXTurboR;
     (* always_ready *) method Bit#(8)  psg_peek_reg(Bit#(4) idx);
     (* always_ready *) method Bit#(17) psg_peek_lfsr();
     method Bit#(8)  vdp_peek_reg(Bit#(6) idx);
+    method Bit#(16) vdp_peek_palette(Bit#(4) idx);
     method Bit#(16) vdp_peek_pal256(Bit#(8) idx);
     method Bit#(8) kbd_peek_row(Bit#(4) row);
 
@@ -192,6 +193,7 @@ module mkTopMSXTurboR(TopMSXTurboR);
 
     rule drive_irq;
         cpu.set_irq(vdp.irq());
+        cpu.note_vblank(vdp.vblank_edge());
     endrule
 
     // ── CPU Bus Request Decoding & Routing ──────────────────────────────────
@@ -201,8 +203,10 @@ module mkTopMSXTurboR(TopMSXTurboR);
         if (req.is_io) begin
             Bit#(8) port = req.addr[7:0];
 
-            Bool is_vdp = (port >= 8'h98 && port <= 8'h9B) ||
-                          (port >= 8'h88 && port <= 8'h8B);
+            // 9Ch / 8Ch are V9968 port 4. 9Dh/9Fh stay on the external
+            // bus, where the harness answers the Geo3D coprocessor.
+            Bool is_vdp = (port >= 8'h98 && port <= 8'h9C) ||
+                          (port >= 8'h88 && port <= 8'h8C);
             Bool is_psg = (port >= 8'hA0 && port <= 8'hA2);
             Bool is_pcm = (port == 8'hA4 || port == 8'hA5);
             Bool is_ppi = (port >= 8'hA8 && port <= 8'hAB);
@@ -420,6 +424,7 @@ module mkTopMSXTurboR(TopMSXTurboR);
     method Bit#(8)  psg_peek_reg(Bit#(4) idx)     = psg.peek_reg(idx);
     method Bit#(17) psg_peek_lfsr()               = psg.peek_lfsr;
     method Bit#(8)  vdp_peek_reg(Bit#(6) idx)     = vdp.peek_reg(idx);
+    method Bit#(16) vdp_peek_palette(Bit#(4) idx) = vdp.peek_palette(idx);
     method Bit#(16) vdp_peek_pal256(Bit#(8) idx)  = vdp.peek_pal256(idx);
     method Bit#(8)  kbd_peek_row(Bit#(4) row)     = kbd.peek_row_bits(row);
 
