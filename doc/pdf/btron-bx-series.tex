@@ -1,0 +1,148 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{times}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{xcolor}
+\usepackage{longtable}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+\titleformat{\section}{\large\bfseries}{\thesection}{1em}{}
+\titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{1em}{}
+
+\title{\textbf{The BTRON BX Series:\\
+A Family of Clean FPGA RTL Machines\\
+from 8-bit to 64-bit Vector Architectures}}
+
+\author{
+  Independent Systems Architecture Study\\
+  Umbrella Technical Note --- \texttt{btron-bx-series}
+}
+
+\date{November 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The BTRON BX series is a coherent family of clean, synthesizable FPGA RTL machines that systematically revive the peripheral ecosystems and computational spirit of classic 8-bit, 16-bit, 32-bit and 64-bit platforms. Each member replaces the original proprietary CPU with an open or carefully designed modern core while preserving the characteristic I/O, sound, video and controller interfaces of its source era. The series progresses from an R800-based 8-bit machine through a 16-bit design supporting MSX/Amiga-class peripherals, to 32-bit and 64-bit RISC-V machines equipped with Vector Extensions that honour the Sega Saturn/Dreamcast and PlayStation~2/Nintendo~64 organisations respectively. All designs are expressed in Bluespec SystemVerilog, target contemporary FPGAs, and share a common philosophical stance: respect for the original engineering, clean architecture, and open accessibility. This umbrella note situates the four cores---bx-8, bx-16, bx-32 and bx-64---within a single coherent programme.
+\end{abstract}
+
+\section{Motivation and Unifying Philosophy}
+
+Classic home-computer and console architectures solved difficult real-time media problems under severe cost, power and transistor constraints. Their peripheral sets (sound chips, video display processors, controller ports, cartridge and disk interfaces) and their specialised compute units (geometry engines, vector units, dual-processor coordination) remain instructive. The BTRON BX programme does not attempt commercial competition or cycle-accurate commercial emulation. Instead it asks a simpler question:
+
+\begin{quote}
+Can the essential organisation of these machines---their peripheral libraries, their dual-processor or vector-unit structure, their DMA and local-memory philosophy---be re-expressed in clean, modern, synthesizable RTL that any competent engineer can read, modify and run on an FPGA?
+\end{quote}
+
+The answer is pursued through four graduated designs that share a common methodology:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Bluespec SystemVerilog as the primary hardware description language (rule-based concurrency, strong typing, parametric elaboration);
+  \item open or cleanly designed instruction-set architectures;
+  \item selectable peripheral libraries that preserve the look-and-feel of the original platforms;
+  \item a consistent stance of professional respect toward the original designers.
+\end{itemize}
+
+The result is a family rather than four isolated projects.
+
+\section{The Four Machines}
+
+\subsection{bx-8 --- MSX / R800 Class}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Compute core:} R800-compatible (or clean re-implementation) 8-bit CPU.
+  \item \textbf{Peripherals:} MSX-family sound (PSG / SCC / MSX-MUSIC style) and Video Display Processor (VDP) interfaces, together with classic MSX cartridge, keyboard and joystick ports.
+  \item \textbf{Role in the series:} The entry-level member. It demonstrates that the same BSV methodology and peripheral-library discipline can be applied at the 8-bit scale, providing a foundation for educational use and for validating the common infrastructure (bus fabrics, DMA, clocking, host interface) later reused by the larger machines.
+\end{itemize}
+
+\subsection{bx-16 --- 16-bit MSX / Amiga Class}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Compute core:} Either a clean 16-bit proprietary architecture or a soft Motorola 68000-class core.
+  \item \textbf{Peripherals:} MSX and Amiga-inspired sound and video interfaces, with an eye toward OpenGL~ES-style rendering abstractions where appropriate.
+  \item \textbf{Role in the series:} Bridges the 8-bit and 32-bit worlds. It explores the design space of a modestly wide datapath, richer interrupt and DMA models, and the first appearance of more sophisticated graphics and audio pipelines while remaining firmly in the 16-bit realm.
+\end{itemize}
+
+\subsection{bx-32 --- Sega Saturn / Dreamcast Class (VEX BX-32)}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Compute core:} 32-bit RISC-V (RV32) with a practical Vector Extension (VEX / RVV subset).
+  \item \textbf{Peripherals:} Sega-derived interfaces modelled on the Saturn (dual-processor coordination, VDP-style video, SCSP-style audio) and Dreamcast (controller, GD-ROM-style storage, Maple-like expansion).
+  \item \textbf{Replacement strategy:} Hitachi SuperH (SH-2 / SH-4) is replaced by open RISC-V + vector support that can express the original dual-core and 4-wide floating-point matrix workloads.
+  \item \textbf{Graphics path:} OpenGL~ES-oriented abstractions layered over the vector unit and a clean display pipeline.
+  \item \textbf{Detailed treatment:} See the companion note \texttt{btron-bx32.tex}.
+\end{itemize}
+
+\subsection{bx-64 --- PlayStation~2 / Nintendo~64 Class}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Compute core:} Dual powerful 64-bit RISC-V cores equipped with the full Vector Extension (RVV).
+  \item \textbf{Peripherals:} PS2- and N64-derived interfaces (Joypad / DualShock-style controllers, cartridge and IDE-style storage, audio, video output, DMA-centric fabric).
+  \item \textbf{Replacement strategy:} The Emotion Engine (MIPS + VU0/VU1) and the Reality Co-Processor (RSP + RDP) are re-expressed as two RISC-V cores with vector units whose register width and arithmetic capabilities cover the original 4-wide single-precision and 8-wide 16-bit workloads.
+  \item \textbf{Graphics path:} OpenGL~ES-oriented abstractions fed by vector-generated display lists.
+  \item \textbf{Detailed treatment:} See the companion note \texttt{btron-bx64.tex}.
+\end{itemize}
+
+\section{Common Design Principles}
+
+All four machines share the following invariants:
+
+\begin{enumerate}[leftmargin=1.5em]
+  \item \textbf{Clean RTL.} Source is written in Bluespec SystemVerilog. No opaque IP blocks are required for the core architecture; the designs are intended to be readable and modifiable.
+  \item \textbf{Selectable peripheral libraries.} Each machine offers a parameterised set of peripheral modules so that a single codebase can be configured for different authenticity or experimental goals.
+  \item \textbf{Open or clean ISAs.} Proprietary cores are replaced by open standards (RISC-V) or by cleanly designed alternatives whose documentation is part of the project.
+  \item \textbf{FPGA-first implementation.} Every design is synthesizable for contemporary FPGAs, enabling immediate measurement, iteration and educational use.
+  \item \textbf{Professional respect.} The series is framed as an architectural study that honours the original engineers rather than as a commercial or nostalgic product.
+\end{enumerate}
+
+\section{Progression and Educational Value}
+
+The series is deliberately graduated:
+
+\begin{center}
+\begin{tabular}{@{}llp{6.5cm}@{}}
+\toprule
+\textbf{Machine} & \textbf{Width} & \textbf{Primary lesson} \\
+\midrule
+bx-8  & 8-bit  & Peripheral integration, simple bus fabrics, educational accessibility \\
+bx-16 & 16-bit & Wider datapaths, richer DMA/interrupt models, first OpenGL~ES experiments \\
+bx-32 & 32-bit & Dual-core coordination, practical vector extensions, Sega-class media workloads \\
+bx-64 & 64-bit & High-throughput dual vector cores, PS2/N64-class geometry and emotion synthesis \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+A student or engineer can begin with bx-8, master the common BSV infrastructure and peripheral-library style, then progress through increasing computational sophistication while remaining inside a single coherent design culture.
+
+\section{Relationship to Companion Notes}
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{btron-bx32.tex} --- detailed architectural revival of the Sega Saturn and Dreamcast using 32-bit RISC-V + Vector Extension.
+  \item \texttt{btron-bx64.tex} --- detailed architectural revival of the PlayStation~2 Emotion Engine and Nintendo~64 Reality Co-Processor using dual 64-bit RISC-V cores with full RVV.
+\end{itemize}
+
+Future notes may expand bx-8 and bx-16 to the same depth. The present umbrella document exists to keep the overall programme visible and coherent.
+
+\section{Conclusion}
+
+The BTRON BX series is an invitation to treat classic media-processor architectures as living subjects of study rather than as museum pieces. By re-expressing their peripheral ecosystems and computational organisations in clean Bluespec SystemVerilog, and by substituting open or carefully designed modern cores for the original proprietary CPUs, the series offers a practical path from 8-bit MSX-class machines to 64-bit vector architectures. The four cores---bx-8, bx-16, bx-32 and bx-64---form a single graduated family united by methodology, by respect for the original engineering, and by a commitment to open, synthesizable RTL.
+
+\vspace{1.5em}
+\noindent\textit{Umbrella technical note prepared for professional consideration.\\
+November 2026.}
+
+\end{document}
