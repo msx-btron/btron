@@ -79,6 +79,10 @@ typedef enum {
     AbsReadLo,
     AbsReadHi,
     AbsWriteHi,
+    // EX (SP),HL / EX (SP),IX / EX (SP),IY. SP itself does not move.
+    ExRdLo,
+    ExRdHi,
+    ExWrLo,
     BlkSrc,
     BlkDst,
     IdxDisp,
@@ -115,7 +119,8 @@ typedef enum {
     TargetPairIX,
     TargetPairIY,
     TargetMemAbs,   // INC/DEC (IX+d) read-modify-write at temp_addr
-    TargetStIndex   // LD (IX+d), n
+    TargetStIndex,  // LD (IX+d), n
+    TargetExSP      // EX (SP), rp — kept so a stale TargetRegA cannot swallow it
 } OpTarget deriving (Bits, Eq);
 
 // ── CPU Core Interface ──────────────────────────────────────────────────────
@@ -366,6 +371,18 @@ module mkCPUCore(CPUCore);
                 write: write,
                 is_io: is_io
             });
+        endaction
+    endfunction
+
+    // EX (SP), rp. temp_addr keeps the register we write back. The value
+    // read from the stack replaces that register. SP is left alone.
+    function Action begin_ex_sp(Bit#(16) oldv, Bit#(3) sel);
+        action
+            temp_addr <= oldv;
+            ind_sel   <= sel;
+            op_target <= TargetExSP;
+            send_bus_req(zeroExtend(reg_sp), 8'h00, False, False);
+            state <= ExRdLo;
         endaction
     endfunction
 
@@ -814,8 +831,7 @@ module mkCPUCore(CPUCore);
                                             state <= WaitImm8;
                                         end
                                         3'b100: begin // EX (SP), HL
-                                            send_bus_req(zeroExtend(reg_sp), 8'h00, False, False);
-                                            state <= WaitMemRead8;
+                                            begin_ex_sp(get_hl(), 3'd0);
                                         end
                                         3'b101: begin // EX DE, HL
                                             reg_d <= reg_h; reg_h <= reg_d;
@@ -982,7 +998,25 @@ module mkCPUCore(CPUCore);
                         send_bus_req(zeroExtend(reg_c), val, True, True);
                         state <= WaitMemWrite8;
                     end
-                    // LD (nn), BC/DE/SP and LD BC/DE/SP, (nn)
+                    // SBC HL,ss (ED 42/52/62/72) and ADC HL,ss (ED 4A/5A/6A/7A).
+                    // Bad Apple's line divide is ADD HL,DE / CCF / SBC HL,DE.
+                    // A missing SBC left HL unchanged, so a divisor >= $8000
+                    // carried on every add and the divide never returned.
+                    else if ((opcode & 8'hCF) == 8'h42 || (opcode & 8'hCF) == 8'h4A) begin
+                        Bit#(16) ss = case (opcode[5:4])
+                            2'b00: get_bc();
+                            2'b01: get_de();
+                            2'b10: get_hl();
+                            default: reg_sp;
+                        endcase;
+                        let res16 = ((opcode & 8'hCF) == 8'h42)
+                            ? evalSbc16(get_hl(), ss, reg_f.cf)
+                            : evalAdc16(get_hl(), ss, reg_f.cf);
+                        set_hl(res16.res);
+                        reg_f <= res16.flags;
+                        retired_w.wset(True);
+                        state <= FetchOp;
+                    end
                     else if (opcode == 8'h43 || opcode == 8'h53 || opcode == 8'h73 ||
                              opcode == 8'h4B || opcode == 8'h5B || opcode == 8'h7B) begin
                         ind_sel <= case (opcode)
@@ -1105,6 +1139,9 @@ module mkCPUCore(CPUCore);
                                 reg_sp <= reg_sp + 1;
                                 op_target <= (prefix == 8'hFD) ? TargetPairIY : TargetPairIX;
                                 state <= PopLo;
+                            end
+                            8'hE3: begin // EX (SP), IX/IY
+                                begin_ex_sp(ixv, (prefix == 8'hFD) ? 3'd2 : 3'd1);
                             end
                             8'hE9: begin // JP (IX/IY)
                                 reg_pc <= ixv;
@@ -1382,6 +1419,30 @@ module mkCPUCore(CPUCore);
                 set_sel_pair(ind_sel, {resp.data, temp_data8});
                 retired_w.wset(True);
                 state <= FetchOp;
+            end
+
+            // EX (SP), rp: read lo, read hi, write old lo, write old hi.
+            ExRdLo: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                temp_data8 <= resp.data;
+                send_bus_req(zeroExtend(reg_sp + 1), 8'h00, False, False);
+                state <= ExRdHi;
+            end
+
+            ExRdHi: begin
+                let resp = q_resp_in.first;
+                q_resp_in.deq;
+                set_sel_pair(ind_sel, {resp.data, temp_data8});
+                reg_wz <= {resp.data, temp_data8};
+                send_bus_req(zeroExtend(reg_sp), temp_addr[7:0], True, False);
+                state <= ExWrLo;
+            end
+
+            ExWrLo: begin
+                q_resp_in.deq;
+                send_bus_req(zeroExtend(reg_sp + 1), temp_addr[15:8], True, False);
+                state <= WaitMemWrite8;
             end
 
             AbsWriteHi: begin

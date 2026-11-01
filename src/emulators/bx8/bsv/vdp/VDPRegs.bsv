@@ -76,7 +76,7 @@ function Bit#(8) v9958RegMask(Bit#(6) regIdx);
         6'd13: return 8'hFF;
         6'd14: return 8'h0F;
         6'd15: return 8'h0F;
-        6'd16: return 8'h0F;
+        6'd16: return 8'hFF; // V9968 EPAL uses R#16 as an 8-bit index
         6'd17: return 8'hBF;
         6'd18: return 8'hFF;
         6'd19: return 8'hFF;

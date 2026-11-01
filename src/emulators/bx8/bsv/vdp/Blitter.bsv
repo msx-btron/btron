@@ -62,6 +62,8 @@ typedef enum {
     BlitHMMM_Write,
     BlitHMMM_WaitWrite,
     // Pixel commands (PSET, POINT, LINE, LMMV, LMMM)
+    BlitLMMM_ReadSrc,
+    BlitLMMM_WaitSrc,
     BlitPixel_Read,
     BlitPixel_WaitRead,
     BlitPixel_Write,
@@ -126,6 +128,7 @@ module mkBlitter(Blitter);
 
     // Readback & Transfer Buffers
     Reg#(Bit#(8))   read_data   <- mkReg(0);
+    Reg#(Bit#(8))   src_pix     <- mkReg(0);
     Reg#(Bit#(8))   pt_color    <- mkReg(0);
 
     // Command Dispatch & Transfer Queues
@@ -232,9 +235,13 @@ module mkBlitter(Blitter);
             Int#(16) minLen = unpack({6'b0, reg_ny});
             line_d    <= 2 * minLen - majLen;
             state     <= BlitPixel_Read;
-        end else if (code == cmdLMMV || code == cmdLMMM) begin
+        end else if (code == cmdLMMV) begin
             count_x <= effNx;
             state   <= BlitPixel_Read;
+        end else if (code == cmdLMMM) begin
+            // Source pixel first, then the existing dest read/modify/write.
+            count_x <= effNx;
+            state   <= BlitLMMM_ReadSrc;
         end else if (code == cmdHMMC || code == cmdLMMC) begin
             count_x <= (code == cmdHMMC) ? ((reg_mode == 5'h1C) ? effNx : (effNx >> 1)) : effNx;
             state   <= BlitTransfer_WaitCPU;
@@ -337,7 +344,33 @@ module mkBlitter(Blitter);
         end
     endrule
 
-    // Pixel operations (PSET, POINT, LINE, LMMV)
+    // LMMM: read the source pixel, then fall into the dest read/modify/write.
+    rule blit_lmmm_read_src (state == BlitLMMM_ReadSrc);
+        Bit#(10) x = stepX(reg_sx, cur_xi, dixNegative);
+        Bit#(10) y = stepY(reg_sy, cur_yi, diyNegative);
+        Bit#(24) byteAddr = (reg_mode == 5'h1C) ?
+            (vramBase + zeroExtend(y) * 256 + zeroExtend(x[7:0])) :
+            (vramBase + zeroExtend(y) * 128 + zeroExtend(x[8:1]));
+
+        q_req.enq(BusReq {
+            tag:   tagVDPCmd,
+            addr:  byteAddr,
+            data:  0,
+            write: False,
+            is_io: False
+        });
+        state <= BlitLMMM_WaitSrc;
+    endrule
+
+    rule blit_lmmm_wait_src (state == BlitLMMM_WaitSrc);
+        let resp <- toGet(q_resp).get();
+        Bit#(10) x = stepX(reg_sx, cur_xi, dixNegative);
+        src_pix <= (reg_mode == 5'h1C) ? resp.data :
+                   (x[0] == 1'b1) ? (resp.data & 8'h0F) : ((resp.data >> 4) & 8'h0F);
+        state <= BlitPixel_Read;
+    endrule
+
+    // Pixel operations (PSET, POINT, LINE, LMMV, and LMMM's destination)
     rule blit_pixel_read (state == BlitPixel_Read);
         Bit#(4) code = reg_cmd[7:4];
         Bit#(10) x = (code == cmdPOINT) ? reg_sx :
@@ -382,7 +415,9 @@ module mkBlitter(Blitter);
             Bit#(4) op = reg_cmd[3:0];
             Bit#(8) oldC = (reg_mode == 5'h1C) ? resp.data :
                            (x[0] == 1'b1) ? (resp.data & 8'h0F) : ((resp.data >> 4) & 8'h0F);
-            Bit#(8) newC = applyOp(op, oldC, reg_col);
+            // LMMM's ink is the source pixel. LMMV, PSET and LINE use R#44.
+            Bit#(8) ink = (code == cmdLMMM) ? src_pix : reg_col;
+            Bit#(8) newC = applyOp(op, oldC, ink);
 
             Bit#(8) outData = resp.data;
             if (reg_mode == 5'h1C) begin
@@ -465,18 +500,19 @@ module mkBlitter(Blitter);
                 line_step <= line_step + 1;
                 state     <= BlitPixel_Read;
             end
-        end else if (code == cmdLMMV) begin
+        end else if (code == cmdLMMV || code == cmdLMMM) begin
+            BlitState next = (code == cmdLMMM) ? BlitLMMM_ReadSrc : BlitPixel_Read;
             if (cur_xi + 1 >= count_x) begin
                 cur_xi <= 0;
                 if (cur_yi + 1 >= count_y) begin
                     state <= BlitDone;
                 end else begin
                     cur_yi <= cur_yi + 1;
-                    state  <= BlitPixel_Read;
+                    state  <= next;
                 end
             end else begin
                 cur_xi <= cur_xi + 1;
-                state  <= BlitPixel_Read;
+                state  <= next;
             end
         end else begin
             state <= BlitDone;

@@ -53,6 +53,8 @@ bool vl_p6_led_turbo(void *handle);
 uint8_t  vl_p6_ppi_peek_pc(void *handle);
 uint8_t  vl_p6_ppi_read_a(void *handle);
 uint8_t  vl_p6_psg_peek_reg(void *handle, uint8_t idx);
+uint8_t  vl_p6_vdp_peek_reg(void *handle, uint8_t idx);
+uint16_t vl_p6_vdp_peek_pal256(void *handle, uint8_t idx);
 uint32_t vl_p6_psg_peek_lfsr(void *handle);
 uint8_t  vl_p6_kbd_peek_row(void *handle, uint8_t row);
 

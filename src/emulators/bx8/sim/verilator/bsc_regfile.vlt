@@ -1,0 +1,6 @@
+`verilator_config
+// Bluespec's library RegFile.v warns under -Wall. The palette uses it so a
+// scanout read and a port-0x9A write can share one cycle.
+lint_off -rule WIDTHEXPAND -file "*RegFile.v"
+lint_off -rule UNSIGNED -file "*RegFile.v"
+lint_off -rule CMPCONST -file "*RegFile.v"

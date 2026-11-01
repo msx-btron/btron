@@ -187,6 +187,22 @@ uint8_t vl_p6_psg_peek_reg(void *handle, uint8_t idx) {
     return top->psg_peek_reg;
 }
 
+uint8_t vl_p6_vdp_peek_reg(void *handle, uint8_t idx) {
+    VmkTopMSXTurboR *top = (VmkTopMSXTurboR *)handle;
+    if (!top) return 0xFF;
+    top->vdp_peek_reg_idx = idx & 0x3F;
+    top->eval();
+    return top->vdp_peek_reg;
+}
+
+uint16_t vl_p6_vdp_peek_pal256(void *handle, uint8_t idx) {
+    VmkTopMSXTurboR *top = (VmkTopMSXTurboR *)handle;
+    if (!top) return 0;
+    top->vdp_peek_pal256_idx = idx;
+    top->eval();
+    return top->vdp_peek_pal256;
+}
+
 uint32_t vl_p6_psg_peek_lfsr(void *handle) {
     VmkTopMSXTurboR *top = (VmkTopMSXTurboR *)handle;
     return top ? (uint32_t)top->psg_peek_lfsr : 0;

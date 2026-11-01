@@ -110,6 +110,8 @@ interface TopMSXTurboR;
     (* always_ready *) method Bit#(8)  ppi_read_a();
     (* always_ready *) method Bit#(8)  psg_peek_reg(Bit#(4) idx);
     (* always_ready *) method Bit#(17) psg_peek_lfsr();
+    method Bit#(8)  vdp_peek_reg(Bit#(6) idx);
+    method Bit#(16) vdp_peek_pal256(Bit#(8) idx);
     method Bit#(8) kbd_peek_row(Bit#(4) row);
 
     // External Input Injection (Keyboard / Joystick)
@@ -417,6 +419,8 @@ module mkTopMSXTurboR(TopMSXTurboR);
     method Bit#(8)  ppi_read_a()                  = ppi.read_ppi_a;
     method Bit#(8)  psg_peek_reg(Bit#(4) idx)     = psg.peek_reg(idx);
     method Bit#(17) psg_peek_lfsr()               = psg.peek_lfsr;
+    method Bit#(8)  vdp_peek_reg(Bit#(6) idx)     = vdp.peek_reg(idx);
+    method Bit#(16) vdp_peek_pal256(Bit#(8) idx)  = vdp.peek_pal256(idx);
     method Bit#(8)  kbd_peek_row(Bit#(4) row)     = kbd.peek_row_bits(row);
 
     // Interactive Input Injection

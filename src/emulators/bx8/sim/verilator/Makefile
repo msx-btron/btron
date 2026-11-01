@@ -351,6 +351,7 @@ $(VL_OBJ)/VmkTopMSXTurboR__ALL.a: $(TOP_P6_V)
 	    -v $(SIM_DIR)/mkPCM.v \
 	    -v $(SIM_DIR)/mkPPI.v \
 	    -v $(SIM_DIR)/mkKeyboard.v \
+	    $(SIM_DIR)/bsc_regfile.vlt \
 	    $(TOP_P6_V) --top-module mkTopMSXTurboR
 	$(MAKE) -C $(VL_OBJ) -f VmkTopMSXTurboR.mk
 	$(CXX) $(CXXFLAGS) -c $(VL_INCLUDE)/verilated.cpp -o $(VL_OBJ)/verilated.o

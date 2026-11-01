@@ -27,6 +27,7 @@ package V9958;
 
 import FIFOF::*;
 import GetPut::*;
+import RegFile::*;
 import Vector::*;
 
 import Bus::*;
@@ -37,13 +38,23 @@ import YJK::*;
 
 // One scanline of screen 1 or screen 2 is three bursts of 32 bytes:
 // the name row, then the pattern bytes those names select, then the
-// color bytes. Screen 5 is a flat 128-byte bitmap burst.
+// color bytes. Screen 5 is a flat 128-byte bitmap burst. Screen 8 is
+// a flat 256-byte burst, one byte per pixel.
 typedef enum {
     ScanIdle,
     ScanS5,
+    ScanS8,
     ScanG1Name, ScanG1Pat, ScanG1Col,
     ScanG2Name, ScanG2Pat, ScanG2Col
 } ScanKind deriving (Bits, Eq);
+
+// V9938 screen 8 byte: bits 7:5 green, 4:2 red, 1:0 blue.
+function Bit#(16) rgb332_to_rgb565(Bit#(8) c);
+    Bit#(16) g8 = zeroExtend(c[7:5]) * 16'd255 / 16'd7;
+    Bit#(16) r8 = zeroExtend(c[4:2]) * 16'd255 / 16'd7;
+    Bit#(16) b8 = zeroExtend(c[1:0]) * 16'd255 / 16'd3;
+    return {r8[7:3], g8[7:2], b8[7:3]};
+endfunction
 
 interface V9958;
     // Clock tick enables
@@ -77,6 +88,7 @@ interface V9958;
     method Bit#(8)  peek_reg(Bit#(6) idx);
     method Bit#(8)  peek_stat(Bit#(4) idx);
     method Bit#(16) peek_palette(Bit#(4) idx);
+    method Bit#(16) peek_pal256(Bit#(8) idx);
     method Bit#(18) peek_vram_ptr();
     method Bit#(8)  peek_read_ahead();
 endinterface: V9958
@@ -97,7 +109,11 @@ module mkV9958(V9958);
 
     // Palette Programming Latches
     Reg#(Bit#(8))  pal_latch     <- mkReg(0);
+    Reg#(Bit#(8))  pal_g         <- mkReg(0);
+    Reg#(Bit#(2))  pal_sub       <- mkReg(0);
     Reg#(Bool)     pal_pending   <- mkReg(False);
+    // V9968 extended palette. Screen 8 indexes it when R#20 bit 4 is set.
+    RegFile#(Bit#(8), Bit#(16)) pal256 <- mkRegFileFull;
 
     // Interrupt Latch
     Reg#(Bool)     irq_pending   <- mkReg(False);
@@ -137,7 +153,7 @@ module mkV9958(V9958);
 
     // Screen 5 scanline. Filled from VRAM at the start of each line.
     // One buffer is enough: the fetch finishes before the beam crosses it.
-    Reg#(Vector#(128, Bit#(8))) line_buf <- mkReg(replicate(0));
+    Reg#(Vector#(256, Bit#(8))) line_buf <- mkReg(replicate(0));
     // Screen 1 / 2: 32 name bytes, then the pattern and color they select.
     Reg#(Vector#(32, Bit#(8))) name_buf <- mkReg(replicate(0));
     Reg#(Vector#(32, Bit#(8))) pat_buf  <- mkReg(replicate(0));
@@ -269,6 +285,14 @@ module mkV9958(V9958);
             scan_i    <= 0;
             scan_kind <= ScanS5;
             scan_addr <= {page, 16'd0} + zeroExtend(sy) * 18'd128;
+        end else if (regs.display_enabled() && mode == 5'b11100) begin
+            // Screen 8 (G7): 256 bytes/line, RGB GGGRRRBB. R#2 bit 5 is A16.
+            Bit#(1) page = regs.read_reg(6'd2)[5];
+            scanning  <= True;
+            scan_wait <= False;
+            scan_i    <= 0;
+            scan_kind <= ScanS8;
+            scan_addr <= {page, 17'd0} + zeroExtend(sy) * 18'd256;
         end else if (regs.display_enabled() && (mode == 5'b00100 || mode == 5'b00000)) begin
             scanning  <= True;
             scan_wait <= False;
@@ -286,7 +310,7 @@ module mkV9958(V9958);
     endrule
 
     rule issue_scan (scanning && !scan_wait);
-        Bit#(18) addr = (scan_kind == ScanS5) ? scan_addr : tile_scan_addr(scan_kind);
+        Bit#(18) addr = (scan_kind == ScanS5 || scan_kind == ScanS8) ? scan_addr : tile_scan_addr(scan_kind);
         q_scan_req.enq(BusReq {
             tag:   tagVDPScan,
             addr:  vramBase + zeroExtend(addr),
@@ -300,12 +324,13 @@ module mkV9958(V9958);
     rule take_scan (scan_wait);
         let resp <- toGet(q_scan_resp).get();
         scan_wait <= False;
-        if (scan_kind == ScanS5) begin
+        if (scan_kind == ScanS5 || scan_kind == ScanS8) begin
             let next_line = line_buf;
-            next_line[scan_i[6:0]] = resp.data;
+            next_line[scan_i] = resp.data;
             line_buf <= next_line;
             scan_addr <= scan_addr + 1;
-            if (scan_i == 8'd127) begin
+            Bit#(8) last = (scan_kind == ScanS8) ? 8'd255 : 8'd127;
+            if (scan_i == last) begin
                 scanning <= False;
                 scan_kind <= ScanIdle;
             end else begin
@@ -362,6 +387,7 @@ module mkV9958(V9958);
             // R#16 reset palette write latch
             if (r == 6'd16) begin
                 pal_pending <= False;
+                pal_sub <= 0;
             end
 
             // Blitter indirect register tracking (R#32..R#46)
@@ -441,8 +467,29 @@ module mkV9958(V9958);
             end
 
             2'd2: begin
-                // Port 0x9A: Palette Write (2-byte sequence)
-                if (pal_pending) begin
+                // Port 0x9A. R#20 bit 4 selects the V9968 256-color palette
+                // (three bytes, R then G then B, each 0..31). Otherwise the
+                // V9938 16-color palette is a two-byte RGB333 pair.
+                if (regs.read_reg(6'd20)[4] == 1'b1) begin
+                    Bit#(8) pidx = regs.read_reg(6'd16);
+                    if (pal_sub == 0) begin
+                        pal_latch <= data;
+                        pal_sub <= 1;
+                    end else if (pal_sub == 1) begin
+                        pal_g <= data;
+                        pal_sub <= 2;
+                    end else begin
+                        Bit#(5) r5 = pal_latch[4:0];
+                        Bit#(5) g5 = pal_g[4:0];
+                        Bit#(5) b5 = data[4:0];
+                        Bit#(16) c565 = rgb555ToRgb565(r5, g5, b5);
+                        pal256.upd(pidx, c565);
+                        if (pidx < 16)
+                            regs.write_palette(truncate(pidx), c565);
+                        regs.write_reg(6'd16, pidx + 1);
+                        pal_sub <= 0;
+                    end
+                end else if (pal_pending) begin
                     pal_pending <= False;
                     Bit#(4) pidx = regs.read_reg(6'd16)[3:0];
                     Bit#(3) r3   = pal_latch[6:4];
@@ -552,7 +599,8 @@ module mkV9958(V9958);
             // Screen 5: two 4-bit pixels per byte. Even x is the high nibble.
             // Nibble 0 is a real color on a bitmap plane.
             Bit#(8) x   = truncate(raster.beam_x());
-            Bit#(8) b   = line_buf[x[7:1]];
+            Bit#(8) bx  = {1'b0, x[7:1]};
+            Bit#(8) b   = line_buf[bx];
             Bit#(4) pix = (x[0] == 1'b0) ? b[7:4] : b[3:0];
             return regs.read_palette(pix);
         end else if (regs.display_mode() == 5'b00100 || regs.display_mode() == 5'b00000) begin
@@ -567,7 +615,16 @@ module mkV9958(V9958);
                 return regs.read_palette(regs.border_color()[3:0]);
             else
                 return regs.read_palette(c);
+        end else if (regs.display_mode() == 5'b11100) begin
+            // Screen 8. R#20 bit 4 is the V9968 palette; otherwise GGGRRRBB.
+            Bit#(8) x = truncate(raster.beam_x());
+            Bit#(8) c = line_buf[x];
+            if (regs.read_reg(6'd20)[4] == 1'b1)
+                return pal256.sub(c);
+            else
+                return rgb332_to_rgb565(c);
         end else begin
+            // Screen 0, 3, 6, 7 and anything else: one flat color, R#7[7:4].
             return regs.read_palette(regs.read_reg(6'd7)[7:4]);
         end
     endmethod
@@ -582,6 +639,7 @@ module mkV9958(V9958);
     method Bit#(8)  peek_reg(Bit#(6) idx)      = regs.read_reg(idx);
     method Bit#(8)  peek_stat(Bit#(4) idx)     = regs.read_stat(idx);
     method Bit#(16) peek_palette(Bit#(4) idx)  = regs.read_palette(idx);
+    method Bit#(16) peek_pal256(Bit#(8) idx)   = pal256.sub(idx);
     method Bit#(18) peek_vram_ptr()            = getCpuVramAddr();
     method Bit#(8)  peek_read_ahead()          = read_ahead;
 endmodule: mkV9958
