@@ -42,14 +42,17 @@ import YJK::*;
 
 // One scanline of screen 1 or screen 2 is three bursts of 32 bytes:
 // the name row, then the pattern bytes those names select, then the
-// color bytes. Screen 5 is a flat 128-byte bitmap burst. Screen 8 is
-// a flat 256-byte burst, one byte per pixel.
+// color bytes. Screen 0 is 40 names and the 40 pattern rows they
+// select. Those pattern bytes land in line_buf[128..167]. Screen 5
+// is a flat 128-byte bitmap burst. Screen 8 is a flat 256-byte burst,
+// one byte per pixel.
 typedef enum {
     ScanIdle,
     ScanS5,
     ScanS8,
     ScanG1Name, ScanG1Pat, ScanG1Col,
-    ScanG2Name, ScanG2Pat, ScanG2Col
+    ScanG2Name, ScanG2Pat, ScanG2Col,
+    ScanT0Name, ScanT0Pat
 } ScanKind deriving (Bits, Eq);
 
 // V9938 screen 8 byte: bits 7:5 green, 4:2 red, 1:0 blue.
@@ -308,6 +311,16 @@ module mkV9958(V9958);
         Bit#(17) g1_pt = {r4[5:0], 11'd0};
         Bit#(11) g1_poff = {name, row};
         Bit#(14) g1_ct = {r3, 6'd0};
+        // Screen 0 (v9938.c): name base is R#2[6:0] << 10, 40 columns.
+        // Pattern base is R#4[5:0] << 11. The glyph was stored in
+        // line_buf by ScanT0Name. No vertical scroll on this mode.
+        Bit#(13) t0_band = zeroExtend(tile_y[7:3]);
+        Bit#(13) t0_col  = zeroExtend(scan_i[5:0]);
+        Bit#(13) t0_off  = t0_band * 13'd40 + t0_col;
+        Bit#(18) t0_nt   = {1'b0, r2[6:0], 10'd0} + zeroExtend(t0_off);
+        Bit#(8)  t0_glyph = line_buf[scan_i];
+        Bit#(11) t0_idx  = {t0_glyph, tile_y[2:0]};
+        Bit#(18) t0_pt   = (zeroExtend(r4[5:0]) << 11) + zeroExtend(t0_idx);
         return case (kind)
             ScanG1Name: nt + zeroExtend(name_off);
             ScanG2Name: nt + zeroExtend(name_off);
@@ -315,6 +328,8 @@ module mkV9958(V9958);
             ScanG2Col:  zeroExtend(g2_ct) + zeroExtend(g2_col);
             ScanG1Pat:  zeroExtend(g1_pt) + zeroExtend(g1_poff);
             ScanG1Col:  zeroExtend(g1_ct) + zeroExtend(name[7:3]);
+            ScanT0Name: t0_nt;
+            ScanT0Pat:  t0_pt;
             default:    18'd0;
         endcase;
     endfunction
@@ -353,6 +368,13 @@ module mkV9958(V9958);
             scan_i    <= 0;
             scan_kind <= (mode == 5'b00100) ? ScanG2Name : ScanG1Name;
             tile_y    <= sy;
+        end else if (regs.display_enabled() && mode == 5'b00001) begin
+            // Screen 0. v9938.c does not add R#23 on this mode.
+            scanning  <= True;
+            scan_wait <= False;
+            scan_i    <= 0;
+            scan_kind <= ScanT0Name;
+            tile_y    <= truncate(raster.current_line());
         end else begin
             scanning  <= False;
             scan_kind <= ScanIdle;
@@ -407,6 +429,25 @@ module mkV9958(V9958);
             if (scan_i == 8'd31) begin
                 scan_i <= 0;
                 scan_kind <= (scan_kind == ScanG2Pat) ? ScanG2Col : ScanG1Col;
+            end else begin
+                scan_i <= scan_i + 1;
+            end
+        end else if (scan_kind == ScanT0Name || scan_kind == ScanT0Pat) begin
+            // Names occupy line_buf[0..39]. Pattern rows occupy [128..167].
+            let nb = line_buf;
+            if (scan_kind == ScanT0Name)
+                nb[scan_i] = resp.data;
+            else
+                nb[8'd128 + scan_i] = resp.data;
+            line_buf <= nb;
+            if (scan_i == 8'd39) begin
+                scan_i <= 0;
+                if (scan_kind == ScanT0Name)
+                    scan_kind <= ScanT0Pat;
+                else begin
+                    scanning <= False;
+                    scan_kind <= ScanIdle;
+                end
             end else begin
                 scan_i <= scan_i + 1;
             end
@@ -714,8 +755,24 @@ module mkV9958(V9958);
             Bit#(4) p0 = b[7:4];
             Bit#(4) pix = (p0 != bg) ? p0 : b[3:0];
             return regs.read_palette(pix);
+        end else if (regs.display_mode() == 5'b00001) begin
+            // Screen 0. 40 glyphs of 6 pixels, inset by 8. Ink is R#7[7:4].
+            // A clear bit is the border, which is R#7[3:0]. v9938.c.
+            Bit#(8) x = truncate(raster.beam_x());
+            Bit#(4) bg = regs.border_color()[3:0];
+            Bit#(4) fg = regs.read_reg(6'd7)[7:4];
+            if (x < 8 || x >= 248) begin
+                return regs.read_palette(bg);
+            end else begin
+                Bit#(8) tx = x - 8;
+                Bit#(8) col = tx / 6;
+                Bit#(3) bitn = truncate(tx % 6);
+                Bit#(8) pat = line_buf[8'd128 + col];
+                Bool on = pat[3'd7 - bitn] == 1'b1;
+                return regs.read_palette(on ? fg : bg);
+            end
         end else begin
-            // Screen 0, 3, 6 and anything else: one flat color, R#7[7:4].
+            // Screen 3, 6 and anything else: one flat color, R#7[7:4].
             return regs.read_palette(regs.read_reg(6'd7)[7:4]);
         end
     endmethod

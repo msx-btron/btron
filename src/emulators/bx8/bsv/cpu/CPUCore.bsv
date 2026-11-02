@@ -123,6 +123,9 @@ typedef enum {
     TargetStPairInd,
     TargetPairIX,
     TargetPairIY,
+    // LD IXH,n / LD IXL,n (and IYH/IYL). ind_sel 1 is IX, 2 is IY.
+    TargetIXHi,
+    TargetIXLo,
     TargetMemAbs,   // INC/DEC (IX+d) read-modify-write at temp_addr
     TargetStIndex,  // LD (IX+d), n
     TargetExSP,     // EX (SP), rp — kept so a stale TargetRegA cannot swallow it
@@ -327,6 +330,19 @@ module mkCPUCore(CPUCore);
         endcase
     endfunction
 
+    // hi selects IXH/IYH. The other half is the register's current byte.
+    function Action write_ix8(Bool iy, Bool hi, Bit#(8) v);
+        action
+            if (iy) begin
+                if (hi) reg_iy <= {v, reg_iy[7:0]};
+                else    reg_iy <= {reg_iy[15:8], v};
+            end else begin
+                if (hi) reg_ix <= {v, reg_ix[7:0]};
+                else    reg_ix <= {reg_ix[15:8], v};
+            end
+        endaction
+    endfunction
+
     function Action set_sel_pair(Bit#(3) s, Bit#(16) v);
         action
             case (s)
@@ -341,8 +357,11 @@ module mkCPUCore(CPUCore);
         endaction
     endfunction
 
-    // DD/FD replaces HL/(HL) with IX/IY/(IX+d). 8-bit IXH/IXL are not used
-    // by C-BIOS. EX DE,HL (EB) is not an index op. CB under DD/FD is (IX+d).
+    // DD/FD replaces HL/(HL) with IX/IY/(IX+d), and H/L with IXH/IXL
+    // (IYH/IYL). Yazzier's replayer counts on IXH: DD 26 is LD IXH,n and
+    // DD 25 is DEC IXH. Falling through to H walks that table through the
+    // DRAM BIOS. EX DE,HL (EB) is not an index op. CB under DD/FD is (IX+d).
+    // LD H,(IX+d) and LD (IX+d),H keep the real H, matching z80.c.
     function Bool fn_index_mem(Bit#(8) op);
         DecodedOp d = splitOpcode(op);
         Bool cb  = (op == 8'hCB);
@@ -363,8 +382,21 @@ module mkCPUCore(CPUCore);
         return add || ops;
     endfunction
 
+    // H/L as an 8-bit register, not (HL). (IX+d) stays in fn_index_mem.
+    function Bool fn_index_byte(Bit#(8) op);
+        DecodedOp d = splitOpcode(op);
+        Bool y_hl = (d.y == 3'b100 || d.y == 3'b101);
+        Bool z_hl = (d.z == 3'b100 || d.z == 3'b101);
+        Bool incdec = (d.x == 2'b00 && y_hl && (d.z == 3'b100 || d.z == 3'b101));
+        Bool ld_n  = (d.x == 2'b00 && y_hl && d.z == 3'b110);
+        Bool ld_rr = (d.x == 2'b01 && (y_hl || z_hl) &&
+                      d.y != 3'b110 && d.z != 3'b110);
+        Bool alu   = (d.x == 2'b10 && z_hl);
+        return incdec || ld_n || ld_rr || alu;
+    endfunction
+
     function Bool fn_index_op(Bit#(8) op);
-        return fn_index_mem(op) || fn_index_pair(op);
+        return fn_index_mem(op) || fn_index_pair(op) || fn_index_byte(op);
     endfunction
 
     function Z80Flags fn_in_flags(Bit#(8) val, Z80Flags oldf);
@@ -1136,9 +1168,52 @@ module mkCPUCore(CPUCore);
                 else begin
                     // DD/FD index operation. Displacement forms fetch d first.
                     Bit#(16) ixv = (prefix == 8'hFD) ? reg_iy : reg_ix;
+                    Bool iy = (prefix == 8'hFD);
                     if (fn_index_mem(opcode)) begin
                         send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
                         state <= IdxDisp;
+                    end else if (fn_index_byte(opcode)) begin
+                        // IXH/IXL (IYH/IYL). Same flags as INC/DEC/ALU on H/L.
+                        prefix <= 8'h00;
+                        Bit#(8) hi = ixv[15:8];
+                        Bit#(8) lo = ixv[7:0];
+                        if (d.x == 2'b00 && (d.z == 3'b100 || d.z == 3'b101)) begin
+                            Bool do_inc = (d.z == 3'b100);
+                            Bool is_hi = (d.y == 3'b100);
+                            Bit#(8) src = is_hi ? hi : lo;
+                            let step = do_inc ? evalInc8(src, reg_f) : evalDec8(src, reg_f);
+                            write_ix8(iy, is_hi, step.res);
+                            reg_f <= step.flags;
+                            retired_w.wset(True);
+                            state <= FetchOp;
+                        end else if (d.x == 2'b00 && d.z == 3'b110) begin
+                            ind_sel <= iy ? 3'd2 : 3'd1;
+                            op_target <= (d.y == 3'b100) ? TargetIXHi : TargetIXLo;
+                            send_bus_req(zeroExtend(reg_pc), 8'h00, False, False);
+                            state <= WaitImm8;
+                        end else if (d.x == 2'b01) begin
+                            Bit#(8) src = case (d.z)
+                                3'b000: reg_b;
+                                3'b001: reg_c;
+                                3'b010: reg_d;
+                                3'b011: reg_e;
+                                3'b100: hi;
+                                3'b101: lo;
+                                default: reg_a;
+                            endcase;
+                            if (d.y == 3'b100) write_ix8(iy, True, src);
+                            else if (d.y == 3'b101) write_ix8(iy, False, src);
+                            else write_reg8(unpack(d.y), src);
+                            retired_w.wset(True);
+                            state <= FetchOp;
+                        end else begin
+                            Bit#(8) rhs = (d.z == 3'b100) ? hi : lo;
+                            let alu_res = evalAlu8(unpack(d.y), reg_a, rhs, reg_f.cf);
+                            if (unpack(d.y) != AluCP) reg_a <= alu_res.res;
+                            reg_f <= alu_res.flags;
+                            retired_w.wset(True);
+                            state <= FetchOp;
+                        end
                     end else begin
                         prefix <= 8'h00;
                         case (opcode)
@@ -1244,6 +1319,14 @@ module mkCPUCore(CPUCore);
                     TargetRegH: write_reg8(RegH, imm);
                     TargetRegL: write_reg8(RegL, imm);
                     TargetRegA: write_reg8(RegA, imm);
+                    TargetIXHi: begin
+                        if (ind_sel == 3'd2) reg_iy <= {imm, reg_iy[7:0]};
+                        else reg_ix <= {imm, reg_ix[7:0]};
+                    end
+                    TargetIXLo: begin
+                        if (ind_sel == 3'd2) reg_iy <= {reg_iy[15:8], imm};
+                        else reg_ix <= {reg_ix[15:8], imm};
+                    end
                     TargetMemHL: begin
                         send_bus_req(zeroExtend(get_hl()), imm, True, False);
                         state <= WaitMemWrite8;

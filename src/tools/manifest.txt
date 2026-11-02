@@ -41,7 +41,6 @@ FILE "Heart_Sutra_Tibetan.txt"   TXT   assets/texts/Heart_Sutra_Tibetan.txt
 
 # Secure PostScript & PDF Document Assets
 FILE "sample.ps"                 TXT   doc/ps/sample.ps
-FILE "sample.pdf"                BIN   doc/pdf/sample.pdf
 
 # Clarity Ceremony Assets
 FILE "clarity.png"               PNG   assets/icons/clarity.png

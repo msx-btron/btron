@@ -69,18 +69,21 @@ static void print_vdp_mode(void *vl, const char *tag)
 static uint16_t    g_cart_init = 0;
 static bool        g_cart_booted = false;
 
-/* MSX_KEY=space|a|both. MSX_KEY_AT is frames after cartridge entry before
- * the key goes down (default 2, so C-BIOS's boot HALT is left alone).
+/* MSX_KEY=space|a|both|spaceup. MSX_KEY_AT is frames after cartridge entry
+ * before the key goes down (default 2, so C-BIOS's boot HALT is left alone).
  * Each press is one master clock in place of vl_p6_step, so a memory
  * request from that clock is still serviced. The key stays down.
  * SPACE is row 8 col 0 (0xFE). A is row 2 col 6 (0xBF).
+ * UP is row 8 col 5 (0xDF). spaceup holds SPACE and UP on that same row.
  * MSX_WAV writes a 44.1 kHz mono WAV of the PSG+SCC+PCM mix.
  * MSX_WAV_AT is frames after cartridge entry before that file starts. */
 static int g_key_space = 0;
 static int g_key_a = 0;
+static int g_key_up = 0;
 static int g_key_arm = 0;
 static int g_space_sent = 0;
 static int g_a_sent = 0;
+static int g_up_sent = 0;
 static int g_keys_down = 0;
 static uint32_t g_key_at = 2;
 static uint32_t g_kbd_strobe_r8 = 0;
@@ -97,8 +100,11 @@ static void parse_msx_key(void)
     else if (!strcmp(k, "both") || !strcmp(k, "BOTH")) {
         g_key_space = 1;
         g_key_a = 1;
+    } else if (!strcmp(k, "spaceup") || !strcmp(k, "SPACEUP")) {
+        g_key_space = 1;
+        g_key_up = 1;
     } else {
-        fprintf(stderr, "MSX_KEY=%s ignored (space, a, or both)\n", k);
+        fprintf(stderr, "MSX_KEY=%s ignored (space, a, both, or spaceup)\n", k);
     }
 }
 
@@ -504,6 +510,47 @@ static void render_screen5(void *vl)
     }
 }
 
+/* Screen 0: 40 columns of 6 pixels, inset by 8. Ink is R#7[7:4], a
+ * clear bit is the border. The beam visits 168 of 256 columns, so
+ * paint every column the way v9938.c does. Lines under 192 stay the
+ * border the beam already sampled. */
+static void render_screen0(void *vl)
+{
+    uint8_t r1 = vl_p6_vdp_peek_reg(vl, 1);
+    uint8_t r2 = vl_p6_vdp_peek_reg(vl, 2);
+    uint8_t r4 = vl_p6_vdp_peek_reg(vl, 4);
+    uint8_t r7 = vl_p6_vdp_peek_reg(vl, 7);
+    uint32_t nt, pt;
+    uint16_t fg, bg;
+    int y;
+    if ((r1 & 0x40) == 0) return;
+    nt = (uint32_t)(r2 & 0x7Fu) << 10;
+    pt = (uint32_t)(r4 & 0x3Fu) << 11;
+    fg = vl_p6_vdp_peek_palette(vl, (uint8_t)((r7 >> 4) & 0x0Fu));
+    bg = vl_p6_vdp_peek_palette(vl, (uint8_t)(r7 & 0x0Fu));
+    for (y = 0; y < 192 && y < FB_H; y++) {
+        int row = y & 7;
+        int band = y >> 3;
+        int x;
+        for (x = 0; x < FB_W; x++) {
+            uint32_t ga, pa;
+            uint8_t glyph, pat;
+            int tx, on;
+            if (x < 8 || x >= 248) {
+                g_fb[y * FB_W + x] = bg;
+                continue;
+            }
+            tx = x - 8;
+            ga = nt + (uint32_t)band * 40u + (uint32_t)(tx / 6);
+            glyph = mem_model_read(&g_mem, ADDR_VRAM + ga);
+            pa = pt + (uint32_t)glyph * 8u + (uint32_t)row;
+            pat = mem_model_read(&g_mem, ADDR_VRAM + pa);
+            on = (pat >> (7 - (tx % 6))) & 1;
+            g_fb[y * FB_W + x] = on ? fg : bg;
+        }
+    }
+}
+
 /* Screen 7: 256 bytes/line. High nibble unless it equals R#7[3:0]. */
 static void render_screen7(void *vl)
 {
@@ -883,13 +930,18 @@ int main(int argc, char **argv)
                 vl_p6_kbd_key_down(vl, 2, 6);
                 g_a_sent = 1;
                 injected = 1;
+            } else if (g_key_up && !g_up_sent) {
+                vl_p6_kbd_key_down(vl, 8, 5);
+                g_up_sent = 1;
+                injected = 1;
             }
-            if ((!g_key_space || g_space_sent) && (!g_key_a || g_a_sent)) {
+            if ((!g_key_space || g_space_sent) && (!g_key_a || g_a_sent) &&
+                (!g_key_up || g_up_sent)) {
                 g_key_arm = 0;
                 g_keys_down = 1;
                 vl_p6_get_regs(vl, &regs);
-                printf("  [KBD] latched space=%d A=%d row8=%02X row2=%02X PC=%04X\n",
-                       g_key_space, g_key_a,
+                printf("  [KBD] latched space=%d A=%d up=%d row8=%02X row2=%02X PC=%04X\n",
+                       g_key_space, g_key_a, g_key_up,
                        vl_p6_kbd_peek_row(vl, 8),
                        vl_p6_kbd_peek_row(vl, 2),
                        regs.pc);
@@ -1013,7 +1065,7 @@ int main(int argc, char **argv)
             if (g_cart_booted) frames_after_boot++;
             if (!g_keys_down && !g_key_arm &&
                 g_cart_booted && frames_after_boot >= g_key_at &&
-                (g_key_space || g_key_a))
+                (g_key_space || g_key_a || g_key_up))
                 g_key_arm = 1;
             audio_span_report(frames_after_boot);
             if (frame_count % 5 == 0) {
@@ -1083,6 +1135,8 @@ int main(int argc, char **argv)
             render_screen5(vl);
         else if (mode == 0x14u && (r1 & 0x40))
             render_screen7(vl);
+        else if (mode == 0x01u && (r1 & 0x40))
+            render_screen0(vl);
     }
     if (getenv("MSX_VRAM")) {
         char vpath[1024];
@@ -1105,7 +1159,7 @@ int main(int argc, char **argv)
                vl_p6_vdp_peek_reg(vl, 27),
                mem_model_read(&g_mem, ADDR_RAM + 0x3C9Eu),
                vl_p6_e6_ticks(vl), endr.a, endr.f);
-        if (g_key_space || g_key_a) {
+        if (g_key_space || g_key_a || g_key_up) {
             printf("  [KBD] end row8=%02X strobe_cycles=%u row2=%02X strobe_cycles=%u\n",
                    vl_p6_kbd_peek_row(vl, 8), g_kbd_strobe_r8,
                    vl_p6_kbd_peek_row(vl, 2), g_kbd_strobe_r2);
