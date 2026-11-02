@@ -412,8 +412,14 @@ module mkCPUCore(CPUCore);
         // The vblank strobe lasts one T-state. Do not accept on that
         // cycle: the clear of irq_served is visible on the next fetch,
         // which is still inside the same frame.
+        // DD/FD/CB/ED return here for the next byte of the same instruction.
+        // tronMSX finishes that instruction inside z80_step and only then
+        // calls process_interrupts. Accepting here drops the prefix, so
+        // btron8's DD 36 d n runs as LD (HL), n and the displacement byte
+        // is stored through HL into the ASCII16 latch.
         Bool irq_take = (state == FetchOp) && (iff_delay == 0) &&
-                        irq && !irq_served && !vb && iff1;
+                        irq && !irq_served && !vb && iff1 &&
+                        (prefix == 8'h00);
         if (irq_take)
             irq_served <= True;
         else if (vb || !irq)
@@ -443,9 +449,9 @@ module mkCPUCore(CPUCore);
                     halted    <= False;
                     iff1      <= False;
                     iff2      <= False;
-                    // A prefix that has not yet fetched its opcode is discarded,
-                    // the same way a Z80 interrupt response drops it. Otherwise
-                    // the byte at $0038 (JP) runs as ED C3, the R800 multiply.
+                    // irq_take is only true when prefix is already 0. Clearing it
+                    // here keeps a stale prefix off the byte at $0038, which
+                    // would otherwise run as ED C3, the R800 multiply.
                     prefix    <= 8'h00;
                     reg_r     <= reg_r + 1;
                     reg_sp    <= reg_sp - 1;
