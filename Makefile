@@ -188,6 +188,7 @@ MSX_SRCS = src/emulators/msx/z80.c        \
            src/emulators/msx/ppi.c        \
            src/emulators/msx/kbd.c        \
            src/emulators/msx/geo3d.c      \
+           src/emulators/msx/v9968.c      \
            src/emulators/msx/midi.c       \
            src/emulators/msx/msx_cfg.c    \
            src/emulators/msx/tronmsx.c

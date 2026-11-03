@@ -334,8 +334,10 @@ uint8_t geo3d_read(geo3d_t *g, uint8_t port)
 {
     if (!g) return 0xFFu;
     if ((port & 2u) == 0u) {
-        /* Port 8Dh / 9Dh: Status / Flags */
-        return g->regs[0x36]; /* Returns FLAGS */
+        /* Port 8Dh / 9Dh: Status / Busy Flags
+         * Bit 0: Busy (0 = idle/done, 1 = busy processing).
+         * Since emulation is instantaneous, always return 0 (not busy). */
+        return 0x00u;
     }
 
     /* Port 8Fh / 9Fh: Data */

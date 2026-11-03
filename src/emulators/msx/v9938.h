@@ -12,7 +12,7 @@
 #define V9938_REG_COUNT     64u
 #define V9938_STAT_COUNT    16u
 
-typedef struct {
+typedef struct v9938_s {
     uint8_t  vram[V9938_VRAM_SIZE];
     uint8_t  regs[V9938_REG_COUNT];
     uint8_t  stat[V9938_STAT_COUNT];
@@ -63,6 +63,8 @@ void    v9938_advance(v9938_t *v, uint32_t t_states);
 int     v9938_vblank_taken(v9938_t *v);
 void    v9938_render(v9938_t *v, uint16_t *fb);
 uint8_t v9938_mode(const v9938_t *v);
+uint8_t v9938_point_pixel(v9938_t *v, int x, int y, int mode);
+void    v9938_pset_pixel(v9938_t *v, int x, int y, uint8_t color, uint8_t op, int mode);
 void    v9938_draw_line(v9938_t *v, int x0, int y0, int x1, int y1, uint8_t color, uint8_t op);
 void    v9938_draw_hline(v9938_t *v, int x0, int x1, int y, uint8_t color, uint8_t op);
 

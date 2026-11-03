@@ -4,6 +4,7 @@
  */
 
 #include "v9938.h"
+#include "v9968.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -146,7 +147,7 @@ uint8_t v9938_mode(const v9938_t *v)
 
 /* ---- VDP Command Engine (Alex Wulms architecture) ------------------------ */
 
-static uint8_t v9938_point_pixel(v9938_t *v, int x, int y, int mode)
+uint8_t v9938_point_pixel(v9938_t *v, int x, int y, int mode)
 {
     uint32_t addr;
     x &= 511;
@@ -175,7 +176,7 @@ static uint8_t v9938_point_pixel(v9938_t *v, int x, int y, int mode)
     }
 }
 
-static void v9938_pset_pixel(v9938_t *v, int x, int y, uint8_t color, uint8_t op, int mode)
+void v9938_pset_pixel(v9938_t *v, int x, int y, uint8_t color, uint8_t op, int mode)
 {
     uint32_t addr;
     uint8_t old_c, new_c;
@@ -326,6 +327,10 @@ static void v9938_exec_command(v9938_t *v)
     v->stat[2] |= ST_CE;
 
     switch (code) {
+    case 0x03: /* LRMM - V9968 Logical Rotate Memory to Memory */
+        v9968_exec_lrmm(v);
+        break;
+
     case 0x04: /* POINT */
         v->col = v9938_point_pixel(v, v->sx, v->sy, mode);
         v->stat[7] = v->col;
@@ -368,7 +373,6 @@ static void v9938_exec_command(v9938_t *v)
         }
         break;
 
-    case 0x03: /* LRMM - V9968 Logical Rotate/Scale Memory to Memory */
     case 0x09: /* LMMM - VRAM to VRAM copy with logical op */
         for (yi = 0; yi < ny; yi++) {
             int sy = v->sy + yi * diy;
@@ -486,8 +490,7 @@ static void v9938_exec_command(v9938_t *v)
         break;
     }
 
-    v->stat[2] &= (uint8_t)~ST_CE;
-    v->stat[2] |= ST_TR;
+    v->stat[2] &= (uint8_t)~(ST_CE | ST_TR);
 }
 
 /* ---- Register writes ---------------------------------------------------- */
@@ -726,9 +729,11 @@ void v9938_render(v9938_t *v, uint16_t *fb)
 
     uint32_t page_base;
     if (m == 0x1C || m == 0x14) {
-        /* Screen 8 (G7) / Screen 7 (G6): 64KB per page. Page 0 at 0x00000, Page 1 at 0x10000.
-         * R#2 bit 5 (0x20) is A16 in G6/G7 modes, selecting Page 1. */
-        page_base = (v->regs[2] & 0x20u) ? 0x10000u : 0u;
+        /* Screen 8 (G7) / Screen 7 (G6): 64KB per page.
+         * R#2 bit 6 (0x40) is A17 (128KB offset, pages 2 & 3).
+         * R#2 bit 5 (0x20) is A16 (64KB offset, pages 1 & 3). */
+        page_base = ((v->regs[2] & 0x40u) ? 0x20000u : 0u) |
+                    ((v->regs[2] & 0x20u) ? 0x10000u : 0u);
     } else if (m == 0x0C || m == 0x10) {
         /* Screen 5 (G4) / Screen 6 (G5): 32KB per page (4 pages in 128KB).
          * R#2 bits 6..5 select pages 0..3: 00->0, 01->32KB, 10->64KB, 11->96KB */

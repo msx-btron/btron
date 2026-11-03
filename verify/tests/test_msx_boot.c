@@ -11,6 +11,7 @@
 
 #include <emulators/tronmsx.h>
 #include "../../src/emulators/msx/v9938.h"
+#include "../../src/emulators/msx/geo3d.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -113,6 +114,7 @@ extern int msx_is_r800_active(void);
 extern v9938_t *msx_get_v9938(void);
 extern uint8_t vdp_debug_reg(uint8_t reg);
 extern uint8_t *vdp_vram(uint32_t *size);
+extern void msx_port_take(uint32_t r[256], uint32_t w[256]);
 
     for (f = 1; f <= frames; f++) {
         if (f == 270) {
@@ -141,6 +143,24 @@ extern uint8_t *vdp_vram(uint32_t *size);
         if (f == frames) {
             v9938_t *v = msx_get_v9938();
             if (v) {
+                uint32_t nz_fb = 0;
+                for (uint32_t i = 0; i < SCREEN_W * SCREEN_H; i++) {
+                    if (s_fb[i] != 0) nz_fb++;
+                }
+                printf("s_fb non-zero pixels: %u\n", nz_fb);
+                for (int p = 0; p < 4; p++) {
+                    uint32_t nz = 0;
+                    uint32_t min_a = 0xFFFFFFFF, max_a = 0;
+                    for (uint32_t a = p * 0x10000u; a < (p + 1) * 0x10000u; a++) {
+                        if (v->vram[a]) {
+                            nz++;
+                            if (a < min_a) min_a = a;
+                            if (a > max_a) max_a = a;
+                        }
+                    }
+                    printf("VRAM Page %d (0x%05X..0x%05X): %u non-zero bytes [range 0x%05X..0x%05X]\n",
+                           p, p * 0x10000, (p+1)*0x10000 - 1, nz, min_a, max_a);
+                }
                 printf("V9938 regs:");
                 for (int r = 0; r <= 31; r++) printf(" R%d=%02X", r, v->regs[r]);
                 printf("\n");
@@ -152,10 +172,16 @@ extern uint8_t *vdp_vram(uint32_t *size);
                 printf("  addr 0xD400: %02X %02X %02X %02X %02X %02X %02X %02X\n",
                        v->vram[0xD400], v->vram[0xD401], v->vram[0xD402], v->vram[0xD403],
                        v->vram[0xD404], v->vram[0xD405], v->vram[0xD406], v->vram[0xD407]);
-                uint32_t b_addr = (1008u * 256u) & (V9938_VRAM_SIZE - 1u);
-                printf("  addr 0x%05X: %02X %02X %02X %02X %02X %02X %02X %02X\n",
-                       b_addr, v->vram[b_addr], v->vram[b_addr+1], v->vram[b_addr+2], v->vram[b_addr+3],
-                       v->vram[b_addr+4], v->vram[b_addr+5], v->vram[b_addr+6], v->vram[b_addr+7]);
+                uint32_t port_r[256], port_w[256];
+                msx_port_take(port_r, port_w);
+                printf("Active ports (read):");
+                for (int p = 0; p < 256; p++) if (port_r[p]) printf(" %02X:%u", p, port_r[p]);
+                printf("\n");
+                printf("Active ports (write):");
+                for (int p = 0; p < 256; p++) if (port_w[p]) printf(" %02X:%u", p, port_w[p]);
+                printf("\n");
+                extern geo3d_t g_geo3d;
+                printf("Geo3D: drawn=%u skipped=%u culled=%u\n", g_geo3d.cnt_drawn, g_geo3d.cnt_skipped, g_geo3d.cnt_culled);
             }
         }
     }

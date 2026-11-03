@@ -19,6 +19,7 @@
 #include "t9769b.h"
 #include "t9769c.h"
 #include "geo3d.h"
+#include "v9968.h"
 #include "hd64180.h"
 #include "midi.h"
 #include "msx_cfg.h"
@@ -978,6 +979,7 @@ void slots_init(void)
     t9769b_init(&g_t9769b);
     t9769c_init(&g_t9769c);
     geo3d_init(&g_geo3d);
+    v9968_init(&g_v9968, msx_get_v9938());
 }
 
 void slots_reset(void)
@@ -1009,6 +1011,7 @@ void slots_reset(void)
     t9769b_reset(&g_t9769b);
     t9769c_reset(&g_t9769c);
     geo3d_reset(&g_geo3d);
+    v9968_reset(&g_v9968);
     if (is_hd64180()) {
         hd64180_reset();
     }
@@ -1361,9 +1364,11 @@ uint8_t msx_bus_in(uint8_t port)
     if (port >= 0x2Cu && port <= 0x2Eu) return kbd_mouse_in((uint8_t)(port - 0x2Cu));
     if (port >= 0x88u && port <= 0x8Bu) return vdp_read(port);
     if (port >= 0x98u && port <= 0x9Bu) return vdp_read(port);
+    if (port == 0x8Cu || port == 0x9Cu) return v9968_port4_read(&g_v9968);
     if (port == 0x8Du || port == 0x9Du || port == 0x8Fu || port == 0x9Fu) {
         return geo3d_read(&g_geo3d, port);
     }
+    if (port >= 0x40u && port <= 0x4Fu) return v9968_syscon_read(&g_v9968, port);
     if (port >= 0xA0u && port <= 0xA3u) return psg_read(port);
     if (port >= 0xC0u && port <= 0xC3u) return y8950_read(port);
     if (port >= 0xE8u && port <= 0xEFu) return msx_midi_read(port);
@@ -1388,11 +1393,13 @@ void msx_bus_out(uint8_t port, uint8_t value)
     if (is_hd64180() && hd64180_is_internal_io(port)) { hd64180_io_write(port, value); return; }
     if (port >= 0x88u && port <= 0x8Bu) { vdp_write(port, value); return; }
     if (port >= 0x98u && port <= 0x9Bu) { vdp_write(port, value); return; }
+    if (port == 0x8Cu || port == 0x9Cu) { v9968_port4_write(&g_v9968, value); return; }
     if (port == 0x8Du || port == 0x9Du || port == 0x8Fu || port == 0x9Fu) {
         if (!g_geo3d.vdp) geo3d_attach_vdp(&g_geo3d, msx_get_v9938());
         geo3d_write(&g_geo3d, port, value);
         return;
     }
+    if (port >= 0x40u && port <= 0x4Fu) { v9968_syscon_write(&g_v9968, port, value); return; }
     if (port == 0x2Eu || port == 0x2Fu) {
         if (port == 0x2Fu) fputc(value, stderr);
         else if (value == 0) fputc('\n', stderr);
