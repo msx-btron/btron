@@ -686,6 +686,7 @@ void v9938_advance(v9938_t *v, uint32_t t_states)
             uint16_t int_line = (uint16_t)((v->regs[19] + (v->regs[23] & 0xFF)) % 256u);
             if (v->line == int_line) {
                 v->stat[1] |= 0x01u;
+                g_v9968.line_irq = 1;
                 if (v->regs[0] & R0_IE1) v->irq_pending = 1;
             }
         }
@@ -694,6 +695,7 @@ void v9938_advance(v9938_t *v, uint32_t t_states)
         if (v->line == disp_end) {
             v->stat[0] |= ST_FG;
             v->stat[2] |= ST_VR;
+            g_v9968.frame_irq = 1;
             if (v->regs[1] & R1_IE0) v->irq_pending = 1;
         } else if (v->line == 0) {
             v->stat[2] &= (uint8_t)~ST_VR;

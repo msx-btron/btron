@@ -115,6 +115,24 @@ extern v9938_t *msx_get_v9938(void);
 extern uint8_t vdp_debug_reg(uint8_t reg);
 extern uint8_t *vdp_vram(uint32_t *size);
 extern void msx_port_take(uint32_t r[256], uint32_t w[256]);
+extern void msx_psg_submit_pcm(int16_t *buf, uint32_t *frames_out);
+
+    uint64_t total_pcm_samples = 0;
+    uint64_t nz_pcm_samples = 0;
+    FILE *wav_f = NULL;
+    const char *wav_path = getenv("DUMP_WAV");
+    if (wav_path) {
+        wav_f = fopen(wav_path, "wb");
+        if (wav_f) {
+            uint8_t hdr[44] = {
+                'R','I','F','F', 0,0,0,0, 'W','A','V','E',
+                'f','m','t',' ', 16,0,0,0, 1,0, 2,0,
+                0x44,0xAC,0,0, 0x10,0xB1,0x02,0, 4,0, 16,0,
+                'd','a','t','a', 0,0,0,0
+            };
+            fwrite(hdr, 1, 44, wav_f);
+        }
+    }
 
     for (f = 1; f <= frames; f++) {
         if (f == 270) {
@@ -126,6 +144,17 @@ extern void msx_port_take(uint32_t r[256], uint32_t w[256]);
         }
         msx_run_frame();
         msx_blit_rgb565(s_fb);
+
+        int16_t pcm[735 * 2];
+        uint32_t pcm_n = 0;
+        msx_psg_submit_pcm(pcm, &pcm_n);
+        if (pcm_n) {
+            for (uint32_t i = 0; i < pcm_n * 2; i++) {
+                total_pcm_samples++;
+                if (pcm[i] != 0) nz_pcm_samples++;
+            }
+            if (wav_f) fwrite(pcm, sizeof(int16_t), pcm_n * 2, wav_f);
+        }
         if (f == 1 || (f >= 5 && f <= 35) || f == 60 || f == 120 || f == frames ||
             (f >= 170 && f <= 300 && (f % 5) == 0) ||
             (f % 60) == 0) {
@@ -182,8 +211,22 @@ extern void msx_port_take(uint32_t r[256], uint32_t w[256]);
                 printf("\n");
                 extern geo3d_t g_geo3d;
                 printf("Geo3D: drawn=%u skipped=%u culled=%u\n", g_geo3d.cnt_drawn, g_geo3d.cnt_skipped, g_geo3d.cnt_culled);
+                printf("Audio PCM: %llu/%llu non-zero samples (%.1f%% active)\n",
+                       (unsigned long long)nz_pcm_samples, (unsigned long long)total_pcm_samples,
+                       total_pcm_samples ? (100.0 * nz_pcm_samples / total_pcm_samples) : 0.0);
             }
         }
+    }
+
+    if (wav_f) {
+        uint32_t data_bytes = (uint32_t)(total_pcm_samples * sizeof(int16_t));
+        uint32_t riff_bytes = data_bytes + 36;
+        fseek(wav_f, 4, SEEK_SET);
+        fwrite(&riff_bytes, 4, 1, wav_f);
+        fseek(wav_f, 40, SEEK_SET);
+        fwrite(&data_bytes, 4, 1, wav_f);
+        fclose(wav_f);
+        printf("Audio WAV written: %s (%u data bytes)\n", wav_path, data_bytes);
     }
 
     printf("done: %ld frames, %llu cycles\n", frames,
