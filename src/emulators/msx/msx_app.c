@@ -217,7 +217,9 @@ static uint16_t msx_machine_for(const char *name, size_t size)
         (name && (strstr(name, "BULLRUSH") || strstr(name, "NEON") ||
                   strstr(name, "NIGHT") || strstr(name, "btron") ||
                   strstr(name, "BTRON") || strstr(name, "bmsx") ||
-                  strstr(name, "BMSX"))))
+                  strstr(name, "BMSX") || strstr(name, "MAGICAL") ||
+                  strstr(name, "NICCC") || strstr(name, "Geo3D") ||
+                  strstr(name, "GEO3D"))))
         return BMSX_MACHINE_MSXTR_CBIOS;
     return BMSX_MACHINE_MSX;
 }

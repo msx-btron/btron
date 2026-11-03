@@ -113,6 +113,10 @@ void v9938_reset(v9938_t *v)
     v->irq_pending = 0;
     v->sx = v->sy = v->dx = v->dy = v->nx = v->ny = 0;
     v->col = v->arg = v->cmd = 0;
+    v->regs[55] = 0xFF; /* WEX lo: 511 */
+    v->regs[56] = 0x01; /* WEX hi */
+    v->regs[57] = 0xFF; /* WEY lo: 2047 */
+    v->regs[58] = 0x07; /* WEY hi */
     v->t_line = 0;
     v->line = 0;
     v->stat[2] = 0x0C; /* bits 2 and 3 always 1 on V9938 */
@@ -495,7 +499,7 @@ static void v9938_exec_command(v9938_t *v)
 
 /* ---- Register writes ---------------------------------------------------- */
 
-static void v9938_reg_write(v9938_t *v, uint8_t reg, uint8_t val)
+void v9938_write_reg(v9938_t *v, uint8_t reg, uint8_t val)
 {
     if (reg >= V9938_REG_COUNT) return;
     v->regs[reg] = val;
@@ -507,18 +511,18 @@ static void v9938_reg_write(v9938_t *v, uint8_t reg, uint8_t val)
     /* Indirect register R17 auto-increment or setup */
     if (reg >= 32 && reg <= 46) {
         switch (reg - 32) {
-        case 0: v->sx = (uint16_t)((v->sx & 0x100u) | val); break;
-        case 1: v->sx = (uint16_t)((v->sx & 0x0FFu) | ((val & 1u) << 8)); break;
-        case 2: v->sy = (uint16_t)((v->sy & 0x300u) | val); break;
-        case 3: v->sy = (uint16_t)((v->sy & 0x0FFu) | ((val & 3u) << 8)); break;
-        case 4: v->dx = (uint16_t)((v->dx & 0x100u) | val); break;
-        case 5: v->dx = (uint16_t)((v->dx & 0x0FFu) | ((val & 1u) << 8)); break;
-        case 6: v->dy = (uint16_t)((v->dy & 0x300u) | val); break;
-        case 7: v->dy = (uint16_t)((v->dy & 0x0FFu) | ((val & 3u) << 8)); break;
-        case 8: v->nx = (uint16_t)((v->nx & 0x300u) | val); break;
-        case 9: v->nx = (uint16_t)((v->nx & 0x0FFu) | ((val & 3u) << 8)); break;
-        case 10: v->ny = (uint16_t)((v->ny & 0x300u) | val); break;
-        case 11: v->ny = (uint16_t)((v->ny & 0x0FFu) | ((val & 3u) << 8)); break;
+        case 0: v->sx = (uint16_t)((v->sx & 0x0F00u) | val); break;
+        case 1: v->sx = (uint16_t)((v->sx & 0x00FFu) | ((val & 0x0Fu) << 8)); break;
+        case 2: v->sy = (uint16_t)((v->sy & 0x1F00u) | val); break;
+        case 3: v->sy = (uint16_t)((v->sy & 0x00FFu) | ((val & 0x1Fu) << 8)); break;
+        case 4: v->dx = (uint16_t)((v->dx & 0x0100u) | val); break;
+        case 5: v->dx = (uint16_t)((v->dx & 0x00FFu) | ((val & 0x01u) << 8)); break;
+        case 6: v->dy = (uint16_t)((v->dy & 0x0700u) | val); break;
+        case 7: v->dy = (uint16_t)((v->dy & 0x00FFu) | ((val & 0x07u) << 8)); break;
+        case 8: v->nx = (uint16_t)((v->nx & 0x0700u) | val); break;
+        case 9: v->nx = (uint16_t)((v->nx & 0x00FFu) | ((val & 0x07u) << 8)); break;
+        case 10: v->ny = (uint16_t)((v->ny & 0x0700u) | val); break;
+        case 11: v->ny = (uint16_t)((v->ny & 0x00FFu) | ((val & 0x07u) << 8)); break;
         case 12:
             v->col = val;
             if (v->tr_active) {
@@ -594,7 +598,7 @@ void v9938_write(v9938_t *v, uint8_t port, uint8_t val)
             if (val & 0x80u) {
                 /* Register write */
                 uint8_t r = (uint8_t)(val & 0x3Fu);
-                v9938_reg_write(v, r, v->latch);
+                v9938_write_reg(v, r, v->latch);
             } else {
                 /* VRAM address set */
                 v->write_mode = (uint8_t)((val & 0x40u) ? 1 : 0);
@@ -657,7 +661,7 @@ void v9938_write(v9938_t *v, uint8_t port, uint8_t val)
     case 3: { /* Port 0x9B: Register indirect */
         uint8_t r = v->regs[17];
         uint8_t target_reg = (uint8_t)(r & 0x3Fu);
-        v9938_reg_write(v, target_reg, val);
+        v9938_write_reg(v, target_reg, val);
         if (!(r & 0x80u)) {
             v->regs[17] = (uint8_t)((target_reg + 1u) & 0x3Fu);
         }

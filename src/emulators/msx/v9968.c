@@ -32,6 +32,12 @@ void v9968_reset(v9968_t *v68)
     memset(v68, 0, sizeof(*v68));
     v68->vdp = vdp_save;
     v68->lock_extregs = 1;
+    if (v68->vdp) {
+        v68->vdp->regs[55] = 0xFF; /* WEX lo: 511 */
+        v68->vdp->regs[56] = 0x01; /* WEX hi */
+        v68->vdp->regs[57] = 0xFF; /* WEY lo: 2047 */
+        v68->vdp->regs[58] = 0x07; /* WEY hi */
+    }
 }
 
 /* ---- Port #4 (0x9C primary, 0x8C secondary) ----------------------------- */
@@ -194,22 +200,22 @@ void v9968_exec_lrmm(v9938_t *v)
     int16_t wex = (int16_t)((uint16_t)v->regs[55] | ((uint16_t)(v->regs[56] & 0x01u) << 8));
     int16_t wey = (int16_t)((uint16_t)v->regs[57] | ((uint16_t)(v->regs[58] & 0x07u) << 8));
 
-    int32_t row_sx = (int32_t)v->sx << 8;
-    int32_t row_sy = (int32_t)v->sy << 8;
-    if (xhr) {
-        row_sy <<= 1;
-    }
+    int32_t sx_val = (int32_t)(int16_t)((v->sx & 0x0800u) ? (v->sx | 0xF000u) : (v->sx & 0x0FFFu));
+    int32_t sy_val = (int32_t)(int16_t)((v->sy & 0x1000u) ? (v->sy | 0xE000u) : (v->sy & 0x1FFFu));
+
+    int32_t row_sx = sx_val << 8;
+    int32_t row_sy = sy_val << (xhr ? 9 : 8);
 
     for (int yi = 0; yi < ny; yi++) {
-        int dy = v->dy + yi * diy;
+        int dy = (int)v->dy + yi * diy;
         int32_t cur_sx = row_sx;
         int32_t cur_sy = row_sy;
 
         for (int xi = 0; xi < nx; xi++) {
-            int dx = v->dx + xi * dix;
+            int dx = (int)v->dx + xi * dix;
 
-            int sx_int = (int)(cur_sx >> 8);
-            int sy_int = (int)(cur_sy >> (xhr ? 9 : 8));
+            int sx_int = (int)(cur_sx / 256);
+            int sy_int = (int)(cur_sy / (xhr ? 512 : 256));
 
             uint8_t c;
             /* Window clipping check */
@@ -227,8 +233,8 @@ void v9968_exec_lrmm(v9938_t *v)
 
         /* End of line: advance row starting position */
         if (xhr) {
-            row_sx -= ((int32_t)vy << 1);
-            row_sy += ((int32_t)vx << 1);
+            row_sx -= ((int32_t)vy * 2);
+            row_sy += ((int32_t)vx * 2);
         } else {
             row_sx -= vy;
             row_sy += vx;

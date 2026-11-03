@@ -1,98 +1,42 @@
 /*
  * geo3d.c — MSX Geo3D Geometry Coprocessor Implementation.
  *
- * Alexander Moncks / HRA! Geo3D hardware geometry pipeline emulator.
+ * Alexander Moncks / HRA! Geo3D hardware geometry pipeline emulator v2.0.
  * Synthesized for MSX FPGA configurations (e.g. V9968 Cartridge on Tang Nano 20K).
  */
 
 #include "geo3d.h"
 #include <string.h>
+#include <stdlib.h>
 
-#define INSIDE 0
-#define LEFT   1
-#define RIGHT  2
-#define BOTTOM 4
-#define TOP    8
-
-/* (a * b) / c with a 64-bit intermediate, truncating toward zero.  The PS2 image
- * links no libgcc, so a plain int64 '/' would call __divdi3; this uses only
- * shifts, compares and subtracts, which the compiler emits inline. */
-static int32_t muldiv(int32_t a, int32_t b, int32_t c)
+static inline int64_t floor_div(int64_t a, int64_t b)
 {
-    uint64_t n, q = 0, r = 0;
-    uint32_t d;
-    int neg = 0, i;
-
-    if (c == 0) return 0;
-    if (a < 0) { a = -a; neg ^= 1; }
-    if (b < 0) { b = -b; neg ^= 1; }
-    if (c < 0) { c = -c; neg ^= 1; }
-    n = (uint64_t)(uint32_t)a * (uint32_t)b;
-    d = (uint32_t)c;
-    for (i = 63; i >= 0; i--) {
-        r = (r << 1) | ((n >> i) & 1u);
-        if (r >= d) { r -= d; q |= (uint64_t)1 << i; }
-    }
-    return neg ? -(int32_t)(uint32_t)q : (int32_t)(uint32_t)q;
+    if (b == 0) return 0;
+    int64_t q = a / b;
+    if ((a % b != 0) && ((a < 0) != (b < 0))) --q;
+    return q;
 }
 
-static int compute_outcode(int x, int y, int xmin, int ymin, int xmax, int ymax)
+static inline int64_t sat(int64_t v, int64_t lo, int64_t hi)
 {
-    int code = INSIDE;
-    if (x < xmin)      code |= LEFT;
-    else if (x > xmax) code |= RIGHT;
-    if (y < ymin)      code |= BOTTOM;
-    else if (y > ymax) code |= TOP;
-    return code;
+    return v < lo ? lo : v > hi ? hi : v;
 }
 
-static int clip_line(int *x0, int *y0, int *x1, int *y1, int xmin, int ymin, int xmax, int ymax)
+static inline int64_t sat18(int64_t v)
 {
-    int c0 = compute_outcode(*x0, *y0, xmin, ymin, xmax, ymax);
-    int c1 = compute_outcode(*x1, *y1, xmin, ymin, xmax, ymax);
-
-    while (1) {
-        if (!(c0 | c1)) {
-            return 1; /* Trivially accepted */
-        }
-        if (c0 & c1) {
-            return 0; /* Trivially rejected */
-        }
-        int c_out = c0 ? c0 : c1;
-        int x = 0, y = 0;
-
-        if (c_out & TOP) {
-            x = *x0 + (int)muldiv(*x1 - *x0, ymax - *y0, *y1 - *y0);
-            y = ymax;
-        } else if (c_out & BOTTOM) {
-            x = *x0 + (int)muldiv(*x1 - *x0, ymin - *y0, *y1 - *y0);
-            y = ymin;
-        } else if (c_out & RIGHT) {
-            y = *y0 + (int)muldiv(*y1 - *y0, xmax - *x0, *x1 - *x0);
-            x = xmax;
-        } else if (c_out & LEFT) {
-            y = *y0 + (int)muldiv(*y1 - *y0, xmin - *x0, *x1 - *x0);
-            x = xmin;
-        }
-
-        if (c_out == c0) {
-            *x0 = x; *y0 = y;
-            c0 = compute_outcode(*x0, *y0, xmin, ymin, xmax, ymax);
-        } else {
-            *x1 = x; *y1 = y;
-            c1 = compute_outcode(*x1, *y1, xmin, ymin, xmax, ymax);
-        }
-    }
+    return sat(v, -131071, 131071);
 }
 
-static inline int16_t get_w(const uint8_t *p)
+static inline int64_t signed16(uint32_t x)
 {
-    return (int16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+    x &= 0xFFFFu;
+    return (x & 0x8000u) ? (int64_t)(int32_t)(x - 0x10000u) : (int64_t)x;
 }
 
-static inline uint16_t get_u(const uint8_t *p)
+static inline uint16_t bump(const geo3d_t *g, uint16_t p)
 {
-    return (uint16_t)((uint16_t)p[0] | ((uint16_t)p[1] << 8));
+    return g->ext ? (uint16_t)((p + 1u) & GEO3D_MASK)
+                  : (uint16_t)((p & 0x300u) | ((p + 1u) & 0xFFu));
 }
 
 void geo3d_init(geo3d_t *g)
@@ -105,14 +49,27 @@ void geo3d_init(geo3d_t *g)
 void geo3d_reset(geo3d_t *g)
 {
     if (!g) return;
-    g->reg_idx = 0;
-    memset(g->regs, 0, sizeof(g->regs));
-    g->v_buf_len = 0;
-    g->e_buf_len = 0;
-    g->f_buf_len = 0;
-    g->cnt_skipped = 0;
-    g->cnt_drawn = 0;
-    g->cnt_culled = 0;
+    v9938_t *vdp_save = g->vdp;
+    memset(g, 0, sizeof(*g));
+    g->vdp = vdp_save;
+
+    g->cfg[0] = 0; g->cfg[1] = 0; g->cfg[2] = 0;
+    g->cfg[3] = 0; g->cfg[4] = 0; g->cfg[5] = 0;
+    g->cfg[6] = 0; g->cfg[7] = 0; g->cfg[8] = 0;
+    g->cfg[9] = 0; g->cfg[10] = 0; g->cfg[11] = 0;
+    g->cfg[12] = 256; /* F */
+    g->cfg[13] = 128; /* CX */
+    g->cfg[14] = 106; /* CY */
+    g->cfg[15] = 16;  /* ZNEAR */
+    g->cfg[16] = 256; /* W */
+    g->cfg[17] = 212; /* H */
+
+    g->rptr = 0x30;
+    g->color = 15;
+    g->texy = 512;
+    g->light[0] = 0;
+    g->light[1] = 0;
+    g->light[2] = -16384;
 }
 
 void geo3d_attach_vdp(geo3d_t *g, v9938_t *v)
@@ -120,334 +77,582 @@ void geo3d_attach_vdp(geo3d_t *g, v9938_t *v)
     if (g) g->vdp = v;
 }
 
-static void transform_vertex(geo3d_t *g, int16_t vx, int16_t vy, int16_t vz, geo3d_proj_t *out)
+/* ---- Vertex Projection -------------------------------------------------- */
+
+static geo3d_proj_t geo3d_project(const int64_t *c, const int64_t *v)
 {
-    int16_t m00 = get_w(&g->regs[0x00]);
-    int16_t m01 = get_w(&g->regs[0x02]);
-    int16_t m02 = get_w(&g->regs[0x04]);
-    int16_t m10 = get_w(&g->regs[0x06]);
-    int16_t m11 = get_w(&g->regs[0x08]);
-    int16_t m12 = get_w(&g->regs[0x0A]);
-    int16_t m20 = get_w(&g->regs[0x0C]);
-    int16_t m21 = get_w(&g->regs[0x0E]);
-    int16_t m22 = get_w(&g->regs[0x10]);
-
-    int16_t tx = get_w(&g->regs[0x12]);
-    int16_t ty = get_w(&g->regs[0x14]);
-    int16_t tz = get_w(&g->regs[0x16]);
-
-    uint16_t f     = get_u(&g->regs[0x18]);
-    uint16_t cx    = get_u(&g->regs[0x1A]);
-    uint16_t cy    = get_u(&g->regs[0x1C]);
-    uint16_t znear = get_u(&g->regs[0x1E]);
-    uint16_t w     = get_u(&g->regs[0x20]);
-    uint16_t h     = get_u(&g->regs[0x22]);
-
-    int32_t x = ((int32_t)m00 * vx + (int32_t)m01 * vy + (int32_t)m02 * vz) >> 14;
-    int32_t y = ((int32_t)m10 * vx + (int32_t)m11 * vy + (int32_t)m12 * vz) >> 14;
-    int32_t z = ((int32_t)m20 * vx + (int32_t)m21 * vy + (int32_t)m22 * vz) >> 14;
-
-    x += tx;
-    y += ty;
-    z += tz;
-
-    out->flags = 0;
-    out->z = (int16_t)z;
-
-    if (z <= (int32_t)znear) {
-        out->flags |= 0x01u; /* NEAR plane rejection */
-        out->valid = 0;
-        out->sx = 0;
-        out->sy = 0;
-        return;
+    int64_t xyz[3];
+    for (int r = 0; r < 3; ++r) {
+        int64_t acc = c[3 * r] * v[0] + c[3 * r + 1] * v[1] + c[3 * r + 2] * v[2];
+        xyz[r] = sat((acc >> 14) + c[9 + r], -131071, 131071);
     }
-
-    out->valid = 1;
-    int32_t sx = (int32_t)cx + (x * (int32_t)f) / z;
-    int32_t sy = (int32_t)cy - (y * (int32_t)f) / z;
-
-    if (sx < -32768 || sx > 32767) out->flags |= 0x02u; /* OVFX */
-    if (sy < -32768 || sy > 32767) out->flags |= 0x04u; /* OVFY */
-    if (sx < 0)                    out->flags |= 0x10u; /* SX < 0 */
-    if (sx >= (int32_t)w)          out->flags |= 0x20u; /* SX >= W */
-    if (sy < 0)                    out->flags |= 0x40u; /* SY < 0 */
-    if (sy >= (int32_t)h)          out->flags |= 0x80u; /* SY >= H */
-
-    out->sx = (int16_t)sx;
-    out->sy = (int16_t)sy;
+    int64_t f = c[12], cx = c[13], cy = c[14], znear = c[15], w = c[16], h = c[17];
+    int64_t zc = xyz[2];
+    int64_t zout = sat(zc, -32768, 32767);
+    if (zc < znear || zc <= 0) {
+        geo3d_proj_t p = {0, 0, zout, 0x01u};
+        return p;
+    }
+    uint32_t flags = 0;
+    int64_t q[2];
+    for (int axis = 0; axis < 2; ++axis) {
+        int64_t cc = xyz[axis];
+        int64_t a = (cc < 0) ? -cc : cc;
+        int64_t num = a * f;
+        int64_t qq;
+        if (num >= (zc << 15)) {
+            qq = 32767;
+            flags |= 1u << (1 + axis);
+        } else {
+            qq = num / zc;
+        }
+        q[axis] = (cc < 0) ? -qq : qq;
+    }
+    int64_t sx = sat(cx + q[0], -32768, 32767);
+    int64_t sy = sat(cy - q[1], -32768, 32767);
+    uint32_t outc = (sx < 0) | ((sx >= w) << 1) | ((sy < 0) << 2) | ((sy >= h) << 3);
+    flags |= outc << 4;
+    geo3d_proj_t p = {sx, sy, zout, flags};
+    return p;
 }
 
-static void geo3d_run(geo3d_t *g)
+/* ---- VDP Command Emission ----------------------------------------------- */
+
+static void emit_cmd(geo3d_t *g, const uint8_t *bytes, unsigned size)
 {
-    uint8_t nvert = g->regs[0x42];
-    uint8_t nedge = g->regs[0x43];
-    uint8_t nface = g->regs[0x59];
-    uint8_t color = g->regs[0x44];
-    uint8_t lop   = (uint8_t)(g->regs[0x45] & 0x0Fu);
-    uint16_t ypage = get_u(&g->regs[0x46]);
-    uint8_t ctrl  = g->regs[0x48];
-    uint16_t w    = get_u(&g->regs[0x20]);
-    uint16_t h    = get_u(&g->regs[0x22]);
-
-    g->cnt_skipped = 0;
-    g->cnt_drawn = 0;
-    g->cnt_culled = 0;
-
-    if (!w) w = 256;
-    if (!h) h = 212;
-
-    /* 1. Transform Phase */
-    for (uint32_t i = 0; i < nvert; i++) {
-        transform_vertex(g, g->vram[i].x, g->vram[i].y, g->vram[i].z, &g->proj[i]);
+    if (!g->vdp) return;
+    for (unsigned k = 0; k < size; k++) {
+        unsigned reg;
+        if (size != 19) {
+            reg = 36 + k;
+        } else {
+            reg = (k < 14) ? (32 + k) : (k < 18) ? (33 + k) : 46;
+        }
+        v9938_write_reg(g->vdp, (uint8_t)reg, bytes[k]);
     }
+}
 
-    if (!(ctrl & 0x02u)) {
-        /* Wireframe Edge Mode */
-        if (!g->vdp) return;
-        for (uint32_t e = 0; e < nedge; e++) {
-            uint8_t v0 = g->edges[e].v0;
-            uint8_t v1 = g->edges[e].v1;
-            if (v0 >= nvert || v1 >= nvert) {
-                g->cnt_skipped++;
-                continue;
-            }
-            geo3d_proj_t *p0 = &g->proj[v0];
-            geo3d_proj_t *p1 = &g->proj[v1];
+/* ---- Wireframe Edge Rendering ------------------------------------------- */
 
-            if (!p0->valid || !p1->valid) {
-                g->cnt_skipped++;
-                continue;
-            }
+typedef struct { int64_t x, y; } geo3d_pt_t;
 
-            /* Cohen-Sutherland outcode check: trivial reject */
-            if (p0->flags & p1->flags & 0xF0u) {
-                g->cnt_culled++;
-                continue;
-            }
+static inline uint32_t ocode(geo3d_pt_t p, int64_t w, int64_t h)
+{
+    return (p.x < 0) | ((p.x >= w) << 1) | ((p.y < 0) << 2) | ((p.y >= h) << 3);
+}
 
-            int x0 = p0->sx, y0 = p0->sy;
-            int x1 = p1->sx, y1 = p1->sy;
-            if (clip_line(&x0, &y0, &x1, &y1, 0, 0, (int)w - 1, (int)h - 1)) {
-                v9938_draw_line(g->vdp, x0, y0 + (int)ypage, x1, y1 + (int)ypage, color, lop);
-                g->cnt_drawn++;
+static inline geo3d_pt_t pt_mid(geo3d_pt_t a, geo3d_pt_t b)
+{
+    geo3d_pt_t m = {(a.x + b.x) >> 1, (a.y + b.y) >> 1};
+    return m;
+}
+
+static geo3d_pt_t bisect_pt(geo3d_pt_t inside, geo3d_pt_t outside, int64_t w, int64_t h)
+{
+    geo3d_pt_t lo = inside, hi = outside;
+    for (int it = 0; it < 16; ++it) {
+        geo3d_pt_t m = pt_mid(lo, hi);
+        if (ocode(m, w, h) == 0) lo = m; else hi = m;
+    }
+    return lo;
+}
+
+enum { CLIP_SKIP, CLIP_CULL, CLIP_DRAW };
+
+static int clip_edge(geo3d_pt_t A, geo3d_pt_t B, int64_t w, int64_t h, geo3d_pt_t *e1, geo3d_pt_t *e2)
+{
+    uint32_t ca = ocode(A, w, h), cb = ocode(B, w, h);
+    if (ca & cb) return CLIP_CULL;
+    geo3d_pt_t p = {0, 0};
+    if (ca == 0) {
+        p = A;
+    } else if (cb == 0) {
+        p = B;
+    } else {
+        geo3d_pt_t lo = A, hi = B;
+        int found = 0;
+        for (int it = 0; it < 16; ++it) {
+            geo3d_pt_t m = pt_mid(lo, hi);
+            uint32_t cm = ocode(m, w, h);
+            if (cm == 0) { p = m; found = 1; break; }
+            if (ocode(lo, w, h) & cm) {
+                lo = m;
+            } else if (cm & ocode(hi, w, h)) {
+                hi = m;
             } else {
-                g->cnt_culled++;
+                return CLIP_SKIP;
             }
         }
-    } else {
-        /* Filled Faces Mode */
-        if (!g->vdp) return;
-        int16_t m00 = get_w(&g->regs[0x00]);
-        int16_t m01 = get_w(&g->regs[0x02]);
-        int16_t m02 = get_w(&g->regs[0x04]);
-        int16_t m10 = get_w(&g->regs[0x06]);
-        int16_t m11 = get_w(&g->regs[0x08]);
-        int16_t m12 = get_w(&g->regs[0x0A]);
-        int16_t m20 = get_w(&g->regs[0x0C]);
-        int16_t m21 = get_w(&g->regs[0x0E]);
-        int16_t m22 = get_w(&g->regs[0x10]);
+        if (!found) return CLIP_SKIP;
+    }
+    *e1 = (ca == 0) ? A : bisect_pt(p, A, w, h);
+    *e2 = (cb == 0) ? B : bisect_pt(p, B, w, h);
+    return CLIP_DRAW;
+}
 
-        int16_t lx = get_w(&g->regs[0x5A]);
-        int16_t ly = get_w(&g->regs[0x5C]);
-        int16_t lz = get_w(&g->regs[0x5E]);
-
-        /* Light vector moved to model space: LM = transpose(R) * L */
-        int32_t lmx = ((int32_t)m00 * lx + (int32_t)m10 * ly + (int32_t)m20 * lz) >> 14;
-        int32_t lmy = ((int32_t)m01 * lx + (int32_t)m11 * ly + (int32_t)m21 * lz) >> 14;
-        int32_t lmz = ((int32_t)m02 * lx + (int32_t)m12 * ly + (int32_t)m22 * lz) >> 14;
-
-        for (uint32_t f = 0; f < nface; f++) {
-            geo3d_face_t *fc = &g->faces[f];
-            uint8_t i0 = fc->i0, i1 = fc->i1, i2 = fc->i2, i3 = fc->i3;
-            if (i0 >= nvert || i1 >= nvert || i2 >= nvert) {
-                g->cnt_skipped++;
-                continue;
-            }
-            geo3d_proj_t *p0 = &g->proj[i0];
-            geo3d_proj_t *p1 = &g->proj[i1];
-            geo3d_proj_t *p2 = &g->proj[i2];
-            geo3d_proj_t *p3 = (i3 < nvert) ? &g->proj[i3] : p2;
-
-            if (!p0->valid || !p1->valid || !p2->valid || !p3->valid) {
-                g->cnt_skipped++;
-                continue;
-            }
-
-            /* Signed area backface culling */
-            int64_t area = (int64_t)(p1->sx - p0->sx) * (p2->sy - p0->sy) -
-                           (int64_t)(p1->sy - p0->sy) * (p2->sx - p0->sx);
-            if (area <= 0) {
-                g->cnt_culled++;
-                continue;
-            }
-
-            /* Flat shading */
-            int32_t dot = ((int32_t)lmx * fc->nx + (int32_t)lmy * fc->ny + (int32_t)lmz * fc->nz) >> 14;
-            if (dot < 0) dot = 0;
-            int32_t level = (7 * dot) >> 14;
-            if (level > 6) level = 6;
-            uint8_t col = (uint8_t)(fc->base_col + (uint8_t)level);
-
-            /* Rasterize convex polygon */
-            int pts[4][2] = {
-                { p0->sx, p0->sy },
-                { p1->sx, p1->sy },
-                { p2->sx, p2->sy },
-                { p3->sx, p3->sy }
+static void geo3d_render_edges(geo3d_t *g)
+{
+    int64_t w = g->cfg[16], h = g->cfg[17];
+    for (uint32_t k = 0; k < g->nedge; ++k) {
+        uint32_t e = (g->efirst + k) & GEO3D_MASK;
+        const geo3d_proj_t *pa = &g->pmem[g->emem[e][0]];
+        const geo3d_proj_t *pb = &g->pmem[g->emem[e][1]];
+        if ((pa->flags & 7u) || (pb->flags & 7u)) {
+            g->cntSkip++;
+            g->cnt_skipped++;
+            continue;
+        }
+        geo3d_pt_t pa_pt = {pa->sx, pa->sy};
+        geo3d_pt_t pb_pt = {pb->sx, pb->sy};
+        geo3d_pt_t e1, e2;
+        int res = clip_edge(pa_pt, pb_pt, w, h, &e1, &e2);
+        if (res == CLIP_SKIP) {
+            g->cntSkip++;
+            g->cnt_skipped++;
+        } else if (res == CLIP_CULL) {
+            g->cntCull++;
+            g->cnt_culled++;
+        } else {
+            int64_t dx = e2.x - e1.x, dy = e2.y - e1.y;
+            int64_t ax = (dx < 0) ? -dx : dx;
+            int64_t ay = (dy < 0) ? -dy : dy;
+            int maj = ay > ax;
+            int64_t nx = maj ? ay : ax;
+            int64_t ny = maj ? ax : ay;
+            uint8_t arg = (uint8_t)(((dy < 0) << 3) | ((dx < 0) << 2) | maj);
+            int64_t dyf = ((e1.y & 0x7FF) + g->ypage) & 0x7FF;
+            uint8_t c_bytes[11] = {
+                (uint8_t)(e1.x & 0xFF), (uint8_t)((e1.x >> 8) & 1),
+                (uint8_t)(dyf & 0xFF), (uint8_t)(dyf >> 8),
+                (uint8_t)(nx & 0xFF), (uint8_t)((nx >> 8) & 7),
+                (uint8_t)(ny & 0xFF), (uint8_t)((ny >> 8) & 7),
+                g->color, arg, (uint8_t)(0x70 | g->lop)
             };
-            int num_pts = (i3 == i2) ? 3 : 4;
-
-            int min_y = pts[0][1], max_y = pts[0][1];
-            for (int k = 1; k < num_pts; k++) {
-                if (pts[k][1] < min_y) min_y = pts[k][1];
-                if (pts[k][1] > max_y) max_y = pts[k][1];
-            }
-            if (min_y < 0) min_y = 0;
-            if (max_y >= (int)h) max_y = (int)h - 1;
-
-            for (int y = min_y; y <= max_y; y++) {
-                int min_x = (int)w + 1000, max_x = -1000;
-                for (int k = 0; k < num_pts; k++) {
-                    int next_k = (k + 1) % num_pts;
-                    int y_a = pts[k][1], y_b = pts[next_k][1];
-                    int x_a = pts[k][0], x_b = pts[next_k][0];
-                    if ((y_a <= y && y_b > y) || (y_b <= y && y_a > y)) {
-                        int x_int = x_a + (int)muldiv(y - y_a, x_b - x_a, y_b - y_a);
-                        if (x_int < min_x) min_x = x_int;
-                        if (x_int > max_x) max_x = x_int;
-                    }
-                }
-                if (min_x <= max_x) {
-                    if (min_x < 0) min_x = 0;
-                    if (max_x >= (int)w) max_x = (int)w - 1;
-                    if (min_x <= max_x) {
-                        v9938_draw_hline(g->vdp, min_x, max_x, y + (int)ypage, col, lop);
-                    }
-                }
-            }
+            emit_cmd(g, c_bytes, 11);
+            g->cntDraw++;
             g->cnt_drawn++;
         }
     }
+}
+
+/* ---- Face Rendering ----------------------------------------------------- */
+
+typedef struct { int64_t x, u, v; } geo3d_cand_t;
+
+static int vis_cmp(const void *pa, const void *pb)
+{
+    const geo3d_vis_t *a = (const geo3d_vis_t *)pa;
+    const geo3d_vis_t *b = (const geo3d_vis_t *)pb;
+    if (a->key != b->key) {
+        return (a->key > b->key) ? -1 : 1;
+    }
+    return (a->fidx < b->fidx) ? -1 : (a->fidx > b->fidx) ? 1 : 0;
+}
+
+static void geo3d_render_faces(geo3d_t *g, int texOn)
+{
+    int64_t w = g->cfg[16], h = g->cfg[17];
+    int64_t lm[3];
+    for (int j = 0; j < 3; ++j) {
+        int64_t s = 0;
+        for (int i = 0; i < 3; ++i) s += g->cfg[3 * i + j] * g->light[i];
+        lm[j] = sat18(s >> 14);
+    }
+
+    uint32_t vis_count = 0;
+    for (uint32_t k = 0; k < g->nface; ++k) {
+        uint32_t fidx = (g->ffirst + k) & GEO3D_MASK;
+        const geo3d_face_t *f = &g->fmem[fidx];
+        const geo3d_proj_t *pv[4];
+        int near = 0;
+        for (int m = 0; m < 4; ++m) {
+            pv[m] = &g->pmem[f->i[m]];
+            if (pv[m]->flags & 7u) near = 1;
+        }
+        if (near) {
+            g->cntSkip++;
+            g->cnt_skipped++;
+            continue;
+        }
+        int64_t x0 = pv[0]->sx, y0 = pv[0]->sy;
+        int64_t x1 = pv[1]->sx, y1 = pv[1]->sy;
+        int64_t x2 = pv[2]->sx, y2 = pv[2]->sy;
+        int64_t area = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
+        if (area <= 0) {
+            g->cntCull++;
+            g->cnt_culled++;
+            continue;
+        }
+        int64_t shade = (lm[0] * f->n[0] + lm[1] * f->n[1] + lm[2] * f->n[2]) >> 14;
+        int64_t lvl = (shade <= 0) ? 0 : ((shade * 7) >> 14);
+        if (lvl > 6) lvl = 6;
+        int64_t key = pv[0]->z + pv[1]->z + pv[2]->z + pv[3]->z;
+        g->vis[vis_count].key = key;
+        g->vis[vis_count].fidx = (uint16_t)fidx;
+        g->vis[vis_count].col = (uint8_t)((f->base + lvl) & 0xFFu);
+        g->vis[vis_count].lvl = lvl;
+        vis_count++;
+    }
+
+    qsort(g->vis, vis_count, sizeof(g->vis[0]), vis_cmp);
+    g->cnt_drawn = g->cntDraw = (uint16_t)vis_count;
+
+    for (uint32_t vi = 0; vi < vis_count; ++vi) {
+        const geo3d_vis_t *vf = &g->vis[vi];
+        const geo3d_face_t *f = &g->fmem[vf->fidx];
+        int textured = texOn && (f->base & 0x80u);
+        const uint8_t *uv = textured ? g->tmem[vf->fidx] : NULL;
+        int64_t xs[4], ys[4], us[4], vs[4];
+        for (int k = 0; k < 4; ++k) {
+            xs[k] = g->pmem[f->i[k]].sx;
+            ys[k] = g->pmem[f->i[k]].sy;
+            us[k] = uv ? (int64_t)uv[2 * k] : 0;
+            vs[k] = uv ? (int64_t)uv[2 * k + 1] : 0;
+        }
+        int64_t ymin = ys[0], ymax = ys[0];
+        for (int k = 1; k < 4; ++k) {
+            if (ys[k] < ymin) ymin = ys[k];
+            if (ys[k] > ymax) ymax = ys[k];
+        }
+        if (ymin < 0) ymin = 0;
+        if (ymax > h - 1) ymax = h - 1;
+
+        for (int64_t y = ymin; y <= ymax; ++y) {
+            int have = 0;
+            geo3d_cand_t L = {0, 0, 0}, R = {0, 0, 0};
+            for (int k = 0; k < 4; ++k) {
+                int a = k, b = (k + 1) & 3;
+                int64_t xa = xs[a], ya = ys[a], xb = xs[b], yb = ys[b];
+                if (ya == yb) {
+                    if (y == ya) {
+                        geo3d_cand_t c1 = {xa, us[a] * 256, vs[a] * 256};
+                        if (!have || c1.x < L.x) L = c1;
+                        if (!have || c1.x > R.x) R = c1;
+                        have = 1;
+                        geo3d_cand_t c2 = {xb, us[b] * 256, vs[b] * 256};
+                        if (c2.x < L.x) L = c2;
+                        if (c2.x > R.x) R = c2;
+                    }
+                } else {
+                    int64_t lo_y = (ya < yb) ? ya : yb;
+                    int64_t hi_y = (ya > yb) ? ya : yb;
+                    if (lo_y <= y && y <= hi_y) {
+                        int64_t dy_ = y - ya, den = yb - ya;
+                        int64_t x = xa + floor_div(dy_ * (xb - xa), den);
+                        int64_t u = 0, v = 0;
+                        if (textured) {
+                            u = us[a] * 256 + floor_div(dy_ * (us[b] - us[a]) * 256, den);
+                            v = vs[a] * 256 + floor_div(dy_ * (vs[b] - vs[a]) * 256, den);
+                        }
+                        geo3d_cand_t c = {x, u, v};
+                        if (!have || c.x < L.x) L = c;
+                        if (!have || c.x > R.x) R = c;
+                        have = 1;
+                    }
+                }
+            }
+            if (!have) continue;
+            int64_t xl = L.x, xr = R.x;
+            int64_t cl = (xl > 0) ? xl : 0;
+            int64_t cr = (xr < w - 1) ? xr : (w - 1);
+            if (cl > cr) continue;
+            int64_t dy = (y + g->ypage) & 0x7FF;
+            if (!textured) {
+                int64_t nx = cr - cl;
+                uint8_t c_bytes[11] = {
+                    (uint8_t)(cl & 0xFF), (uint8_t)((cl >> 8) & 1),
+                    (uint8_t)(dy & 0xFF), (uint8_t)(dy >> 8),
+                    (uint8_t)(nx & 0xFF), (uint8_t)((nx >> 8) & 7), 0, 0,
+                    vf->col, 0, (uint8_t)(0x70 | g->lop)
+                };
+                emit_cmd(g, c_bytes, 11);
+                continue;
+            }
+            int64_t du, dv;
+            if (xr == xl) {
+                du = dv = 0;
+            } else {
+                int64_t d = sat18(xr - xl);
+                du = sat(floor_div(sat18(R.u - L.u), d), -32767, 32767);
+                dv = sat(floor_div(sat18(R.v - L.v), d), -32767, 32767);
+            }
+            int64_t off = sat18(cl - xl);
+            int64_t su = L.u + off * du;
+            int64_t sv = L.v + off * dv;
+            int64_t sx = ((int64_t)g->texx + (su >> 8)) & 0xFFF;
+            int64_t sy = ((int64_t)g->texy + vf->lvl * g->tstride + (sv >> 8)) & 0x1FFF;
+            int64_t nxp = cr - cl + 1;
+            uint8_t c_bytes[19] = {
+                (uint8_t)(sx & 0xFF), (uint8_t)(sx >> 8),
+                (uint8_t)(sy & 0xFF), (uint8_t)(sy >> 8),
+                (uint8_t)(cl & 0xFF), (uint8_t)((cl >> 8) & 1),
+                (uint8_t)(dy & 0xFF), (uint8_t)(dy >> 8),
+                (uint8_t)(nxp & 0xFF), (uint8_t)((nxp >> 8) & 7), 1, 0,
+                vf->col, 0,
+                (uint8_t)(du & 0xFF), (uint8_t)((du >> 8) & 0xFF),
+                (uint8_t)(dv & 0xFF), (uint8_t)((dv >> 8) & 0xFF),
+                (uint8_t)(0x30 | g->lop)
+            };
+            emit_cmd(g, c_bytes, 19);
+        }
+    }
+}
+
+/* ---- Autonomous Run Phase ----------------------------------------------- */
+
+static void geo3d_start_run(geo3d_t *g, uint8_t ctrl)
+{
+    g->cnt_skipped = g->cntSkip = 0;
+    g->cnt_drawn = g->cntDraw = 0;
+    g->cnt_culled = g->cntCull = 0;
+    g->running = 1;
+
+    for (uint32_t k = 0; k < g->nvert; ++k) {
+        uint32_t vi = (g->vfirst + k) & GEO3D_MASK;
+        g->pmem[vi] = geo3d_project(g->cfg, g->vmem[vi]);
+    }
+    if (g->nvert != 0) {
+        uint32_t last = (g->vfirst + g->nvert - 1u) & GEO3D_MASK;
+        g->ivtx[0] = g->vmem[last][0];
+        g->ivtx[1] = g->vmem[last][1];
+        g->ivtx[2] = g->vmem[last][2];
+        g->imm = g->pmem[last];
+    }
+
+    if (ctrl & 2) {
+        geo3d_render_faces(g, (ctrl & 4) != 0);
+    } else {
+        geo3d_render_edges(g);
+    }
+
+    g->running = 0;
+}
+
+/* ---- Register Read / Write ---------------------------------------------- */
+
+static uint8_t geo3d_read_status(const geo3d_t *g)
+{
+    uint8_t edge = (g->running) ? 0x04u : 0x00u;
+    return (uint8_t)((g->imm.flags & 0xF0u) | edge | (g->running ? 0x01u : 0x00u));
+}
+
+static uint8_t geo3d_read_reg(geo3d_t *g, uint8_t idx)
+{
+    switch (idx) {
+    case 0x30: return (uint8_t)g->imm.sx;
+    case 0x31: return (uint8_t)(g->imm.sx >> 8);
+    case 0x32: return (uint8_t)g->imm.sy;
+    case 0x33: return (uint8_t)(g->imm.sy >> 8);
+    case 0x34: return (uint8_t)g->imm.z;
+    case 0x35: return (uint8_t)(g->imm.z >> 8);
+    case 0x36: return (uint8_t)g->imm.flags;
+    case 0x40: return (uint8_t)g->vaddr;
+    case 0x41: return (uint8_t)g->eaddr;
+    case 0x42: return (uint8_t)g->nvert;
+    case 0x43: return (uint8_t)g->nedge;
+    case 0x44: return g->color;
+    case 0x45: return g->lop;
+    case 0x46: return (uint8_t)g->ypage;
+    case 0x47: return (uint8_t)(g->ypage >> 8);
+    case 0x48: return geo3d_read_status(g);
+    case 0x49: return GEO3D_ID;
+    case 0x4A: return (uint8_t)(g->cntSkip & 0xFFu);
+    case 0x4B: return (uint8_t)((g->cntSkip >> 8) & 0xFFu);
+    case 0x4C: return (uint8_t)(g->cntDraw & 0xFFu);
+    case 0x4D: return (uint8_t)((g->cntDraw >> 8) & 0xFFu);
+    case 0x4E: return (uint8_t)(g->cntCull & 0xFFu);
+    case 0x4F: return (uint8_t)((g->cntCull >> 8) & 0xFFu);
+    case 0x54: return (uint8_t)g->vfirst;
+    case 0x55: return (uint8_t)(g->vfirst >> 8);
+    case 0x56: return (uint8_t)g->ffirst;
+    case 0x57: return (uint8_t)(g->ffirst >> 8);
+    case 0x58: return (uint8_t)g->faddr;
+    case 0x59: return (uint8_t)g->nface;
+    case 0x65: return (uint8_t)g->taddr;
+    case 0x66: return (uint8_t)g->efirst;
+    case 0x67: return (uint8_t)(g->efirst >> 8);
+    case 0x68: return (uint8_t)(g->vaddr >> 8);
+    case 0x69: return (uint8_t)(g->eaddr >> 8);
+    case 0x6A: return (uint8_t)(g->nvert >> 8);
+    case 0x6B: return (uint8_t)(g->nedge >> 8);
+    case 0x6C: return (uint8_t)(g->faddr >> 8);
+    case 0x6D: return (uint8_t)(g->nface >> 8);
+    case 0x6E: return (uint8_t)(g->taddr >> 8);
+    case 0x6F: return (uint8_t)((GEO3D_AW << 4) | (g->ext ? 1u : 0u));
+    default:   return 0xFFu;
+    }
+}
+
+static uint8_t geo3d_read_data(geo3d_t *g)
+{
+    uint8_t v = geo3d_read_reg(g, g->rptr);
+    if (g->rptr == 0x36) {
+        g->rptr = 0x30;
+    } else if ((g->rptr >> 4) == 4) {
+        g->rptr = 0x40 | ((g->rptr + 1) & 0x0F);
+    } else if (g->rptr >= 0x30 && g->rptr < 0x36) {
+        ++g->rptr;
+    }
+    return v;
 }
 
 uint8_t geo3d_read(geo3d_t *g, uint8_t port)
 {
     if (!g) return 0xFFu;
     if ((port & 2u) == 0u) {
-        /* Port 8Dh / 9Dh: Status / Busy Flags
-         * Bit 0: Busy (0 = idle/done, 1 = busy processing).
-         * Since emulation is instantaneous, always return 0 (not busy). */
-        return 0x00u;
+        /* Port 8Dh / 9Dh: Status */
+        return geo3d_read_status(g);
     }
-
     /* Port 8Fh / 9Fh: Data */
-    uint8_t idx = g->reg_idx;
-    uint8_t val = 0;
-
-    if (idx >= 0x30u && idx <= 0x36u) {
-        val = g->regs[idx];
-        g->reg_idx = (uint8_t)((idx + 1u) & 0x7Fu);
-        return val;
-    }
-
-    if (idx == 0x4Au) val = (uint8_t)(g->cnt_skipped & 0xFFu);
-    else if (idx == 0x4Bu) val = (uint8_t)((g->cnt_skipped >> 8) & 0xFFu);
-    else if (idx == 0x4Cu) val = (uint8_t)(g->cnt_drawn & 0xFFu);
-    else if (idx == 0x4Du) val = (uint8_t)((g->cnt_drawn >> 8) & 0xFFu);
-    else if (idx == 0x4Eu) val = (uint8_t)(g->cnt_culled & 0xFFu);
-    else if (idx == 0x4Fu) val = (uint8_t)((g->cnt_culled >> 8) & 0xFFu);
-    else val = g->regs[idx];
-
-    if (idx >= 0x4Au && idx <= 0x4Fu) {
-        g->reg_idx = (uint8_t)((idx + 1u) & 0x7Fu);
-    }
-    return val;
+    return geo3d_read_data(g);
 }
 
 void geo3d_write(geo3d_t *g, uint8_t port, uint8_t val)
 {
     if (!g) return;
     if ((port & 2u) == 0u) {
-        /* Port 8Dh / 9Dh: Register Index */
-        g->reg_idx = (uint8_t)(val & 0x7Fu);
-        g->v_buf_len = 0;
-        g->e_buf_len = 0;
-        g->f_buf_len = 0;
+        /* Port 8Dh / 9Dh: Index */
+        g->widx = val;
+        g->rptr = val;
+        g->vbuf_len = 0;
+        g->ebuf_len = 0;
+        g->fbuf_len = 0;
+        g->tbuf_len = 0;
         return;
     }
 
-    /* Port 8Fh / 9Fh: Register Data */
-    uint8_t idx = g->reg_idx;
+    /* Port 8Fh / 9Fh: Data */
+    uint8_t i = g->widx;
+    uint8_t b = val;
 
-    if (idx == 0x50u) {
-        /* Vertex Stream (6 bytes per vertex) */
-        g->v_buf[g->v_buf_len++] = val;
-        if (g->v_buf_len == 6u) {
-            uint8_t ptr = g->regs[0x40]; /* VADDR */
-            g->vram[ptr].x = get_w(&g->v_buf[0]);
-            g->vram[ptr].y = get_w(&g->v_buf[2]);
-            g->vram[ptr].z = get_w(&g->v_buf[4]);
-            g->regs[0x40] = (uint8_t)((ptr + 1u) & 0xFFu);
-            g->v_buf_len = 0;
+    if (i < 0x2A) {
+        if ((i & 1) == 0) {
+            g->lo = b;
+        } else {
+            uint32_t word = ((uint32_t)b << 8) | g->lo;
+            uint32_t wi = i >> 1;
+            if (wi < 18) {
+                g->cfg[wi] = (wi == 12) ? (int64_t)word : signed16(word);
+            } else {
+                g->ivtx[wi - 18] = signed16(word);
+                if (wi == 20) {
+                    g->imm = geo3d_project(g->cfg, g->ivtx);
+                    g->rptr = 0x30;
+                }
+            }
         }
-        return;
+    } else {
+        #define LO8(r) do { (r) = (uint16_t)(((r) & 0x300u) | b); } while (0)
+        #define HI2(r) do { (r) = (uint16_t)(((r) & 0x0FFu) | (((uint16_t)(b & 3u)) << 8)); } while (0)
+
+        switch (i) {
+        case 0x40: LO8(g->vaddr); break;
+        case 0x41: LO8(g->eaddr); break;
+        case 0x42: LO8(g->nvert); break;
+        case 0x43: LO8(g->nedge); break;
+        case 0x44: g->color = b; break;
+        case 0x45: g->lop = b & 0x0F; break;
+        case 0x46: g->ypage = (g->ypage & 0x700u) | b; break;
+        case 0x47: g->ypage = (g->ypage & 0x0FFu) | (((uint32_t)(b & 7u)) << 8); break;
+        case 0x48:
+            g->ctrlFace = (b & 2) != 0;
+            g->ctrlTex  = (b & 4) != 0;
+            if ((b & 1) && !g->running) geo3d_start_run(g, b);
+            break;
+        case 0x50:
+            g->vbuf[g->vbuf_len++] = b;
+            if (g->vbuf_len == 6) {
+                for (int k = 0; k < 3; ++k) {
+                    uint32_t w = (uint32_t)g->vbuf[2 * k] | ((uint32_t)g->vbuf[2 * k + 1] << 8);
+                    g->vmem[g->vaddr][k] = signed16(w);
+                }
+                g->vaddr = bump(g, g->vaddr);
+                g->vbuf_len = 0;
+            }
+            break;
+        case 0x51:
+            g->ebuf[g->ebuf_len++] = b;
+            if (g->ebuf_len == (g->ext ? 3u : 2u)) {
+                uint32_t hi = g->ext ? g->ebuf[2] : 0;
+                g->emem[g->eaddr][0] = (uint16_t)(g->ebuf[0] | ((hi & 3u) << 8));
+                g->emem[g->eaddr][1] = (uint16_t)(g->ebuf[1] | (((hi >> 2) & 3u) << 8));
+                g->eaddr = bump(g, g->eaddr);
+                g->ebuf_len = 0;
+            }
+            break;
+        case 0x52:
+            g->fbuf[g->fbuf_len++] = b;
+            if (g->fbuf_len == (g->ext ? 12u : 11u)) {
+                geo3d_face_t *fc = &g->fmem[g->faddr];
+                uint32_t hi = g->ext ? g->fbuf[4] : 0;
+                uint32_t o = g->ext ? 5 : 4;
+                for (int k = 0; k < 4; ++k) {
+                    fc->i[k] = (uint16_t)(g->fbuf[k] | (((hi >> (2 * k)) & 3u) << 8));
+                }
+                for (int k = 0; k < 3; ++k) {
+                    uint32_t nw = (uint32_t)g->fbuf[o + 2 * k] | ((uint32_t)g->fbuf[o + 1 + 2 * k] << 8);
+                    fc->n[k] = signed16(nw);
+                }
+                fc->base = g->fbuf[o + 6];
+                g->faddr = bump(g, g->faddr);
+                g->fbuf_len = 0;
+            }
+            break;
+        case 0x53:
+            g->tbuf[g->tbuf_len++] = b;
+            if (g->tbuf_len == 8) {
+                memcpy(g->tmem[g->taddr], g->tbuf, 8);
+                g->taddr = bump(g, g->taddr);
+                g->tbuf_len = 0;
+            }
+            break;
+        case 0x54: LO8(g->vfirst); break;
+        case 0x55: HI2(g->vfirst); break;
+        case 0x56: LO8(g->ffirst); break;
+        case 0x57: HI2(g->ffirst); break;
+        case 0x58: LO8(g->faddr); break;
+        case 0x59: LO8(g->nface); break;
+        case 0x5A: case 0x5C: case 0x5E: g->lo = b; break;
+        case 0x5B: case 0x5D: case 0x5F:
+            g->light[(i - 0x5B) / 2] = signed16(((uint32_t)b << 8) | g->lo);
+            break;
+        case 0x60: g->texx = (g->texx & 0x100u) | b; break;
+        case 0x61: g->texx = (g->texx & 0x0FFu) | (((uint32_t)(b & 1u)) << 8); break;
+        case 0x62: g->texy = (g->texy & 0x1F00u) | b; break;
+        case 0x63: g->texy = (g->texy & 0x00FFu) | (((uint32_t)(b & 0x1Fu)) << 8); break;
+        case 0x64: g->tstride = b; break;
+        case 0x65: LO8(g->taddr); break;
+        case 0x66: LO8(g->efirst); break;
+        case 0x67: HI2(g->efirst); break;
+        case 0x68: HI2(g->vaddr); break;
+        case 0x69: HI2(g->eaddr); break;
+        case 0x6A: HI2(g->nvert); break;
+        case 0x6B: HI2(g->nedge); break;
+        case 0x6C: HI2(g->faddr); break;
+        case 0x6D: HI2(g->nface); break;
+        case 0x6E: HI2(g->taddr); break;
+        case 0x6F: g->ext = (b & 1) != 0; break;
+        default: break;
+        }
+
+        #undef LO8
+        #undef HI2
     }
 
-    if (idx == 0x51u) {
-        /* Edge Stream (2 bytes per edge) */
-        g->e_buf[g->e_buf_len++] = val;
-        if (g->e_buf_len == 2u) {
-            uint8_t ptr = g->regs[0x41]; /* EADDR */
-            g->edges[ptr].v0 = g->e_buf[0];
-            g->edges[ptr].v1 = g->e_buf[1];
-            g->regs[0x41] = (uint8_t)((ptr + 1u) & 0xFFu);
-            g->e_buf_len = 0;
-        }
-        return;
-    }
-
-    if (idx == 0x52u) {
-        /* Face Stream (11 bytes per face) */
-        g->f_buf[g->f_buf_len++] = val;
-        if (g->f_buf_len == 11u) {
-            uint8_t ptr = g->regs[0x58]; /* FADDR */
-            g->faces[ptr].i0 = g->f_buf[0];
-            g->faces[ptr].i1 = g->f_buf[1];
-            g->faces[ptr].i2 = g->f_buf[2];
-            g->faces[ptr].i3 = g->f_buf[3];
-            g->faces[ptr].nx = get_w(&g->f_buf[4]);
-            g->faces[ptr].ny = get_w(&g->f_buf[6]);
-            g->faces[ptr].nz = get_w(&g->f_buf[8]);
-            g->faces[ptr].base_col = g->f_buf[10];
-            g->regs[0x58] = (uint8_t)((ptr + 1u) & 0xFFu);
-            g->f_buf_len = 0;
-        }
-        return;
-    }
-
-    /* Standard Register Write */
-    g->regs[idx] = val;
-
-    if (idx == 0x29u) {
-        /* Writing high byte of VZ triggers immediate vertex calculation */
-        geo3d_proj_t res;
-        transform_vertex(g, get_w(&g->regs[0x24]), get_w(&g->regs[0x26]), get_w(&g->regs[0x28]), &res);
-        g->regs[0x30] = (uint8_t)(res.sx & 0xFFu);
-        g->regs[0x31] = (uint8_t)((res.sx >> 8) & 0xFFu);
-        g->regs[0x32] = (uint8_t)(res.sy & 0xFFu);
-        g->regs[0x33] = (uint8_t)((res.sy >> 8) & 0xFFu);
-        g->regs[0x34] = (uint8_t)(res.z & 0xFFu);
-        g->regs[0x35] = (uint8_t)((res.z >> 8) & 0xFFu);
-        g->regs[0x36] = res.flags;
-    } else if (idx == 0x48u) {
-        /* Writing CTRL register with bit 0 = 1 triggers autonomous RUN */
-        if (val & 0x01u) {
-            geo3d_run(g);
-        }
-    }
-
-    /* Auto-increment for sequential register setup */
-    if (idx < 0x2Au || (idx >= 0x40u && idx <= 0x48u) || (idx >= 0x58u && idx <= 0x5Fu)) {
-        g->reg_idx = (uint8_t)((idx + 1u) & 0x7Fu);
+    /* Index advance matching RTL next_idx */
+    if ((i >> 4) == 4) {
+        g->widx = 0x40 | ((i + 1) & 0x0F);
+    } else if ((i >> 2) == 0x15) {
+        g->widx = 0x54 | ((i + 1) & 0x03);
+    } else if ((i >> 3) == 0x0B) {
+        g->widx = 0x58 | ((i + 1) & 0x07);
+    } else if ((i >> 3) == 0x0C) {
+        g->widx = 0x60 | ((i + 1) & 0x07);
+    } else if ((i >> 3) == 0x0D) {
+        g->widx = 0x68 | ((i + 1) & 0x07);
+    } else if (i == 0x29) {
+        g->widx = 0x24;
+    } else if (i < 0x40) {
+        g->widx = i + 1;
     }
 }

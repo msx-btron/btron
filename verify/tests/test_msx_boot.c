@@ -95,7 +95,7 @@ int main(int argc, char **argv)
             cfg.machine = BMSX_MACHINE_MSX2P_CBIOS;
         else if (strstr(rom_path, "Dynamite"))
             cfg.machine = BMSX_MACHINE_MSX2_CBIOS_JP;
-        else if (rom_len > 65536u || strstr(rom_path, "BULLRUSH") || strstr(rom_path, "NEON") || strstr(rom_path, "NIGHT"))
+        else if (rom_len > 65536u || strstr(rom_path, "BULLRUSH") || strstr(rom_path, "NEON") || strstr(rom_path, "NIGHT") || strstr(rom_path, "MAGICAL") || strstr(rom_path, "NICCC"))
             cfg.machine = BMSX_MACHINE_MSXTR_CBIOS;
     }
     cfg.frame_hz = 60;

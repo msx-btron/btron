@@ -57,6 +57,7 @@ typedef struct v9938_s {
 
 void    v9938_init(v9938_t *v, int is_v9958);
 void    v9938_reset(v9938_t *v);
+void    v9938_write_reg(v9938_t *v, uint8_t reg, uint8_t val);
 uint8_t v9938_read(v9938_t *v, uint8_t port);
 void    v9938_write(v9938_t *v, uint8_t port, uint8_t val);
 void    v9938_advance(v9938_t *v, uint32_t t_states);
