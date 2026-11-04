@@ -758,10 +758,18 @@ chkram:
                 call    H_RUNC
 
                 ; 9. Idle loop if no cartridge or disk boots, or upon return
+IFDEF CONFIG_TFW
+                jp      tfw_cold_boot
 hang_loop:
                 ei
                 halt
                 jp      hang_loop
+ELSE
+hang_loop:
+                ei
+                halt
+                jp      hang_loop
+ENDIF
 
 ; ==============================================================================
 ; Slot Detection (EXPTBL & SLTTBL)
@@ -2027,6 +2035,368 @@ chsns:
                 inc     a               ; clear ZF
                 ret
 
+IFDEF CONFIG_TFW
+CUR_VRAM:       equ     $E8FE           ; 2-byte cell for cursor VRAM address
+
+get_cur_vram:
+                ld      a, (CSRY)
+                dec     a
+                ld      b, a
+                ld      hl, 0
+                ld      d, 0
+                ld      a, (LINLEN)
+                ld      e, a
+                ld      a, b
+                or      a
+                jr      z, .gcv_col
+.gcv_row_lp:
+                add     hl, de
+                djnz    .gcv_row_lp
+.gcv_col:
+                ld      a, (CSRX)
+                dec     a
+                ld      e, a
+                add     hl, de
+                ld      de, (NAMBAS)
+                add     hl, de
+                ret
+
+chget:
+                push    bc
+                push    de
+                push    hl
+
+                ; Calculate current cursor VRAM address and draw initial square
+                call    get_cur_vram
+                ld      (CUR_VRAM), hl
+                ld      a, 219          ; Solid square block (█)
+                call    wrtvrm          ; Draw cursor initially ON
+                ld      bc, 3000        ; Countdown iterations for ON phase (~320 ms)
+                ld      d, 1            ; Phase 1 = ON
+
+.wait_loop:
+                ; Scan Row 8: Space (bit 0)
+                ld      a, 8
+                call    snsmat
+                cpl
+                and     $01
+                jr      z, .chk_r7
+                ld      a, ' '
+                jp      .got_key
+
+.chk_r7:
+                ; Scan Row 7: CR (bit 7), BS (bit 5)
+                ld      a, 7
+                call    snsmat
+                cpl
+                bit     7, a
+                jr      z, .no_cr
+                ld      a, 13
+                jp      .got_key
+.no_cr:
+                bit     5, a
+                jr      z, .chk_r0
+                ld      a, 8
+                jp      .got_key
+
+.chk_r0:
+                ld      a, 0
+                call    snsmat
+                cpl
+                or      a
+                jr      z, .chk_r1
+                ld      hl, .tbl_r0
+                jp      .decode_table
+
+.chk_r1:
+                ld      a, 1
+                call    snsmat
+                cpl
+                or      a
+                jr      z, .chk_r2
+                ld      hl, .tbl_r1
+                jp      .decode_table
+
+.chk_r2:
+                ld      a, 2
+                call    snsmat
+                cpl
+                or      a
+                jr      z, .chk_r3
+                ld      hl, .tbl_r2
+                jp      .decode_table
+
+.chk_r3:
+                ld      a, 3
+                call    snsmat
+                cpl
+                or      a
+                jr      z, .chk_r4
+                ld      hl, .tbl_r3
+                jp      .decode_table
+
+.chk_r4:
+                ld      a, 4
+                call    snsmat
+                cpl
+                or      a
+                jr      z, .chk_r5
+                ld      hl, .tbl_r4
+                jp      .decode_table
+
+.chk_r5:
+                ld      a, 5
+                call    snsmat
+                cpl
+                or      a
+                jr      z, .no_key_pressed
+                ld      hl, .tbl_r5
+                jp      .decode_table
+
+.decode_table:
+                srl     a
+                jr      c, .found_table_char
+                inc     hl
+                jr      .decode_table
+
+.found_table_char:
+                ld      a, (hl)
+                or      a
+                jr      nz, .got_key
+
+.no_key_pressed:
+                dec     bc
+                ld      a, b
+                or      c
+                jp      nz, .wait_loop
+
+                ; Toggle cursor phase (Disney/Sony cadence: 320ms ON, 240ms OFF)
+                ld      hl, (CUR_VRAM)
+                ld      a, d
+                or      a
+                jr      z, .turn_on
+
+                ; Turn OFF: write blank space, set timer to ~240 ms
+                ld      d, 0
+                ld      bc, 2200
+                ld      a, ' '
+                call    wrtvrm
+                jp      .wait_loop
+
+.turn_on:
+                ; Turn ON: write square block, set timer to ~320 ms
+                ld      d, 1
+                ld      bc, 3000
+                ld      a, 219
+                call    wrtvrm
+                jp      .wait_loop
+
+.got_key:
+                ; Key detected! Erase cursor before returning
+                push    af
+                ld      hl, (CUR_VRAM)
+                ld      a, ' '
+                call    wrtvrm
+                pop     af
+
+.key_pressed:
+                push    af
+.debounce:
+                ld      a, 8
+                call    snsmat
+                and     $01
+                jr      z, .debounce
+                ld      a, 7
+                call    snsmat
+                and     $A0
+                cp      $A0
+                jr      nz, .debounce
+                ld      a, 0
+                call    snsmat
+                cp      $FF
+                jr      nz, .debounce
+                ld      a, 1
+                call    snsmat
+                cp      $FF
+                jr      nz, .debounce
+                ld      a, 2
+                call    snsmat
+                cp      $FF
+                jr      nz, .debounce
+                ld      a, 3
+                call    snsmat
+                cp      $FF
+                jr      nz, .debounce
+                ld      a, 4
+                call    snsmat
+                cp      $FF
+                jr      nz, .debounce
+                ld      a, 5
+                call    snsmat
+                cp      $FF
+                jr      nz, .debounce
+
+                pop     af
+                pop     hl
+                pop     de
+                pop     bc
+                ret
+
+.tbl_r0:        db      '0', '1', '2', '3', '4', '5', '6', '7'
+.tbl_r1:        db      '8', '9', '-', '=', '\', '[', ']', ';'
+.tbl_r2:        db      '`', 39,  ',', '.', '/', 0,   'A', 'B'
+.tbl_r3:        db      'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'
+.tbl_r4:        db      'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'
+.tbl_r5:        db      'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'
+
+chput:
+                push    af
+                push    bc
+                push    de
+                push    hl
+
+                cp      13              ; CR
+                jr      z, .chput_cr
+                cp      10              ; LF
+                jr      z, .chput_lf
+                cp      8               ; BS
+                jr      z, .chput_bs
+                cp      12              ; FF (CLS)
+                jr      z, .chput_cls
+                cp      ' '
+                jr      c, .chput_done
+
+                ; Printable character: write to current VRAM cursor address
+                push    af
+                call    get_cur_vram
+                pop     af
+                call    wrtvrm
+
+                ; Advance CSRX
+                ld      a, (CSRX)
+                inc     a
+                ld      (CSRX), a
+                ld      hl, LINLEN
+                cp      (hl)
+                jr      c, .chput_done
+                jr      z, .chput_done
+
+                ; Line wrap
+                ld      a, 1
+                ld      (CSRX), a
+.chput_lf:
+                ld      a, (CSRY)
+                inc     a
+                cp      25
+                jr      c, .chput_set_y
+                call    .scroll_up
+                ld      a, 24
+.chput_set_y:
+                ld      (CSRY), a
+                jr      .chput_done
+
+.chput_cr:
+                ld      a, 1
+                ld      (CSRX), a
+                jr      .chput_done
+
+.chput_bs:
+                ld      a, (CSRX)
+                cp      1
+                jr      z, .chput_done
+                dec     a
+                ld      (CSRX), a
+                push    af
+                ld      a, ' '
+                call    chput
+                pop     af
+                ld      (CSRX), a
+                jr      .chput_done
+
+.chput_cls:
+                call    cls_z
+                jr      .chput_done
+
+.chput_done:
+                pop     hl
+                pop     de
+                pop     bc
+                pop     af
+                ret
+
+.scroll_up:
+                push    bc
+                push    de
+                push    hl
+                ; Copy line 1..23 to 0..22
+                ld      a, (LINLEN)
+                ld      e, a
+                ld      d, 0
+                ld      hl, (NAMBAS)
+                add     hl, de          ; HL = NAMBAS + LINLEN (line 1)
+                ld      de, (NAMBAS)    ; DE = NAMBAS (line 0)
+                ld      b, 23
+                ld      a, (LINLEN)
+                ld      c, a
+                ld      hl, 0
+.sc_sz_lp:
+                ld      a, (LINLEN)
+                add     a, l
+                ld      l, a
+                jr      nc, .sc_nc
+                inc     h
+.sc_nc:
+                djnz    .sc_sz_lp
+                ld      b, h
+                ld      c, l
+                ld      hl, (NAMBAS)
+                ld      a, (LINLEN)
+                add     a, l
+                ld      l, a
+                jr      nc, .sc_nc2
+                inc     h
+.sc_nc2:
+                ld      de, (NAMBAS)
+.sc_lp:
+                call    rdvrm
+                ex      de, hl
+                call    wrtvrm
+                ex      de, hl
+                inc     hl
+                inc     de
+                dec     bc
+                ld      a, b
+                or      c
+                jr      nz, .sc_lp
+
+                ; Fill last line with spaces
+                ex      de, hl
+                ld      a, (LINLEN)
+                ld      c, a
+                ld      b, 0
+                ld      a, ' '
+                call    filvrm
+                pop     hl
+                pop     de
+                pop     bc
+                ret
+
+cls_z:
+                push    af
+                push    bc
+                push    hl
+                ld      a, 1
+                ld      (CSRX), a
+                ld      (CSRY), a
+                ld      hl, (NAMBAS)
+                ld      bc, 40 * 24     ; 960 bytes
+                ld      a, ' '
+                call    filvrm
+                pop     hl
+                pop     bc
+                pop     af
+                ret
+ELSE
 chget:
                 ; Wait for key
                 ld      a, ' '
@@ -2039,6 +2409,7 @@ chput:
 cls_z:
                 xor     a
                 ret
+ENDIF
 
 posit:
                 ld      a, h
@@ -2553,6 +2924,24 @@ wrres:
 
 tbios_font:
                 include "font_us.inc"
+
+; ==============================================================================
+; T-FW (T-Firmware): ANS Forth & OpenFirmware Subsystem (Conditional Inclusion)
+; ==============================================================================
+
+IFDEF CONFIG_TFW
+                include "forth_z80_next.asm"
+                include "forth_z80_prim.asm"
+                include "forth_devtree.asm"
+
+; MSX Cartridge Header (Page 1: $4000..$7FFF) for T-FW
+                ds      $4000 - $
+tfw_cart_header:
+                db      "AB"
+                dw      tfw_cold_boot   ; INIT vector
+                dw      tfw_cold_boot   ; EXEC vector
+                dw      0, 0, 0
+ENDIF
 
 ; ==============================================================================
 ; Pad to full 32 KiB (0x8000)

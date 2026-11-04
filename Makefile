@@ -204,7 +204,10 @@ CLU_APPS_SRCS = src/clu/fs.c \
                 src/clu/st.c \
                 src/clu/tp.c \
                 src/clu/ps_vm.c \
-                src/clu/sps.c
+                src/clu/sps.c \
+                src/clu/forth_core.c \
+                src/clu/forth_devtree.c \
+                src/clu/forth.c
 
 CLU_APPS_HOST_OBJS = $(CLU_APPS_SRCS:.c=.host.o)
 CLU_APPS_POSIX_OBJS = $(CLU_APPS_SRCS:.c=.posix.o)
@@ -797,6 +800,58 @@ $(TEST_SPS_BIN): verify/tests/test_sps.c src/clu/ps_vm.posix.o src/clu/sps.posix
 
 test-sps: $(TEST_SPS_BIN)
 	./$(TEST_SPS_BIN)
+
+# ── ANS Forth-2012 Core Subset, FCode & 16-Bit Profile Targets ────────
+FORTH_BIN = ./.build/forth
+$(FORTH_BIN): src/clu/forth.c src/clu/forth_core.c src/clu/forth_devtree.c
+	@mkdir -p ./.build
+	$(CC) $(CFLAGS) -DFORTH_STANDALONE=1 $^ -o $@
+
+forth: $(FORTH_BIN)
+
+FORTH16_BIN = ./.build/btron-forth16
+$(FORTH16_BIN): src/clu/forth16.c src/clu/forth_core.c src/clu/forth_devtree.c
+	@mkdir -p ./.build
+	$(CC) $(CFLAGS) -DFORTH_16BIT=1 $^ -o $@
+
+forth-16: $(FORTH16_BIN)
+
+TEST_CLU_FORTH_BIN = ./.build/test_clu_forth
+$(TEST_CLU_FORTH_BIN): verify/tests/test_clu_forth.c src/clu/forth_core.c src/clu/forth_devtree.c
+	@mkdir -p ./.build
+	$(CC) $(CFLAGS) $^ -o $@
+
+test-clu-forth: $(TEST_CLU_FORTH_BIN)
+	./$(TEST_CLU_FORTH_BIN)
+
+TEST_FORTH16_BIN = ./.build/test_forth16
+$(TEST_FORTH16_BIN): verify/tests/test_forth16.c src/clu/forth_core.c src/clu/forth_devtree.c
+	@mkdir -p ./.build
+	$(CC) $(CFLAGS) -DFORTH_16BIT=1 $^ -o $@
+
+test-forth16: $(TEST_FORTH16_BIN)
+	./$(TEST_FORTH16_BIN)
+
+TEST_FORTH_PERF_BIN = ./.build/test_forth_perf
+$(TEST_FORTH_PERF_BIN): verify/tests/test_forth_perf.c src/clu/forth_core.c src/clu/forth_devtree.c
+	@mkdir -p ./.build
+	$(CC) $(CFLAGS) $^ -o $@
+
+test-forth-perf: $(TEST_FORTH_PERF_BIN)
+	./$(TEST_FORTH_PERF_BIN)
+
+TEST_TFW_FORTH_SRCS = verify/tests/test_tfw_forth.c $(MSX_SRCS)
+TEST_TFW_FORTH_OBJS = $(TEST_TFW_FORTH_SRCS:.c=.test.o)
+TEST_TFW_FORTH_BIN  = ./.build/test_tfw_forth
+
+$(TEST_TFW_FORTH_BIN): $(TEST_TFW_FORTH_OBJS) $(TFW_ROMS)
+	@mkdir -p ./.build
+	$(CC) $(TEST_TFW_FORTH_OBJS) -o $@ $(LDFLAGS)
+
+test-tfw-forth: $(TEST_TFW_FORTH_BIN)
+	./$(TEST_TFW_FORTH_BIN)
+
+test-forth: test-clu-forth test-forth16 test-forth-perf test-tfw-forth
 
 # ── Cho-Kanji (B-right/V 4.02) QCOW2 tests ───────────────────────────
 # The read-write tests create, append to and delete records, so they must never
@@ -3412,15 +3467,15 @@ TBIOS_ROMS = ./.build/tbios/tbios_main_msx2.rom \
 
 ./.build/tbios/tbios_main_msx2.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
-	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -E MSX_VER=1 src/emulators/msx/tbios/asm/entry_main.asm $@
+	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=1 src/emulators/msx/tbios/asm/entry_main.asm $@
 
 ./.build/tbios/tbios_main_msx2+.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
-	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -E MSX_VER=2 src/emulators/msx/tbios/asm/entry_main.asm $@
+	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=2 src/emulators/msx/tbios/asm/entry_main.asm $@
 
 ./.build/tbios/tbios_main_msxtr.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
-	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -E MSX_VER=3 src/emulators/msx/tbios/asm/entry_main.asm $@
+	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=3 src/emulators/msx/tbios/asm/entry_main.asm $@
 
 ./.build/tbios/tbios_sub.rom: src/emulators/msx/tbios/asm/entry_sub.asm $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
@@ -3439,6 +3494,25 @@ TBIOS_ROMS = ./.build/tbios/tbios_main_msx2.rom \
 	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc src/emulators/msx/tbios/asm/entry_disk.asm $@
 
 tbios-roms: $(TBIOS_ROMS)
+
+TFW_ROMS = ./.build/tbios/tfw_main_msx2.rom \
+           ./.build/tbios/tfw_main_msx2+.rom \
+           ./.build/tbios/tfw_main_msxtr.rom
+
+./.build/tbios/tfw_main_msx2.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
+	@mkdir -p ./.build/tbios
+	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=1 -E CONFIG_TFW=1 src/emulators/msx/tbios/asm/entry_main.asm $@
+
+./.build/tbios/tfw_main_msx2+.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
+	@mkdir -p ./.build/tbios
+	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=2 -E CONFIG_TFW=1 src/emulators/msx/tbios/asm/entry_main.asm $@
+
+./.build/tbios/tfw_main_msxtr.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
+	@mkdir -p ./.build/tbios
+	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=3 -E CONFIG_TFW=1 src/emulators/msx/tbios/asm/entry_main.asm $@
+
+tfw-roms: $(TFW_ROMS)
+	@cp $(TFW_ROMS) assets/msx/
 
 TEST_TBIOS_DIFF_SRCS = verify/tests/test_tbios_diff.c $(MSX_SRCS)
 TEST_TBIOS_DIFF_OBJS = $(TEST_TBIOS_DIFF_SRCS:.c=.test.o)

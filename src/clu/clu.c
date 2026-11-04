@@ -116,6 +116,11 @@ void clu_sync_cmd(const char *args, ShellOutputFn out, void *ud)
     clu_cmd_sync(args, out, ud);
 }
 
+void clu_forth(const char *args, ShellOutputFn out, void *ud)
+{
+    clu_cmd_forth(args, out, ud);
+}
+
 /* ── 3D Gaming & Applications ───────────────────────────────────── */
 
 __attribute__((weak)) WND *open_quake_window(int x, int y, int width, int height)

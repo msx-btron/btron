@@ -67,6 +67,9 @@ void clu_tv       (const char *args, ShellOutputFn out, void *ud);
 /* ── Document Processing System (DPS) ────────────────────────────── */
 void clu_sps      (const char *args, ShellOutputFn out, void *ud);
 
+/* ── ANS Forth & OpenFirmware System (T-FW / CLU) ─────────────────── */
+void clu_forth    (const char *args, ShellOutputFn out, void *ud);
+
 #ifdef __cplusplus
 }
 #endif

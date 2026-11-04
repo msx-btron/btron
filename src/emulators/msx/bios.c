@@ -67,7 +67,9 @@ int bios_get_mode(void)
 
 void bios_set_mode(int mode)
 {
-    s_bios_mode = (mode == BMSX_BIOS_TBIOS) ? BMSX_BIOS_TBIOS : BMSX_BIOS_CBIOS;
+    if (mode == BMSX_BIOS_TFW) s_bios_mode = BMSX_BIOS_TFW;
+    else if (mode == BMSX_BIOS_TBIOS) s_bios_mode = BMSX_BIOS_TBIOS;
+    else s_bios_mode = BMSX_BIOS_CBIOS;
 }
 
 static uint32_t read_rom_path(const char *path, uint8_t *buf, uint32_t cap)
@@ -207,6 +209,13 @@ static const char *main_rom_name_tbios(uint16_t machine)
     return "tbios_main_msx2.rom";
 }
 
+static const char *main_rom_name_tfw(uint16_t machine)
+{
+    if (machine >= BMSX_MACHINE_MSXTR_CBIOS) return "tfw_main_msxtr.rom";
+    if (machine >= BMSX_MACHINE_MSX2P_CBIOS) return "tfw_main_msx2+.rom";
+    return "tfw_main_msx2.rom";
+}
+
 int bios_load(uint16_t machine, const char *dir)
 {
     const char *main_name = main_rom_name(machine);
@@ -216,7 +225,18 @@ int bios_load(uint16_t machine, const char *dir)
     slots_set_machine(machine);
 
     /* 1. Main ROM (mandatory) */
-    if (s_bios_mode == BMSX_BIOS_TBIOS) {
+    if (s_bios_mode == BMSX_BIOS_TFW) {
+        if (g_bmsx_cfg.main_rom[0] && strstr(g_bmsx_cfg.main_rom, "tfw_")) {
+            n = read_rom(dir, g_bmsx_cfg.main_rom, s_main, sizeof(s_main));
+        }
+        if (!n) {
+            const char *t_name = main_rom_name_tfw(machine);
+            n = read_rom(dir, t_name, s_main, sizeof(s_main));
+            if (!n && strcmp(t_name, "tfw_main_msx2.rom") != 0) {
+                n = read_rom(dir, "tfw_main_msx2.rom", s_main, sizeof(s_main));
+            }
+        }
+    } else if (s_bios_mode == BMSX_BIOS_TBIOS) {
         if (g_bmsx_cfg.main_rom[0]) {
             n = read_rom(dir, g_bmsx_cfg.main_rom, s_main, sizeof(s_main));
         }
@@ -242,7 +262,7 @@ int bios_load(uint16_t machine, const char *dir)
         }
     }
     if (!n) return MSX_ERR_BIOS;
-    if (s_bios_mode == BMSX_BIOS_TBIOS) {
+    if (s_bios_mode == BMSX_BIOS_TBIOS || s_bios_mode == BMSX_BIOS_TFW) {
         if (machine >= BMSX_MACHINE_MSXTR_CBIOS) s_main[0x002D] = 0x03;
         else if (machine >= BMSX_MACHINE_MSX2P_CBIOS) s_main[0x002D] = 0x02;
     }

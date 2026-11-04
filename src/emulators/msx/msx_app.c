@@ -53,6 +53,7 @@ typedef enum {
     XCMD_INPUT_DUAL_MODE,
     XCMD_BIOS_CBIOS,
     XCMD_BIOS_TBIOS,
+    XCMD_BIOS_TFW,
     XCMD_HELP_ABOUT
 } MSX_CMD;
 
@@ -87,6 +88,7 @@ typedef struct {
     int  bios_header;          /* BIOS(B), or -1 before the bar exists */
     int  bios_cbios_item;      /* (*) C-BIOS + Nextor */
     int  bios_tbios_item;      /* ( ) T-BIOS + T-DOS */
+    int  bios_tfw_item;        /* ( ) T-FW (ANS Forth + OpenFW) */
     int  input_header;         /* 入力(I), or -1 before the bar exists */
     int  input_kbd_item;
     int  input_joy_item;
@@ -285,6 +287,14 @@ static void msx_scan_roms(MsxViewer *st)
     msx_sort_rows(st);
 }
 
+static int msx_is_main_bios_name(const char *name)
+{
+    if (!name) return 0;
+    return (strstr(name, "tfw_main") != NULL ||
+            strstr(name, "tbios_main") != NULL ||
+            strstr(name, "cbios_main") != NULL);
+}
+
 /* Read one cartridge image and hand it to the core. */
 static BOOL msx_load(MsxViewer *st, const char *name)
 {
@@ -328,8 +338,22 @@ static BOOL msx_load(MsxViewer *st, const char *name)
     cfg.machine = msx_machine_for(name, (size_t)size);
     msx_init(&cfg);
 
-    if (msx_is_dsk_name(name)) rc = slots_set_dsk(buf, (uint32_t)got);
-    else rc = msx_load_rom(buf, (uint32_t)got, 0);
+    if (msx_is_dsk_name(name)) {
+        rc = slots_set_dsk(buf, (uint32_t)got);
+    } else if (msx_is_main_bios_name(name)) {
+        if (strstr(name, "tfw_")) {
+            msx_set_bios_mode(BMSX_BIOS_TFW);
+        } else if (strstr(name, "tbios_")) {
+            msx_set_bios_mode(BMSX_BIOS_TBIOS);
+        } else {
+            msx_set_bios_mode(BMSX_BIOS_CBIOS);
+        }
+        slots_set_bios(buf, (uint32_t)got);
+        slots_set_rom(NULL, 0);
+        rc = MSX_OK;
+    } else {
+        rc = msx_load_rom(buf, (uint32_t)got, 0);
+    }
     free(buf);
 
     if (rc != MSX_OK) {
@@ -423,6 +447,24 @@ static BOOL msx_load(MsxViewer *st, const char *name)
             return FALSE;
         }
         rc = slots_set_dsk(rom_image, (uint32_t)got);
+    } else if (msx_is_main_bios_name(name)) {
+        if (vfs_read_blob(st->path, rom_image, rom_cap, &got) != 0 || got == 0) {
+            snprintf(st->notice, sizeof(st->notice),
+                     "ROM を開けません (cannot open %s)", st->path);
+            return FALSE;
+        }
+        cfg.machine = msx_machine_for(name, got);
+        if (strstr(name, "tfw_")) {
+            msx_set_bios_mode(BMSX_BIOS_TFW);
+        } else if (strstr(name, "tbios_")) {
+            msx_set_bios_mode(BMSX_BIOS_TBIOS);
+        } else {
+            msx_set_bios_mode(BMSX_BIOS_CBIOS);
+        }
+        msx_init(&cfg);
+        slots_set_bios(rom_image, (uint32_t)got);
+        slots_set_rom(NULL, 0);
+        rc = MSX_OK;
     } else {
         if (vfs_read_blob(st->path, rom_image, rom_cap, &got) != 0 || got == 0) {
             snprintf(st->notice, sizeof(st->notice),
@@ -544,6 +586,9 @@ static void msx_init_menu_bar(MsxViewer *st)
     st->bios_tbios_item = app_menu_add_item(&st->menu_bar, hb,
                                             "( ) T-BIOS + T-DOS",
                                             "", XCMD_BIOS_TBIOS, TRUE);
+    st->bios_tfw_item = app_menu_add_item(&st->menu_bar, hb,
+                                            "( ) T-FW (ANS Forth + OpenFW)",
+                                            "", XCMD_BIOS_TFW, TRUE);
 
     int h2 = app_menu_add_header(&st->menu_bar, "表示(V)", 72);
     app_menu_add_item(&st->menu_bar, h2, "自動拡大 (Fit)", "", XCMD_VIEW_FIT, TRUE);
@@ -597,6 +642,12 @@ static void msx_sync_menu_state(MsxViewer *st)
                      sizeof(hdr->items[st->bios_tbios_item].label),
                      "%s T-BIOS + T-DOS",
                      bmode == BMSX_BIOS_TBIOS ? "(*)" : "( )");
+        }
+        if (st->bios_tfw_item >= 0 && st->bios_tfw_item < hdr->item_count) {
+            snprintf(hdr->items[st->bios_tfw_item].label,
+                     sizeof(hdr->items[st->bios_tfw_item].label),
+                     "%s T-FW (ANS Forth + OpenFW)",
+                     bmode == BMSX_BIOS_TFW ? "(*)" : "( )");
         }
     }
 
@@ -876,6 +927,13 @@ static void msx_apply_cmd(WND *wnd, MsxViewer *st, int cmd, int sub_idx)
         case XCMD_BIOS_TBIOS:
             if (msx_get_bios_mode() != BMSX_BIOS_TBIOS) {
                 msx_set_bios_mode(BMSX_BIOS_TBIOS);
+                msx_init(NULL);
+                if (st->path[0]) msx_load(st, st->path);
+            }
+            break;
+        case XCMD_BIOS_TFW:
+            if (msx_get_bios_mode() != BMSX_BIOS_TFW) {
+                msx_set_bios_mode(BMSX_BIOS_TFW);
                 msx_init(NULL);
                 if (st->path[0]) msx_load(st, st->path);
             }

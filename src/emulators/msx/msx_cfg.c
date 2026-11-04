@@ -160,6 +160,8 @@ static void set_default_config(uint16_t machine, bmsx_machine_cfg_t *cfg)
     cfg->cart_subslot_b = 0;
     cfg->z80_freq = 3579545u;
 
+    int is_tfw = (msx_get_bios_mode() == BMSX_BIOS_TFW);
+
     if (machine >= BMSX_MACHINE_MSXTR_CBIOS && machine <= BMSX_MACHINE_MSXTR_CBIOS_FDD) {
         /* turbo R default */
         strncpy(cfg->video_version, "V9958", sizeof(cfg->video_version) - 1);
@@ -185,7 +187,7 @@ static void set_default_config(uint16_t machine, bmsx_machine_cfg_t *cfg)
         cfg->disk_slot = 3;
         cfg->disk_subslot = 3;
 
-        strncpy(cfg->main_rom, "tbios_main_msxtr.rom", sizeof(cfg->main_rom) - 1);
+        strncpy(cfg->main_rom, is_tfw ? "tfw_main_msxtr.rom" : "tbios_main_msxtr.rom", sizeof(cfg->main_rom) - 1);
         strncpy(cfg->logo_rom, "tbios_logo.rom", sizeof(cfg->logo_rom) - 1);
         strncpy(cfg->sub_rom, "tbios_sub.rom", sizeof(cfg->sub_rom) - 1);
         strncpy(cfg->music_rom, "tbios_music.rom", sizeof(cfg->music_rom) - 1);
@@ -211,7 +213,7 @@ static void set_default_config(uint16_t machine, bmsx_machine_cfg_t *cfg)
         cfg->disk_slot = 3;
         cfg->disk_subslot = 3;
 
-        strncpy(cfg->main_rom, "tbios_main_msx2.rom", sizeof(cfg->main_rom) - 1);
+        strncpy(cfg->main_rom, is_tfw ? "tfw_main_msx2.rom" : "tbios_main_msx2.rom", sizeof(cfg->main_rom) - 1);
         strncpy(cfg->logo_rom, "tbios_logo.rom", sizeof(cfg->logo_rom) - 1);
         strncpy(cfg->sub_rom, "tbios_sub.rom", sizeof(cfg->sub_rom) - 1);
         if (cfg->fdc_count) strncpy(cfg->disk_rom, "tdos_disk.rom", sizeof(cfg->disk_rom) - 1);
@@ -246,7 +248,11 @@ static void set_default_config(uint16_t machine, bmsx_machine_cfg_t *cfg)
         cfg->disk_slot = 3;
         cfg->disk_subslot = 3;
 
-        strncpy(cfg->main_rom, is_2p ? "tbios_main_msx2+.rom" : "tbios_main_msx2.rom", sizeof(cfg->main_rom) - 1);
+        if (is_tfw) {
+            strncpy(cfg->main_rom, is_2p ? "tfw_main_msx2+.rom" : "tfw_main_msx2.rom", sizeof(cfg->main_rom) - 1);
+        } else {
+            strncpy(cfg->main_rom, is_2p ? "tbios_main_msx2+.rom" : "tbios_main_msx2.rom", sizeof(cfg->main_rom) - 1);
+        }
         strncpy(cfg->logo_rom, "tbios_logo.rom", sizeof(cfg->logo_rom) - 1);
         strncpy(cfg->sub_rom, "tbios_sub.rom", sizeof(cfg->sub_rom) - 1);
         if (is_2p) strncpy(cfg->music_rom, "tbios_music.rom", sizeof(cfg->music_rom) - 1);
@@ -272,6 +278,11 @@ int bmsx_cfg_load(const char *name_or_key, uint16_t machine, bmsx_machine_cfg_t 
 
     if (!cfg) return -1;
 
+    char saved_main_rom[64] = {0};
+    if (cfg->main_rom[0]) {
+        strncpy(saved_main_rom, cfg->main_rom, sizeof(saved_main_rom) - 1);
+    }
+
     /* 1. Identify target machine name */
     if (name_or_key && *name_or_key) {
         target_name = name_or_key;
@@ -281,6 +292,9 @@ int bmsx_cfg_load(const char *name_or_key, uint16_t machine, bmsx_machine_cfg_t 
 
     /* 2. Populate standard fallback defaults */
     set_default_config(machine, cfg);
+    if (saved_main_rom[0]) {
+        strncpy(cfg->main_rom, saved_main_rom, sizeof(cfg->main_rom) - 1);
+    }
 
     /* 3. Locate INI file */
     if (!bmsx_cfg_find_path(target_name, path, sizeof(path))) {

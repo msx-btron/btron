@@ -103,7 +103,8 @@ typedef enum {
 typedef enum {
     GTERM_MODE_SHELL = 0,
     GTERM_MODE_SC,
-    GTERM_MODE_TV
+    GTERM_MODE_TV,
+    GTERM_MODE_FORTH
 } GTermAppMode;
 
 typedef struct {
@@ -401,6 +402,16 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
     if (strcmp(cmd, "sps") == 0 || strcmp(cmd, "postscript") == 0 ||
         strcmp(cmd, "bin/sps") == 0 || strcmp(cmd, "./sps") == 0) {
         clu_sps(arg, out_fn, user_data);
+        return;
+    }
+    if (strcmp(cmd, "forth") == 0 || strcmp(cmd, "fcode") == 0 ||
+        strcmp(cmd, "bin/forth") == 0 || strcmp(cmd, "./forth") == 0) {
+        GTermState *st_forth = (GTermState *)user_data;
+        if (arg[0] == '\0' && st_forth) {
+            st_forth->app_mode = GTERM_MODE_FORTH;
+            snprintf(st_forth->prompt, sizeof(st_forth->prompt), "ok ");
+        }
+        clu_forth(arg, out_fn, user_data);
         return;
     }
     if (strcmp(cmd, "quake") == 0 || strcmp(cmd, "bin/quake") == 0 ||
@@ -892,6 +903,17 @@ static void gterm_execute_cmd(WND *wnd, GTermState *st, const char *cmd_line) {
         }
     }
     st->cmd_hist_idx = st->cmd_hist_count;
+
+    if (st->app_mode == GTERM_MODE_FORTH) {
+        if (strcmp(cmd_line, "bye") == 0 || strcmp(cmd_line, "BYE") == 0 ||
+            strcmp(cmd_line, "exit") == 0 || strcmp(cmd_line, "quit") == 0) {
+            st->app_mode = GTERM_MODE_SHELL;
+            snprintf(st->prompt, sizeof(st->prompt) - 1, "[%s]%% ", g_cwd_path[0] ? g_cwd_path : "SYS");
+            return;
+        }
+        clu_forth(cmd_line, gterm_shell_out, st);
+        return;
+    }
 
     if (strcmp(cmd_line, "history") == 0) {
         gterm_append_line(st, "Command History:", COLOR_CYAN);
@@ -1713,11 +1735,27 @@ static void paint_gterm(WND *wnd, GDEV *dev) {
         drw_tc_string_underlined(dev, prompt_pixel_w, prompt_y, comp_buf, COLOR_CYAN, eff_bg, is_dotted);
         tip_set_caret_pos(wnd->bounds.left + prompt_pixel_w, wnd->bounds.top + prompt_y);
     } else if (wnd->focused) {
-        /* Cursor shape: underline '_', block '█', or bar '|' */
-        const char *cursor_glyph = (st->cursor_style == 1) ? "\xe2\x96\x88" /* █ */
-                                 : (st->cursor_style == 2) ? "|"
-                                 :                            "_";
-        drw_tc_string(dev, prompt_pixel_w, prompt_y, cursor_glyph, eff_fg, eff_bg);
+        /* Disney / Sony-class cinematic smooth blinking cursor:
+         * Standard human visual persistence cadence: 560 ms period,
+         * 57% ON (320 ms), 43% OFF (240 ms) duty cycle. */
+        uint32_t now_ms = 0;
+#if defined(__APPLE__) || defined(__linux__) || defined(BTRON_HOSTED)
+        struct timespec ts;
+        if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
+            now_ms = (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
+        }
+#endif
+        uint32_t phase = (now_ms > 0) ? (now_ms % 560) : 0;
+        BOOL cursor_on = (now_ms == 0 || phase < 320);
+
+        if (cursor_on) {
+            /* In Forth mode or block cursor mode, render solid square block '█' */
+            const char *cursor_glyph = (st->app_mode == GTERM_MODE_FORTH || st->cursor_style == 1)
+                                     ? "\xe2\x96\x88" /* █ solid square block */
+                                     : (st->cursor_style == 2) ? "|"
+                                     :                            "_";
+            drw_tc_string(dev, prompt_pixel_w, prompt_y, cursor_glyph, eff_fg, eff_bg);
+        }
     }
 
     /* ── 5. Dropdown overlay (drawn on top of everything) ──────────────── */

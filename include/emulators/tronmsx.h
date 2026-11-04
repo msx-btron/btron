@@ -85,6 +85,7 @@ typedef struct {
 
 #define BMSX_BIOS_CBIOS 0
 #define BMSX_BIOS_TBIOS 1
+#define BMSX_BIOS_TFW   2
 
 int  msx_get_bios_mode(void);
 void msx_set_bios_mode(int mode);

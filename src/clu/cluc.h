@@ -98,6 +98,7 @@ void clu_cmd_chmod(const char *args, ShellOutputFn out, void *ud);
 void clu_cmd_touch(const char *args, ShellOutputFn out, void *ud);
 void clu_cmd_chtime(const char *args, ShellOutputFn out, void *ud);
 void clu_cmd_tp   (const char *args, ShellOutputFn out, void *ud);
+void clu_cmd_forth(const char *args, ShellOutputFn out, void *ud);
 
 #ifdef __cplusplus
 }

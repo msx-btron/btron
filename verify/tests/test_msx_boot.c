@@ -201,30 +201,14 @@ extern void msx_psg_submit_pcm(int16_t *buf, uint32_t *frames_out);
                 printf("  addr 0xD400: %02X %02X %02X %02X %02X %02X %02X %02X\n",
                        v->vram[0xD400], v->vram[0xD401], v->vram[0xD402], v->vram[0xD403],
                        v->vram[0xD404], v->vram[0xD405], v->vram[0xD406], v->vram[0xD407]);
-                uint32_t nt = (uint32_t)(v->regs[2] & 0x7Fu) << 10;
-                printf("Name table at 0x%05X:\n", nt);
-                for (int r = 0; r < 24; r++) {
-                    printf("  row %2d: ", r);
-                    for (int c = 0; c < 32; c++) {
-                        printf("%02X ", v->vram[nt + r * 32 + c]);
-                    }
-                    printf("\n");
-                }
+                /* end of dump */
                 printf("VRAM non-zero blocks (1KB):\n");
                 for (uint32_t b = 0; b < 16; b++) {
                     uint32_t nz = 0;
                     for (uint32_t k = 0; k < 1024; k++) if (v->vram[b * 1024 + k]) nz++;
                     if (nz) printf("  0x%04X..0x%04X: %u non-zero bytes\n", b * 1024, (b+1)*1024 - 1, nz);
                 }
-                uint32_t nt = (uint32_t)(v->regs[2] & 0x7Fu) << 10;
-                printf("Name table at 0x%05X:\n", nt);
-                for (int r = 0; r < 24; r++) {
-                    printf("  row %2d: ", r);
-                    for (int c = 0; c < 32; c++) {
-                        printf("%02X ", v->vram[nt + r * 32 + c]);
-                    }
-                    printf("\n");
-                }
+                /* end of dump */
                 uint32_t port_r[256], port_w[256];
                 msx_port_take(port_r, port_w);
                 printf("Active ports (read):");
