@@ -2,9 +2,9 @@
 \ mars.fth — Classical 1K Mars Voxel Landscape Demo (Pouet #4662)
 \ Inspired by Tim Clarke's 1993 Assembly voxel engine.
 \ Fully 16-bit cell compatible (zero overflow on MSX Z80 / IA-16)
-\ with dual rendering to BTRON WND surface and MSX 40x24 console.
-\ Interactive Flight: Left/Right (Turn), Up/Down (Speed),
-\ Space (Ballistic Jump based on forward velocity), 'q'/ESC (Exit).
+\ In CLU mode (display processor in dev-tree), renders to BTRON WND
+\ and captures interactive flight controls (Left/Right, Up/Down,
+\ Space Ballistic Jump, 'q'/ESC Exit). Fallback to ASCII when headless.
 \ ──────────────────────────────────────────────────────────────────
 
 40 CONSTANT SCREEN-W
@@ -149,7 +149,7 @@ VARIABLE PROJ-36 VARIABLE PROJ-37 VARIABLE PROJ-38 VARIABLE PROJ-39
   MAX-Y @ COL-X @ SET-PROJ
 ;
 
-\ Render one full frame (voxel columns + terminal frame)
+\ Render one full frame (voxel columns + terminal frame if no display processor)
 : RENDER-MARS-FRAME
   UPDATE-MARS-DIMS
 
@@ -158,22 +158,24 @@ VARIABLE PROJ-36 VARIABLE PROJ-37 VARIABLE PROJ-38 VARIABLE PROJ-39
     I RENDER-MARS-COL
   LOOP
 
-  \ 2. Render ASCII 3D terrain profile to MSX / gterm console
-  SCREEN-H 0 DO
-    SCREEN-W 0 DO
-      I GET-PROJ
-      J = IF
-        94 EMIT \ '^' peak crest
-      ELSE
-        I GET-PROJ J < IF
-          J 16 > IF 35 EMIT ELSE 58 EMIT THEN \ '#' canyon floor / ':' slope
+  \ 2. Render ASCII 3D terrain profile ONLY IF display processor is not in dev-tree
+  DISPLAY? 0= IF
+    SCREEN-H 0 DO
+      SCREEN-W 0 DO
+        I GET-PROJ
+        J = IF
+          94 EMIT \ '^' peak crest
         ELSE
-          32 EMIT \ ' ' Martian sky
+          I GET-PROJ J < IF
+            J 16 > IF 35 EMIT ELSE 58 EMIT THEN \ '#' canyon floor / ':' slope
+          ELSE
+            32 EMIT \ ' ' Martian sky
+          THEN
         THEN
-      THEN
+      LOOP
+      CR
     LOOP
-    CR
-  LOOP
+  THEN
 
   WND @ WND-UPDATE
 ;
@@ -267,7 +269,7 @@ VARIABLE PROJ-36 VARIABLE PROJ-37 VARIABLE PROJ-38 VARIABLE PROJ-39
 
 \ Main Mars Flight Demo Runner
 : MARS
-  CR
+  DISPLAY? 0= IF CR THEN
   320 240 WND-OPEN WND !
   WND @ ' RENDER-MARS-FRAME WND-ON-PAINT
 
@@ -280,9 +282,10 @@ VARIABLE PROJ-36 VARIABLE PROJ-37 VARIABLE PROJ-38 VARIABLE PROJ-39
   0 IS-JUMPING !
   1 RUNNING !
   0 FRAME-STEP !
+  DISPLAY? IF 0 MAX-FRAMES ! ELSE 4 MAX-FRAMES ! THEN
 
   FLY
-  CR
+  DISPLAY? 0= IF CR THEN
 ;
 
 MARS

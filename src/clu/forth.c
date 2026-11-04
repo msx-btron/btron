@@ -10,6 +10,9 @@
 #include <btron/event.h>
 #include <btron/libc_shim.h>
 #include <time.h>
+#if BTRON_HOSTED || defined(FORTH_STANDALONE)
+#include <poll.h>
+#endif
 #include "vfs.h"
 
 __attribute__((weak)) WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr) {
@@ -51,16 +54,43 @@ static void forth_enqueue_key(int key) {
 }
 
 static bool clu_forth_key_q(void) {
-    return (s_forth_key_head != s_forth_key_tail);
+    if (s_forth_key_head != s_forth_key_tail) {
+        return true;
+    }
+#if BTRON_HOSTED || defined(FORTH_STANDALONE)
+    struct pollfd pfd = { .fd = 0, .events = POLLIN, .revents = 0 };
+    if (poll(&pfd, 1, 0) > 0 && (pfd.revents & POLLIN)) {
+        return true;
+    }
+#endif
+    return false;
 }
 
 static int clu_forth_key(void) {
-    if (s_forth_key_head == s_forth_key_tail) {
-        return 0;
+    if (s_forth_key_head != s_forth_key_tail) {
+        int k = s_forth_key_buf[s_forth_key_tail];
+        s_forth_key_tail = (s_forth_key_tail + 1) % 64;
+        return k;
     }
-    int k = s_forth_key_buf[s_forth_key_tail];
-    s_forth_key_tail = (s_forth_key_tail + 1) % 64;
-    return k;
+#if BTRON_HOSTED || defined(FORTH_STANDALONE)
+    int c = getchar();
+    if (c == 27) {
+        struct pollfd pfd = { .fd = 0, .events = POLLIN, .revents = 0 };
+        if (poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+            int c2 = getchar();
+            if (c2 == '[' && poll(&pfd, 1, 10) > 0 && (pfd.revents & POLLIN)) {
+                int c3 = getchar();
+                if (c3 == 'A') return 30; /* Up */
+                if (c3 == 'B') return 31; /* Down */
+                if (c3 == 'C') return 29; /* Right */
+                if (c3 == 'D') return 28; /* Left */
+            }
+        }
+    }
+    return c;
+#else
+    return 0;
+#endif
 }
 
 static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {

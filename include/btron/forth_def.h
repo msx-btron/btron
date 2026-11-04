@@ -174,6 +174,7 @@ enum ForthToken {
     FORTH_TOK_INCLUDE      = 0x79,
     FORTH_TOK_WND_ON_PAINT = 0x7A,
     FORTH_TOK_MS           = 0x7B,
+    FORTH_TOK_DISPLAY_Q    = 0x7C,
 
     /* 0xFF: Token Stream Escape */
     FORTH_TOK_ESCAPE       = 0xFF,

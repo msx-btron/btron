@@ -338,6 +338,7 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_INCLUDE]    = &&lbl_include,
         [FORTH_TOK_WND_ON_PAINT] = &&lbl_wnd_on_paint,
         [FORTH_TOK_MS]         = &&lbl_ms,
+        [FORTH_TOK_DISPLAY_Q]  = &&lbl_display_q,
     };
 
     #define DISPATCH() do { \
@@ -969,6 +970,17 @@ lbl_ms: {
     }
     DISPATCH();
 }
+lbl_display_q: {
+    bool has_disp = false;
+    if (forth_dev_find(vm, "/devices/display") != NULL ||
+        forth_dev_find(vm, "/display") != NULL ||
+        forth_dev_find(vm, "display") != NULL ||
+        forth_dev_find(vm, "/vdp") != NULL) {
+        has_disp = true;
+    }
+    forth_push(vm, has_disp ? -1 : 0);
+    DISPATCH();
+}
 lbl_unknown: {
     char errbuf[64];
     snprintf(errbuf, sizeof(errbuf), "Undefined FCode token 0x%02X at offset %ld",
@@ -1332,6 +1344,17 @@ lbl_done:
             case FORTH_TOK_MS: {
                 forth_cell_t ms = forth_pop(vm);
                 if (vm->ms_fn) vm->ms_fn(vm, ms);
+                break;
+            }
+            case FORTH_TOK_DISPLAY_Q: {
+                bool has_disp = false;
+                if (forth_dev_find(vm, "/devices/display") != NULL ||
+                    forth_dev_find(vm, "/display") != NULL ||
+                    forth_dev_find(vm, "display") != NULL ||
+                    forth_dev_find(vm, "/vdp") != NULL) {
+                    has_disp = true;
+                }
+                forth_push(vm, has_disp ? -1 : 0);
                 break;
             }
             default:
@@ -1825,6 +1848,7 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "WND-SIZE",   FORTH_TOK_WND_SIZE,   0);
     dict_create_word(vm, "WND-ON-PAINT", FORTH_TOK_WND_ON_PAINT, 0);
     dict_create_word(vm, "MS",         FORTH_TOK_MS,         0);
+    dict_create_word(vm, "DISPLAY?",   FORTH_TOK_DISPLAY_Q,  0);
     dict_create_word(vm, "INCLUDE",    FORTH_TOK_INCLUDE,    0);
 
     dict_create_word(vm, "find-device", FORTH_TOK_FIND_DEV,   0);
