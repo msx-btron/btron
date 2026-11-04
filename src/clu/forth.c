@@ -6,7 +6,26 @@
 
 #include <btron/forth_vm.h>
 #include <btron/core.h>
+#include <btron/wnd.h>
 #include <btron/libc_shim.h>
+#include "vfs.h"
+
+__attribute__((weak)) WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr) {
+    (void)title; (void)x; (void)y; (void)w; (void)h; (void)attr;
+    return NULL;
+}
+__attribute__((weak)) ER cls_wnd(WND *wnd) {
+    (void)wnd;
+    return E_OK;
+}
+__attribute__((weak)) ER inval_wnd(WND *wnd) {
+    (void)wnd;
+    return E_OK;
+}
+__attribute__((weak)) int vfs_read_file(const char *path, char *buf, size_t max_bytes, size_t *out_bytes) {
+    (void)path; (void)buf; (void)max_bytes; (void)out_bytes;
+    return -1;
+}
 
 static ForthVM s_forth_vm;
 static int s_vm_initialized = 0;
@@ -14,6 +33,176 @@ static ShellOutputFn s_clu_out = NULL;
 static void *s_clu_ud = NULL;
 static char s_emit_buf[256];
 static size_t s_emit_idx = 0;
+static void clu_forth_flush(void);
+
+static void forth_wnd_paint(WND *wnd, GDEV *dev) {
+    (void)wnd;
+    (void)dev;
+}
+
+static forth_cell_t clu_forth_wnd_open(ForthVM *vm, forth_cell_t w, forth_cell_t h) {
+    (void)vm;
+    if (w <= 0 || h <= 0) return 0;
+    if (w > 1920) w = 1920;
+    if (h > 1080) h = 1080;
+    WND *wnd = opn_wnd("B-System Forth Surface", 80, 50, (H)w, (H)h,
+                       WND_ATTR_TITLE | WND_ATTR_BORDER | WND_ATTR_CLOSE | WND_ATTR_RESIZE);
+    if (!wnd) return 0;
+    wnd->paint = forth_wnd_paint;
+    wnd->img_valid = TRUE;
+    if (wnd->dev && wnd->dev->pixels) {
+        memset(wnd->dev->pixels, 0, (size_t)wnd->dev->width * (size_t)wnd->dev->height * sizeof(COLOR));
+    }
+    inval_wnd(wnd);
+    return (forth_cell_t)(uintptr_t)wnd;
+}
+
+static void clu_forth_wnd_close(ForthVM *vm, forth_cell_t wnd_val) {
+    (void)vm;
+    WND *wnd = (WND *)(uintptr_t)wnd_val;
+    if (wnd) cls_wnd(wnd);
+}
+
+static void clu_forth_wnd_pixel(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x, forth_cell_t y, forth_cell_t col) {
+    (void)vm;
+    WND *wnd = (WND *)(uintptr_t)wnd_val;
+    if (wnd && wnd->dev && wnd->dev->pixels) {
+        if (x >= 0 && x < wnd->dev->width && y >= 0 && y < wnd->dev->height) {
+            wnd->dev->pixels[y * wnd->dev->width + x] = (COLOR)col;
+        }
+    }
+}
+
+static void clu_forth_wnd_vline(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x, forth_cell_t y1, forth_cell_t y2, forth_cell_t col) {
+    (void)vm;
+    WND *wnd = (WND *)(uintptr_t)wnd_val;
+    if (wnd && wnd->dev && wnd->dev->pixels) {
+        if (x < 0 || x >= wnd->dev->width) return;
+        if (y1 > y2) { forth_cell_t tmp = y1; y1 = y2; y2 = tmp; }
+        if (y1 < 0) y1 = 0;
+        if (y2 >= wnd->dev->height) y2 = wnd->dev->height - 1;
+        if (y1 > y2) return;
+        COLOR *px = &wnd->dev->pixels[y1 * wnd->dev->width + x];
+        H stride = wnd->dev->width;
+        for (forth_cell_t y = y1; y <= y2; y++) {
+            *px = (COLOR)col;
+            px += stride;
+        }
+    }
+}
+
+static void clu_forth_wnd_rect(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x, forth_cell_t y, forth_cell_t w, forth_cell_t h, forth_cell_t col) {
+    (void)vm;
+    WND *wnd = (WND *)(uintptr_t)wnd_val;
+    if (wnd && wnd->dev && wnd->dev->pixels && w > 0 && h > 0) {
+        forth_cell_t x2 = x + w - 1;
+        forth_cell_t y2 = y + h - 1;
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x2 >= wnd->dev->width) x2 = wnd->dev->width - 1;
+        if (y2 >= wnd->dev->height) y2 = wnd->dev->height - 1;
+        for (forth_cell_t cy = y; cy <= y2; cy++) {
+            COLOR *row = &wnd->dev->pixels[cy * wnd->dev->width + x];
+            for (forth_cell_t cx = x; cx <= x2; cx++) {
+                *row++ = (COLOR)col;
+            }
+        }
+    }
+}
+
+static void clu_forth_wnd_clear(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t col) {
+    (void)vm;
+    WND *wnd = (WND *)(uintptr_t)wnd_val;
+    if (wnd && wnd->dev && wnd->dev->pixels) {
+        size_t total = (size_t)wnd->dev->width * (size_t)wnd->dev->height;
+        COLOR c = (COLOR)col;
+        for (size_t i = 0; i < total; i++) {
+            wnd->dev->pixels[i] = c;
+        }
+    }
+}
+
+static void clu_forth_wnd_update(ForthVM *vm, forth_cell_t wnd_val) {
+    (void)vm;
+    WND *wnd = (WND *)(uintptr_t)wnd_val;
+    if (wnd) {
+        wnd->img_valid = TRUE;
+        inval_wnd(wnd);
+    }
+}
+
+static void clu_forth_wnd_size(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t *out_w, forth_cell_t *out_h) {
+    (void)vm;
+    WND *wnd = (WND *)(uintptr_t)wnd_val;
+    if (wnd && wnd->dev) {
+        if (out_w) *out_w = (forth_cell_t)wnd->dev->width;
+        if (out_h) *out_h = (forth_cell_t)wnd->dev->height;
+    } else {
+        if (out_w) *out_w = 0;
+        if (out_h) *out_h = 0;
+    }
+}
+
+static int clu_forth_include_file(ForthVM *vm, const char *path) {
+    if (!vm || !path || !*path) return -1;
+
+    static char s_inc_buf[65536];
+    size_t got_bytes = 0;
+    int read_ok = 0;
+
+    /* 1. Try VFS directly or with /SYS/ prefix */
+    if (vfs_read_file(path, s_inc_buf, sizeof(s_inc_buf) - 1, &got_bytes) == 0 && got_bytes > 0) {
+        read_ok = 1;
+    } else {
+        char sys_path[128];
+        snprintf(sys_path, sizeof(sys_path), "/SYS/%s", path);
+        if (vfs_read_file(sys_path, s_inc_buf, sizeof(s_inc_buf) - 1, &got_bytes) == 0 && got_bytes > 0) {
+            read_ok = 1;
+        }
+    }
+
+    /* 2. Try host fopen if VFS was not available or did not find file */
+    if (!read_ok) {
+#if BTRON_HOSTED
+        FILE *f = fopen(path, "rb");
+        if (!f) {
+            char asset_path[128];
+            snprintf(asset_path, sizeof(asset_path), "assets/forth/%s", path);
+            f = fopen(asset_path, "rb");
+        }
+        if (f) {
+            got_bytes = fread(s_inc_buf, 1, sizeof(s_inc_buf) - 1, f);
+            fclose(f);
+            if (got_bytes > 0) read_ok = 1;
+        }
+#endif
+    }
+
+    if (!read_ok) {
+        char errmsg[96];
+        snprintf(errmsg, sizeof(errmsg), "forth: cannot open '%s'", path);
+        forth_abort(vm, errmsg);
+        return -1;
+    }
+
+    s_inc_buf[got_bytes] = '\0';
+
+    /* Evaluate line by line */
+    char *cur = s_inc_buf;
+    while (*cur && !vm->halted) {
+        char *line_start = cur;
+        while (*cur && *cur != '\r' && *cur != '\n') cur++;
+        if (*cur == '\r' || *cur == '\n') {
+            *cur++ = '\0';
+            if (*cur == '\n') cur++;
+        }
+        if (*line_start) {
+            forth_eval(vm, line_start);
+        }
+    }
+    clu_forth_flush();
+    return vm->last_error;
+}
 
 static void clu_forth_flush(void) {
     if (s_clu_out && s_emit_idx > 0) {
@@ -149,23 +338,42 @@ static void init_system_devtree(ForthVM *vm) {
     }
 }
 
+static void clu_forth_init_vm(void) {
+    if (!s_vm_initialized) {
+        forth_vm_init(&s_forth_vm);
+        s_forth_vm.emit_fn = clu_forth_emit;
+        s_forth_vm.include_fn = clu_forth_include_file;
+        s_forth_vm.wnd_open_fn = clu_forth_wnd_open;
+        s_forth_vm.wnd_close_fn = clu_forth_wnd_close;
+        s_forth_vm.wnd_pixel_fn = clu_forth_wnd_pixel;
+        s_forth_vm.wnd_vline_fn = clu_forth_wnd_vline;
+        s_forth_vm.wnd_rect_fn = clu_forth_wnd_rect;
+        s_forth_vm.wnd_clear_fn = clu_forth_wnd_clear;
+        s_forth_vm.wnd_update_fn = clu_forth_wnd_update;
+        s_forth_vm.wnd_size_fn = clu_forth_wnd_size;
+        init_system_devtree(&s_forth_vm);
+        s_vm_initialized = 1;
+    }
+}
+
 /* ── CLU Shell Command Entry Point ──────────────────────────────── */
 void clu_cmd_forth(const char *args, ShellOutputFn out, void *ud) {
     s_clu_out = out;
     s_clu_ud = ud;
 
-    if (!s_vm_initialized) {
-        forth_vm_init(&s_forth_vm);
-        s_forth_vm.emit_fn = clu_forth_emit;
-        init_system_devtree(&s_forth_vm);
-        s_vm_initialized = 1;
-    }
+    clu_forth_init_vm();
 
     if (args && *args) {
         /* Skip leading spaces */
         while (*args == ' ' || *args == '\t') args++;
         if (*args) {
-            forth_eval(&s_forth_vm, args);
+            size_t alen = strlen(args);
+            if ((alen > 4 && strcmp(args + alen - 4, ".fth") == 0) ||
+                (alen > 6 && strcmp(args + alen - 6, ".fcode") == 0)) {
+                clu_forth_include_file(&s_forth_vm, args);
+            } else {
+                forth_eval(&s_forth_vm, args);
+            }
             clu_forth_flush();
             return;
         }
@@ -220,8 +428,7 @@ int forth_repl(ForthVM *vm) {
 
 #if defined(FORTH_STANDALONE)
 int main(int argc, char **argv) {
-    forth_vm_init(&s_forth_vm);
-    init_system_devtree(&s_forth_vm);
+    clu_forth_init_vm();
 
     if (argc > 1) {
         /* Run script or single expression */

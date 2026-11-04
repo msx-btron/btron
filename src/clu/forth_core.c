@@ -9,7 +9,7 @@
 
 /* ── Default I/O Callbacks ──────────────────────────────────────── */
 static void default_emit(char c) {
-#if BTRON_HOSTED
+#if BTRON_HOSTED || defined(FORTH_STANDALONE) || __STDC_HOSTED__
     putchar(c);
     fflush(stdout);
 #else
@@ -18,7 +18,7 @@ static void default_emit(char c) {
 }
 
 static int default_key(void) {
-#if BTRON_HOSTED
+#if BTRON_HOSTED || defined(FORTH_STANDALONE) || __STDC_HOSTED__
     return getchar();
 #else
     return -1;
@@ -149,8 +149,11 @@ void forth_help(ForthVM *vm) {
         "  .S           Display data stack contents\n"
         "  .            Pop and display top of stack\n"
         "  BYE / EXIT   Return to shell\n"
-        "Stack: DUP DROP SWAP OVER ROT >R R> R@\n"
-        "Math:  + - * / MOD NEGATE AND OR XOR INVERT\n";
+        "Stack:    DUP DROP SWAP OVER ROT >R R> R@ 2>R 2R>\n"
+        "Math:     + - * / MOD NEGATE AND OR XOR INVERT LSHIFT RSHIFT\n"
+        "Graphics: RGB WND-OPEN WND-CLOSE WND-PIXEL WND-VLINE WND-RECT WND-CLEAR WND-UPDATE WND-SIZE\n"
+        "Control:  IF ELSE THEN DO LOOP I J BEGIN WHILE REPEAT UNTIL AGAIN\n"
+        "Memory:   @ ! C@ C! +! CELLS CELL+ VARIABLE CONSTANT INCLUDE\n";
     for (const char *p = help_msg; *p; p++) {
         vm->emit_fn(*p);
     }
@@ -584,18 +587,9 @@ lbl_allot: {
 lbl_execute: {
     forth_cell_t xt = forth_pop(vm);
     if (xt >= 0 && xt < FORTH_ARENA_MAX) {
-        uint8_t tok = vm->arena[xt];
-        if (tok == FORTH_TOK_ESCAPE) {
-            forth_cell_t ret_ip = (forth_cell_t)(vm->ip - vm->arena);
-            rpush(vm, ret_ip);
-            vm->ip = &vm->arena[xt + 1];
-        } else if (dispatch_table[tok] != NULL) {
-            goto *dispatch_table[tok];
-        } else {
-            forth_cell_t ret_ip = (forth_cell_t)(vm->ip - vm->arena);
-            rpush(vm, ret_ip);
-            vm->ip = &vm->arena[xt];
-        }
+        forth_cell_t ret_ip = (forth_cell_t)(vm->ip - vm->arena);
+        rpush(vm, ret_ip);
+        vm->ip = &vm->arena[xt];
     }
     DISPATCH();
 }
@@ -953,6 +947,25 @@ lbl_done:
         uint8_t tok = *vm->ip++;
         switch (tok) {
             case FORTH_TOK_END:        return 0;
+            case FORTH_TOK_EXECUTE: {
+                forth_cell_t xt = forth_pop(vm);
+                if (xt >= 0 && xt < FORTH_ARENA_MAX) {
+                    forth_cell_t ret_ip = (forth_cell_t)(vm->ip - vm->arena);
+                    rpush(vm, ret_ip);
+                    vm->ip = &vm->arena[xt];
+                }
+                break;
+            }
+            case FORTH_TOK_EXIT: {
+                if (vm->rsp < 0) return 0;
+                forth_cell_t ret_ip = rpop(vm);
+                if (ret_ip >= 0 && ret_ip < FORTH_ARENA_MAX) {
+                    vm->ip = &vm->arena[ret_ip];
+                } else {
+                    return 0;
+                }
+                break;
+            }
             case FORTH_TOK_DUP:        forth_push(vm, vm->tos); break;
             case FORTH_TOK_DROP:       forth_pop(vm); break;
             case FORTH_TOK_SWAP: {
@@ -1290,6 +1303,17 @@ int forth_eval(ForthVM *vm, const char *line) {
         memcpy(tok, start, tok_len);
         tok[tok_len] = '\0';
 
+        /* Comments: \ (to end of line), ( (to closing paren) */
+        if (tok_len == 1 && tok[0] == '\\') {
+            while (*p && *p != '\n') p++;
+            continue;
+        }
+        if (tok_len == 1 && tok[0] == '(') {
+            while (*p && *p != ')') p++;
+            if (*p == ')') p++;
+            continue;
+        }
+
         /* Colon definition */
         if (strcmp(tok, ":") == 0) {
             /* Read next token as word name */
@@ -1304,6 +1328,7 @@ int forth_eval(ForthVM *vm, const char *line) {
                 wname[wlen] = '\0';
                 dict_create_word(vm, wname, FORTH_TOK_ESCAPE, FORTH_FLAG_SMUDGE);
                 vm->state = true;
+                vm->csp = -1;
             }
             continue;
         }
@@ -1319,6 +1344,179 @@ int forth_eval(ForthVM *vm, const char *line) {
             }
             vm->state = false;
             continue;
+        }
+
+        /* Variable definition: 'VARIABLE <name>' */
+        if (!vm->state && tok_len == 8 && forth_strncasecmp(tok, "variable", 8) == 0) {
+            while (*p == ' ' || *p == '\t') p++;
+            const char *wstart = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
+            size_t wlen = p - wstart;
+            if (wlen > 0) {
+                char vname[32];
+                if (wlen >= sizeof(vname)) wlen = sizeof(vname) - 1;
+                memcpy(vname, wstart, wlen);
+                vname[wlen] = '\0';
+                vm->here = align_cell(vm->here);
+                forth_cell_t var_addr = vm->here;
+                vm->here += sizeof(forth_cell_t);
+                if (vm->here + 1 + sizeof(forth_cell_t) + 1 < FORTH_ARENA_MAX) {
+                    memset(&vm->arena[var_addr], 0, sizeof(forth_cell_t));
+                    dict_create_word(vm, vname, FORTH_TOK_ESCAPE, 0);
+                    vm->arena[vm->here++] = FORTH_TOK_LIT;
+                    memcpy(&vm->arena[vm->here], &var_addr, sizeof(forth_cell_t));
+                    vm->here += sizeof(forth_cell_t);
+                    vm->arena[vm->here++] = FORTH_TOK_EXIT;
+                } else {
+                    forth_abort(vm, "Arena overflow defining variable");
+                }
+            }
+            continue;
+        }
+
+        /* Constant definition: '<val> CONSTANT <name>' */
+        if (!vm->state && tok_len == 8 && forth_strncasecmp(tok, "constant", 8) == 0) {
+            forth_cell_t cval = forth_pop(vm);
+            while (*p == ' ' || *p == '\t') p++;
+            const char *wstart = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
+            size_t wlen = p - wstart;
+            if (wlen > 0) {
+                char cname[32];
+                if (wlen >= sizeof(cname)) wlen = sizeof(cname) - 1;
+                memcpy(cname, wstart, wlen);
+                cname[wlen] = '\0';
+                vm->here = align_cell(vm->here);
+                if (vm->here + 1 + sizeof(forth_cell_t) + 1 < FORTH_ARENA_MAX) {
+                    dict_create_word(vm, cname, FORTH_TOK_ESCAPE, 0);
+                    vm->arena[vm->here++] = FORTH_TOK_LIT;
+                    memcpy(&vm->arena[vm->here], &cval, sizeof(forth_cell_t));
+                    vm->here += sizeof(forth_cell_t);
+                    vm->arena[vm->here++] = FORTH_TOK_EXIT;
+                } else {
+                    forth_abort(vm, "Arena overflow defining constant");
+                }
+            }
+            continue;
+        }
+
+        /* File include: 'include <path>' */
+        if (!vm->state && tok_len == 7 && forth_strncasecmp(tok, "include", 7) == 0) {
+            while (*p == ' ' || *p == '\t') p++;
+            const char *pstart = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
+            size_t plen = p - pstart;
+            if (plen > 0) {
+                char path[128];
+                if (plen >= sizeof(path)) plen = sizeof(path) - 1;
+                memcpy(path, pstart, plen);
+                path[plen] = '\0';
+                if (vm->include_fn) {
+                    vm->include_fn(vm, path);
+                }
+            }
+            continue;
+        }
+
+        /* Compiler Control Flow Structures (Active in Compile Mode) */
+        if (vm->state) {
+            if (tok_len == 2 && forth_strncasecmp(tok, "IF", 2) == 0) {
+                if (vm->here + 3 < FORTH_ARENA_MAX && vm->csp + 1 < FORTH_STACK_MAX) {
+                    vm->arena[vm->here++] = FORTH_TOK_QBRANCH;
+                    vm->cstack[++vm->csp] = vm->here;
+                    vm->arena[vm->here++] = 0;
+                    vm->arena[vm->here++] = 0;
+                }
+                continue;
+            }
+            if (tok_len == 4 && forth_strncasecmp(tok, "ELSE", 4) == 0) {
+                if (vm->csp >= 0 && vm->here + 3 < FORTH_ARENA_MAX) {
+                    vm->arena[vm->here++] = FORTH_TOK_BRANCH;
+                    forth_cell_t if_addr = vm->cstack[vm->csp];
+                    vm->cstack[vm->csp] = vm->here;
+                    vm->arena[vm->here++] = 0;
+                    vm->arena[vm->here++] = 0;
+                    int16_t off = (int16_t)(vm->here - (if_addr + 2));
+                    vm->arena[if_addr] = (uint8_t)(off & 0xFF);
+                    vm->arena[if_addr + 1] = (uint8_t)((off >> 8) & 0xFF);
+                }
+                continue;
+            }
+            if (tok_len == 4 && forth_strncasecmp(tok, "THEN", 4) == 0) {
+                if (vm->csp >= 0) {
+                    forth_cell_t orig_addr = vm->cstack[vm->csp--];
+                    int16_t off = (int16_t)(vm->here - (orig_addr + 2));
+                    vm->arena[orig_addr] = (uint8_t)(off & 0xFF);
+                    vm->arena[orig_addr + 1] = (uint8_t)((off >> 8) & 0xFF);
+                }
+                continue;
+            }
+            if (tok_len == 5 && forth_strncasecmp(tok, "BEGIN", 5) == 0) {
+                if (vm->csp + 1 < FORTH_STACK_MAX) {
+                    vm->cstack[++vm->csp] = vm->here;
+                }
+                continue;
+            }
+            if (tok_len == 5 && forth_strncasecmp(tok, "WHILE", 5) == 0) {
+                if (vm->here + 3 < FORTH_ARENA_MAX && vm->csp + 1 < FORTH_STACK_MAX) {
+                    vm->arena[vm->here++] = FORTH_TOK_QBRANCH;
+                    vm->cstack[++vm->csp] = vm->here;
+                    vm->arena[vm->here++] = 0;
+                    vm->arena[vm->here++] = 0;
+                }
+                continue;
+            }
+            if (tok_len == 6 && forth_strncasecmp(tok, "REPEAT", 6) == 0) {
+                if (vm->csp >= 1 && vm->here + 3 < FORTH_ARENA_MAX) {
+                    forth_cell_t while_addr = vm->cstack[vm->csp--];
+                    forth_cell_t begin_addr = vm->cstack[vm->csp--];
+                    vm->arena[vm->here++] = FORTH_TOK_BRANCH;
+                    int16_t back_off = (int16_t)(begin_addr - (vm->here + 2));
+                    vm->arena[vm->here++] = (uint8_t)(back_off & 0xFF);
+                    vm->arena[vm->here++] = (uint8_t)((back_off >> 8) & 0xFF);
+                    int16_t exit_off = (int16_t)(vm->here - (while_addr + 2));
+                    vm->arena[while_addr] = (uint8_t)(exit_off & 0xFF);
+                    vm->arena[while_addr + 1] = (uint8_t)((exit_off >> 8) & 0xFF);
+                }
+                continue;
+            }
+            if (tok_len == 5 && forth_strncasecmp(tok, "UNTIL", 5) == 0) {
+                if (vm->csp >= 0 && vm->here + 3 < FORTH_ARENA_MAX) {
+                    forth_cell_t begin_addr = vm->cstack[vm->csp--];
+                    vm->arena[vm->here++] = FORTH_TOK_QBRANCH;
+                    int16_t back_off = (int16_t)(begin_addr - (vm->here + 2));
+                    vm->arena[vm->here++] = (uint8_t)(back_off & 0xFF);
+                    vm->arena[vm->here++] = (uint8_t)((back_off >> 8) & 0xFF);
+                }
+                continue;
+            }
+            if (tok_len == 5 && forth_strncasecmp(tok, "AGAIN", 5) == 0) {
+                if (vm->csp >= 0 && vm->here + 3 < FORTH_ARENA_MAX) {
+                    forth_cell_t begin_addr = vm->cstack[vm->csp--];
+                    vm->arena[vm->here++] = FORTH_TOK_BRANCH;
+                    int16_t back_off = (int16_t)(begin_addr - (vm->here + 2));
+                    vm->arena[vm->here++] = (uint8_t)(back_off & 0xFF);
+                    vm->arena[vm->here++] = (uint8_t)((back_off >> 8) & 0xFF);
+                }
+                continue;
+            }
+            if (tok_len == 2 && forth_strncasecmp(tok, "DO", 2) == 0) {
+                if (vm->here + 1 < FORTH_ARENA_MAX && vm->csp + 1 < FORTH_STACK_MAX) {
+                    vm->arena[vm->here++] = FORTH_TOK_TWO_TO_R;
+                    vm->cstack[++vm->csp] = vm->here;
+                }
+                continue;
+            }
+            if (tok_len == 4 && forth_strncasecmp(tok, "LOOP", 4) == 0) {
+                if (vm->csp >= 0 && vm->here + 3 < FORTH_ARENA_MAX) {
+                    forth_cell_t do_addr = vm->cstack[vm->csp--];
+                    vm->arena[vm->here++] = FORTH_TOK_LOOP;
+                    int16_t back_off = (int16_t)(do_addr - (vm->here + 2));
+                    vm->arena[vm->here++] = (uint8_t)(back_off & 0xFF);
+                    vm->arena[vm->here++] = (uint8_t)((back_off >> 8) & 0xFF);
+                }
+                continue;
+            }
         }
 
         /* Interactive OpenFirmware device-tree navigation: 'dev <path>' or 'cd <path>' */
@@ -1447,6 +1645,7 @@ void forth_vm_init(ForthVM *vm) {
 
     vm->dsp = -1;
     vm->rsp = -1;
+    vm->csp = -1;
     vm->tos_valid = false;
     vm->halted = false;
     vm->state = false;
@@ -1514,6 +1713,22 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "HELP",       FORTH_TOK_HELP,       0);
     dict_create_word(vm, "?",          FORTH_TOK_HELP,       0);
     dict_create_word(vm, "INFO",       FORTH_TOK_HELP,       0);
+    dict_create_word(vm, "I",          FORTH_TOK_I,          0);
+    dict_create_word(vm, "J",          FORTH_TOK_J,          0);
+    dict_create_word(vm, ".",          FORTH_TOK_DOT,        0);
+    dict_create_word(vm, ".S",         FORTH_TOK_DOT_S,      0);
+
+    /* B-System Window & Raster Graphics Dictionary Words */
+    dict_create_word(vm, "RGB",        FORTH_TOK_RGB,        0);
+    dict_create_word(vm, "WND-OPEN",   FORTH_TOK_WND_OPEN,   0);
+    dict_create_word(vm, "WND-CLOSE",  FORTH_TOK_WND_CLOSE,  0);
+    dict_create_word(vm, "WND-PIXEL",  FORTH_TOK_WND_PIXEL,  0);
+    dict_create_word(vm, "WND-VLINE",  FORTH_TOK_WND_VLINE,  0);
+    dict_create_word(vm, "WND-RECT",   FORTH_TOK_WND_RECT,   0);
+    dict_create_word(vm, "WND-CLEAR",  FORTH_TOK_WND_CLEAR,  0);
+    dict_create_word(vm, "WND-UPDATE", FORTH_TOK_WND_UPDATE, 0);
+    dict_create_word(vm, "WND-SIZE",   FORTH_TOK_WND_SIZE,   0);
+    dict_create_word(vm, "INCLUDE",    FORTH_TOK_INCLUDE,    0);
 
     dict_create_word(vm, "find-device", FORTH_TOK_FIND_DEV,   0);
     dict_create_word(vm, "peer",        FORTH_TOK_PEER,       0);
