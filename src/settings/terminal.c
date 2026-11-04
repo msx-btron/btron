@@ -18,7 +18,7 @@ static TERMINAL_SETTINGS g_term_settings = {
     .bg_color         = 0xCC000000,
     .font_size        = TERM_FONT_16,
     .scrollback_lines = 300,
-    .cursor_style     = TERM_CURSOR_UNDERLINE,
+    .cursor_style     = TERM_CURSOR_BLOCK,
     .transparency     = TERM_TRANSPARENCY_80
 };
 
@@ -52,7 +52,7 @@ void terminal_reset_settings(void) {
     g_term_settings.bg_color = 0xCC000000;
     g_term_settings.font_size = TERM_FONT_16;
     g_term_settings.scrollback_lines = 300;
-    g_term_settings.cursor_style = TERM_CURSOR_UNDERLINE;
+    g_term_settings.cursor_style = TERM_CURSOR_BLOCK;
     g_term_settings.transparency = TERM_TRANSPARENCY_80;
 }
 

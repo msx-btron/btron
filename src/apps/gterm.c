@@ -1751,11 +1751,10 @@ static void paint_gterm(WND *wnd, GDEV *dev) {
         BOOL cursor_on = (now_ms == 0 || phase < 320);
 
         if (cursor_on) {
-            /* In Forth mode or block cursor mode, render solid square block '█' */
-            const char *cursor_glyph = (st->app_mode == GTERM_MODE_FORTH || st->cursor_style == 1)
-                                     ? "\xe2\x96\x88" /* █ solid square block */
+            /* System wide terminal cursor: solid square block '█' firmly matching MSX ROM cadence */
+            const char *cursor_glyph = (st->cursor_style == 0) ? "_"
                                      : (st->cursor_style == 2) ? "|"
-                                     :                            "_";
+                                     :                            "\xe2\x96\x88"; /* █ solid square block (TERM_CURSOR_BLOCK default or Forth mode) */
             drw_tc_string(dev, prompt_pixel_w, prompt_y, cursor_glyph, eff_fg, eff_bg);
         }
     }

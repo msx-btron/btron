@@ -190,6 +190,20 @@ int main(void) {
     forth_eval(&vm, "info");
     TEST_ASSERT(strstr(s_test_output, "OpenFirmware") != NULL, "'info' aliases to help");
 
+    /* Device-tree navigation (dev, cd, pwd, parent) */
+    s_test_idx = 0;
+    forth_eval(&vm, "parent");
+    TEST_ASSERT(strstr(s_test_output, "/") != NULL, "'parent' at root stays at root and echoes '/'");
+
+    s_test_idx = 0;
+    forth_eval(&vm, "dev /vdp@98");
+    forth_eval(&vm, "pwd");
+    TEST_ASSERT(strstr(s_test_output, "/vdp@98") != NULL, "'pwd' after 'dev /vdp@98' prints active node");
+
+    s_test_idx = 0;
+    forth_eval(&vm, "parent");
+    TEST_ASSERT(strstr(s_test_output, "/") != NULL, "'parent' from /vdp@98 navigates to root '/'");
+
     /* Non-fatal abort recovery */
     s_test_idx = 0;
     int err_code = forth_eval(&vm, "some_unknown_command");

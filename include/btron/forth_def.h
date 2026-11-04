@@ -152,6 +152,7 @@ enum ForthToken {
     FORTH_TOK_BYTE_LOAD    = 0x67,
     FORTH_TOK_DEV_TREE     = 0x68,
     FORTH_TOK_HELP         = 0x69,
+    FORTH_TOK_PWD          = 0x6A,
 
     /* 0xFF: Token Stream Escape */
     FORTH_TOK_ESCAPE       = 0xFF,

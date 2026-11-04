@@ -42,6 +42,14 @@ static int forth_strncasecmp(const char *s1, const char *s2, size_t n) {
     return 0;
 }
 
+static bool is_valid_dev_node(const ForthVM *vm, const FCodeNode *n) {
+    if (!vm || !n || vm->num_dev_nodes == 0) return false;
+    if (n >= &vm->dev_nodes[0] && n < &vm->dev_nodes[vm->num_dev_nodes]) {
+        return true;
+    }
+    return false;
+}
+
 /* ── Stack Access Helpers with TOS Caching ──────────────────────── */
 void forth_push(ForthVM *vm, forth_cell_t val) {
     if (vm->dsp + 1 >= FORTH_STACK_MAX) {
@@ -302,6 +310,7 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_BYTE_LOAD]  = &&lbl_byte_load,
         [FORTH_TOK_DEV_TREE]   = &&lbl_dev_tree,
         [FORTH_TOK_HELP]       = &&lbl_help,
+        [FORTH_TOK_PWD]        = &&lbl_pwd,
     };
 
     #define DISPATCH() do { \
@@ -660,18 +669,38 @@ lbl_find_dev: {
     DISPATCH();
 }
 lbl_peer: {
-    FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
-    forth_push(vm, (forth_cell_t)(uintptr_t)(n ? n->peer : NULL));
+    if (vm->dsp >= 0 && is_valid_dev_node(vm, (FCodeNode *)(uintptr_t)vm->tos)) {
+        FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
+        forth_push(vm, (forth_cell_t)(uintptr_t)(n->peer));
+    } else {
+        forth_push(vm, (forth_cell_t)0);
+    }
     DISPATCH();
 }
 lbl_child: {
-    FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
-    forth_push(vm, (forth_cell_t)(uintptr_t)(n ? n->child : NULL));
+    if (vm->dsp >= 0 && is_valid_dev_node(vm, (FCodeNode *)(uintptr_t)vm->tos)) {
+        FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
+        forth_push(vm, (forth_cell_t)(uintptr_t)(n->child));
+    } else {
+        forth_push(vm, (forth_cell_t)0);
+    }
     DISPATCH();
 }
 lbl_parent: {
-    FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
-    forth_push(vm, (forth_cell_t)(uintptr_t)(n ? n->parent : NULL));
+    if (vm->dsp >= 0 && is_valid_dev_node(vm, (FCodeNode *)(uintptr_t)vm->tos)) {
+        FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
+        forth_push(vm, (forth_cell_t)(uintptr_t)(n->parent));
+    } else {
+        if (vm->active_node && vm->active_node->parent) {
+            vm->active_node = vm->active_node->parent;
+        }
+        if (vm->emit_fn) {
+            const char *name = (vm->active_node && vm->active_node->name[0]) ? vm->active_node->name : "/";
+            if (strcmp(name, "/") != 0) vm->emit_fn('/');
+            for (const char *c = name; *c; c++) vm->emit_fn(*c);
+            vm->emit_fn('\n');
+        }
+    }
     DISPATCH();
 }
 lbl_get_prop: {
@@ -737,6 +766,15 @@ lbl_dev_tree: {
 }
 lbl_help: {
     forth_help(vm);
+    DISPATCH();
+}
+lbl_pwd: {
+    if (vm->emit_fn) {
+        const char *name = (vm->active_node && vm->active_node->name[0]) ? vm->active_node->name : "/";
+        if (strcmp(name, "/") != 0) vm->emit_fn('/');
+        for (const char *c = name; *c; c++) vm->emit_fn(*c);
+        vm->emit_fn('\n');
+    }
     DISPATCH();
 }
 lbl_unknown: {
@@ -888,6 +926,51 @@ lbl_done:
             case FORTH_TOK_HELP:
                 forth_help(vm);
                 break;
+            case FORTH_TOK_PWD:
+                if (vm->emit_fn) {
+                    const char *name = (vm->active_node && vm->active_node->name[0]) ? vm->active_node->name : "/";
+                    if (strcmp(name, "/") != 0) vm->emit_fn('/');
+                    for (const char *c = name; *c; c++) vm->emit_fn(*c);
+                    vm->emit_fn('\n');
+                }
+                break;
+            case FORTH_TOK_PARENT:
+                if (vm->dsp >= 0 && is_valid_dev_node(vm, (FCodeNode *)(uintptr_t)vm->tos)) {
+                    FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
+                    forth_push(vm, (forth_cell_t)(uintptr_t)(n->parent));
+                } else {
+                    if (vm->active_node && vm->active_node->parent) {
+                        vm->active_node = vm->active_node->parent;
+                    }
+                    if (vm->emit_fn) {
+                        const char *name = (vm->active_node && vm->active_node->name[0]) ? vm->active_node->name : "/";
+                        if (strcmp(name, "/") != 0) vm->emit_fn('/');
+                        for (const char *c = name; *c; c++) vm->emit_fn(*c);
+                        vm->emit_fn('\n');
+                    }
+                }
+                break;
+            case FORTH_TOK_PEER: {
+                if (vm->dsp >= 0 && is_valid_dev_node(vm, (FCodeNode *)(uintptr_t)vm->tos)) {
+                    FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
+                    forth_push(vm, (forth_cell_t)(uintptr_t)(n->peer));
+                } else {
+                    forth_push(vm, (forth_cell_t)0);
+                }
+                break;
+            }
+            case FORTH_TOK_CHILD: {
+                if (vm->dsp >= 0 && is_valid_dev_node(vm, (FCodeNode *)(uintptr_t)vm->tos)) {
+                    FCodeNode *n = (FCodeNode *)(uintptr_t)forth_pop(vm);
+                    forth_push(vm, (forth_cell_t)(uintptr_t)(n->child));
+                } else {
+                    forth_push(vm, (forth_cell_t)0);
+                }
+                break;
+            }
+            case FORTH_TOK_MY_SELF:
+                forth_push(vm, (forth_cell_t)(uintptr_t)vm->active_node);
+                break;
             default:
                 forth_abort(vm, "Unknown token in switch");
                 return -1;
@@ -947,6 +1030,37 @@ int forth_eval(ForthVM *vm, const char *line) {
                 vm->arena[vm->latest + sizeof(forth_cell_t)] &= ~FORTH_FLAG_SMUDGE;
             }
             vm->state = false;
+            continue;
+        }
+
+        /* Interactive OpenFirmware device-tree navigation: 'dev <path>' or 'cd <path>' */
+        if (!vm->state && ((tok_len == 3 && forth_strncasecmp(tok, "dev", 3) == 0) ||
+                           (tok_len == 2 && forth_strncasecmp(tok, "cd", 2) == 0))) {
+            while (*p == ' ' || *p == '\t') p++;
+            const char *pstart = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
+            size_t plen = p - pstart;
+            if (plen > 0) {
+                char path[64];
+                if (plen >= sizeof(path)) plen = sizeof(path) - 1;
+                memcpy(path, pstart, plen);
+                path[plen] = '\0';
+                if (strcmp(path, "..") == 0) {
+                    if (vm->active_node && vm->active_node->parent) {
+                        vm->active_node = vm->active_node->parent;
+                    }
+                } else {
+                    FCodeNode *node = forth_dev_find(vm, path);
+                    if (node) {
+                        vm->active_node = node;
+                    } else {
+                        char errmsg[96];
+                        snprintf(errmsg, sizeof(errmsg), "? device '%s' not found", path);
+                        forth_abort(vm, errmsg);
+                        return -1;
+                    }
+                }
+            }
             continue;
         }
 
@@ -1108,6 +1222,7 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "WORDS",      FORTH_TOK_WORDS,      0);
     dict_create_word(vm, "DEV-TREE",   FORTH_TOK_DEV_TREE,   0);
     dict_create_word(vm, "LS",         FORTH_TOK_DEV_TREE,   0);
+    dict_create_word(vm, "PWD",        FORTH_TOK_PWD,        0);
     dict_create_word(vm, "HELP",       FORTH_TOK_HELP,       0);
     dict_create_word(vm, "?",          FORTH_TOK_HELP,       0);
     dict_create_word(vm, "INFO",       FORTH_TOK_HELP,       0);
@@ -1122,5 +1237,6 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "byte-load",   FORTH_TOK_BYTE_LOAD,  0);
 
     /* Create OpenFirmware root device node */
-    forth_dev_create(vm, "/", NULL);
+    FCodeNode *root = forth_dev_create(vm, "/", NULL);
+    vm->active_node = root;
 }

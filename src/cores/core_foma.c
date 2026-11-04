@@ -10,6 +10,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/time.h>
 
 #include "kernel.h"
 #include "isyscall.h"
@@ -257,6 +258,16 @@ ER tk_del_sem(ID semid) {
 
 ER tk_dly_tsk(RELTIM dlytim) {
     return _tk_dly_tsk(dlytim);
+}
+
+typedef uint64_t SYSTIME;
+
+ER get_tim(SYSTIME *p_time) {
+    if (!p_time) return E_PAR;
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    *p_time = (SYSTIME)tv.tv_sec * 1000 + (tv.tv_usec / 1000);
+    return E_OK;
 }
 
 /* Stubs for optional desktop applications not deployed to mobile FOMA */

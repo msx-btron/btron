@@ -268,6 +268,12 @@ int main(int argc, char **argv) {
             if (aw) inval_wnd(aw);
         }
 
+        /* Continuous cursor blinking for the active focused terminal / window */
+        WND *top_focused = get_top_wnd();
+        if (top_focused && top_focused->focused) {
+            inval_wnd(top_focused);
+        }
+
         /* Render full BTRON desktop composition */
         render_desktop_background(screen_dev);
         redraw_all_windows();
