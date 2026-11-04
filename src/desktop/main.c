@@ -63,6 +63,209 @@ static void set_terminal_raw_tty(void) {
 }
 #endif /* !_WIN32 */
 
+static BOOL s_desktop_running = TRUE;
+static GDEV *s_desktop_screen_dev = NULL;
+
+static BOOL s_dragging = FALSE;
+static WND *s_drag_wnd = NULL;
+static H s_drag_off_x = 0, s_drag_off_y = 0;
+
+static BOOL s_sliding_tab = FALSE;
+static WND *s_slide_wnd = NULL;
+static H s_slide_start_x = 0, s_slide_orig_off = 0;
+
+static BOOL s_resizing = FALSE;
+static WND *s_resize_wnd = NULL;
+static H s_resize_orig_w = 0, s_resize_orig_h = 0;
+static H s_resize_start_x = 0, s_resize_start_y = 0;
+
+void btron_desktop_step(void) {
+    if (!s_desktop_screen_dev) {
+        s_desktop_screen_dev = wnd_mgr_get_screen();
+        if (!s_desktop_screen_dev) return;
+    }
+
+    EVT ev;
+    /* Poll and process all pending system events */
+    while (get_evt(&ev, 0) == E_OK) {
+        if (ev.type == EV_WND_CLOSE) {
+            s_desktop_running = FALSE;
+            break;
+        } else if (ev.type == EV_BUT_DOWN) {
+            raise_sdl_window();
+            /* 0. Check Global System Menu (Deskbar & Chokanji Top Menus) */
+            if (global_menu_handle_mouse_down(ev.pos.x, ev.pos.y)) {
+                /* Consumed by Global System Menu Bar */
+            } else {
+                if (global_menu_is_open()) {
+                    global_menu_close();
+                }
+                WND *clicked = find_wnd_at(ev.pos.x, ev.pos.y);
+                if (clicked) {
+                    if (get_top_wnd() != clicked) {
+                        tip_cancel(); /* Reset pending IME composition on focus switch */
+                        top_wnd(clicked);
+                    }
+
+                    /* 1. BTRON3 Bottom-Right Corner Resize Grip Check (16x16 corner) */
+                    if ((clicked->attr & WND_ATTR_RESIZE) &&
+                        ev.pos.x >= clicked->bounds.right - 16 && ev.pos.x <= clicked->bounds.right &&
+                        ev.pos.y >= clicked->bounds.bottom - 16 && ev.pos.y <= clicked->bounds.bottom) {
+                        s_resizing = TRUE;
+                        s_resize_wnd = clicked;
+                        s_resize_orig_w = clicked->bounds.right - clicked->bounds.left;
+                        s_resize_orig_h = clicked->bounds.bottom - clicked->bounds.top;
+                        s_resize_start_x = ev.pos.x;
+                        s_resize_start_y = ev.pos.y;
+                    }
+                    /* 2. Titlebar & Compact Sliding Tab Area Check */
+                    else if (clicked->attr & WND_ATTR_TITLE) {
+                        RECT tab_r;
+                        wget_tab_rect(clicked, &tab_r);
+                        if (ev.pos.y >= clicked->bounds.top && ev.pos.y < tab_r.bottom) {
+                            /* Close button check */
+                            if (whit_test_close_btn(clicked, ev.pos.x, ev.pos.y)) {
+                                cls_wnd(clicked);
+                                tip_cancel();
+                            }
+                            /* Compact Tab Check */
+                            else if (whit_test_tab(clicked, ev.pos.x, ev.pos.y)) {
+                                SDL_Keymod mod = SDL_GetModState();
+                                BOOL is_slide_gesture = (mod & KMOD_SHIFT) || (ev.button == 3) ||
+                                                        (ev.pos.x >= tab_r.left && ev.pos.x < tab_r.left + 12);
+
+                                if (is_slide_gesture && (clicked->attr & WND_ATTR_SLIDING_TAB)) {
+                                    s_sliding_tab = TRUE;
+                                    s_slide_wnd = clicked;
+                                    s_slide_start_x = ev.pos.x;
+                                    s_slide_orig_off = clicked->tab_offset_x;
+                                } else {
+                                    s_dragging = TRUE;
+                                    s_drag_wnd = clicked;
+                                    s_drag_off_x = ev.pos.x - clicked->bounds.left;
+                                    s_drag_off_y = ev.pos.y - clicked->bounds.top;
+                                }
+                            } else {
+                                /* Clicked on window top rail outside tab -> drag whole window */
+                                s_dragging = TRUE;
+                                s_drag_wnd = clicked;
+                                s_drag_off_x = ev.pos.x - clicked->bounds.left;
+                                s_drag_off_y = ev.pos.y - clicked->bounds.top;
+                            }
+                        } else {
+                            /* Dispatch mouse click exclusively to clicked window client area */
+                            if (clicked->event_handler) {
+                                clicked->event_handler(clicked, &ev);
+                            }
+                        }
+                    } else {
+                        /* Dispatch mouse click exclusively to clicked window client area */
+                        if (clicked->event_handler) {
+                            clicked->event_handler(clicked, &ev);
+                        }
+                    }
+                } else if (desktop_handle_click(ev.pos.x, ev.pos.y)) {
+                    /* Handled by desktop icon dispatcher */
+                }
+            } /* end else of tracker_handle_mouse_down */
+        } else if (ev.type == EV_BUT_UP) {
+            s_dragging = FALSE;
+            s_drag_wnd = NULL;
+            s_sliding_tab = FALSE;
+            s_slide_wnd = NULL;
+            s_resizing = FALSE;
+            s_resize_wnd = NULL;
+            if (btron_dnd_is_active()) {
+                WND *target = find_wnd_at(ev.pos.x, ev.pos.y);
+                if (target && target->event_handler) {
+                    target->event_handler(target, &ev);
+                }
+                btron_dnd_end();
+            } else {
+                WND *top = get_top_wnd();
+                if (top && top->focused && top->event_handler) {
+                    top->event_handler(top, &ev);
+                }
+            }
+        } else if (ev.type == EV_MOUSE_MOVE) {
+            global_menu_handle_mouse_move(ev.pos.x, ev.pos.y);
+            tracker_handle_mouse_move(ev.pos.x, ev.pos.y);
+            if (btron_dnd_is_active()) {
+                btron_dnd_update(ev.pos.x, ev.pos.y);
+                WND *target = find_wnd_at(ev.pos.x, ev.pos.y);
+                if (target && target->event_handler) {
+                    target->event_handler(target, &ev);
+                }
+            } else if (s_sliding_tab && s_slide_wnd) {
+                H new_off = s_slide_orig_off + (ev.pos.x - s_slide_start_x);
+                wset_tab_offset(s_slide_wnd, new_off);
+            } else if (s_resizing && s_resize_wnd) {
+                H new_w = s_resize_orig_w + (ev.pos.x - s_resize_start_x);
+                H new_h = s_resize_orig_h + (ev.pos.y - s_resize_start_y);
+                rsz_wnd(s_resize_wnd, new_w, new_h);
+            } else if (s_dragging && s_drag_wnd) {
+                mov_wnd(s_drag_wnd, ev.pos.x - s_drag_off_x, ev.pos.y - s_drag_off_y);
+            } else {
+                WND *top = get_top_wnd();
+                if (top && top->focused && top->event_handler) {
+                    top->event_handler(top, &ev);
+                }
+            }
+        } else if (ev.type == EV_KEY_DOWN || ev.type == EV_KEY_UP) {
+            if (ev.type == EV_KEY_DOWN && global_menu_handle_key(ev.key, ev.data)) {
+                /* Handled by Global System Menu */
+            } else if (ev.type == EV_KEY_DOWN && tracker_handle_key(ev.key)) {
+                /* Handled by Tracker Start menu navigation */
+            } else {
+                /* Exclusively route keystrokes to the top focused active window */
+                WND *top = get_top_wnd();
+                if (top && top->focused && top->event_handler) {
+                    top->event_handler(top, &ev);
+                }
+            }
+        }
+    }
+
+    orchestra_ui_tick();
+    cassette_service();
+
+    if (about_is_animating()) {
+        WND *aw = about_get_wnd();
+        if (aw) inval_wnd(aw);
+    }
+
+    /* Continuous cursor blinking for the active focused terminal / window */
+    WND *top_focused = get_top_wnd();
+    if (top_focused && top_focused->focused) {
+        inval_wnd(top_focused);
+    }
+
+    /* Render full BTRON desktop composition */
+    render_desktop_background(s_desktop_screen_dev);
+    redraw_all_windows();
+
+    /* Floating candidate window is rendered exclusively for the active window */
+    WND *top = get_top_wnd();
+    if (top && top->focused && (tip_get_state() == TIP_STATE_CONVERTING || tip_get_state() == TIP_STATE_CANDIDATE_SELECT)) {
+        tip_render_candidate_window(s_desktop_screen_dev, tip_get_caret_x(), tip_get_caret_y());
+    }
+
+    render_system_panel(s_desktop_screen_dev);
+
+    /* Render Global Menu dropdown overlay when open */
+    if (global_menu_is_open()) {
+        global_menu_render_overlay(s_desktop_screen_dev);
+    }
+
+    /* Render Direct-Manipulation Drag-and-Drop Ghost Badge */
+    if (btron_dnd_is_active()) {
+        btron_dnd_render_ghost(s_desktop_screen_dev);
+    }
+
+    /* Flush composite buffer to SDL window */
+    flush_gdev_to_sdl(s_desktop_screen_dev);
+}
+
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
@@ -96,212 +299,19 @@ int main(int argc, char **argv) {
 
     printf("[B-System] Launching Sakamura B-System Desktop & Accessories...\n");
 
-    BOOL running = TRUE;
-    EVT ev;
-
-    BOOL dragging = FALSE;
-    WND *drag_wnd = NULL;
-    H drag_off_x = 0, drag_off_y = 0;
-
-    BOOL sliding_tab = FALSE;
-    WND *slide_wnd = NULL;
-    H slide_start_x = 0, slide_orig_off = 0;
-
-    BOOL resizing = FALSE;
-    WND *resize_wnd = NULL;
-    H resize_orig_w = 0, resize_orig_h = 0;
-    H resize_start_x = 0, resize_start_y = 0;
-
-    GDEV *screen_dev = opn_dev(screen_w, screen_h);
-    init_wnd_mgr(screen_dev);
+    s_desktop_screen_dev = opn_dev(screen_w, screen_h);
+    init_wnd_mgr(s_desktop_screen_dev);
     tracker_init();
     global_menu_init();
 
     /* Initial desktop state: accessories are launched on-demand via Deskbar or Workbench icons */
 
-    while (running) {
-        /* Poll and process all pending system events */
-        while (get_evt(&ev, 0) == E_OK) {
-            if (ev.type == EV_WND_CLOSE) {
-                running = FALSE;
-                break;
-            } else if (ev.type == EV_BUT_DOWN) {
-                raise_sdl_window();
-                /* 0. Check Global System Menu (Deskbar & Chokanji Top Menus) */
-                if (global_menu_handle_mouse_down(ev.pos.x, ev.pos.y)) {
-                    /* Consumed by Global System Menu Bar */
-                } else {
-                    if (global_menu_is_open()) {
-                        global_menu_close();
-                    }
-                    WND *clicked = find_wnd_at(ev.pos.x, ev.pos.y);
-                    if (clicked) {
-                        if (get_top_wnd() != clicked) {
-                            tip_cancel(); /* Reset pending IME composition on focus switch */
-                            top_wnd(clicked);
-                        }
-
-                    /* 1. BTRON3 Bottom-Right Corner Resize Grip Check (16x16 corner) */
-                    if ((clicked->attr & WND_ATTR_RESIZE) &&
-                        ev.pos.x >= clicked->bounds.right - 16 && ev.pos.x <= clicked->bounds.right &&
-                        ev.pos.y >= clicked->bounds.bottom - 16 && ev.pos.y <= clicked->bounds.bottom) {
-                        resizing = TRUE;
-                        resize_wnd = clicked;
-                        resize_orig_w = clicked->bounds.right - clicked->bounds.left;
-                        resize_orig_h = clicked->bounds.bottom - clicked->bounds.top;
-                        resize_start_x = ev.pos.x;
-                        resize_start_y = ev.pos.y;
-                    }
-                    /* 2. Titlebar & Compact Sliding Tab Area Check */
-                    else if (clicked->attr & WND_ATTR_TITLE) {
-                        RECT tab_r;
-                        wget_tab_rect(clicked, &tab_r);
-                        if (ev.pos.y >= clicked->bounds.top && ev.pos.y < tab_r.bottom) {
-                            /* Close button check */
-                            if (whit_test_close_btn(clicked, ev.pos.x, ev.pos.y)) {
-                                cls_wnd(clicked);
-                                tip_cancel();
-                            }
-                            /* Compact Tab Check */
-                            else if (whit_test_tab(clicked, ev.pos.x, ev.pos.y)) {
-                                SDL_Keymod mod = SDL_GetModState();
-                                BOOL is_slide_gesture = (mod & KMOD_SHIFT) || (ev.button == 3) ||
-                                                        (ev.pos.x >= tab_r.left && ev.pos.x < tab_r.left + 12);
-
-                                if (is_slide_gesture && (clicked->attr & WND_ATTR_SLIDING_TAB)) {
-                                    sliding_tab = TRUE;
-                                    slide_wnd = clicked;
-                                    slide_start_x = ev.pos.x;
-                                    slide_orig_off = clicked->tab_offset_x;
-                                } else {
-                                    dragging = TRUE;
-                                    drag_wnd = clicked;
-                                    drag_off_x = ev.pos.x - clicked->bounds.left;
-                                    drag_off_y = ev.pos.y - clicked->bounds.top;
-                                }
-                            } else {
-                                /* Clicked on window top rail outside tab -> drag whole window */
-                                dragging = TRUE;
-                                drag_wnd = clicked;
-                                drag_off_x = ev.pos.x - clicked->bounds.left;
-                                drag_off_y = ev.pos.y - clicked->bounds.top;
-                            }
-                        } else {
-                            /* Dispatch mouse click exclusively to clicked window client area */
-                            if (clicked->event_handler) {
-                                clicked->event_handler(clicked, &ev);
-                            }
-                        }
-                    } else {
-                        /* Dispatch mouse click exclusively to clicked window client area */
-                        if (clicked->event_handler) {
-                            clicked->event_handler(clicked, &ev);
-                        }
-                    }
-                } else if (desktop_handle_click(ev.pos.x, ev.pos.y)) {
-                    /* Handled by desktop icon dispatcher */
-                }
-                } /* end else of tracker_handle_mouse_down */
-            } else if (ev.type == EV_BUT_UP) {
-                dragging = FALSE;
-                drag_wnd = NULL;
-                sliding_tab = FALSE;
-                slide_wnd = NULL;
-                resizing = FALSE;
-                resize_wnd = NULL;
-                if (btron_dnd_is_active()) {
-                    WND *target = find_wnd_at(ev.pos.x, ev.pos.y);
-                    if (target && target->event_handler) {
-                        target->event_handler(target, &ev);
-                    }
-                    btron_dnd_end();
-                } else {
-                    WND *top = get_top_wnd();
-                    if (top && top->focused && top->event_handler) {
-                        top->event_handler(top, &ev);
-                    }
-                }
-            } else if (ev.type == EV_MOUSE_MOVE) {
-                global_menu_handle_mouse_move(ev.pos.x, ev.pos.y);
-                tracker_handle_mouse_move(ev.pos.x, ev.pos.y);
-                if (btron_dnd_is_active()) {
-                    btron_dnd_update(ev.pos.x, ev.pos.y);
-                    WND *target = find_wnd_at(ev.pos.x, ev.pos.y);
-                    if (target && target->event_handler) {
-                        target->event_handler(target, &ev);
-                    }
-                } else if (sliding_tab && slide_wnd) {
-                    H new_off = slide_orig_off + (ev.pos.x - slide_start_x);
-                    wset_tab_offset(slide_wnd, new_off);
-                } else if (resizing && resize_wnd) {
-                    H new_w = resize_orig_w + (ev.pos.x - resize_start_x);
-                    H new_h = resize_orig_h + (ev.pos.y - resize_start_y);
-                    rsz_wnd(resize_wnd, new_w, new_h);
-                } else if (dragging && drag_wnd) {
-                    mov_wnd(drag_wnd, ev.pos.x - drag_off_x, ev.pos.y - drag_off_y);
-                } else {
-                    WND *top = get_top_wnd();
-                    if (top && top->focused && top->event_handler) {
-                        top->event_handler(top, &ev);
-                    }
-                }
-            } else if (ev.type == EV_KEY_DOWN || ev.type == EV_KEY_UP) {
-                if (ev.type == EV_KEY_DOWN && global_menu_handle_key(ev.key, ev.data)) {
-                    /* Handled by Global System Menu */
-                } else if (ev.type == EV_KEY_DOWN && tracker_handle_key(ev.key)) {
-                    /* Handled by Tracker Start menu navigation */
-                } else {
-                    /* Exclusively route keystrokes to the top focused active window */
-                    WND *top = get_top_wnd();
-                    if (top && top->focused && top->event_handler) {
-                        top->event_handler(top, &ev);
-                    }
-                }
-            }
-        }
-
-        orchestra_ui_tick();
-        cassette_service();
-
-        if (about_is_animating()) {
-            WND *aw = about_get_wnd();
-            if (aw) inval_wnd(aw);
-        }
-
-        /* Continuous cursor blinking for the active focused terminal / window */
-        WND *top_focused = get_top_wnd();
-        if (top_focused && top_focused->focused) {
-            inval_wnd(top_focused);
-        }
-
-        /* Render full BTRON desktop composition */
-        render_desktop_background(screen_dev);
-        redraw_all_windows();
-
-        /* Floating candidate window is rendered exclusively for the active window */
-        WND *top = get_top_wnd();
-        if (top && top->focused && (tip_get_state() == TIP_STATE_CONVERTING || tip_get_state() == TIP_STATE_CANDIDATE_SELECT)) {
-            tip_render_candidate_window(screen_dev, tip_get_caret_x(), tip_get_caret_y());
-        }
-
-        render_system_panel(screen_dev);
-
-        /* Render Global Menu dropdown overlay when open */
-        if (global_menu_is_open()) {
-            global_menu_render_overlay(screen_dev);
-        }
-
-        /* Render Direct-Manipulation Drag-and-Drop Ghost Badge */
-        if (btron_dnd_is_active()) {
-            btron_dnd_render_ghost(screen_dev);
-        }
-
-        /* Flush composite buffer to SDL window */
-        flush_gdev_to_sdl(screen_dev);
+    while (s_desktop_running) {
+        btron_desktop_step();
     }
 
     printf("[B-System] Shutting down B-System Retro OS Environment.\n");
-    cls_dev(screen_dev);
+    cls_dev(s_desktop_screen_dev);
     shutdown_sdl_backend();
     return 0;
 }

@@ -24,6 +24,7 @@ typedef struct {
 ER init_desktop(H width, H height);
 ER init_desktop_vram(H width, H height, COLOR *vram_ptr);
 void run_desktop_loop(void);
+void btron_desktop_step(void);
 void render_desktop_background(GDEV *dev);
 void render_desktop_background_rect(GDEV *dev, const RECT *damage);
 void render_system_panel(GDEV *dev);

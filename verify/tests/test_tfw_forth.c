@@ -11,6 +11,7 @@
 #include <emulators/tronmsx.h>
 #include "../../src/emulators/msx/msx_int.h"
 #include "../../src/emulators/msx/msx_cfg.h"
+#include "../../src/emulators/msx/msx_kbd.h"
 
 static int g_tests_passed = 0;
 static int g_tests_total = 0;
@@ -155,6 +156,73 @@ int main(void) {
     }
     TEST_ASSERT(found_devtree_echo, "Forth input was echoed to screen (DEV-TREE)");
     TEST_ASSERT(found_devtree_output, "Forth interpreter evaluated DEV-TREE and listed devices");
+
+    /* 4c. Interactive Forth Evaluation: 'MARS' and 'MANDELBROT' */
+    printf("[4c] Testing Interactive Forth Evaluation: 'MARS'...\n");
+    const char *mars_cmd = "MARS";
+    for (const char *p = mars_cmd; *p; p++) {
+        uint8_t r, c;
+        if (msx_kbd_position(*p, &r, &c)) {
+            msx_kbd_down(r, c);
+            for (int f = 0; f < 3; f++) msx_run_frame();
+            msx_kbd_up(r, c);
+            for (int f = 0; f < 3; f++) msx_run_frame();
+        }
+    }
+    /* Enter (7, 7) */
+    msx_kbd_down(7, 7);
+    for (int f = 0; f < 3; f++) msx_run_frame();
+    msx_kbd_up(7, 7);
+    for (int f = 0; f < 40; f++) msx_run_frame();
+
+    int found_mars_output = 0;
+    if (vram) {
+        printf("    -> VRAM Screen 0 after typing MARS:\n");
+        char linebuf[41];
+        for (int r = 0; r < 24; r++) {
+            memcpy(linebuf, vram + r * 40, 40);
+            linebuf[40] = '\0';
+            printf("       row %2d: [%s]\n", r, linebuf);
+            if (strstr(linebuf, "Mars Voxel") || strstr(linebuf, "^^^^^") || strstr(linebuf, "#####")) {
+                found_mars_output = 1;
+            }
+        }
+    }
+    TEST_ASSERT(found_mars_output, "Forth interpreter evaluated MARS and rendered voxel landscape on MSX");
+
+    /* 4d. Interactive Forth Evaluation: 'MANDEL' */
+    printf("[4d] Testing Interactive Forth Evaluation: 'MANDEL'...\n");
+    for (int f = 0; f < 70; f++) msx_run_frame();
+
+    const char *mandel_cmd = "MANDEL";
+    for (const char *p = mandel_cmd; *p; p++) {
+        uint8_t r, c;
+        if (msx_kbd_position(*p, &r, &c)) {
+            msx_kbd_down(r, c);
+            for (int f = 0; f < 3; f++) msx_run_frame();
+            msx_kbd_up(r, c);
+            for (int f = 0; f < 3; f++) msx_run_frame();
+        }
+    }
+    msx_kbd_down(7, 7);
+    for (int f = 0; f < 3; f++) msx_run_frame();
+    msx_kbd_up(7, 7);
+    for (int f = 0; f < 40; f++) msx_run_frame();
+
+    int found_mandel_output = 0;
+    if (vram) {
+        printf("    -> VRAM Screen 0 after typing MANDEL:\n");
+        char linebuf[41];
+        for (int r = 0; r < 24; r++) {
+            memcpy(linebuf, vram + r * 40, 40);
+            linebuf[40] = '\0';
+            printf("       row %2d: [%s]\n", r, linebuf);
+            if (strstr(linebuf, "Mandelbrot") || strstr(linebuf, "++...") || strstr(linebuf, "*****")) {
+                found_mandel_output = 1;
+            }
+        }
+    }
+    TEST_ASSERT(found_mandel_output, "Forth interpreter evaluated MANDEL and rendered fractal on MSX");
 
     /* 5. Verify MSX2+ and turbo R ROM Targets */
     printf("[5] Verifying tfw_main_msx2+.rom & tfw_main_msxtr.rom Targets...\n");

@@ -23,6 +23,10 @@ __attribute__((weak)) ER cls_wnd(WND *wnd) {
     (void)wnd;
     return E_OK;
 }
+__attribute__((weak)) ER top_wnd(WND *wnd) {
+    (void)wnd;
+    return E_OK;
+}
 __attribute__((weak)) ER inval_wnd(WND *wnd) {
     (void)wnd;
     return E_OK;
@@ -93,21 +97,36 @@ static int clu_forth_key(void) {
 #endif
 }
 
+#if !defined(FORTH_STANDALONE)
+__attribute__((weak)) extern void btron_desktop_step(void);
+#endif
+
+static WND *s_forth_active_wnd = NULL;
+
+static void forth_wnd_destroy(WND *wnd) {
+    if (wnd == s_forth_active_wnd) {
+        s_forth_active_wnd = NULL;
+        s_forth_vm.halted = true;
+    }
+}
+
 static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
     (void)wnd;
     if (!evt) return;
     if (evt->type == EV_KEY_DOWN) {
         UW k = evt->key;
-        if (k == BTRON_KEY_LEFT) {
+        if (k == BTRON_KEY_LEFT || k == 28) {
             forth_enqueue_key(28);
-        } else if (k == BTRON_KEY_RIGHT) {
+        } else if (k == BTRON_KEY_RIGHT || k == 29) {
             forth_enqueue_key(29);
-        } else if (k == BTRON_KEY_UP) {
+        } else if (k == BTRON_KEY_UP || k == 30) {
             forth_enqueue_key(30);
-        } else if (k == BTRON_KEY_DOWN) {
+        } else if (k == BTRON_KEY_DOWN || k == 31) {
             forth_enqueue_key(31);
         } else if (k == BTRON_KEY_SPACE || k == ' ') {
             forth_enqueue_key(32);
+        } else if (k == BTRON_KEY_ESCAPE || k == 27) {
+            forth_enqueue_key(27);
         } else if (k < 128) {
             forth_enqueue_key((int)k);
         }
@@ -136,7 +155,12 @@ static void clu_forth_wnd_on_paint(ForthVM *vm, forth_cell_t wnd_val, forth_cell
 }
 
 static void clu_forth_ms(ForthVM *vm, forth_cell_t ms) {
-    (void)vm;
+#if !defined(FORTH_STANDALONE)
+    if (btron_desktop_step) {
+        btron_desktop_step();
+    }
+#endif
+    if (vm && vm->halted) return;
     if (ms > 0) {
 #if BTRON_HOSTED
         struct timespec ts;
@@ -157,6 +181,9 @@ static forth_cell_t clu_forth_wnd_open(ForthVM *vm, forth_cell_t w, forth_cell_t
     if (!wnd) return 0;
     wnd->paint = forth_wnd_paint;
     wnd->event_handler = forth_wnd_event_handler;
+    wnd->destroy = forth_wnd_destroy;
+    s_forth_active_wnd = wnd;
+    top_wnd(wnd);
     wnd->img_valid = TRUE;
     if (wnd->dev && wnd->dev->pixels) {
         memset(wnd->dev->pixels, 0, (size_t)wnd->dev->width * (size_t)wnd->dev->height * sizeof(COLOR));
@@ -168,7 +195,12 @@ static forth_cell_t clu_forth_wnd_open(ForthVM *vm, forth_cell_t w, forth_cell_t
 static void clu_forth_wnd_close(ForthVM *vm, forth_cell_t wnd_val) {
     (void)vm;
     WND *wnd = (WND *)(uintptr_t)wnd_val;
-    if (wnd) cls_wnd(wnd);
+    if (wnd) {
+        if (wnd == s_forth_active_wnd) {
+            s_forth_active_wnd = NULL;
+        }
+        cls_wnd(wnd);
+    }
 }
 
 static void clu_forth_wnd_pixel(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x, forth_cell_t y, forth_cell_t col) {
@@ -236,6 +268,11 @@ static void clu_forth_wnd_update(ForthVM *vm, forth_cell_t wnd_val) {
     if (wnd) {
         wnd->img_valid = TRUE;
         inval_wnd(wnd);
+#if !defined(FORTH_STANDALONE)
+        if (btron_desktop_step) {
+            btron_desktop_step();
+        }
+#endif
     }
 }
 

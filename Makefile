@@ -3495,21 +3495,26 @@ TBIOS_ROMS = ./.build/tbios/tbios_main_msx2.rom \
 
 tbios-roms: $(TBIOS_ROMS)
 
+TFW_ASM_DEPS = $(wildcard src/emulators/msx/tbios/asm/*.asm) $(wildcard src/emulators/msx/tbios/inc/*.inc)
+
 TFW_ROMS = ./.build/tbios/tfw_main_msx2.rom \
            ./.build/tbios/tfw_main_msx2+.rom \
            ./.build/tbios/tfw_main_msxtr.rom
 
-./.build/tbios/tfw_main_msx2.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
+./.build/tbios/tfw_main_msx2.rom: $(TFW_ASM_DEPS) $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
 	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=1 -E CONFIG_TFW=1 src/emulators/msx/tbios/asm/entry_main.asm $@
+	@cp $@ assets/msx/
 
-./.build/tbios/tfw_main_msx2+.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
+./.build/tbios/tfw_main_msx2+.rom: $(TFW_ASM_DEPS) $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
 	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=2 -E CONFIG_TFW=1 src/emulators/msx/tbios/asm/entry_main.asm $@
+	@cp $@ assets/msx/
 
-./.build/tbios/tfw_main_msxtr.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
+./.build/tbios/tfw_main_msxtr.rom: $(TFW_ASM_DEPS) $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
 	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc -I src/emulators/msx/tbios/asm -E MSX_VER=3 -E CONFIG_TFW=1 src/emulators/msx/tbios/asm/entry_main.asm $@
+	@cp $@ assets/msx/
 
 tfw-roms: $(TFW_ROMS)
 	@cp $(TFW_ROMS) assets/msx/

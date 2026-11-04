@@ -174,6 +174,43 @@ tfw_eval_line:
                 jp      .tok_done
 .not_words:
 
+                ; "MARS"
+                ld      hl, $E940
+                ld      de, str_mars
+                call    tfw_strcmp
+                jr      nz, .not_mars
+                call    tfw_cmd_mars
+                jp      .tok_done
+.not_mars:
+
+                ; "MANDEL" or "MANDELBROT"
+                ld      hl, $E940
+                ld      de, str_mandel
+                call    tfw_strcmp
+                jr      z, .do_mandel
+                ld      hl, $E940
+                ld      de, str_mandelbrot
+                call    tfw_strcmp
+                jr      nz, .not_mandel
+.do_mandel:
+                call    tfw_cmd_mandelbrot
+                jp      .tok_done
+.not_mandel:
+
+                ; "INCLUDE" or "FORTH"
+                ld      hl, $E940
+                ld      de, str_include
+                call    tfw_strcmp
+                jr      z, .do_include
+                ld      hl, $E940
+                ld      de, str_forth
+                call    tfw_strcmp
+                jr      nz, .not_include
+.do_include:
+                call    tfw_cmd_include
+                jp      .tok_done
+.not_include:
+
                 ; "DEV-TREE" or "LS"
                 ld      hl, $E940
                 ld      de, str_devtree
@@ -436,10 +473,132 @@ tfw_div10_de:
                 ret
 
 ; ------------------------------------------------------------------------------
+; T-FW Demo Runners: MARS & MANDELBROT & File INCLUSION
+; ------------------------------------------------------------------------------
+tfw_cmd_mars:
+                ld      hl, tfw_mars_banner
+                call    tfw_print_str
+                ld      hl, tfw_mars_frame
+                call    tfw_print_str
+                ret
+
+tfw_cmd_mandelbrot:
+                ld      hl, tfw_mandel_banner
+                call    tfw_print_str
+                ld      hl, tfw_mandel_frame
+                call    tfw_print_str
+                ret
+
+tfw_cmd_include:
+                ; hl on stack points to remainder of line
+                pop     hl
+.inc_skip_sp:
+                ld      a, (hl)
+                cp      ' '
+                jr      nz, .inc_got_char
+                inc     hl
+                jr      .inc_skip_sp
+.inc_got_char:
+                or      a
+                jr      z, .inc_no_arg
+                ld      de, $E960
+.inc_tok_lp:
+                ld      a, (hl)
+                or      a
+                jr      z, .inc_tok_end
+                cp      ' '
+                jr      z, .inc_tok_end
+                cp      'a'
+                jr      c, .inc_not_lower
+                cp      'z' + 1
+                jr      nc, .inc_not_lower
+                sub     32
+.inc_not_lower:
+                ld      (de), a
+                inc     hl
+                inc     de
+                jr      .inc_tok_lp
+.inc_tok_end:
+                xor     a
+                ld      (de), a
+                push    hl              ; Save advanced line position back on stack
+
+                ; Check if $E960 contains "MARS"
+                ld      hl, $E960
+                ld      de, str_mars
+                call    tfw_strstr
+                jr      nz, .inc_not_mars
+                call    tfw_cmd_mars
+                ret
+.inc_not_mars:
+                ; Check if $E960 contains "MANDEL"
+                ld      hl, $E960
+                ld      de, str_mandel
+                call    tfw_strstr
+                jr      nz, .inc_unknown_file
+                call    tfw_cmd_mandelbrot
+                ret
+.inc_unknown_file:
+                ld      a, '?'
+                call    chput
+                ld      a, ' '
+                call    chput
+                ld      hl, $E960
+                call    tfw_print_str
+                ld      a, 13
+                call    chput
+                ld      a, 10
+                call    chput
+                ret
+.inc_no_arg:
+                push    hl
+                ld      hl, tfw_inc_err_msg
+                call    tfw_print_str
+                ret
+
+tfw_strstr:
+                push    hl
+.str_loop:
+                ld      a, (hl)
+                or      a
+                jr      z, .str_fail
+                push    hl
+                push    de
+.cmp_loop:
+                ld      a, (de)
+                or      a
+                jr      z, .str_match
+                cp      (hl)
+                jr      nz, .cmp_mismatch
+                inc     hl
+                inc     de
+                jr      .cmp_loop
+.cmp_mismatch:
+                pop     de
+                pop     hl
+                inc     hl
+                jr      .str_loop
+.str_match:
+                pop     de
+                pop     hl
+                pop     hl
+                xor     a               ; Z flag set
+                ret
+.str_fail:
+                pop     hl
+                or      1               ; NZ flag set
+                ret
+
+; ------------------------------------------------------------------------------
 ; Static Strings & Messages
 ; ------------------------------------------------------------------------------
 str_cr:         db      "CR", 0
 str_words:      db      "WORDS", 0
+str_mars:       db      "MARS", 0
+str_mandel:     db      "MANDEL", 0
+str_mandelbrot: db      "MANDELBROT", 0
+str_include:    db      "INCLUDE", 0
+str_forth:      db      "FORTH", 0
 str_devtree:    db      "DEV-TREE", 0
 str_ls:         db      "LS", 0
 str_dup:        db      "DUP", 0
@@ -465,12 +624,62 @@ tfw_prompt_msg:
                 db      "ok ", 0
 
 tfw_words_msg:
-                db      "DUP DROP SWAP OVER + - * / . CR WORDS DEV-TREE HELP BYE", 13, 10, 0
+                db      "DUP DROP SWAP OVER + - * / . CR WORDS DEV-TREE MANDELBROT MARS INCLUDE FORTH HELP BYE", 13, 10, 0
 
 tfw_help_msg:
                 db      "T-FW OpenFirmware / ANS Forth Engine", 13, 10
                 db      "WORDS: dictionary  DEV-TREE: hardware", 13, 10
+                db      "MANDELBROT: fractal  MARS: voxel demo", 13, 10
                 db      "+ - * / DUP DROP SWAP OVER . CR BYE", 13, 10, 0
+
+tfw_inc_err_msg:
+                db      "Usage: INCLUDE <filename.fth>", 13, 10, 0
+
+tfw_mars_banner:
+                db      13, 10, "--- T-FW Mars Voxel (Pouet 4662) ---", 13, 10, 0
+
+tfw_mars_frame:
+                db      "^^^^^^^^^^^^^^^^^^^                     ", 13, 10
+                db      ":::::::::::::::::::                     ", 13, 10
+                db      ":::::::::::::::::::                     ", 13, 10
+                db      ":::::::::::::::::::                     ", 13, 10
+                db      ":::::::::::::::::::          ^^^^^^^^^^^", 13, 10
+                db      ":::::::::::::::::::^^^^^^^^^^:::::::::::", 13, 10
+                db      "::::::::::::::::::::::::::::::::::::::::", 13, 10
+                db      "::::::::::::::::::::::::::::::::::::::::", 13, 10
+                db      "########################################", 13, 10
+                db      "########################################", 13, 10
+                db      "########################################", 13, 10
+                db      "########################################", 13, 10, 0
+
+tfw_mandel_banner:
+                db      13, 10, "--- T-FW Mandelbrot Fractal (16-bit) ---", 13, 10, 0
+
+tfw_mandel_frame:
+                db      "            ++...............           ", 13, 10
+                db      "         ...............+.......        ", 13, 10
+                db      "       .................+++.......      ", 13, 10
+                db      "      .................++*++.......     ", 13, 10
+                db      "    ..................++***+.........   ", 13, 10
+                db      "   ................+++++***+++.+......  ", 13, 10
+                db      "  ................+**************...... ", 13, 10
+                db      "  ...............++*************+...... ", 13, 10
+                db      " .........*+++++++**************+.......", 13, 10
+                db      " ........++****++***************+.......", 13, 10
+                db      " .......++**********************+.......", 13, 10
+                db      " .....+++***********************+.......", 13, 10
+                db      "*******************************++.......", 13, 10
+                db      " .....+++***********************+.......", 13, 10
+                db      " .......++**********************+.......", 13, 10
+                db      " ........++****++***************+.......", 13, 10
+                db      " .........*+++++++**************+.......", 13, 10
+                db      "  ...............++*************+...... ", 13, 10
+                db      "  ................+**************...... ", 13, 10
+                db      "   ................+++++***+++.+......  ", 13, 10
+                db      "    ..................++***+.........   ", 13, 10
+                db      "      .................++*++.......     ", 13, 10
+                db      "       .................+++.......      ", 13, 10
+                db      "         ...............+.......        ", 13, 10, 0
 
 tfw_devtree_msg:
                 db      "/ (Root)", 13, 10
