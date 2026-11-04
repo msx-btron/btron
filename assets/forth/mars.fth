@@ -229,8 +229,8 @@ VARIABLE SKY-V
     \ Perspective screen Y: sy = HORIZON + ((CAM-Z - TERRAIN-H) * 26) / DIST
     CAM-Z @ TERRAIN-H @ - 26 * DIST @ / HORIZON + PROJ-Y !
 
-    \ Mountain crest clamp: peak never reaches row 0..51 so sky is pristine
-    PROJ-Y @ 52 < IF 52 PROJ-Y ! THEN
+    \ Natural mountain crest clamp at top of screen (row 0)
+    PROJ-Y @ 0 < IF 0 PROJ-Y ! THEN
     PROJ-Y @ SCREEN-H 1 - > IF SCREEN-H 1 - PROJ-Y ! THEN
 
     PROJ-Y @ MAX-Y @ < IF
@@ -245,8 +245,8 @@ VARIABLE SKY-V
       PROJ-Y @ 1 - MAX-Y !
     THEN
 
-    \ If reached mountain crest, early exit
-    MAX-Y @ 53 < IF
+    \ If column filled to top of screen, early exit
+    MAX-Y @ 0 < IF
       58 DIST !
     ELSE
       DIST @ 16 < IF 1 ELSE 2 THEN DIST +!
