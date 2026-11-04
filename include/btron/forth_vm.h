@@ -83,6 +83,9 @@ void        forth_vm_reset_stacks(ForthVM *vm);
 int         forth_eval(ForthVM *vm, const char *line);
 int         forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len);
 void        forth_abort(ForthVM *vm, const char *msg);
+void        forth_words(ForthVM *vm);
+void        forth_help(ForthVM *vm);
+void        forth_dev_dump(ForthVM *vm);
 
 /* Stack primitives */
 void        forth_push(ForthVM *vm, forth_cell_t val);

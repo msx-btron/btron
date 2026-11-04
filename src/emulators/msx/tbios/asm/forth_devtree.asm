@@ -261,13 +261,37 @@ tfw_eval_line:
                 jp      .tok_done
 .not_div:
 
-                ; "BYE"
+                ; "BYE" or "EXIT"
                 ld      hl, $E940
                 ld      de, str_bye
                 call    tfw_strcmp
+                jr      z, .do_bye
+                ld      hl, $E940
+                ld      de, str_exit
+                call    tfw_strcmp
                 jr      nz, .not_bye
+.do_bye:
                 jp      tfw_cold_boot
 .not_bye:
+
+                ; "HELP", "?", or "INFO"
+                ld      hl, $E940
+                ld      de, str_help
+                call    tfw_strcmp
+                jr      z, .do_help
+                ld      hl, $E940
+                ld      de, str_qmark
+                call    tfw_strcmp
+                jr      z, .do_help
+                ld      hl, $E940
+                ld      de, str_info
+                call    tfw_strcmp
+                jr      nz, .not_help
+.do_help:
+                ld      hl, tfw_help_msg
+                call    tfw_print_str
+                jp      .tok_done
+.not_help:
 
                 ; Try parsing decimal number
                 ld      hl, $E940
@@ -427,6 +451,10 @@ str_minus:      db      "-", 0
 str_mult:       db      "*", 0
 str_div:        db      "/", 0
 str_bye:        db      "BYE", 0
+str_exit:       db      "EXIT", 0
+str_help:       db      "HELP", 0
+str_qmark:      db      "?", 0
+str_info:       db      "INFO", 0
 
 tfw_banner_msg:
                 db      "T-FW OpenFirmware / ANS Forth Engine", 13, 10
@@ -437,7 +465,12 @@ tfw_prompt_msg:
                 db      "ok ", 0
 
 tfw_words_msg:
-                db      "DUP DROP SWAP OVER + - * / . CR WORDS DEV-TREE BYE", 13, 10, 0
+                db      "DUP DROP SWAP OVER + - * / . CR WORDS DEV-TREE HELP BYE", 13, 10, 0
+
+tfw_help_msg:
+                db      "T-FW OpenFirmware / ANS Forth Engine", 13, 10
+                db      "WORDS: dictionary  DEV-TREE: hardware", 13, 10
+                db      "+ - * / DUP DROP SWAP OVER . CR BYE", 13, 10, 0
 
 tfw_devtree_msg:
                 db      "/ (Root)", 13, 10

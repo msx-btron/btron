@@ -103,3 +103,43 @@ const void* forth_dev_get_prop(FCodeNode *node, const char *key, uint16_t *out_l
     return NULL;
 }
 
+static void dump_dev_node(ForthVM *vm, FCodeNode *node, int depth) {
+    if (!vm || !node) return;
+    for (int i = 0; i < depth; i++) {
+        if (vm->emit_fn) {
+            vm->emit_fn(' ');
+            vm->emit_fn(' ');
+        }
+    }
+    const char *name = node->name;
+    if (depth == 0 && strcmp(name, "/") == 0) {
+        static const char root_str[] = "/ (Root)\n";
+        for (const char *c = root_str; *c; c++) if (vm->emit_fn) vm->emit_fn(*c);
+    } else {
+        if (vm->emit_fn) vm->emit_fn('/');
+        for (const char *c = name; *c; c++) if (vm->emit_fn) vm->emit_fn(*c);
+        uint16_t plen = 0;
+        const char *desc = (const char *)forth_dev_get_prop(node, "model", &plen);
+        if (!desc) desc = (const char *)forth_dev_get_prop(node, "device_type", &plen);
+        if (desc && plen > 0) {
+            static const char sp[] = " (";
+            for (const char *c = sp; *c; c++) if (vm->emit_fn) vm->emit_fn(*c);
+            for (uint16_t i = 0; i < plen; i++) if (vm->emit_fn) vm->emit_fn(desc[i]);
+            if (vm->emit_fn) vm->emit_fn(')');
+        }
+        if (vm->emit_fn) vm->emit_fn('\n');
+    }
+
+    FCodeNode *ch = node->child;
+    while (ch) {
+        dump_dev_node(vm, ch, depth + 1);
+        ch = ch->peer;
+    }
+}
+
+void forth_dev_dump(ForthVM *vm) {
+    if (!vm || vm->num_dev_nodes == 0) return;
+    dump_dev_node(vm, &vm->dev_nodes[0], 0);
+}
+
+

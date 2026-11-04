@@ -68,7 +68,9 @@ void clu_tv       (const char *args, ShellOutputFn out, void *ud);
 void clu_sps      (const char *args, ShellOutputFn out, void *ud);
 
 /* ── ANS Forth & OpenFirmware System (T-FW / CLU) ─────────────────── */
-void clu_forth    (const char *args, ShellOutputFn out, void *ud);
+void clu_forth          (const char *args, ShellOutputFn out, void *ud);
+int  clu_forth_is_halted(void);
+void clu_forth_reset_halt(void);
 
 #ifdef __cplusplus
 }

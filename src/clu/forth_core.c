@@ -74,11 +74,56 @@ void forth_vm_reset_stacks(ForthVM *vm) {
 }
 
 void forth_abort(ForthVM *vm, const char *msg) {
-    vm->halted = true;
+    vm->dsp = -1;
+    vm->rsp = -1;
+    vm->tos_valid = false;
+    vm->state = false;
     vm->last_error = -1;
     if (msg && vm->emit_fn) {
         for (const char *p = msg; *p; p++) vm->emit_fn(*p);
         vm->emit_fn('\n');
+    }
+}
+
+void forth_words(ForthVM *vm) {
+    if (!vm) return;
+    forth_cell_t cur = vm->latest;
+    int col = 0;
+    while (cur != 0 && cur < FORTH_ARENA_MAX) {
+        forth_cell_t link = *(forth_cell_t *)&vm->arena[cur];
+        forth_cell_t p = cur + (forth_cell_t)sizeof(forth_cell_t);
+        uint8_t flen = vm->arena[p++];
+        uint8_t wlen = flen & FORTH_LEN_MASK;
+        if (!(flen & FORTH_FLAG_SMUDGE) && wlen > 0) {
+            if (col + wlen + 1 > 72) {
+                if (vm->emit_fn) vm->emit_fn('\n');
+                col = 0;
+            }
+            for (uint8_t i = 0; i < wlen; i++) {
+                if (vm->emit_fn) vm->emit_fn((char)vm->arena[p + i]);
+            }
+            if (vm->emit_fn) vm->emit_fn(' ');
+            col += wlen + 1;
+        }
+        cur = link;
+    }
+    if (vm->emit_fn) vm->emit_fn('\n');
+}
+
+void forth_help(ForthVM *vm) {
+    if (!vm || !vm->emit_fn) return;
+    static const char help_msg[] =
+        "T-FW OpenFirmware / ANS Forth Engine\n"
+        "Commands:\n"
+        "  WORDS        List all dictionary words\n"
+        "  DEV-TREE     Display IEEE 1275 hardware device tree\n"
+        "  .S           Display data stack contents\n"
+        "  .            Pop and display top of stack\n"
+        "  BYE / EXIT   Return to shell\n"
+        "Stack: DUP DROP SWAP OVER ROT >R R> R@\n"
+        "Math:  + - * / MOD NEGATE AND OR XOR INVERT\n";
+    for (const char *p = help_msg; *p; p++) {
+        vm->emit_fn(*p);
     }
 }
 
@@ -227,6 +272,7 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_TYPE]       = &&lbl_type,
         [FORTH_TOK_CR]         = &&lbl_cr,
         [FORTH_TOK_BYE]        = &&lbl_bye,
+        [FORTH_TOK_WORDS]      = &&lbl_words,
         [FORTH_TOK_FIND_DEV]   = &&lbl_find_dev,
         [FORTH_TOK_PEER]       = &&lbl_peer,
         [FORTH_TOK_CHILD]      = &&lbl_child,
@@ -235,6 +281,8 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_SET_PROP]   = &&lbl_set_prop,
         [FORTH_TOK_MY_SELF]    = &&lbl_my_self,
         [FORTH_TOK_BYTE_LOAD]  = &&lbl_byte_load,
+        [FORTH_TOK_DEV_TREE]   = &&lbl_dev_tree,
+        [FORTH_TOK_HELP]       = &&lbl_help,
     };
 
     #define DISPATCH() do { \
@@ -660,6 +708,18 @@ lbl_byte_load: {
     }
     DISPATCH();
 }
+lbl_words: {
+    forth_words(vm);
+    DISPATCH();
+}
+lbl_dev_tree: {
+    forth_dev_dump(vm);
+    DISPATCH();
+}
+lbl_help: {
+    forth_help(vm);
+    DISPATCH();
+}
 lbl_unknown: {
     forth_abort(vm, "Undefined FCode bytecode token");
     goto lbl_done;
@@ -800,6 +860,15 @@ lbl_done:
             case FORTH_TOK_BYE:
                 vm->halted = true;
                 return 0;
+            case FORTH_TOK_WORDS:
+                forth_words(vm);
+                break;
+            case FORTH_TOK_DEV_TREE:
+                forth_dev_dump(vm);
+                break;
+            case FORTH_TOK_HELP:
+                forth_help(vm);
+                break;
             default:
                 forth_abort(vm, "Unknown token in switch");
                 return -1;
@@ -812,6 +881,7 @@ lbl_done:
 /* ── Outer Interpreter & Evaluator ──────────────────────────────── */
 int forth_eval(ForthVM *vm, const char *line) {
     if (!vm || !line) return 0;
+    vm->halted = false;
     const char *p = line;
 
     while (*p && !vm->halted) {
@@ -943,7 +1013,7 @@ int forth_eval(ForthVM *vm, const char *line) {
         char errmsg[64];
         snprintf(errmsg, sizeof(errmsg), "? %s", tok);
         forth_abort(vm, errmsg);
-        break;
+        return -1;
     }
 
     return vm->last_error;
@@ -1016,6 +1086,12 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "TYPE",       FORTH_TOK_TYPE,       0);
     dict_create_word(vm, "CR",         FORTH_TOK_CR,         0);
     dict_create_word(vm, "BYE",        FORTH_TOK_BYE,        0);
+    dict_create_word(vm, "WORDS",      FORTH_TOK_WORDS,      0);
+    dict_create_word(vm, "DEV-TREE",   FORTH_TOK_DEV_TREE,   0);
+    dict_create_word(vm, "LS",         FORTH_TOK_DEV_TREE,   0);
+    dict_create_word(vm, "HELP",       FORTH_TOK_HELP,       0);
+    dict_create_word(vm, "?",          FORTH_TOK_HELP,       0);
+    dict_create_word(vm, "INFO",       FORTH_TOK_HELP,       0);
 
     dict_create_word(vm, "find-device", FORTH_TOK_FIND_DEV,   0);
     dict_create_word(vm, "peer",        FORTH_TOK_PEER,       0);

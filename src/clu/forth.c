@@ -70,6 +70,8 @@ static void init_system_devtree(ForthVM *vm) {
     if (mem) {
         static const uint32_t mem_size = (uint32_t)FORTH_ARENA_MAX;
         forth_dev_set_prop(mem, "reg", &mem_size, sizeof(mem_size));
+        static const char mem_model[] = "Zero-heap Arena";
+        forth_dev_set_prop(mem, "model", mem_model, (uint16_t)strlen(mem_model));
     }
 
     FCodeNode *bus = forth_dev_create(vm, "bus", root);
@@ -101,21 +103,31 @@ void clu_cmd_forth(const char *args, ShellOutputFn out, void *ud) {
         }
     }
 
-    out("ANS Forth-2012 / OpenFirmware Engine (B-System CLU)", COLOR_CYAN, ud);
+    out("T-FW OpenFirmware / ANS Forth Engine (B-System CLU)", COLOR_CYAN, ud);
     char status[80];
-    snprintf(status, sizeof(status), "Cell: %d-bit, Zero-heap Arena: %d KB",
+    snprintf(status, sizeof(status), "IEEE 1275 Device-Tree (%d-bit Cells, %d KB Arena)",
              (int)(FORTH_CELL_SIZE * 8), (int)(FORTH_ARENA_MAX / 1024));
     out(status, COLOR_LTGRAY, ud);
-    out("Type 'bye' or 'exit' to return to shell.", COLOR_YELLOW, ud);
+    out("Type WORDS or DEV-TREE for info.", COLOR_YELLOW, ud);
+    out("Type 'bye' or 'exit' to return to shell.", COLOR_LTGRAY, ud);
+}
+
+int clu_forth_is_halted(void) {
+    return s_forth_vm.halted;
+}
+
+void clu_forth_reset_halt(void) {
+    s_forth_vm.halted = false;
 }
 
 /* ── Interactive CLI REPL ───────────────────────────────────────── */
 int forth_repl(ForthVM *vm) {
     char line[FORTH_TIB_MAX];
-    printf("ANS Forth-2012 Core Subset / OpenFirmware Engine (T-FW / B-System)\n");
-    printf("Cell: %d-bit, Zero-Heap Arena: %d KB, L1 Cache-Optimized\n",
+    printf("T-FW OpenFirmware / ANS Forth Engine (B-System CLU)\n");
+    printf("IEEE 1275 Device-Tree (%d-bit Cells, %d KB Arena)\n",
            (int)(FORTH_CELL_SIZE * 8), (int)(FORTH_ARENA_MAX / 1024));
-    printf("Type 'BYE' to exit.\n\n");
+    printf("Type WORDS or DEV-TREE for info.\n");
+    printf("Type 'BYE' or 'exit' to return to shell.\n\n");
 
     while (!vm->halted) {
         printf(vm->state ? "] " : "ok ");

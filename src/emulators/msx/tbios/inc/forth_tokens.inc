@@ -74,15 +74,16 @@ TOK_IMMEDIATE:      equ     $42
 TOK_COMPILE_COMMA:  equ     $43
 TOK_PARSE_NAME:     equ     $44
 
-; 0x48 - 0x4D: I/O & System
+; 0x48 - 0x4E: I/O & System
 TOK_EMIT:           equ     $48
 TOK_KEY:            equ     $49
 TOK_KEY_Q:          equ     $4A
 TOK_TYPE:           equ     $4B
 TOK_CR:             equ     $4C
 TOK_BYE:            equ     $4D
+TOK_WORDS:          equ     $4E
 
-; 0x60 - 0x67: OpenFirmware (IEEE 1275) Device-Tree Extensions
+; 0x60 - 0x69: OpenFirmware (IEEE 1275) Device-Tree Extensions
 TOK_FIND_DEV:       equ     $60
 TOK_PEER:           equ     $61
 TOK_CHILD:          equ     $62
@@ -91,6 +92,8 @@ TOK_GET_PROP:       equ     $64
 TOK_SET_PROP:       equ     $65
 TOK_MY_SELF:        equ     $66
 TOK_BYTE_LOAD:      equ     $67
+TOK_DEV_TREE:       equ     $68
+TOK_HELP:           equ     $69
 
 ; 0xFF: Token Stream Escape
 TOK_ESCAPE:         equ     $FF

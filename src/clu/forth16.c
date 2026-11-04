@@ -36,6 +36,8 @@ static void init_16bit_devtree(ForthVM *vm) {
     if (mem) {
         static const uint16_t mem_size = (uint16_t)FORTH_ARENA_MAX;
         forth_dev_set_prop(mem, "reg", &mem_size, sizeof(mem_size));
+        static const char mem_model[] = "Zero-heap Arena";
+        forth_dev_set_prop(mem, "model", mem_model, (uint16_t)strlen(mem_model));
     }
 }
 
@@ -71,10 +73,11 @@ int main(int argc, char **argv) {
         return s_forth16_vm.last_error;
     }
 
-    printf("ANS Forth-2012 Core Subset (16-Bit Cell Native Profile)\n");
-    printf("Cell: %d-bit (Range: %d .. %d), Arena: %d KB\n",
-           (int)(FORTH_CELL_SIZE * 8), -32768, 32767, (int)(FORTH_ARENA_MAX / 1024));
-    printf("Bit-exact parity profile for T-FW MSX & PC-98.\n\n");
+    printf("T-FW OpenFirmware / ANS Forth Engine (16-Bit Profile)\n");
+    printf("IEEE 1275 Device-Tree (%d-bit Cells, %d KB Arena)\n",
+           (int)(FORTH_CELL_SIZE * 8), (int)(FORTH_ARENA_MAX / 1024));
+    printf("Type WORDS or DEV-TREE for info.\n");
+    printf("Type 'BYE' or 'exit' to return to shell.\n\n");
 
     char line[FORTH_TIB_MAX];
     while (!s_forth16_vm.halted) {

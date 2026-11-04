@@ -132,15 +132,16 @@ enum ForthToken {
     FORTH_TOK_COMPILE_COMMA= 0x43,
     FORTH_TOK_PARSE_NAME   = 0x44,
 
-    /* 0x48 - 0x4D: I/O & System */
+    /* 0x48 - 0x4E: I/O & System */
     FORTH_TOK_EMIT         = 0x48,
     FORTH_TOK_KEY          = 0x49,
     FORTH_TOK_KEY_Q        = 0x4A,
     FORTH_TOK_TYPE         = 0x4B,
     FORTH_TOK_CR           = 0x4C,
     FORTH_TOK_BYE          = 0x4D,
+    FORTH_TOK_WORDS        = 0x4E,
 
-    /* 0x60 - 0x67: OpenFirmware (IEEE 1275) Device-Tree Extensions */
+    /* 0x60 - 0x69: OpenFirmware (IEEE 1275) Device-Tree Extensions */
     FORTH_TOK_FIND_DEV     = 0x60,
     FORTH_TOK_PEER         = 0x61,
     FORTH_TOK_CHILD        = 0x62,
@@ -149,6 +150,8 @@ enum ForthToken {
     FORTH_TOK_SET_PROP     = 0x65,
     FORTH_TOK_MY_SELF      = 0x66,
     FORTH_TOK_BYTE_LOAD    = 0x67,
+    FORTH_TOK_DEV_TREE     = 0x68,
+    FORTH_TOK_HELP         = 0x69,
 
     /* 0xFF: Token Stream Escape */
     FORTH_TOK_ESCAPE       = 0xFF,

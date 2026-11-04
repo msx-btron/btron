@@ -905,13 +905,18 @@ static void gterm_execute_cmd(WND *wnd, GTermState *st, const char *cmd_line) {
     st->cmd_hist_idx = st->cmd_hist_count;
 
     if (st->app_mode == GTERM_MODE_FORTH) {
-        if (strcmp(cmd_line, "bye") == 0 || strcmp(cmd_line, "BYE") == 0 ||
-            strcmp(cmd_line, "exit") == 0 || strcmp(cmd_line, "quit") == 0) {
+        if (strcasecmp(cmd_line, "bye") == 0 || strcasecmp(cmd_line, "exit") == 0 ||
+            strcasecmp(cmd_line, "quit") == 0) {
             st->app_mode = GTERM_MODE_SHELL;
             snprintf(st->prompt, sizeof(st->prompt) - 1, "[%s]%% ", g_cwd_path[0] ? g_cwd_path : "SYS");
             return;
         }
         clu_forth(cmd_line, gterm_shell_out, st);
+        if (clu_forth_is_halted()) {
+            st->app_mode = GTERM_MODE_SHELL;
+            snprintf(st->prompt, sizeof(st->prompt) - 1, "[%s]%% ", g_cwd_path[0] ? g_cwd_path : "SYS");
+            clu_forth_reset_halt();
+        }
         return;
     }
 

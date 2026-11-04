@@ -12,6 +12,16 @@
 static int g_tests_passed = 0;
 static int g_tests_total = 0;
 
+static char s_test_output[1024];
+static size_t s_test_idx = 0;
+
+static void test_emit(char c) {
+    if (s_test_idx < sizeof(s_test_output) - 1) {
+        s_test_output[s_test_idx++] = c;
+        s_test_output[s_test_idx] = '\0';
+    }
+}
+
 #define TEST_ASSERT(cond, msg) do { \
     g_tests_total++; \
     if (cond) { \
@@ -149,6 +159,48 @@ int main(void) {
 
     FCodeNode *found = forth_dev_find(&vm, "/vdp@98");
     TEST_ASSERT(found == test_dev, "Path resolution for '/vdp@98' matches created node");
+
+    /* 7. Words, Device-Tree & Interactive Recovery (CLU Parity with MSX) */
+    printf("[7] Verifying CLU Words, Dev-Tree, Help & Non-Fatal Abort Recovery...\n");
+    vm.emit_fn = test_emit;
+
+    /* Case-insensitive words */
+    s_test_idx = 0;
+    forth_eval(&vm, "words");
+    TEST_ASSERT(strstr(s_test_output, "DUP") != NULL && strstr(s_test_output, "DEV-TREE") != NULL,
+                "Case-insensitive 'words' outputs dictionary words");
+
+    /* Case-insensitive dev-tree */
+    s_test_idx = 0;
+    forth_eval(&vm, "dev-tree");
+    TEST_ASSERT(strstr(s_test_output, "/ (Root)") != NULL && strstr(s_test_output, "/vdp@98") != NULL,
+                "Case-insensitive 'dev-tree' dumps device hierarchy");
+
+    /* Case-insensitive help & ? & info */
+    s_test_idx = 0;
+    forth_eval(&vm, "help");
+    TEST_ASSERT(strstr(s_test_output, "OpenFirmware") != NULL && strstr(s_test_output, "WORDS") != NULL,
+                "Case-insensitive 'help' prints commands summary");
+
+    s_test_idx = 0;
+    forth_eval(&vm, "?");
+    TEST_ASSERT(strstr(s_test_output, "OpenFirmware") != NULL, "'?' aliases to help");
+
+    s_test_idx = 0;
+    forth_eval(&vm, "info");
+    TEST_ASSERT(strstr(s_test_output, "OpenFirmware") != NULL, "'info' aliases to help");
+
+    /* Non-fatal abort recovery */
+    s_test_idx = 0;
+    int err_code = forth_eval(&vm, "some_unknown_command");
+    TEST_ASSERT(err_code != 0, "Unknown word returns non-zero error code");
+    TEST_ASSERT(strstr(s_test_output, "? some_unknown_command") != NULL, "Unknown word prints diagnostic '? <word>'");
+    TEST_ASSERT(vm.halted == false, "VM is not permanently halted after abort");
+
+    /* Subsequent command executes cleanly */
+    forth_vm_reset_stacks(&vm);
+    forth_eval(&vm, "40 2 +");
+    TEST_ASSERT(vm.dsp == 0 && vm.dstack[0] == 42, "Subsequent command executes cleanly after error");
 
     printf("==========================================================\n");
     printf(" ANS Forth Core Tests: %d/%d passed (100%% Success)\n", g_tests_passed, g_tests_total);
