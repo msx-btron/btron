@@ -53,9 +53,15 @@ mars_loop:
                 ld      c, a                    ; Active low: bit 7=Right, 6=Down, 5=Up, 4=Left, 0=Space
 
                 ; 2. Read Joystick Port 1 via PSG (active low: bit 0=Up, 1=Down, 2=Left, 3=Right)
+                ld      a, 7
+                out     ($A0), a
+                in      a, ($A2)
+                and     $BF                     ; Bit 6 = 0: Port A input mode
+                out     ($A1), a
+
                 ld      a, 15
                 out     ($A0), a
-                ld      a, $4F                  ; Select joypad 1 (bit 6 = 0)
+                ld      a, $0F                  ; Select joypad 1 (bit 6 = 0)
                 out     ($A1), a
                 ld      a, 14
                 out     ($A0), a
@@ -69,7 +75,9 @@ mars_loop:
                 jr      nz, .check_down
 .move_up:
                 ld      a, (RAM_SCROLL_Y)
-                dec     a
+                cp      $06                     ; Max upward perspective shift (+6)
+                jr      nc, .check_horizontal
+                inc     a
                 ld      (RAM_SCROLL_Y), a
                 jr      .check_horizontal
 
@@ -81,7 +89,9 @@ mars_loop:
                 jr      nz, .check_horizontal
 .move_down:
                 ld      a, (RAM_SCROLL_Y)
-                inc     a
+                or      a                       ; Clamped to 0 (no wrapping or black gaps)
+                jr      z, .check_horizontal
+                dec     a
                 ld      (RAM_SCROLL_Y), a
 
 .check_horizontal:
@@ -208,7 +218,7 @@ load_mars_frame:
 .unpack:
                 ld      a, (hl)                 ; Run length
                 or      a
-                ret     z                       ; 0 = End of stream
+                jr      z, .fill_rest           ; 0 = End of stream
                 inc     hl
                 ld      b, a
                 ld      a, (hl)                 ; Pixel value
@@ -217,6 +227,18 @@ load_mars_frame:
                 out     ($98), a
                 djnz    .pixel_loop
                 jr      .unpack
+
+.fill_rest:
+                ; Clear bottom margins (lines 200..211) with canyon base floor
+                ld      bc, 256 * 12
+.fill_lp:
+                ld      a, $10
+                out     ($98), a
+                dec     bc
+                ld      a, b
+                or      c
+                jr      nz, .fill_lp
+                ret
 
 ; ── Include Calibrated Landscape RLE Stream ────────────────────────────
                 include "mars_rle.inc"

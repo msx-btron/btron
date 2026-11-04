@@ -44,7 +44,7 @@ extern "C" {
     #define FORTH_CELL_SHIFT ((sizeof(forth_cell_t) == 8) ? 3 : 2)
     #define FORTH_STACK_MAX  512
     #define FORTH_RSTACK_MAX 256
-    #define FORTH_ARENA_MAX  (256 * 1024)
+    #define FORTH_ARENA_MAX  (512 * 1024)
     #define FORTH_TIB_MAX    1024
     #define FORTH_DEV_MAX    256
 #endif
@@ -180,6 +180,7 @@ enum ForthToken {
     FORTH_TOK_WND_ON_PAINT = 0x7A,
     FORTH_TOK_MS           = 0x7B,
     FORTH_TOK_DISPLAY_Q    = 0x7C,
+    FORTH_TOK_LOAD_FILE    = 0x7E,
 
     /* 0xFF: Token Stream Escape */
     FORTH_TOK_ESCAPE       = 0xFF,

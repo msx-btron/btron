@@ -58,11 +58,24 @@ __attribute__((weak)) int vfs_read_file(const char *path, char *buf, size_t max_
     (void)path; (void)buf; (void)max_bytes; (void)out_bytes;
     return -1;
 }
+__attribute__((weak)) int vfs_read_blob(const char *path, void *buf, size_t cap, size_t *out_bytes) {
+    (void)path; (void)buf; (void)cap; (void)out_bytes;
+    return -1;
+}
+__attribute__((weak)) BOOL wnd_mgr_contains(const WND *wnd) {
+    (void)wnd;
+    return FALSE;
+}
+__attribute__((weak)) void wnd_inval_damage_rect(const RECT *r) {
+    (void)r;
+}
 
 static ForthVM s_forth_vm;
 static int s_vm_initialized = 0;
 static ShellOutputFn s_clu_out = NULL;
 static void *s_clu_ud = NULL;
+
+static void clu_forth_reset_vm(void);
 static char s_emit_buf[256];
 static size_t s_emit_idx = 0;
 static void clu_forth_flush(void);
@@ -133,6 +146,7 @@ static volatile bool s_forth_task_running = false;
 static void forth_worker_task(VW exinf) {
     (void)exinf;
     s_forth_task_running = true;
+    clu_forth_reset_vm();
     clu_forth_include_file(&s_forth_vm, s_forth_script_path);
     clu_forth_flush();
     s_forth_task_running = false;
@@ -187,27 +201,6 @@ static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
             if (s_forth_tskid > 0) {
                 wup_tsk(s_forth_tskid);
             }
-            FORTH_LOCK();
-            if (wnd && wnd_mgr_contains(wnd)) {
-                if (wnd == s_forth_active_wnd) {
-                    s_forth_active_wnd = NULL;
-                }
-                cls_wnd(wnd);
-            }
-            FORTH_UNLOCK();
-            return;
-            s_forth_vm.halted = true;
-            if (s_forth_tskid > 0) {
-                wup_tsk(s_forth_tskid);
-            }
-            FORTH_LOCK();
-            if (wnd && wnd_mgr_contains(wnd)) {
-                if (wnd == s_forth_active_wnd) {
-                    s_forth_active_wnd = NULL;
-                }
-                cls_wnd(wnd);
-            }
-            FORTH_UNLOCK();
             return;
         } else if (k < 128) {
             forth_enqueue_key((int)k);
@@ -529,6 +522,43 @@ static int clu_forth_include_file(ForthVM *vm, const char *path) {
     return vm->last_error;
 }
 
+static forth_cell_t clu_forth_file_read(ForthVM *vm, forth_cell_t dst_addr, forth_cell_t max_bytes, const char *path) {
+    if (!vm || dst_addr < 0 || dst_addr + max_bytes > FORTH_ARENA_MAX || !path || !*path) return 0;
+    size_t got_bytes = 0;
+    if (vfs_read_blob(path, &vm->ram[dst_addr], (size_t)max_bytes, &got_bytes) == 0 && got_bytes > 0) {
+        return (forth_cell_t)got_bytes;
+    }
+    char sys_path[128];
+    snprintf(sys_path, sizeof(sys_path), "/SYS/%s", path);
+    if (vfs_read_blob(sys_path, &vm->ram[dst_addr], (size_t)max_bytes, &got_bytes) == 0 && got_bytes > 0) {
+        return (forth_cell_t)got_bytes;
+    }
+    char lower_sys[128];
+    snprintf(lower_sys, sizeof(lower_sys), "/sys/%s", path);
+    if (vfs_read_blob(lower_sys, &vm->ram[dst_addr], (size_t)max_bytes, &got_bytes) == 0 && got_bytes > 0) {
+        return (forth_cell_t)got_bytes;
+    }
+#if BTRON_HOSTED
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        char asset_path[128];
+        snprintf(asset_path, sizeof(asset_path), "assets/forth/%s", path);
+        f = fopen(asset_path, "rb");
+    }
+    if (!f) {
+        char sys_fpath[128];
+        snprintf(sys_fpath, sizeof(sys_fpath), "SYS/%s", path);
+        f = fopen(sys_fpath, "rb");
+    }
+    if (f) {
+        got_bytes = fread(&vm->ram[dst_addr], 1, (size_t)max_bytes, f);
+        fclose(f);
+        return (forth_cell_t)got_bytes;
+    }
+#endif
+    return 0;
+}
+
 static void clu_forth_flush(void) {
     if (s_clu_out && s_emit_idx > 0) {
         s_emit_buf[s_emit_idx] = '\0';
@@ -663,25 +693,30 @@ static void init_system_devtree(ForthVM *vm) {
     }
 }
 
+static void clu_forth_reset_vm(void) {
+    forth_vm_init(&s_forth_vm);
+    s_forth_vm.emit_fn = clu_forth_emit;
+    s_forth_vm.include_fn = clu_forth_include_file;
+    s_forth_vm.file_read_fn = clu_forth_file_read;
+    s_forth_vm.wnd_open_fn = clu_forth_wnd_open;
+    s_forth_vm.wnd_close_fn = clu_forth_wnd_close;
+    s_forth_vm.wnd_pixel_fn = clu_forth_wnd_pixel;
+    s_forth_vm.wnd_vline_fn = clu_forth_wnd_vline;
+    s_forth_vm.wnd_rect_fn = clu_forth_wnd_rect;
+    s_forth_vm.wnd_clear_fn = clu_forth_wnd_clear;
+    s_forth_vm.wnd_update_fn = clu_forth_wnd_update;
+    s_forth_vm.wnd_size_fn = clu_forth_wnd_size;
+    s_forth_vm.wnd_on_paint_fn = clu_forth_wnd_on_paint;
+    s_forth_vm.ms_fn = clu_forth_ms;
+    s_forth_vm.key_q_fn = clu_forth_key_q;
+    s_forth_vm.key_fn = clu_forth_key;
+    init_system_devtree(&s_forth_vm);
+    s_vm_initialized = 1;
+}
+
 static void clu_forth_init_vm(void) {
     if (!s_vm_initialized) {
-        forth_vm_init(&s_forth_vm);
-        s_forth_vm.emit_fn = clu_forth_emit;
-        s_forth_vm.include_fn = clu_forth_include_file;
-        s_forth_vm.wnd_open_fn = clu_forth_wnd_open;
-        s_forth_vm.wnd_close_fn = clu_forth_wnd_close;
-        s_forth_vm.wnd_pixel_fn = clu_forth_wnd_pixel;
-        s_forth_vm.wnd_vline_fn = clu_forth_wnd_vline;
-        s_forth_vm.wnd_rect_fn = clu_forth_wnd_rect;
-        s_forth_vm.wnd_clear_fn = clu_forth_wnd_clear;
-        s_forth_vm.wnd_update_fn = clu_forth_wnd_update;
-        s_forth_vm.wnd_size_fn = clu_forth_wnd_size;
-        s_forth_vm.wnd_on_paint_fn = clu_forth_wnd_on_paint;
-        s_forth_vm.ms_fn = clu_forth_ms;
-        s_forth_vm.key_q_fn = clu_forth_key_q;
-        s_forth_vm.key_fn = clu_forth_key;
-        init_system_devtree(&s_forth_vm);
-        s_vm_initialized = 1;
+        clu_forth_reset_vm();
     }
 }
 

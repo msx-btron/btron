@@ -26,6 +26,11 @@ WND* open_mars_window(void);
 WND* open_mars_window_rect(int x, int y, int w, int h);
 
 /*
+ * Render a complete Tim Clarke 1993 Mars frame directly to an ARGB pixel buffer.
+ */
+void mars_render_to_buffer(COLOR *dst, int dw, int dh, uint16_t cam_x, uint16_t cam_y, int32_t jump_h);
+
+/*
  * CLU Shell Command Entrypoint: 'mars'
  */
 void clu_cmd_mars(const char *args, ShellOutputFn out, void *ud);

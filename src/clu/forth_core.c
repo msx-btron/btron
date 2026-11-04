@@ -29,6 +29,30 @@ static bool default_key_q(void) {
     return false;
 }
 
+static forth_cell_t default_file_read(ForthVM *vm, forth_cell_t dst_addr, forth_cell_t max_bytes, const char *path) {
+    if (!vm || dst_addr < 0 || dst_addr + max_bytes > FORTH_ARENA_MAX || !path || !*path) return 0;
+#if BTRON_HOSTED || defined(FORTH_STANDALONE) || __STDC_HOSTED__
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "assets/forth/%s", path);
+        f = fopen(buf, "rb");
+    }
+    if (!f) {
+        char buf[256];
+        snprintf(buf, sizeof(buf), "SYS/%s", path);
+        f = fopen(buf, "rb");
+    }
+    if (!f) return 0;
+    size_t n = fread(&vm->ram[dst_addr], 1, (size_t)max_bytes, f);
+    fclose(f);
+    return (forth_cell_t)n;
+#else
+    (void)dst_addr; (void)max_bytes; (void)path;
+    return 0;
+#endif
+}
+
 static int forth_strncasecmp(const char *s1, const char *s2, size_t n) {
     for (size_t i = 0; i < n; i++) {
         char c1 = s1[i];
@@ -344,6 +368,7 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_WND_ON_PAINT] = &&lbl_wnd_on_paint,
         [FORTH_TOK_MS]         = &&lbl_ms,
         [FORTH_TOK_DISPLAY_Q]  = &&lbl_display_q,
+        [FORTH_TOK_LOAD_FILE]  = &&lbl_load_file,
     };
 
     #define DISPATCH() do { \
@@ -1024,6 +1049,27 @@ lbl_display_q: {
     forth_push(vm, has_disp ? -1 : 0);
     DISPATCH();
 }
+lbl_load_file: {
+    forth_cell_t path_u = forth_pop(vm);
+    forth_cell_t path_a = forth_pop(vm);
+    forth_cell_t max_bytes = forth_pop(vm);
+    forth_cell_t dst_addr = forth_pop(vm);
+    char pbuf[256];
+    if (path_a >= 0 && path_a + path_u <= FORTH_ARENA_MAX && path_u < 255) {
+        memcpy(pbuf, &vm->arena[path_a], (size_t)path_u);
+        pbuf[path_u] = '\0';
+    } else {
+        pbuf[0] = '\0';
+    }
+    forth_cell_t n = 0;
+    if (vm->file_read_fn) {
+        n = vm->file_read_fn(vm, dst_addr, max_bytes, pbuf);
+    } else {
+        n = default_file_read(vm, dst_addr, max_bytes, pbuf);
+    }
+    forth_push(vm, n);
+    DISPATCH();
+}
 lbl_unknown: {
     char errbuf[64];
     snprintf(errbuf, sizeof(errbuf), "Undefined FCode token 0x%02X at offset %ld",
@@ -1446,6 +1492,27 @@ lbl_done:
                 forth_push(vm, has_disp ? -1 : 0);
                 break;
             }
+            case FORTH_TOK_LOAD_FILE: {
+                forth_cell_t path_u = forth_pop(vm);
+                forth_cell_t path_a = forth_pop(vm);
+                forth_cell_t max_bytes = forth_pop(vm);
+                forth_cell_t dst_addr = forth_pop(vm);
+                char pbuf[256];
+                if (path_a >= 0 && path_a + path_u <= FORTH_ARENA_MAX && path_u < 255) {
+                    memcpy(pbuf, &vm->arena[path_a], (size_t)path_u);
+                    pbuf[path_u] = '\0';
+                } else {
+                    pbuf[0] = '\0';
+                }
+                forth_cell_t n = 0;
+                if (vm->file_read_fn) {
+                    n = vm->file_read_fn(vm, dst_addr, max_bytes, pbuf);
+                } else {
+                    n = default_file_read(vm, dst_addr, max_bytes, pbuf);
+                }
+                forth_push(vm, n);
+                break;
+            }
             default:
                 forth_abort(vm, "Unknown token in switch");
                 return -1;
@@ -1617,6 +1684,30 @@ static int forth_eval_internal(ForthVM *vm, const char *line) {
                     vm->include_fn(vm, path);
                 }
             }
+            continue;
+        }
+
+        /* Binary file load: '<addr> <max_bytes> LOAD-FILE <path>' */
+        if (!vm->state && tok_len == 9 && forth_strncasecmp(tok, "load-file", 9) == 0) {
+            forth_cell_t max_bytes = forth_pop(vm);
+            forth_cell_t dst_addr = forth_pop(vm);
+            while (*p == ' ' || *p == '\t') p++;
+            const char *pstart = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
+            size_t plen = p - pstart;
+            forth_cell_t n = 0;
+            if (plen > 0) {
+                char path[128];
+                if (plen >= sizeof(path)) plen = sizeof(path) - 1;
+                memcpy(path, pstart, plen);
+                path[plen] = '\0';
+                if (vm->file_read_fn) {
+                    n = vm->file_read_fn(vm, dst_addr, max_bytes, path);
+                } else {
+                    n = default_file_read(vm, dst_addr, max_bytes, path);
+                }
+            }
+            forth_push(vm, n);
             continue;
         }
 
@@ -1982,6 +2073,7 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "WND-ON-PAINT", FORTH_TOK_WND_ON_PAINT, 0);
     dict_create_word(vm, "MS",         FORTH_TOK_MS,         0);
     dict_create_word(vm, "DISPLAY?",   FORTH_TOK_DISPLAY_Q,  0);
+    dict_create_word(vm, "LOAD-FILE",  FORTH_TOK_LOAD_FILE,  0);
     dict_create_word(vm, "INCLUDE",    FORTH_TOK_INCLUDE,    0);
 
     dict_create_word(vm, "find-device", FORTH_TOK_FIND_DEV,   0);

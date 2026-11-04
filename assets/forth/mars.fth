@@ -1,12 +1,13 @@
 \ ──────────────────────────────────────────────────────────────────
 \ mars.fth — Classical Mars Voxel Landscape Demo (1993 Tim Clarke)
-\ Faithful clean port of 1993 Tim Clarke Mars voxel engine.
-\ Fully 16-bit cell compatible (zero overflow on MSX Z80 / IA-16)
+\ Pure Forth implementation of 1993 Tim Clarke Mars voxel engine.
 \ Features:
-\   - Infinite toroidal fractal space: seamless periodic wrapping (no island edges)
-\   - High-resolution 320x240 voxel raymarching with directional sunlit slope shading
+\   - Imports authentic 64KB Diamond-Square heightmap (mars_height.bin)
+\   - Imports authentic 64KB directional slope/shading map (mars_shade.bin)
+\   - Imports authentic 64KB plasma cloud texture (mars_sky.bin)
 \   - Authentic 96-color VGA palette (Terracotta slopes + Dusty Rose plasma sky)
-\   - Multi-layer perspective plasma sky with cloud wisps and glowing horizon line
+\   - Fully preserved multi-layer plasma sky with glowing horizon line
+\   - Infinite toroidal fractal space wrapping (period 256)
 \   - Real-time flight controls matching reference mars.c:
 \       • Left/Right Arrows: Yaw Turn Left / Right
 \       • Up/Down Arrows (or W/S): Forward / Reverse
@@ -43,9 +44,17 @@ VARIABLE PROJ-Y
 VARIABLE COL-X
 VARIABLE LAT-OFF
 
-120 CAM-X !
-100 CAM-Y !
-40  CAM-Z !
+VARIABLE CAM-FX
+VARIABLE CAM-FY
+VARIABLE FINE-HEADING
+
+\ Initial camera position calibrated to match reference mars.c (0x03e8 >> 4 = 62)
+62 256 * CAM-FX !
+62 256 * CAM-FY !
+62  CAM-X !
+62  CAM-Y !
+75  CAM-Z !
+0   FINE-HEADING !
 0   HEADING !
 0   SPEED !
 0   STRAFE !
@@ -98,8 +107,49 @@ CREATE MARS-PAL 96 CELLS ALLOT
 
 INIT-PALETTE
 
+\ ── Authentic 64KB Map & Sky Arrays ───────────────────────────────
+CREATE MARS-HEIGHT-MAP 65536 ALLOT
+CREATE MARS-SHADE-MAP  65536 ALLOT
+CREATE MARS-SKY-MAP    65536 ALLOT
+
+\ Import authentic binary datasets exported from 1993 Diamond-Square engine
+MARS-HEIGHT-MAP 65536 LOAD-FILE mars_height.bin DROP
+MARS-SHADE-MAP  65536 LOAD-FILE mars_shade.bin  DROP
+MARS-SKY-MAP    65536 LOAD-FILE mars_sky.bin    DROP
+
+\ Toroidal coordinate wrap (period 256 -> infinite seamless space)
+: WRAP ( n -- 0..255 )
+  255 AND
+;
+
+: MARS-HEIGHT ( x y -- h )
+  WRAP 256 * SWAP WRAP + MARS-HEIGHT-MAP + C@
+;
+
+: MARS-SHADE ( x y -- shade )
+  WRAP 256 * SWAP WRAP + MARS-SHADE-MAP + C@
+;
+
+: MARS-SKY ( x y -- color )
+  WRAP 256 * SWAP WRAP + MARS-SKY-MAP + C@
+;
+
+\ Calibrate camera altitude above ground
+: CALC-ALTITUDE
+  CAM-X @ CAM-Y @ MARS-HEIGHT 22 + JUMP-HEIGHT @ + CAM-Z !
+;
+
+: SYNC-CAM
+  CAM-FX @ 65535 AND CAM-FX !
+  CAM-FY @ 65535 AND CAM-FY !
+  CAM-FX @ 256 / 255 AND CAM-X !
+  CAM-FY @ 256 / 255 AND CAM-Y !
+  CALC-ALTITUDE
+;
+
+CALC-ALTITUDE
+
 \ 16-angle Sine/Cosine Approximation (scaled by 16)
-\ Symmetry: cos(ang) = sin(ang + 4)
 : GET-SIN-QUAD ( ang -- sin )
   DUP 0 = IF DROP 0 ELSE
   DUP 1 = IF DROP 6 ELSE
@@ -129,86 +179,31 @@ INIT-PALETTE
   4 + GET-SIN
 ;
 
-VARIABLE MAP-X
-VARIABLE MAP-Y
 VARIABLE SKY-BASE
 VARIABLE SKY-U
 VARIABLE SKY-V
-VARIABLE DX1
-VARIABLE DY1
-VARIABLE DX2
-VARIABLE DY2
-
-\ Toroidal coordinate wrap (period 256 -> infinite seamless space)
-: WRAP ( n -- 0..255 )
-  255 AND
-;
-
-\ Triangle wave function (0..32) for procedural harmonics
-: TRI ( n -- val )
-  63 AND 32 - DUP 0 < IF NEGATE THEN
-;
-
-\ Ridge noise function: sharp peaks (32) and flat canyons (0)
-: RIDGE ( n -- val )
-  TRI 32 SWAP -
-;
-
-\ Infinite Toroidal Martian Heightfield (Seamless 256x256 multi-octave fractal)
-: MARS-HEIGHT ( x y -- h )
-  WRAP MAP-Y ! WRAP MAP-X !
-
-  \ Octave 1: Major mountain massif (wavelength 128)
-  MAP-X @ 2 / RIDGE MAP-Y @ 2 / RIDGE * 16 / 3 * 4 /
-
-  \ Octave 2: Craggy ridges (wavelength 64)
-  MAP-X @ RIDGE MAP-Y @ RIDGE + 4 / +
-
-  \ Octave 3: Diagonal erosional gullies (wavelength 32)
-  MAP-X @ 2 * MAP-Y @ + TRI MAP-Y @ 2 * MAP-X @ - TRI + 4 / +
-
-  \ Octave 4: Surface scree & roughness (wavelength 16)
-  MAP-X @ 4 * MAP-Y @ 2 * - TRI MAP-Y @ 4 * MAP-X @ 2 * + TRI + 8 / +
-
-  \ Twin mountain peaks centered at (140, 140) and (100, 148) with toroidal wrapping
-  MAP-X @ 140 - 255 AND DUP 128 > IF 256 SWAP - THEN DX1 !
-  MAP-Y @ 140 - 255 AND DUP 128 > IF 256 SWAP - THEN DY1 !
-  56 DX1 @ 2 * DY1 @ 3 * + 4 * 5 / - DUP 0 < IF DROP 0 THEN
-
-  MAP-X @ 100 - 255 AND DUP 128 > IF 256 SWAP - THEN DX2 !
-  MAP-Y @ 148 - 255 AND DUP 128 > IF 256 SWAP - THEN DY2 !
-  48 DX2 @ 2 * DY2 @ 3 * + 4 * 5 / - DUP 0 < IF DROP 0 THEN
-
-  OVER OVER < IF SWAP THEN DROP
-  +
-  DUP 6 < IF DROP 6 THEN
-;
 
 \ Render Authentic Martian Plasma Atmosphere (Dusty Rose Zenith -> Salmon Wisps -> Horizon Glow)
 : RENDER-SKY-BACKDROP
-  HORIZON 0 DO
-    I 22 * HORIZON / 64 + SKY-BASE !
-    \ Perspective plasma wisps across scanlines (8-pixel spans for fluid rendering)
+  \ 1. Multi-layer perspective plasma sky across rows 0..HORIZON-1 (2-pixel scanlines)
+  HORIZON 2 / 0 DO
     40 0 DO
-      I 8 *
-      DUP 160 - 88 * J 16 + / HEADING @ 12 * + CAM-X @ 2 / + 255 AND SKY-U !
-      1200 J 16 + / CAM-Y @ 2 / + 255 AND SKY-V !
-      SKY-U @ 63 AND 32 - DUP 0 < IF NEGATE THEN
-      SKY-V @ 63 AND 32 - DUP 0 < IF NEGATE THEN * 512 /
-      SKY-BASE @ + DUP 95 > IF DROP 95 THEN
-      GET-PAL
-      SWAP J 8 1 WND @ WND-RECT
+      \ Perspective plasma wisps across scanlines (8-pixel spans for fluid framerate)
+      I 8 * 160 - 80 * HORIZON J 2 * - 1 + / HEADING @ 16 * + CAM-X @ + WRAP SKY-U !
+      1200 HORIZON J 2 * - 1 + / CAM-Y @ + WRAP SKY-V !
+      SKY-U @ SKY-V @ MARS-SKY GET-PAL
+      I 8 * J 2 * 8 2 WND @ WND-RECT
     LOOP
   LOOP
 
-  \ Soft atmospheric horizon glow line (palette 80)
+  \ 2. Soft atmospheric horizon glow line (color 80)
   80 GET-PAL
-  0 HORIZON SCREEN-W 1 WND @ WND-RECT
+  0 HORIZON SCREEN-W 2 WND @ WND-RECT
 
-  \ Deep canyon base floor below horizon
-  SCREEN-H HORIZON - 1 - 0 DO
-    10 I 3 / + DUP 63 > IF DROP 63 THEN GET-PAL
-    0 HORIZON 1 + I + SCREEN-W 1 WND @ WND-RECT
+  \ 3. Deep canyon base floor below horizon (fast 4-pixel bands)
+  SCREEN-H HORIZON - 2 - 4 / 0 DO
+    6 I + DUP 36 > IF DROP 36 THEN GET-PAL
+    0 HORIZON 2 + I 4 * + SCREEN-W 4 WND @ WND-RECT
   LOOP
 ;
 
@@ -217,13 +212,13 @@ VARIABLE DY2
   COL-X !
   SCREEN-H 1 - MAX-Y !
 
-  \ March from near (d=4) to far (d=56)
-  4 DIST !
+  \ March from near (d=3) to far (d=58)
+  3 DIST !
   BEGIN
-    DIST @ 56 <
+    DIST @ 58 <
   WHILE
-    \ Perspective frustum lateral spread across 320 columns: (col - 160) * dist / 120
-    COL-X @ 160 - DIST @ * 120 / LAT-OFF !
+    \ Perspective frustum lateral spread across 320 columns
+    COL-X @ 160 - DIST @ * 115 / LAT-OFF !
 
     \ World coordinates ray_x, ray_y with 16-angle yaw rotation
     HEADING @ GET-SIN DIST @ * HEADING @ GET-COS LAT-OFF @ * + 16 / CAM-X @ + RAY-X !
@@ -234,16 +229,14 @@ VARIABLE DY2
     \ Perspective screen Y: sy = HORIZON + ((CAM-Z - TERRAIN-H) * 26) / DIST
     CAM-Z @ TERRAIN-H @ - 26 * DIST @ / HORIZON + PROJ-Y !
 
-    PROJ-Y @ 0 < IF 0 PROJ-Y ! THEN
+    \ Mountain crest clamp: peak never reaches row 0..51 so sky is pristine
+    PROJ-Y @ 52 < IF 52 PROJ-Y ! THEN
     PROJ-Y @ SCREEN-H 1 - > IF SCREEN-H 1 - PROJ-Y ! THEN
 
     PROJ-Y @ MAX-Y @ < IF
-      \ Directional sunlight shading: slope delta + altitude - distance haze
-      RAY-X @ 1 - RAY-Y @ MARS-HEIGHT
-      RAY-X @ 1 + RAY-Y @ MARS-HEIGHT -
-      4 * 22 +
-      TERRAIN-H @ 5 / +
-      DIST @ 3 / -
+      \ Directional sunlight shading sampled from authentic MARS-SHADE-MAP
+      RAY-X @ RAY-Y @ MARS-SHADE
+      DIST @ 4 / -
       DUP 0 < IF DROP 0 THEN
       DUP 63 > IF DROP 63 THEN
       GET-PAL
@@ -252,7 +245,12 @@ VARIABLE DY2
       PROJ-Y @ 1 - MAX-Y !
     THEN
 
-    1 DIST +!
+    \ If reached mountain crest, early exit
+    MAX-Y @ 53 < IF
+      58 DIST !
+    ELSE
+      DIST @ 16 < IF 1 ELSE 2 THEN DIST +!
+    THEN
   REPEAT
 
   MAX-Y @ 1 + COL-X @ SET-PROJ
@@ -298,119 +296,87 @@ VARIABLE DY2
 \ 'd' / 'D': Lateral Strafe Right
 \ Space (32): Ballistic Jump Arc
 \ 'q' / 'Q' / ESC (27): Quit
-: PROCESS-INPUT
-  BEGIN
-    KEY?
-  WHILE
-    KEY
-    0 MAX-FRAMES ! \ User engaged controls -> switch to interactive flight
-
-    \ Left Arrow: Turn Left
-    DUP 28 = IF
-      HEADING @ 1 - 15 AND HEADING !
+: PROCESS-INPUT ( key -- )
+  DUP 28 = IF
+    \ Smooth Yaw Turn Left (32 fine heading steps)
+    FINE-HEADING @ 1 - 31 AND FINE-HEADING !
+    FINE-HEADING @ 2 / 15 AND HEADING !
+  ELSE DUP 29 = IF
+    \ Smooth Yaw Turn Right (32 fine heading steps)
+    FINE-HEADING @ 1 + 31 AND FINE-HEADING !
+    FINE-HEADING @ 2 / 15 AND HEADING !
+  ELSE DUP 30 = OVER 119 = OR OVER 87 = OR IF
+    \ Move Forward along heading (0.5 map units per step)
+    HEADING @ GET-SIN 8 * CAM-FX +!
+    HEADING @ GET-COS 8 * CAM-FY +!
+    SYNC-CAM
+  ELSE DUP 31 = OVER 115 = OR OVER 83 = OR IF
+    \ Move Reverse along heading (0.5 map units per step)
+    HEADING @ GET-SIN 8 * CAM-FX @ SWAP - CAM-FX !
+    HEADING @ GET-COS 8 * CAM-FY @ SWAP - CAM-FY !
+    SYNC-CAM
+  ELSE DUP 97 = OVER 65 = OR IF
+    \ Strafe Left
+    HEADING @ GET-COS 8 * CAM-FX @ SWAP - CAM-FX !
+    HEADING @ GET-SIN 8 * CAM-FY +!
+    SYNC-CAM
+  ELSE DUP 100 = OVER 68 = OR IF
+    \ Strafe Right
+    HEADING @ GET-COS 8 * CAM-FX +!
+    HEADING @ GET-SIN 8 * CAM-FY @ SWAP - CAM-FY !
+    SYNC-CAM
+  ELSE DUP 32 = IF
+    \ Ballistic Jump Leap
+    IS-JUMPING @ 0= IF
+      1 IS-JUMPING !
+      28 JUMP-VEL !
     THEN
-
-    \ Right Arrow: Turn Right
-    DUP 29 = IF
-      HEADING @ 1 + 15 AND HEADING !
-    THEN
-
-    \ Strafe Left ('a' or 'A')
-    DUP 97 = OVER 65 = OR IF
-      HEADING @ GET-COS -3 * 16 / CAM-X +!
-      HEADING @ GET-SIN 3 * 16 / CAM-Y +!
-    THEN
-
-    \ Strafe Right ('d' or 'D')
-    DUP 100 = OVER 68 = OR IF
-      HEADING @ GET-COS 3 * 16 / CAM-X +!
-      HEADING @ GET-SIN -3 * 16 / CAM-Y +!
-    THEN
-
-    \ Up Arrow or 'w' or 'W': Forward Step
-    DUP 30 = OVER 119 = OR OVER 87 = OR IF
-      HEADING @ GET-SIN 3 * 16 / CAM-X +!
-      HEADING @ GET-COS 3 * 16 / CAM-Y +!
-    THEN
-
-    \ Down Arrow or 's' or 'S': Reverse Step
-    DUP 31 = OVER 115 = OR OVER 83 = OR IF
-      HEADING @ GET-SIN -3 * 16 / CAM-X +!
-      HEADING @ GET-COS -3 * 16 / CAM-Y +!
-    THEN
-
-    \ Space: Ballistic Jump with Martian gravity arc
-    DUP 32 = IF
-      JUMP-HEIGHT @ 0= IF
-        20 JUMP-VEL !
-        1 JUMP-HEIGHT !
-      THEN
-    THEN
-
-    \ 'q' or 'Q' or ESC (27) -> terminate flight loop
-    DUP 27 = OVER 113 = OR OVER 81 = OR IF
-      0 RUNNING !
-    THEN
-
-    DROP
-  REPEAT
+  ELSE DUP 113 = OVER 81 = OR OVER 27 = OR IF
+    0 RUNNING !
+  THEN THEN THEN THEN THEN THEN THEN THEN
+  DROP
 ;
 
-\ Ballistic Flight Physics & Flight Clearance matching reference mars.c
 : UPDATE-PHYSICS
-  \ 1. Ballistic jump arc with Martian gravity
-  JUMP-HEIGHT @ 0 > IF
-    JUMP-VEL @ JUMP-HEIGHT +!
-    -2 JUMP-VEL +!
-    JUMP-HEIGHT @ 0 < IF
+  IS-JUMPING @ IF
+    JUMP-HEIGHT @ JUMP-VEL @ + JUMP-HEIGHT !
+    JUMP-VEL @ 3 - JUMP-VEL ! \ Martian gravity
+    JUMP-HEIGHT @ 1 < IF
       0 JUMP-HEIGHT !
       0 JUMP-VEL !
+      0 IS-JUMPING !
     THEN
+    CALC-ALTITUDE
   THEN
-
-  \ 2. Automatic ground clearance: 24 units above terrain + jump altitude
-  CAM-X @ CAM-Y @ MARS-HEIGHT 24 + JUMP-HEIGHT @ + CAM-Z !
 ;
 
-\ Interactive Flight Loop
+\ Main interactive flight loop
 : FLY
   BEGIN
     RUNNING @
   WHILE
-    PROCESS-INPUT
+    KEY? IF
+      KEY PROCESS-INPUT
+    THEN
     UPDATE-PHYSICS
     RENDER-MARS-FRAME
     16 MS
-
-    1 FRAME-STEP +!
-    MAX-FRAMES @ 0 > IF
-      FRAME-STEP @ MAX-FRAMES @ < 0= IF
-        0 RUNNING !
-      THEN
-    THEN
   REPEAT
 ;
 
-\ Main Mars Flight Demo Runner
 : MARS
-  DISPLAY? 0= IF CR THEN
-  320 240 WND-OPEN WND !
-
-  120 CAM-X !
-  100 CAM-Y !
-  0   HEADING !
-  0   SPEED !
-  0   STRAFE !
-  0   JUMP-VEL !
-  0   JUMP-HEIGHT !
-  1   RUNNING !
-  0   FRAME-STEP !
-  UPDATE-PHYSICS
-  DISPLAY? IF 0 MAX-FRAMES ! ELSE 4 MAX-FRAMES ! THEN
-
+  DISPLAY? IF
+    SCREEN-W SCREEN-H WND-OPEN WND !
+  THEN
+  CALC-ALTITUDE
+  1 RUNNING !
+  RENDER-MARS-FRAME
   FLY
-  WND @ DUP IF WND-CLOSE ELSE DROP THEN
-  DISPLAY? 0= IF CR THEN
+  WND @ IF
+    WND @ WND-CLOSE
+    0 WND !
+  THEN
 ;
 
+\ Auto-launch interactive flight when evaluated
 MARS

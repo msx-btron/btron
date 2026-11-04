@@ -245,7 +245,7 @@ int main(void) {
     printf("[2] Executing initial voxel scene setup...\n");
     /* Open window and initialize camera (stationary by default, settled above terrain) */
     forth_eval(&vm, "320 240 WND-OPEN WND !");
-    forth_eval(&vm, "0 CAM-X ! 0 CAM-Y ! CAM-X @ CAM-Y @ MARS-HEIGHT 6 + CAM-Z ! 0 HEADING ! 0 SPEED ! 0 STRAFE ! 0 V-VEL ! 0 IS-JUMPING ! 1 RUNNING !");
+    forth_eval(&vm, "62 CAM-X ! 62 CAM-Y ! CALC-ALTITUDE 0 HEADING ! 0 SPEED ! 0 STRAFE ! 0 V-VEL ! 0 IS-JUMPING ! 1 RUNNING !");
 
     printf("[3] Rendering Initial Perspective Frame (Heading=0, North)...\n");
     forth_eval(&vm, "RENDER-MARS-FRAME");

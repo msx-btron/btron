@@ -45,6 +45,9 @@ FILE "sample.ps"                 TXT   doc/ps/sample.ps
 # Native Forth Demos & Scripts
 FILE "mandelbrot.fth"            TXT   assets/forth/mandelbrot.fth
 FILE "mars.fth"                  TXT   assets/forth/mars.fth
+FILE "mars_height.bin"           BIN   assets/forth/mars_height.bin
+FILE "mars_shade.bin"            BIN   assets/forth/mars_shade.bin
+FILE "mars_sky.bin"              BIN   assets/forth/mars_sky.bin
 
 # Clarity Ceremony Assets
 FILE "clarity.png"               PNG   assets/icons/clarity.png

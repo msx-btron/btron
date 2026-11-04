@@ -90,6 +90,7 @@ struct ForthVM {
     void         (*wnd_size_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t *out_w, forth_cell_t *out_h);
     void         (*wnd_on_paint_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t xt);
     void         (*ms_fn)(ForthVM *vm, forth_cell_t ms);
+    forth_cell_t (*file_read_fn)(ForthVM *vm, forth_cell_t dst_addr, forth_cell_t max_bytes, const char *path);
 
     /* Error and status */
     int            last_error;

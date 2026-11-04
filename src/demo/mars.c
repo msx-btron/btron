@@ -477,6 +477,29 @@ static void mars_paint(WND *wnd, GDEV *dev) {
     }
 }
 
+void mars_render_to_buffer(COLOR *dst, int dw, int dh, uint16_t cam_x, uint16_t cam_y, int32_t jump_h) {
+    if (!dst || dw <= 0 || dh <= 0) return;
+    mars_init_once();
+    s_var_0355 = cam_x;
+    s_var_0357 = cam_y;
+    s_jump_height = jump_h;
+    calculate_height();
+    render_sky();
+    render_terrain();
+
+    for (int y = 0; y < dh; y++) {
+        int src_y = (y * MARS_CANVAS_H) / dh;
+        if (src_y >= MARS_CANVAS_H) src_y = MARS_CANVAS_H - 1;
+        COLOR *dst_row = &dst[y * dw];
+        const uint8_t *src_row = &s_landscape_data[src_y * MARS_CANVAS_W];
+        for (int x = 0; x < dw; x++) {
+            int src_x = (x * MARS_CANVAS_W) / dw;
+            if (src_x >= MARS_CANVAS_W) src_x = MARS_CANVAS_W - 1;
+            dst_row[x] = s_palette_argb[src_row[src_x]];
+        }
+    }
+}
+
 static void mars_destroy(WND *wnd) {
     (void)wnd;
     s_mars_running = false;
