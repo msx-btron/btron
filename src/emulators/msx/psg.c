@@ -235,6 +235,7 @@ uint8_t psg_debug_r7(void)     { return s_reg[7]; }
 uint8_t psg_debug_r14(void)    { return s_reg[14]; }
 uint8_t psg_debug_r15(void)    { return s_reg[15]; }
 uint8_t psg_debug_pb(void)     { return s_pb_out; }
+uint8_t psg_debug_reg(uint8_t r) { return (r < 16u) ? s_reg[r] : 0xFFu; }
 
 void psg_write(uint8_t port, uint8_t value)
 {

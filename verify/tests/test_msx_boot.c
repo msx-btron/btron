@@ -201,6 +201,15 @@ extern void msx_psg_submit_pcm(int16_t *buf, uint32_t *frames_out);
                 printf("  addr 0xD400: %02X %02X %02X %02X %02X %02X %02X %02X\n",
                        v->vram[0xD400], v->vram[0xD401], v->vram[0xD402], v->vram[0xD403],
                        v->vram[0xD404], v->vram[0xD405], v->vram[0xD406], v->vram[0xD407]);
+                uint32_t nt = (uint32_t)(v->regs[2] & 0x7Fu) << 10;
+                printf("Name table at 0x%05X:\n", nt);
+                for (int r = 0; r < 24; r++) {
+                    printf("  row %2d: ", r);
+                    for (int c = 0; c < 32; c++) {
+                        printf("%02X ", v->vram[nt + r * 32 + c]);
+                    }
+                    printf("\n");
+                }
                 uint32_t port_r[256], port_w[256];
                 msx_port_take(port_r, port_w);
                 printf("Active ports (read):");
@@ -211,6 +220,10 @@ extern void msx_psg_submit_pcm(int16_t *buf, uint32_t *frames_out);
                 printf("\n");
                 extern geo3d_t g_geo3d;
                 printf("Geo3D: drawn=%u skipped=%u culled=%u\n", g_geo3d.cnt_drawn, g_geo3d.cnt_skipped, g_geo3d.cnt_culled);
+                extern uint8_t psg_debug_reg(uint8_t r);
+                printf("PSG regs:");
+                for (int r = 0; r < 16; r++) printf(" R%d=%02X", r, psg_debug_reg((uint8_t)r));
+                printf("\n");
                 printf("Audio PCM: %llu/%llu non-zero samples (%.1f%% active)\n",
                        (unsigned long long)nz_pcm_samples, (unsigned long long)total_pcm_samples,
                        total_pcm_samples ? (100.0 * nz_pcm_samples / total_pcm_samples) : 0.0);

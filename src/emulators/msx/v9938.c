@@ -264,6 +264,15 @@ void v9938_pset_pixel(v9938_t *v, int x, int y, uint8_t color, uint8_t op, int m
     }
 }
 
+static void v9938_cmd_finish(v9938_t *v)
+{
+    v->stat[2] &= (uint8_t)~(ST_CE | ST_TR);
+    if (v->regs[20] & V9968_R20_CEIE) {
+        g_v9968.cmd_end_irq = 1;
+        v->irq_pending = 1;
+    }
+}
+
 static void v9938_tr_write(v9938_t *v, uint8_t val)
 {
     if (!v->tr_active) return;
@@ -281,7 +290,7 @@ static void v9938_tr_write(v9938_t *v, uint8_t val)
             v->tr_y++;
             if (v->tr_y >= (v->ny ? v->ny : 1024)) {
                 v->tr_active = 0;
-                v->stat[2] &= (uint8_t)~(ST_CE | ST_TR);
+                v9938_cmd_finish(v);
             }
         }
     } else if (v->tr_code == 0x0B) { /* LMMC: logical move CPU to VRAM (1 pixel per byte write) */
@@ -311,7 +320,7 @@ static void v9938_tr_write(v9938_t *v, uint8_t val)
             v->tr_y++;
             if (v->tr_y >= (v->ny ? v->ny : 1024)) {
                 v->tr_active = 0;
-                v->stat[2] &= (uint8_t)~(ST_CE | ST_TR);
+                v9938_cmd_finish(v);
             }
         }
     }

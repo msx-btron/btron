@@ -58,7 +58,7 @@ static const char *s_search_dirs[] = {
 };
 #endif
 
-static int s_bios_mode = BMSX_BIOS_CBIOS;
+static int s_bios_mode = BMSX_BIOS_TBIOS;
 
 int bios_get_mode(void)
 {

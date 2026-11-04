@@ -64,6 +64,11 @@ static uint8_t cpu_in(z80 *z, uint8_t port)
 static void cpu_out(z80 *z, uint8_t port, uint8_t value)
 {
     s_port_w[port]++;
+    static int s_dbg_9b = 0;
+    if (port == 0x9Bu && s_dbg_9b < 5) {
+        printf("DEBUG: OUT 0x9B val=0x%02X from PC=0x%04X\n", value, z->pc);
+        s_dbg_9b++;
+    }
     /* C-BIOS disk BDOS stub. Not a machine port. */
     if (port == 0xD4u) { dsk_bdos(z); return; }
     (void)z;
