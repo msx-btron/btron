@@ -63,6 +63,10 @@ struct ForthVM {
     uint16_t       tib_len;
     uint16_t       tib_in;
 
+    /* Compiler control stack (for IF/ELSE/THEN/DO/LOOP/BEGIN/WHILE/REPEAT) */
+    forth_cell_t   cstack[FORTH_STACK_MAX];
+    int8_t         csp;
+
     /* Device Tree */
     FCodeNode      dev_nodes[FORTH_DEV_MAX];
     uint16_t       num_dev_nodes;
@@ -72,6 +76,17 @@ struct ForthVM {
     void         (*emit_fn)(char c);
     int          (*key_fn)(void);
     bool         (*key_q_fn)(void);
+    int          (*include_fn)(ForthVM *vm, const char *path);
+
+    /* Window & Graphics Callback Hooks */
+    forth_cell_t (*wnd_open_fn)(ForthVM *vm, forth_cell_t w, forth_cell_t h);
+    void         (*wnd_close_fn)(ForthVM *vm, forth_cell_t wnd);
+    void         (*wnd_pixel_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t x, forth_cell_t y, forth_cell_t col);
+    void         (*wnd_vline_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t x, forth_cell_t y1, forth_cell_t y2, forth_cell_t col);
+    void         (*wnd_rect_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t x, forth_cell_t y, forth_cell_t w, forth_cell_t h, forth_cell_t col);
+    void         (*wnd_clear_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t col);
+    void         (*wnd_update_fn)(ForthVM *vm, forth_cell_t wnd);
+    void         (*wnd_size_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t *out_w, forth_cell_t *out_h);
 
     /* Error and status */
     int            last_error;

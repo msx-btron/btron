@@ -109,15 +109,17 @@ enum ForthToken {
     FORTH_TOK_CHAR_PLUS    = 0x2C,
     FORTH_TOK_ALLOT        = 0x2D,
 
-    /* 0x30 - 0x35: Control & Inner Interpreter */
+    /* 0x30 - 0x37: Control & Inner Interpreter */
     FORTH_TOK_EXECUTE      = 0x30,
     FORTH_TOK_EXIT         = 0x31,
     FORTH_TOK_BRANCH       = 0x32,
     FORTH_TOK_QBRANCH      = 0x33,
     FORTH_TOK_LIT          = 0x34,
     FORTH_TOK_BLIT         = 0x35,
+    FORTH_TOK_LOOP         = 0x36,
+    FORTH_TOK_I            = 0x37,
 
-    /* 0x38 - 0x44: Compilation & Outer Interpreter */
+    /* 0x38 - 0x47: Compilation & Outer Interpreter */
     FORTH_TOK_COLON        = 0x38,
     FORTH_TOK_SEMICOLON    = 0x39,
     FORTH_TOK_CREATE       = 0x3A,
@@ -131,6 +133,9 @@ enum ForthToken {
     FORTH_TOK_IMMEDIATE    = 0x42,
     FORTH_TOK_COMPILE_COMMA= 0x43,
     FORTH_TOK_PARSE_NAME   = 0x44,
+    FORTH_TOK_J            = 0x45,
+    FORTH_TOK_DOT          = 0x46,
+    FORTH_TOK_DOT_S        = 0x47,
 
     /* 0x48 - 0x4E: I/O & System */
     FORTH_TOK_EMIT         = 0x48,
@@ -153,6 +158,18 @@ enum ForthToken {
     FORTH_TOK_DEV_TREE     = 0x68,
     FORTH_TOK_HELP         = 0x69,
     FORTH_TOK_PWD          = 0x6A,
+
+    /* 0x70 - 0x79: B-System Window & Raster Graphics Extensions */
+    FORTH_TOK_WND_OPEN     = 0x70,
+    FORTH_TOK_WND_CLOSE    = 0x71,
+    FORTH_TOK_WND_PIXEL    = 0x72,
+    FORTH_TOK_WND_VLINE    = 0x73,
+    FORTH_TOK_WND_RECT     = 0x74,
+    FORTH_TOK_WND_CLEAR    = 0x75,
+    FORTH_TOK_WND_UPDATE   = 0x76,
+    FORTH_TOK_WND_SIZE     = 0x77,
+    FORTH_TOK_RGB          = 0x78,
+    FORTH_TOK_INCLUDE      = 0x79,
 
     /* 0xFF: Token Stream Escape */
     FORTH_TOK_ESCAPE       = 0xFF,

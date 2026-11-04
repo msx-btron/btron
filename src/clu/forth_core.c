@@ -313,6 +313,21 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_DEV_TREE]   = &&lbl_dev_tree,
         [FORTH_TOK_HELP]       = &&lbl_help,
         [FORTH_TOK_PWD]        = &&lbl_pwd,
+        [FORTH_TOK_LOOP]       = &&lbl_loop,
+        [FORTH_TOK_I]          = &&lbl_i,
+        [FORTH_TOK_J]          = &&lbl_j,
+        [FORTH_TOK_DOT]        = &&lbl_dot,
+        [FORTH_TOK_DOT_S]      = &&lbl_dot_s,
+        [FORTH_TOK_WND_OPEN]   = &&lbl_wnd_open,
+        [FORTH_TOK_WND_CLOSE]  = &&lbl_wnd_close,
+        [FORTH_TOK_WND_PIXEL]  = &&lbl_wnd_pixel,
+        [FORTH_TOK_WND_VLINE]  = &&lbl_wnd_vline,
+        [FORTH_TOK_WND_RECT]   = &&lbl_wnd_rect,
+        [FORTH_TOK_WND_CLEAR]  = &&lbl_wnd_clear,
+        [FORTH_TOK_WND_UPDATE] = &&lbl_wnd_update,
+        [FORTH_TOK_WND_SIZE]   = &&lbl_wnd_size,
+        [FORTH_TOK_RGB]        = &&lbl_rgb,
+        [FORTH_TOK_INCLUDE]    = &&lbl_include,
     };
 
     #define DISPATCH() do { \
@@ -779,6 +794,151 @@ lbl_pwd: {
     }
     DISPATCH();
 }
+lbl_loop: {
+    if (vm->rsp >= 1) {
+        forth_cell_t idx = vm->rstack[vm->rsp];
+        forth_cell_t limit = vm->rstack[vm->rsp - 1];
+        idx++;
+        int16_t off = (int16_t)(vm->ip[0] | (vm->ip[1] << 8));
+        if (idx < limit) {
+            vm->rstack[vm->rsp] = idx;
+            vm->ip += 2 + off;
+        } else {
+            vm->rsp -= 2;
+            vm->ip += 2;
+        }
+    } else {
+        vm->ip += 2;
+    }
+    DISPATCH();
+}
+lbl_i: {
+    if (vm->rsp >= 0) forth_push(vm, vm->rstack[vm->rsp]);
+    else forth_push(vm, 0);
+    DISPATCH();
+}
+lbl_j: {
+    if (vm->rsp >= 2) forth_push(vm, vm->rstack[vm->rsp - 2]);
+    else forth_push(vm, 0);
+    DISPATCH();
+}
+lbl_dot: {
+    forth_cell_t val = forth_pop(vm);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%ld ", (long)val);
+    if (vm->emit_fn) {
+        for (char *c = buf; *c; c++) vm->emit_fn(*c);
+    }
+    DISPATCH();
+}
+lbl_dot_s: {
+    if (vm->emit_fn) {
+        vm->emit_fn('<');
+        char numbuf[16];
+        snprintf(numbuf, sizeof(numbuf), "%d> ", (int)(vm->dsp + 1));
+        for (char *c = numbuf; *c; c++) vm->emit_fn(*c);
+        for (forth_cell_t i = 0; i <= vm->dsp; i++) {
+            snprintf(numbuf, sizeof(numbuf), "%ld ", (long)vm->dstack[i]);
+            for (char *c = numbuf; *c; c++) vm->emit_fn(*c);
+        }
+        vm->emit_fn('\n');
+    }
+    DISPATCH();
+}
+lbl_rgb: {
+    forth_cell_t b = forth_pop(vm);
+    forth_cell_t g = forth_pop(vm);
+    forth_cell_t r = forth_pop(vm);
+    forth_cell_t col = (forth_cell_t)(0xFF000000 | (((uint32_t)r & 0xFF) << 16) | (((uint32_t)g & 0xFF) << 8) | ((uint32_t)b & 0xFF));
+    forth_push(vm, col);
+    DISPATCH();
+}
+lbl_wnd_open: {
+    forth_cell_t h = forth_pop(vm);
+    forth_cell_t w = forth_pop(vm);
+    forth_cell_t wnd = 0;
+    if (vm->wnd_open_fn) {
+        wnd = vm->wnd_open_fn(vm, w, h);
+    }
+    forth_push(vm, wnd);
+    DISPATCH();
+}
+lbl_wnd_close: {
+    forth_cell_t wnd = forth_pop(vm);
+    if (vm->wnd_close_fn) {
+        vm->wnd_close_fn(vm, wnd);
+    }
+    DISPATCH();
+}
+lbl_wnd_pixel: {
+    forth_cell_t wnd = forth_pop(vm);
+    forth_cell_t y = forth_pop(vm);
+    forth_cell_t x = forth_pop(vm);
+    forth_cell_t col = forth_pop(vm);
+    if (vm->wnd_pixel_fn) {
+        vm->wnd_pixel_fn(vm, wnd, x, y, col);
+    }
+    DISPATCH();
+}
+lbl_wnd_vline: {
+    forth_cell_t wnd = forth_pop(vm);
+    forth_cell_t x = forth_pop(vm);
+    forth_cell_t y2 = forth_pop(vm);
+    forth_cell_t y1 = forth_pop(vm);
+    forth_cell_t col = forth_pop(vm);
+    if (vm->wnd_vline_fn) {
+        vm->wnd_vline_fn(vm, wnd, x, y1, y2, col);
+    }
+    DISPATCH();
+}
+lbl_wnd_rect: {
+    forth_cell_t wnd = forth_pop(vm);
+    forth_cell_t h = forth_pop(vm);
+    forth_cell_t w = forth_pop(vm);
+    forth_cell_t y = forth_pop(vm);
+    forth_cell_t x = forth_pop(vm);
+    forth_cell_t col = forth_pop(vm);
+    if (vm->wnd_rect_fn) {
+        vm->wnd_rect_fn(vm, wnd, x, y, w, h, col);
+    }
+    DISPATCH();
+}
+lbl_wnd_clear: {
+    forth_cell_t wnd = forth_pop(vm);
+    forth_cell_t col = forth_pop(vm);
+    if (vm->wnd_clear_fn) {
+        vm->wnd_clear_fn(vm, wnd, col);
+    }
+    DISPATCH();
+}
+lbl_wnd_update: {
+    forth_cell_t wnd = forth_pop(vm);
+    if (vm->wnd_update_fn) {
+        vm->wnd_update_fn(vm, wnd);
+    }
+    DISPATCH();
+}
+lbl_wnd_size: {
+    forth_cell_t wnd = forth_pop(vm);
+    forth_cell_t out_w = 0, out_h = 0;
+    if (vm->wnd_size_fn) {
+        vm->wnd_size_fn(vm, wnd, &out_w, &out_h);
+    }
+    forth_push(vm, out_w);
+    forth_push(vm, out_h);
+    DISPATCH();
+}
+lbl_include: {
+    forth_cell_t u = forth_pop(vm);
+    forth_cell_t a = forth_pop(vm);
+    if (vm->include_fn && a >= 0 && a + u <= FORTH_ARENA_MAX && u < 256) {
+        char pbuf[256];
+        memcpy(pbuf, &vm->arena[a], (size_t)u);
+        pbuf[u] = '\0';
+        vm->include_fn(vm, pbuf);
+    }
+    DISPATCH();
+}
 lbl_unknown: {
     forth_abort(vm, "Undefined FCode bytecode token");
     goto lbl_done;
@@ -973,6 +1133,132 @@ lbl_done:
             case FORTH_TOK_MY_SELF:
                 forth_push(vm, (forth_cell_t)(uintptr_t)vm->active_node);
                 break;
+            case FORTH_TOK_LOOP: {
+                if (vm->rsp >= 1) {
+                    forth_cell_t idx = vm->rstack[vm->rsp];
+                    forth_cell_t limit = vm->rstack[vm->rsp - 1];
+                    idx++;
+                    int16_t off = (int16_t)(vm->ip[0] | (vm->ip[1] << 8));
+                    if (idx < limit) {
+                        vm->rstack[vm->rsp] = idx;
+                        vm->ip += 2 + off;
+                    } else {
+                        vm->rsp -= 2;
+                        vm->ip += 2;
+                    }
+                } else {
+                    vm->ip += 2;
+                }
+                break;
+            }
+            case FORTH_TOK_I:
+                if (vm->rsp >= 0) forth_push(vm, vm->rstack[vm->rsp]);
+                else forth_push(vm, 0);
+                break;
+            case FORTH_TOK_J:
+                if (vm->rsp >= 2) forth_push(vm, vm->rstack[vm->rsp - 2]);
+                else forth_push(vm, 0);
+                break;
+            case FORTH_TOK_DOT: {
+                forth_cell_t val = forth_pop(vm);
+                char buf[32];
+                snprintf(buf, sizeof(buf), "%ld ", (long)val);
+                if (vm->emit_fn) {
+                    for (char *c = buf; *c; c++) vm->emit_fn(*c);
+                }
+                break;
+            }
+            case FORTH_TOK_DOT_S:
+                if (vm->emit_fn) {
+                    vm->emit_fn('<');
+                    char numbuf[16];
+                    snprintf(numbuf, sizeof(numbuf), "%d> ", (int)(vm->dsp + 1));
+                    for (char *c = numbuf; *c; c++) vm->emit_fn(*c);
+                    for (forth_cell_t i = 0; i <= vm->dsp; i++) {
+                        snprintf(numbuf, sizeof(numbuf), "%ld ", (long)vm->dstack[i]);
+                        for (char *c = numbuf; *c; c++) vm->emit_fn(*c);
+                    }
+                    vm->emit_fn('\n');
+                }
+                break;
+            case FORTH_TOK_RGB: {
+                forth_cell_t b = forth_pop(vm);
+                forth_cell_t g = forth_pop(vm);
+                forth_cell_t r = forth_pop(vm);
+                forth_cell_t col = (forth_cell_t)(0xFF000000 | (((uint32_t)r & 0xFF) << 16) | (((uint32_t)g & 0xFF) << 8) | ((uint32_t)b & 0xFF));
+                forth_push(vm, col);
+                break;
+            }
+            case FORTH_TOK_WND_OPEN: {
+                forth_cell_t h = forth_pop(vm);
+                forth_cell_t w = forth_pop(vm);
+                forth_cell_t wnd = 0;
+                if (vm->wnd_open_fn) wnd = vm->wnd_open_fn(vm, w, h);
+                forth_push(vm, wnd);
+                break;
+            }
+            case FORTH_TOK_WND_CLOSE: {
+                forth_cell_t wnd = forth_pop(vm);
+                if (vm->wnd_close_fn) vm->wnd_close_fn(vm, wnd);
+                break;
+            }
+            case FORTH_TOK_WND_PIXEL: {
+                forth_cell_t wnd = forth_pop(vm);
+                forth_cell_t y = forth_pop(vm);
+                forth_cell_t x = forth_pop(vm);
+                forth_cell_t col = forth_pop(vm);
+                if (vm->wnd_pixel_fn) vm->wnd_pixel_fn(vm, wnd, x, y, col);
+                break;
+            }
+            case FORTH_TOK_WND_VLINE: {
+                forth_cell_t wnd = forth_pop(vm);
+                forth_cell_t x = forth_pop(vm);
+                forth_cell_t y2 = forth_pop(vm);
+                forth_cell_t y1 = forth_pop(vm);
+                forth_cell_t col = forth_pop(vm);
+                if (vm->wnd_vline_fn) vm->wnd_vline_fn(vm, wnd, x, y1, y2, col);
+                break;
+            }
+            case FORTH_TOK_WND_RECT: {
+                forth_cell_t wnd = forth_pop(vm);
+                forth_cell_t h = forth_pop(vm);
+                forth_cell_t w = forth_pop(vm);
+                forth_cell_t y = forth_pop(vm);
+                forth_cell_t x = forth_pop(vm);
+                forth_cell_t col = forth_pop(vm);
+                if (vm->wnd_rect_fn) vm->wnd_rect_fn(vm, wnd, x, y, w, h, col);
+                break;
+            }
+            case FORTH_TOK_WND_CLEAR: {
+                forth_cell_t wnd = forth_pop(vm);
+                forth_cell_t col = forth_pop(vm);
+                if (vm->wnd_clear_fn) vm->wnd_clear_fn(vm, wnd, col);
+                break;
+            }
+            case FORTH_TOK_WND_UPDATE: {
+                forth_cell_t wnd = forth_pop(vm);
+                if (vm->wnd_update_fn) vm->wnd_update_fn(vm, wnd);
+                break;
+            }
+            case FORTH_TOK_WND_SIZE: {
+                forth_cell_t wnd = forth_pop(vm);
+                forth_cell_t out_w = 0, out_h = 0;
+                if (vm->wnd_size_fn) vm->wnd_size_fn(vm, wnd, &out_w, &out_h);
+                forth_push(vm, out_w);
+                forth_push(vm, out_h);
+                break;
+            }
+            case FORTH_TOK_INCLUDE: {
+                forth_cell_t u = forth_pop(vm);
+                forth_cell_t a = forth_pop(vm);
+                if (vm->include_fn && a >= 0 && a + u <= FORTH_ARENA_MAX && u < 256) {
+                    char pbuf[256];
+                    memcpy(pbuf, &vm->arena[a], (size_t)u);
+                    pbuf[u] = '\0';
+                    vm->include_fn(vm, pbuf);
+                }
+                break;
+            }
             default:
                 forth_abort(vm, "Unknown token in switch");
                 return -1;
