@@ -65,7 +65,7 @@ enum ForthToken {
     /* 0x00: Block End */
     FORTH_TOK_END          = 0x00,
 
-    /* 0x01 - 0x0A: Stack Manipulation */
+    /* 0x01 - 0x0C: Stack Manipulation */
     FORTH_TOK_DUP          = 0x01,
     FORTH_TOK_DROP         = 0x02,
     FORTH_TOK_SWAP         = 0x03,
@@ -76,6 +76,8 @@ enum ForthToken {
     FORTH_TOK_R_FETCH      = 0x08,
     FORTH_TOK_TWO_TO_R     = 0x09,
     FORTH_TOK_TWO_R_FROM   = 0x0A,
+    FORTH_TOK_TWO_DUP      = 0x0B,
+    FORTH_TOK_TWO_DROP     = 0x0C,
 
     /* 0x10 - 0x21: Arithmetic & Logic */
     FORTH_TOK_PLUS         = 0x10,

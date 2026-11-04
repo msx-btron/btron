@@ -264,6 +264,8 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_R_FETCH]    = &&lbl_r_fetch,
         [FORTH_TOK_TWO_TO_R]   = &&lbl_two_to_r,
         [FORTH_TOK_TWO_R_FROM] = &&lbl_two_r_from,
+        [FORTH_TOK_TWO_DUP]    = &&lbl_two_dup,
+        [FORTH_TOK_TWO_DROP]   = &&lbl_two_drop,
         [FORTH_TOK_PLUS]       = &&lbl_plus,
         [FORTH_TOK_MINUS]      = &&lbl_minus,
         [FORTH_TOK_MULT]       = &&lbl_mult,
@@ -400,6 +402,20 @@ lbl_two_r_from: {
     forth_cell_t x1 = rpop(vm);
     forth_push(vm, x1);
     forth_push(vm, x2);
+    DISPATCH();
+}
+lbl_two_dup: {
+    if (vm->dsp >= 1) {
+        forth_cell_t b = vm->dstack[vm->dsp];
+        forth_cell_t a = vm->dstack[vm->dsp - 1];
+        forth_push(vm, a);
+        forth_push(vm, b);
+    }
+    DISPATCH();
+}
+lbl_two_drop: {
+    forth_pop(vm);
+    forth_pop(vm);
     DISPATCH();
 }
 lbl_plus: {
@@ -934,7 +950,10 @@ lbl_include: {
     DISPATCH();
 }
 lbl_unknown: {
-    forth_abort(vm, "Undefined FCode bytecode token");
+    char errbuf[64];
+    snprintf(errbuf, sizeof(errbuf), "Undefined FCode token 0x%02X at offset %ld",
+             (unsigned int)*(vm->ip - 1), (long)(vm->ip - 1 - vm->arena));
+    forth_abort(vm, errbuf);
     goto lbl_done;
 }
 lbl_end:
@@ -968,6 +987,18 @@ lbl_done:
             }
             case FORTH_TOK_DUP:        forth_push(vm, vm->tos); break;
             case FORTH_TOK_DROP:       forth_pop(vm); break;
+            case FORTH_TOK_TWO_DUP:
+                if (vm->dsp >= 1) {
+                    forth_cell_t b = vm->dstack[vm->dsp];
+                    forth_cell_t a = vm->dstack[vm->dsp - 1];
+                    forth_push(vm, a);
+                    forth_push(vm, b);
+                }
+                break;
+            case FORTH_TOK_TWO_DROP:
+                forth_pop(vm);
+                forth_pop(vm);
+                break;
             case FORTH_TOK_SWAP: {
                 forth_cell_t b = forth_pop(vm);
                 forth_cell_t a = forth_pop(vm);
@@ -1667,6 +1698,8 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "R@",         FORTH_TOK_R_FETCH,    0);
     dict_create_word(vm, "2>R",        FORTH_TOK_TWO_TO_R,   0);
     dict_create_word(vm, "2R>",        FORTH_TOK_TWO_R_FROM, 0);
+    dict_create_word(vm, "2DUP",       FORTH_TOK_TWO_DUP,    0);
+    dict_create_word(vm, "2DROP",      FORTH_TOK_TWO_DROP,   0);
 
     dict_create_word(vm, "+",          FORTH_TOK_PLUS,       0);
     dict_create_word(vm, "-",          FORTH_TOK_MINUS,      0);

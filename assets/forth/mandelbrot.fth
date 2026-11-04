@@ -1,14 +1,14 @@
 \ ──────────────────────────────────────────────────────────────────
-\ mandelbrot.fth — Mandelbrot Fractal Demo for B-System ANS Forth
-\ Computes fixed-point complex Mandelbrot set and renders to
-\ native BTRON window raster surface and terminal.
+\ mandelbrot.fth — Mandelbrot Fractal Demo for B-System & MSX T-FW
+\ Fully 16-bit signed cell compatible (zero overflow on Z80 / IA-16)
+\ with dual rasterization to BTRON WND surface and MSX/gterm console.
 \ ──────────────────────────────────────────────────────────────────
 
-320 CONSTANT SCREEN-W
-240 CONSTANT SCREEN-H
-32  CONSTANT MAX-ITER
-1000 CONSTANT F-SCALE
-4000 CONSTANT ESCAPE-LIMIT
+40 CONSTANT SCREEN-W
+24 CONSTANT SCREEN-H
+16 CONSTANT MAX-ITER
+40 CONSTANT F-SCALE
+160 CONSTANT ESCAPE-LIMIT
 
 VARIABLE WND
 VARIABLE C-REAL
@@ -18,16 +18,18 @@ VARIABLE Z-IMAG
 VARIABLE Z-REAL2
 VARIABLE Z-IMAG2
 VARIABLE ITER-COUNT
-VARIABLE PIX-COLOR
+VARIABLE CELL-X
+VARIABLE CELL-Y
+VARIABLE CELL-ITER
 
 \ Palette calculation: map iteration count to 32-bit ARGB
 : CALC-COLOR ( iter -- color )
   DUP MAX-ITER = IF
     DROP 0 0 0 RGB
   ELSE
-    DUP 8 * 255 AND
-    OVER 14 * 255 AND
-    ROT 22 * 60 + 255 AND
+    DUP 15 *
+    OVER 10 *
+    ROT 8 * 100 +
     RGB
   THEN
 ;
@@ -55,46 +57,53 @@ VARIABLE PIX-COLOR
   UNTIL
 ;
 
+\ Draw pixel/cell on screen and terminal
+: DRAW-CELL ( x y iter -- )
+  CELL-ITER !
+  CELL-Y !
+  CELL-X !
+
+  \ Draw rectangle on GUI window if present
+  CELL-ITER @ CALC-COLOR
+  CELL-X @ 8 *
+  CELL-Y @ 10 *
+  8 10
+  WND @ WND-RECT
+
+  \ Draw character on console terminal / MSX Screen 0
+  CELL-ITER @ MAX-ITER = IF
+    42 EMIT \ '*'
+  ELSE
+    CELL-ITER @ 6 > IF
+      43 EMIT \ '+'
+    ELSE
+      CELL-ITER @ 2 > IF
+        46 EMIT \ '.'
+      ELSE
+        32 EMIT \ ' '
+      THEN
+    THEN
+  THEN
+;
+
 \ Main Render Word
 : MANDELBROT
   CR
-  SCREEN-W SCREEN-H WND-OPEN WND !
-  WND @ 0= IF
-    \ Fallback if GUI window not supported in headless mode
-  THEN
+  320 240 WND-OPEN WND !
 
-  \ Coordinate bounds:
-  \ Real: -2.1 to +0.9 (span 3.0, center -0.6)
-  \ Imag: -1.2 to +1.2 (span 2.4, center 0.0)
+  \ Coordinate bounds (scaled by 40):
+  \ Real: -80 to +40 (step 3 per column) -> -2.0 to +1.0
+  \ Imag: -48 to +48 (step 4 per row)    -> -1.2 to +1.2
   SCREEN-H 0 DO
-    \ C-IMAG = -1200 + (I * 2400) / SCREEN-H
-    I 2400 * SCREEN-H / 1200 - C-IMAG !
+    I 4 * 48 - C-IMAG !
 
     SCREEN-W 0 DO
-      \ C-REAL = -2100 + (I * 3000) / SCREEN-W
-      I 3000 * SCREEN-W / 2100 - C-REAL !
-
-      MANDEL-PIXEL
-      DUP CALC-COLOR
-      I J WND @ WND-PIXEL
-
-      \ ASCII preview on terminal every 8th pixel
-      I 8 MOD 0= IF
-        MAX-ITER = IF
-          42 EMIT  \ '*'
-        ELSE
-          32 EMIT  \ ' '
-        THEN
-      ELSE
-        DROP
-      THEN
+      I 3 * 80 - C-REAL !
+      I J MANDEL-PIXEL DRAW-CELL
     LOOP
 
-    \ Refresh terminal line and update window every 16 rows
     CR
-    I 15 AND 0= IF
-      WND @ WND-UPDATE
-    THEN
+    WND @ WND-UPDATE
   LOOP
 
   WND @ WND-UPDATE
