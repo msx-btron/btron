@@ -6,21 +6,40 @@
 
 #include <btron/forth_vm.h>
 #include <btron/libc_shim.h>
-#include <stdio.h>
-#include <string.h>
 
 /* ── Default I/O Callbacks ──────────────────────────────────────── */
 static void default_emit(char c) {
+#if BTRON_HOSTED
     putchar(c);
     fflush(stdout);
+#else
+    (void)c;
+#endif
 }
 
 static int default_key(void) {
+#if BTRON_HOSTED
     return getchar();
+#else
+    return -1;
+#endif
 }
 
 static bool default_key_q(void) {
     return true;
+}
+
+static int forth_strncasecmp(const char *s1, const char *s2, size_t n) {
+    for (size_t i = 0; i < n; i++) {
+        char c1 = s1[i];
+        char c2 = s2[i];
+        if (c1 >= 'a' && c1 <= 'z') c1 = (char)(c1 - 32);
+        if (c2 >= 'a' && c2 <= 'z') c2 = (char)(c2 - 32);
+        if (c1 != c2 || c1 == '\0') {
+            return (int)((unsigned char)c1 - (unsigned char)c2);
+        }
+    }
+    return 0;
 }
 
 /* ── Stack Access Helpers with TOS Caching ──────────────────────── */
@@ -179,7 +198,7 @@ static forth_cell_t dict_find(ForthVM *vm, const char *name, uint8_t len, uint8_
         uint8_t flen = vm->arena[p++];
         uint8_t wlen = flen & FORTH_LEN_MASK;
 
-        if (wlen == len && strncasecmp((const char *)&vm->arena[p], name, len) == 0) {
+        if (wlen == len && forth_strncasecmp((const char *)&vm->arena[p], name, len) == 0) {
             if (out_flags) *out_flags = flen;
             p += wlen;
             p = align_cell(p);

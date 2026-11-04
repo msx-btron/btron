@@ -6,9 +6,7 @@
 
 #include <btron/forth_vm.h>
 #include <btron/core.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <btron/libc_shim.h>
 
 static ForthVM s_forth_vm;
 static int s_vm_initialized = 0;
@@ -35,8 +33,12 @@ static void clu_forth_emit(char c) {
             s_emit_buf[s_emit_idx++] = c;
         }
     } else {
+#if BTRON_HOSTED
         putchar(c);
         fflush(stdout);
+#else
+        (void)c;
+#endif
     }
 }
 
@@ -122,6 +124,7 @@ void clu_forth_reset_halt(void) {
 
 /* ── Interactive CLI REPL ───────────────────────────────────────── */
 int forth_repl(ForthVM *vm) {
+#if BTRON_HOSTED
     char line[FORTH_TIB_MAX];
     printf("T-FW OpenFirmware / ANS Forth Engine (B-System CLU)\n");
     printf("IEEE 1275 Device-Tree (%d-bit Cells, %d KB Arena)\n",
@@ -143,6 +146,10 @@ int forth_repl(ForthVM *vm) {
         forth_eval(vm, line);
     }
     return 0;
+#else
+    (void)vm;
+    return 0;
+#endif
 }
 
 #if defined(FORTH_STANDALONE)

@@ -905,8 +905,9 @@ static void gterm_execute_cmd(WND *wnd, GTermState *st, const char *cmd_line) {
     st->cmd_hist_idx = st->cmd_hist_count;
 
     if (st->app_mode == GTERM_MODE_FORTH) {
-        if (strcasecmp(cmd_line, "bye") == 0 || strcasecmp(cmd_line, "exit") == 0 ||
-            strcasecmp(cmd_line, "quit") == 0) {
+        if (strcmp(cmd_line, "bye") == 0 || strcmp(cmd_line, "BYE") == 0 ||
+            strcmp(cmd_line, "exit") == 0 || strcmp(cmd_line, "EXIT") == 0 ||
+            strcmp(cmd_line, "quit") == 0 || strcmp(cmd_line, "QUIT") == 0) {
             st->app_mode = GTERM_MODE_SHELL;
             snprintf(st->prompt, sizeof(st->prompt) - 1, "[%s]%% ", g_cwd_path[0] ? g_cwd_path : "SYS");
             return;
@@ -1743,13 +1744,9 @@ static void paint_gterm(WND *wnd, GDEV *dev) {
         /* Disney / Sony-class cinematic smooth blinking cursor:
          * Standard human visual persistence cadence: 560 ms period,
          * 57% ON (320 ms), 43% OFF (240 ms) duty cycle. */
-        uint32_t now_ms = 0;
-#if defined(__APPLE__) || defined(__linux__) || defined(BTRON_HOSTED)
-        struct timespec ts;
-        if (clock_gettime(CLOCK_MONOTONIC, &ts) == 0) {
-            now_ms = (uint32_t)(ts.tv_sec * 1000 + ts.tv_nsec / 1000000);
-        }
-#endif
+        SYSTIME now = 0;
+        get_tim(&now);
+        uint32_t now_ms = (uint32_t)now;
         uint32_t phase = (now_ms > 0) ? (now_ms % 560) : 0;
         BOOL cursor_on = (now_ms == 0 || phase < 320);
 
