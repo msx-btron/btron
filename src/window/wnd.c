@@ -232,6 +232,7 @@ WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr) {
 
 ER cls_wnd(WND *wnd) {
     if (!wnd) return E_PAR;
+    if (!wnd_mgr_contains(wnd)) return E_PAR;
 
     wnd_mgr_window_destroyed(wnd);
     if (wnd->destroy) {

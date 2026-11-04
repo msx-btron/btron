@@ -769,6 +769,7 @@ void v9938_render(v9938_t *v, uint16_t *fb)
 
     if (m == 0x1C) {
         /* SCREEN 8: Mode G7 (256x212, 8bpp RGB332 or V9968 256-color palette) */
+        uint32_t hscroll = (((uint32_t)v->regs[26] & 0x3Fu) << 3) | ((uint32_t)v->regs[27] & 0x07u);
         for (y = 0; y < MSX_SCREEN_H; y++) {
             uint16_t *row = fb + (uint32_t)y * MSX_SCREEN_W;
             if (y < top_border || y >= bot_border) {
@@ -778,7 +779,8 @@ void v9938_render(v9938_t *v, uint16_t *fb)
             uint32_t eff_y = ((uint32_t)(y - top_border) + (uint32_t)v->regs[23]) & 0xFFu;
             uint32_t line_addr = page_base + eff_y * 256u;
             for (x = 0; x < MSX_SCREEN_W; x++) {
-                uint8_t c = v->vram[(line_addr + x) & (V9938_VRAM_SIZE - 1u)];
+                uint32_t eff_x = ((uint32_t)x + hscroll) & 0xFFu;
+                uint8_t c = v->vram[(line_addr + eff_x) & (V9938_VRAM_SIZE - 1u)];
                 row[x] = use_epal ? v->pal256[c] : rgb332_to_rgb565(c);
             }
         }

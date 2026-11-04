@@ -1,20 +1,23 @@
 \ ──────────────────────────────────────────────────────────────────
-\ mars.fth — Classical 1K Mars Voxel Landscape Demo (Pouet #4662)
-\ Inspired by Tim Clarke's 1993 Assembly voxel engine.
+\ mars.fth — Classical Mars Voxel Landscape Demo (1993 Tim Clarke)
+\ Faithful clean port of 1993 Tim Clarke Mars voxel engine.
 \ Fully 16-bit cell compatible (zero overflow on MSX Z80 / IA-16)
-\ In CLU mode (display processor in dev-tree), renders to BTRON WND
-\ and captures interactive flight controls:
-\   - Left/Right Arrows: Turn Left / Right (Yaw rotation)
-\   - Up/Down Arrows (or W/S): Accelerate Forward / Reverse
-\   - 'A' / 'D' (or Shift + Left/Right): Lateral Strafe
-\   - Space: Ballistic Jump (height proportional to forward speed)
-\   - 'q' / 'Q' / ESC: Exit Demo
-\ Fallback to ASCII 3D terrain profile when headless / MSX console.
+\ Features:
+\   - Infinite toroidal fractal space: seamless periodic wrapping (no island edges)
+\   - High-resolution 320x240 voxel raymarching with directional sunlit slope shading
+\   - Authentic 96-color VGA palette (Terracotta slopes + Dusty Rose plasma sky)
+\   - Multi-layer perspective plasma sky with cloud wisps and glowing horizon line
+\   - Real-time flight controls matching reference mars.c:
+\       • Left/Right Arrows: Yaw Turn Left / Right
+\       • Up/Down Arrows (or W/S): Forward / Reverse
+\       • 'A' / 'D': Lateral Strafe
+\       • Space: Ballistic Jump arc with Martian gravity
+\       • 'q' / 'Q' / ESC: Clean exit
 \ ──────────────────────────────────────────────────────────────────
 
 320 CONSTANT SCREEN-W
 240 CONSTANT SCREEN-H
-96  CONSTANT HORIZON
+104 CONSTANT HORIZON
 
 VARIABLE WND
 VARIABLE CAM-X
@@ -30,8 +33,6 @@ VARIABLE JUMP-HEIGHT
 VARIABLE RUNNING
 VARIABLE FRAME-STEP
 VARIABLE MAX-FRAMES
-VARIABLE COL-W
-VARIABLE ROW-H
 
 VARIABLE DIST
 VARIABLE MAX-Y
@@ -42,19 +43,19 @@ VARIABLE PROJ-Y
 VARIABLE COL-X
 VARIABLE LAT-OFF
 
-1  COL-W !
-1  ROW-H !
-52 CAM-Z !
-16 CAM-X !
-8  CAM-Y !
-0  HEADING !
-0  SPEED !
-0  STRAFE !
-0  V-VEL !
-0  IS-JUMPING !
-1  RUNNING !
-0  FRAME-STEP !
-4  MAX-FRAMES !
+120 CAM-X !
+100 CAM-Y !
+40  CAM-Z !
+0   HEADING !
+0   SPEED !
+0   STRAFE !
+0   V-VEL !
+0   IS-JUMPING !
+0   JUMP-VEL !
+0   JUMP-HEIGHT !
+1   RUNNING !
+0   FRAME-STEP !
+4   MAX-FRAMES !
 
 \ Buffer for 320 column horizon heights (1 cell per column)
 CREATE PROJ-BUF 320 CELLS ALLOT
@@ -66,6 +67,36 @@ CREATE PROJ-BUF 320 CELLS ALLOT
 : GET-PROJ ( idx -- val )
   CELLS PROJ-BUF + @
 ;
+
+\ 96-Color Authentic Tim Clarke 1993 Palette Table (Terracotta + Rose Sky)
+CREATE MARS-PAL 96 CELLS ALLOT
+
+: SET-PAL ( color idx -- )
+  CELLS MARS-PAL + !
+;
+
+: GET-PAL ( idx -- color )
+  CELLS MARS-PAL + @
+;
+
+: INIT-PALETTE
+  \ 0..63: Terracotta Martian mountain slope gradient
+  64 0 DO
+    I 4 * DUP 255 > IF DROP 255 THEN
+    I 15 - DUP 0 < IF DROP 0 THEN 22 * 10 / DUP 255 > IF DROP 255 THEN
+    I 32 - DUP 0 < IF DROP 0 THEN 15 * 10 / DUP 255 > IF DROP 255 THEN
+    RGB I SET-PAL
+  LOOP
+  \ 64..95: Dusty rose Martian sky and pink-tinted cloud gradient
+  32 0 DO
+    200
+    40 I 4 * + DUP 255 > IF DROP 255 THEN
+    40 I 4 * + DUP 255 > IF DROP 255 THEN
+    RGB I 64 + SET-PAL
+  LOOP
+;
+
+INIT-PALETTE
 
 \ 16-angle Sine/Cosine Approximation (scaled by 16)
 \ Symmetry: cos(ang) = sin(ang + 4)
@@ -100,14 +131,18 @@ CREATE PROJ-BUF 320 CELLS ALLOT
 
 VARIABLE MAP-X
 VARIABLE MAP-Y
-VARIABLE SHADE-D
-VARIABLE SHADE-H
-VARIABLE SHADE-SLOPE
-VARIABLE SHADE-LIGHT
-VARIABLE SHADE-HAZE
-VARIABLE COL-R
-VARIABLE COL-G
-VARIABLE COL-B
+VARIABLE SKY-BASE
+VARIABLE SKY-U
+VARIABLE SKY-V
+VARIABLE DX1
+VARIABLE DY1
+VARIABLE DX2
+VARIABLE DY2
+
+\ Toroidal coordinate wrap (period 256 -> infinite seamless space)
+: WRAP ( n -- 0..255 )
+  255 AND
+;
 
 \ Triangle wave function (0..32) for procedural harmonics
 : TRI ( n -- val )
@@ -119,88 +154,76 @@ VARIABLE COL-B
   TRI 32 SWAP -
 ;
 
-\ Calibrated Procedural Martian Canyon Heightfield (matching 1993 Tim Clarke MARS)
+\ Infinite Toroidal Martian Heightfield (Seamless 256x256 multi-octave fractal)
 : MARS-HEIGHT ( x y -- h )
-  MAP-Y ! MAP-X !
-  \ Multi-octave natural Martian peaks & canyon foothills
-  MAP-X @ 2 / RIDGE MAP-Y @ 2 / RIDGE + 4 * 5 /
-  MAP-X @ RIDGE MAP-Y @ RIDGE * 30 / +
-  MAP-X @ 2 * MAP-Y @ + RIDGE 4 / +
-  MAP-Y @ 2 * MAP-X @ - RIDGE 4 / +
-  \ Twin central mountain massif (matching 1993 Tim Clarke MARS)
-  MAP-X @ 24 - DUP * MAP-Y @ 28 - DUP * + 12 / 36 SWAP - DUP 0 < IF DROP 0 THEN +
-  MAP-X @ 40 - DUP * MAP-Y @ 32 - DUP * + 10 / 42 SWAP - DUP 0 < IF DROP 0 THEN +
-  \ Foreground canyon roll
-  MAP-X @ 12 - DUP * MAP-Y @ 12 - DUP * + 16 / 18 SWAP - DUP 0 < IF DROP 0 THEN +
-  12 +
+  WRAP MAP-Y ! WRAP MAP-X !
+
+  \ Octave 1: Major mountain massif (wavelength 128)
+  MAP-X @ 2 / RIDGE MAP-Y @ 2 / RIDGE * 16 / 3 * 4 /
+
+  \ Octave 2: Craggy ridges (wavelength 64)
+  MAP-X @ RIDGE MAP-Y @ RIDGE + 4 / +
+
+  \ Octave 3: Diagonal erosional gullies (wavelength 32)
+  MAP-X @ 2 * MAP-Y @ + TRI MAP-Y @ 2 * MAP-X @ - TRI + 4 / +
+
+  \ Octave 4: Surface scree & roughness (wavelength 16)
+  MAP-X @ 4 * MAP-Y @ 2 * - TRI MAP-Y @ 4 * MAP-X @ 2 * + TRI + 8 / +
+
+  \ Twin mountain peaks centered at (140, 140) and (100, 148) with toroidal wrapping
+  MAP-X @ 140 - 255 AND DUP 128 > IF 256 SWAP - THEN DX1 !
+  MAP-Y @ 140 - 255 AND DUP 128 > IF 256 SWAP - THEN DY1 !
+  56 DX1 @ 2 * DY1 @ 3 * + 4 * 5 / - DUP 0 < IF DROP 0 THEN
+
+  MAP-X @ 100 - 255 AND DUP 128 > IF 256 SWAP - THEN DX2 !
+  MAP-Y @ 148 - 255 AND DUP 128 > IF 256 SWAP - THEN DY2 !
+  48 DX2 @ 2 * DY2 @ 3 * + 4 * 5 / - DUP 0 < IF DROP 0 THEN
+
+  OVER OVER < IF SWAP THEN DROP
+  +
+  DUP 6 < IF DROP 6 THEN
 ;
 
-\ Authentic Tim Clarke 64-step VGA Terracotta Palette with Directional Sunlight & Depth Haze
-: MARS-COLOR ( dist h slope -- color )
-  SHADE-SLOPE !
-  SHADE-H !
-  SHADE-D !
-
-  \ Sunlight intensity: base 26 + slope highlight + elevation - distance haze
-  26 SHADE-SLOPE @ 5 * 2 / + SHADE-H @ 6 / + SHADE-D @ 3 / - SHADE-LIGHT !
-  SHADE-LIGHT @ 0 < IF 0 SHADE-LIGHT ! THEN
-  SHADE-LIGHT @ 63 > IF 63 SHADE-LIGHT ! THEN
-
-  \ VGA DAC Terracotta curve (smooth gradient from deep canyon shadow to bright sunlit peak)
-  SHADE-LIGHT @ 30 < IF
-    SHADE-LIGHT @ 15 * 2 / COL-R !
-    SHADE-LIGHT @ 15 - DUP 0 < IF DROP 0 THEN 3 * 2 / COL-G !
-    0 COL-B !
-  ELSE
-    225 SHADE-LIGHT @ 30 - 9 * 10 / + COL-R !
-    22  SHADE-LIGHT @ 30 - 7 * 2 / + COL-G !
-    SHADE-LIGHT @ 32 - DUP 0 < IF DROP 0 THEN 14 * 5 / COL-B !
-  THEN
-
-  \ Distance haze blend toward atmospheric horizon (140, 28, 24)
-  SHADE-D @ 5 * DUP 255 > IF DROP 255 THEN SHADE-HAZE !
-  COL-R @ 255 SHADE-HAZE @ - * 140 SHADE-HAZE @ * + 255 /
-  COL-G @ 255 SHADE-HAZE @ - * 28  SHADE-HAZE @ * + 255 /
-  COL-B @ 255 SHADE-HAZE @ - * 24  SHADE-HAZE @ * + 255 /
-  RGB
-;
-
-\ Render Authentic Martian Atmosphere (Dusty Rose Zenith -> Salmon Wisps -> Horizon Glow)
+\ Render Authentic Martian Plasma Atmosphere (Dusty Rose Zenith -> Salmon Wisps -> Horizon Glow)
 : RENDER-SKY-BACKDROP
   HORIZON 0 DO
-    \ Atmospheric gradient with gentle cloud wisp modulation
-    160 I 45 * HORIZON / + I 8 AND 4 = IF 18 + THEN
-    45  I 50 * HORIZON / + I 8 AND 4 = IF 14 + THEN
-    40  I 45 * HORIZON / + I 8 AND 4 = IF 14 + THEN
-    RGB
-    0 I SCREEN-W COL-W @ * 1 WND @ WND-RECT
+    I 22 * HORIZON / 64 + SKY-BASE !
+    \ Perspective plasma wisps across scanlines (8-pixel spans for fluid rendering)
+    40 0 DO
+      I 8 *
+      DUP 160 - 88 * J 16 + / HEADING @ 12 * + CAM-X @ 2 / + 255 AND SKY-U !
+      1200 J 16 + / CAM-Y @ 2 / + 255 AND SKY-V !
+      SKY-U @ 63 AND 32 - DUP 0 < IF NEGATE THEN
+      SKY-V @ 63 AND 32 - DUP 0 < IF NEGATE THEN * 512 /
+      SKY-BASE @ + DUP 95 > IF DROP 95 THEN
+      GET-PAL
+      SWAP J 8 1 WND @ WND-RECT
+    LOOP
   LOOP
-  \ Soft atmospheric horizon line
-  140 28 24 RGB
-  0 HORIZON SCREEN-W COL-W @ * 1 WND @ WND-RECT
+
+  \ Soft atmospheric horizon glow line (palette 80)
+  80 GET-PAL
+  0 HORIZON SCREEN-W 1 WND @ WND-RECT
+
   \ Deep canyon base floor below horizon
-  50 10 8 RGB
-  0 HORIZON 1 + SCREEN-W COL-W @ * SCREEN-H HORIZON - WND @ WND-RECT
+  SCREEN-H HORIZON - 1 - 0 DO
+    10 I 3 / + DUP 63 > IF DROP 63 THEN GET-PAL
+    0 HORIZON 1 + I + SCREEN-W 1 WND @ WND-RECT
+  LOOP
 ;
 
-\ Update column and row size based on window dimensions
-: UPDATE-MARS-DIMS
-  1 COL-W !
-  1 ROW-H !
-;
-
-\ Raymarch a single voxel column with 3D heading rotation & perspective frustum
+\ Raymarch a single high-resolution voxel column with 3D heading & perspective frustum
 : RENDER-MARS-COL ( col -- )
   COL-X !
   SCREEN-H 1 - MAX-Y !
 
-  \ March from near (d=3) to far (d=48)
-  3 DIST !
+  \ March from near (d=4) to far (d=56)
+  4 DIST !
   BEGIN
-    DIST @ 48 <
+    DIST @ 56 <
   WHILE
-    \ Perspective frustum lateral spread across 320 columns: (col - 160) * dist / 108
-    COL-X @ 160 - DIST @ * 108 / LAT-OFF !
+    \ Perspective frustum lateral spread across 320 columns: (col - 160) * dist / 120
+    COL-X @ 160 - DIST @ * 120 / LAT-OFF !
 
     \ World coordinates ray_x, ray_y with 16-angle yaw rotation
     HEADING @ GET-SIN DIST @ * HEADING @ GET-COS LAT-OFF @ * + 16 / CAM-X @ + RAY-X !
@@ -208,17 +231,22 @@ VARIABLE COL-B
 
     RAY-X @ RAY-Y @ MARS-HEIGHT TERRAIN-H !
 
-    \ Perspective screen Y: sy = HORIZON + ((CAM-Z - TERRAIN-H) * 88) / DIST
-    CAM-Z @ TERRAIN-H @ - 88 * DIST @ / HORIZON + PROJ-Y !
+    \ Perspective screen Y: sy = HORIZON + ((CAM-Z - TERRAIN-H) * 26) / DIST
+    CAM-Z @ TERRAIN-H @ - 26 * DIST @ / HORIZON + PROJ-Y !
 
     PROJ-Y @ 0 < IF 0 PROJ-Y ! THEN
     PROJ-Y @ SCREEN-H 1 - > IF SCREEN-H 1 - PROJ-Y ! THEN
 
     PROJ-Y @ MAX-Y @ < IF
-      \ Calculate directional sunlight slope (x-1 vs x+1)
+      \ Directional sunlight shading: slope delta + altitude - distance haze
       RAY-X @ 1 - RAY-Y @ MARS-HEIGHT
       RAY-X @ 1 + RAY-Y @ MARS-HEIGHT -
-      DIST @ TERRAIN-H @ ROT MARS-COLOR
+      4 * 22 +
+      TERRAIN-H @ 5 / +
+      DIST @ 3 / -
+      DUP 0 < IF DROP 0 THEN
+      DUP 63 > IF DROP 63 THEN
+      GET-PAL
       PROJ-Y @ MAX-Y @ COL-X @ WND @ WND-VLINE
 
       PROJ-Y @ 1 - MAX-Y !
@@ -227,13 +255,11 @@ VARIABLE COL-B
     1 DIST +!
   REPEAT
 
-  \ Store final horizon in buffer for terminal rendering
   MAX-Y @ 1 + COL-X @ SET-PROJ
 ;
 
-\ Render one full frame (sky backdrop + voxel columns + terminal frame if no display processor)
+\ Render one full frame (sky backdrop + voxel terrain + terminal profile if headless)
 : RENDER-MARS-FRAME
-  UPDATE-MARS-DIMS
   RENDER-SKY-BACKDROP
 
   \ 1. Compute voxel columns & draw GUI window
@@ -245,11 +271,11 @@ VARIABLE COL-B
   DISPLAY? 0= IF
     24 0 DO
       40 0 DO
-        I 4 * GET-PROJ
+        I 8 * GET-PROJ
         J 10 * = IF
           94 EMIT \ '^' peak crest
         ELSE
-          I 4 * GET-PROJ J 10 * < IF
+          I 8 * GET-PROJ J 10 * < IF
             J 16 > IF 35 EMIT ELSE 58 EMIT THEN \ '#' canyon floor / ':' slope
           ELSE
             32 EMIT \ ' ' Martian sky
@@ -268,8 +294,8 @@ VARIABLE COL-B
 \ Right (29): Turn Right (Yaw)
 \ Up (30) or 'w' / 'W': Forward Step
 \ Down (31) or 's' / 'S': Reverse Step
-\ 'a' / 'A' (or Shift+Left): Lateral Strafe Left
-\ 'd' / 'D' (or Shift+Right): Lateral Strafe Right
+\ 'a' / 'A': Lateral Strafe Left
+\ 'd' / 'D': Lateral Strafe Right
 \ Space (32): Ballistic Jump Arc
 \ 'q' / 'Q' / ESC (27): Quit
 : PROCESS-INPUT
@@ -303,25 +329,25 @@ VARIABLE COL-B
 
     \ Up Arrow or 'w' or 'W': Forward Step
     DUP 30 = OVER 119 = OR OVER 87 = OR IF
-      HEADING @ GET-SIN 2 * 16 / CAM-X +!
-      HEADING @ GET-COS 2 * 16 / CAM-Y +!
+      HEADING @ GET-SIN 3 * 16 / CAM-X +!
+      HEADING @ GET-COS 3 * 16 / CAM-Y +!
     THEN
 
     \ Down Arrow or 's' or 'S': Reverse Step
     DUP 31 = OVER 115 = OR OVER 83 = OR IF
-      HEADING @ GET-SIN -2 * 16 / CAM-X +!
-      HEADING @ GET-COS -2 * 16 / CAM-Y +!
+      HEADING @ GET-SIN -3 * 16 / CAM-X +!
+      HEADING @ GET-COS -3 * 16 / CAM-Y +!
     THEN
 
-    \ Space: Ballistic Jump with gravity arc
+    \ Space: Ballistic Jump with Martian gravity arc
     DUP 32 = IF
       JUMP-HEIGHT @ 0= IF
-        18 JUMP-VEL !
+        20 JUMP-VEL !
         1 JUMP-HEIGHT !
       THEN
     THEN
 
-    \ 'q' or 'Q' or ESC
+    \ 'q' or 'Q' or ESC (27) -> terminate flight loop
     DUP 27 = OVER 113 = OR OVER 81 = OR IF
       0 RUNNING !
     THEN
@@ -332,7 +358,7 @@ VARIABLE COL-B
 
 \ Ballistic Flight Physics & Flight Clearance matching reference mars.c
 : UPDATE-PHYSICS
-  \ 1. Ballistic jump arc
+  \ 1. Ballistic jump arc with Martian gravity
   JUMP-HEIGHT @ 0 > IF
     JUMP-VEL @ JUMP-HEIGHT +!
     -2 JUMP-VEL +!
@@ -342,8 +368,8 @@ VARIABLE COL-B
     THEN
   THEN
 
-  \ 2. Automatic ground clearance (25 units above terrain) + jump altitude
-  CAM-X @ CAM-Y @ MARS-HEIGHT 25 + JUMP-HEIGHT @ + CAM-Z !
+  \ 2. Automatic ground clearance: 24 units above terrain + jump altitude
+  CAM-X @ CAM-Y @ MARS-HEIGHT 24 + JUMP-HEIGHT @ + CAM-Z !
 ;
 
 \ Interactive Flight Loop
@@ -354,7 +380,7 @@ VARIABLE COL-B
     PROCESS-INPUT
     UPDATE-PHYSICS
     RENDER-MARS-FRAME
-    2 MS
+    16 MS
 
     1 FRAME-STEP +!
     MAX-FRAMES @ 0 > IF
@@ -369,21 +395,21 @@ VARIABLE COL-B
 : MARS
   DISPLAY? 0= IF CR THEN
   320 240 WND-OPEN WND !
-  WND @ ' RENDER-MARS-FRAME WND-ON-PAINT
 
-  16 CAM-X !
-  8  CAM-Y !
-  0  HEADING !
-  0  SPEED !
-  0  STRAFE !
-  0  JUMP-VEL !
-  0  JUMP-HEIGHT !
-  1  RUNNING !
-  0  FRAME-STEP !
+  120 CAM-X !
+  100 CAM-Y !
+  0   HEADING !
+  0   SPEED !
+  0   STRAFE !
+  0   JUMP-VEL !
+  0   JUMP-HEIGHT !
+  1   RUNNING !
+  0   FRAME-STEP !
   UPDATE-PHYSICS
   DISPLAY? IF 0 MAX-FRAMES ! ELSE 4 MAX-FRAMES ! THEN
 
   FLY
+  WND @ DUP IF WND-CLOSE ELSE DROP THEN
   DISPLAY? 0= IF CR THEN
 ;
 

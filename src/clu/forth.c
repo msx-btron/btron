@@ -142,12 +142,26 @@ static void forth_worker_task(VW exinf) {
 static void forth_wnd_destroy(WND *wnd) {
     if (wnd == s_forth_active_wnd) {
         s_forth_active_wnd = NULL;
-        s_forth_vm.halted = true;
-        if (s_forth_tskid > 0) {
-            wup_tsk(s_forth_tskid);
-        }
+    }
+    s_forth_vm.halted = true;
+    if (s_forth_tskid > 0) {
+        wup_tsk(s_forth_tskid);
     }
 }
+
+#if BTRON_HOSTED
+#include <pthread.h>
+static pthread_mutex_t s_forth_wnd_mutex = PTHREAD_MUTEX_INITIALIZER;
+#define FORTH_LOCK()   pthread_mutex_lock(&s_forth_wnd_mutex)
+#define FORTH_UNLOCK() pthread_mutex_unlock(&s_forth_wnd_mutex)
+#else
+#define FORTH_LOCK()   ((void)0)
+#define FORTH_UNLOCK() ((void)0)
+#endif
+
+static bool s_forth_mouse_down = false;
+static H s_forth_prev_mx = 0;
+static H s_forth_prev_my = 0;
 
 static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
     (void)wnd;
@@ -169,8 +183,49 @@ static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
             forth_enqueue_key(32);
         } else if (k == BTRON_KEY_ESCAPE || k == 27) {
             forth_enqueue_key(27);
+            s_forth_vm.halted = true;
+            if (s_forth_tskid > 0) {
+                wup_tsk(s_forth_tskid);
+            }
+            FORTH_LOCK();
+            if (wnd && wnd_mgr_contains(wnd)) {
+                if (wnd == s_forth_active_wnd) {
+                    s_forth_active_wnd = NULL;
+                }
+                cls_wnd(wnd);
+            }
+            FORTH_UNLOCK();
+            return;
+            s_forth_vm.halted = true;
+            if (s_forth_tskid > 0) {
+                wup_tsk(s_forth_tskid);
+            }
+            FORTH_LOCK();
+            if (wnd && wnd_mgr_contains(wnd)) {
+                if (wnd == s_forth_active_wnd) {
+                    s_forth_active_wnd = NULL;
+                }
+                cls_wnd(wnd);
+            }
+            FORTH_UNLOCK();
+            return;
         } else if (k < 128) {
             forth_enqueue_key((int)k);
+        }
+    } else if (evt->type == EV_BUT_DOWN) {
+        s_forth_mouse_down = true;
+        s_forth_prev_mx = evt->pos.x;
+        s_forth_prev_my = evt->pos.y;
+    } else if (evt->type == EV_BUT_UP) {
+        s_forth_mouse_down = false;
+    } else if (evt->type == EV_MOUSE_MOVE) {
+        if (s_forth_mouse_down) {
+            H dx = evt->pos.x - s_forth_prev_mx;
+            H dy = evt->pos.y - s_forth_prev_my;
+            if (dx < -6) { forth_enqueue_key(28); s_forth_prev_mx = evt->pos.x; }
+            else if (dx > 6) { forth_enqueue_key(29); s_forth_prev_mx = evt->pos.x; }
+            if (dy < -6) { forth_enqueue_key(30); s_forth_prev_my = evt->pos.y; }
+            else if (dy > 6) { forth_enqueue_key(31); s_forth_prev_my = evt->pos.y; }
         }
     }
 }
@@ -178,7 +233,10 @@ static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
 #define FORTH_BACKBUFFER_MAX_W 800
 #define FORTH_BACKBUFFER_MAX_H 600
 #define FORTH_BACKBUFFER_SIZE  (FORTH_BACKBUFFER_MAX_W * FORTH_BACKBUFFER_MAX_H)
-static COLOR s_forth_backbuffer[FORTH_BACKBUFFER_SIZE];
+static COLOR s_forth_backbuffer_0[FORTH_BACKBUFFER_SIZE];
+static COLOR s_forth_backbuffer_1[FORTH_BACKBUFFER_SIZE];
+static volatile COLOR *s_forth_draw_target = s_forth_backbuffer_0;
+static volatile COLOR *s_forth_disp_target = s_forth_backbuffer_1;
 static H s_forth_bb_w = 0;
 static H s_forth_bb_h = 0;
 
@@ -211,11 +269,13 @@ static void blit_scaled_backbuffer(COLOR *dst, H dw, H dh, const COLOR *src, H s
 }
 
 static void forth_wnd_paint(WND *wnd, GDEV *dev) {
+    FORTH_LOCK();
     if (wnd && dev && dev->pixels && s_forth_bb_w > 0 && s_forth_bb_h > 0) {
         blit_scaled_backbuffer(dev->pixels, dev->width, dev->height,
-                               s_forth_backbuffer, s_forth_bb_w, s_forth_bb_h);
+                               (const COLOR *)s_forth_disp_target, s_forth_bb_w, s_forth_bb_h);
         wnd->img_valid = TRUE;
     }
+    FORTH_UNLOCK();
 }
 
 static void clu_forth_wnd_on_paint(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t xt) {
@@ -249,36 +309,43 @@ static forth_cell_t clu_forth_wnd_open(ForthVM *vm, forth_cell_t w, forth_cell_t
     top_wnd(wnd);
     wnd->img_valid = TRUE;
 
+    FORTH_LOCK();
     /* Virtual Forth surface is fixed at requested (w, h) e.g. 320x240 for optimal raymarching speed */
     s_forth_bb_w = (H)w;
     s_forth_bb_h = (H)h;
     if (s_forth_bb_w > FORTH_BACKBUFFER_MAX_W) s_forth_bb_w = FORTH_BACKBUFFER_MAX_W;
     if (s_forth_bb_h > FORTH_BACKBUFFER_MAX_H) s_forth_bb_h = FORTH_BACKBUFFER_MAX_H;
-    memset(s_forth_backbuffer, 0, (size_t)s_forth_bb_w * (size_t)s_forth_bb_h * sizeof(COLOR));
+    s_forth_draw_target = s_forth_backbuffer_0;
+    s_forth_disp_target = s_forth_backbuffer_1;
+    memset(s_forth_backbuffer_0, 0, (size_t)s_forth_bb_w * (size_t)s_forth_bb_h * sizeof(COLOR));
+    memset(s_forth_backbuffer_1, 0, (size_t)s_forth_bb_w * (size_t)s_forth_bb_h * sizeof(COLOR));
 
     if (wnd->dev && wnd->dev->pixels) {
         memset(wnd->dev->pixels, 0, (size_t)wnd->dev->width * (size_t)wnd->dev->height * sizeof(COLOR));
     }
     inval_wnd(wnd);
+    FORTH_UNLOCK();
     return (forth_cell_t)(uintptr_t)wnd;
 }
 
 static void clu_forth_wnd_close(ForthVM *vm, forth_cell_t wnd_val) {
     (void)vm;
+    FORTH_LOCK();
     WND *wnd = (WND *)(uintptr_t)wnd_val;
-    if (wnd) {
+    if (wnd && wnd_mgr_contains(wnd)) {
         if (wnd == s_forth_active_wnd) {
             s_forth_active_wnd = NULL;
         }
         cls_wnd(wnd);
     }
+    FORTH_UNLOCK();
 }
 
 static void clu_forth_wnd_pixel(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x, forth_cell_t y, forth_cell_t col) {
     (void)vm;
     if (s_forth_bb_w > 0 && s_forth_bb_h > 0) {
         if (x >= 0 && x < s_forth_bb_w && y >= 0 && y < s_forth_bb_h) {
-            s_forth_backbuffer[y * s_forth_bb_w + x] = (COLOR)col;
+            ((COLOR *)s_forth_draw_target)[y * s_forth_bb_w + x] = (COLOR)col;
         }
         return;
     }
@@ -298,7 +365,7 @@ static void clu_forth_wnd_vline(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t 
         if (y1 < 0) y1 = 0;
         if (y2 >= s_forth_bb_h) y2 = s_forth_bb_h - 1;
         if (y1 > y2) return;
-        COLOR *px = &s_forth_backbuffer[y1 * s_forth_bb_w + x];
+        COLOR *px = &((COLOR *)s_forth_draw_target)[y1 * s_forth_bb_w + x];
         H stride = s_forth_bb_w;
         for (forth_cell_t y = y1; y <= y2; y++) {
             *px = (COLOR)col;
@@ -332,7 +399,7 @@ static void clu_forth_wnd_rect(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x
         if (x2 >= s_forth_bb_w) x2 = s_forth_bb_w - 1;
         if (y2 >= s_forth_bb_h) y2 = s_forth_bb_h - 1;
         for (forth_cell_t cy = y; cy <= y2; cy++) {
-            COLOR *row = &s_forth_backbuffer[cy * s_forth_bb_w + x];
+            COLOR *row = &((COLOR *)s_forth_draw_target)[cy * s_forth_bb_w + x];
             for (forth_cell_t cx = x; cx <= x2; cx++) {
                 *row++ = (COLOR)col;
             }
@@ -361,8 +428,9 @@ static void clu_forth_wnd_clear(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t 
     if (s_forth_bb_w > 0 && s_forth_bb_h > 0) {
         size_t total = (size_t)s_forth_bb_w * (size_t)s_forth_bb_h;
         COLOR c = (COLOR)col;
+        COLOR *dst = (COLOR *)s_forth_draw_target;
         for (size_t i = 0; i < total; i++) {
-            s_forth_backbuffer[i] = c;
+            dst[i] = c;
         }
         return;
     }
@@ -378,13 +446,20 @@ static void clu_forth_wnd_clear(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t 
 
 static void clu_forth_wnd_update(ForthVM *vm, forth_cell_t wnd_val) {
     (void)vm;
+    FORTH_LOCK();
+    /* Double-buffering page flip: swap completed draw target into display target */
+    COLOR *completed = (COLOR *)s_forth_draw_target;
+    s_forth_draw_target = s_forth_disp_target;
+    s_forth_disp_target = completed;
+
     WND *wnd = (WND *)(uintptr_t)wnd_val;
-    if (wnd && wnd->dev && wnd->dev->pixels && s_forth_bb_w > 0 && s_forth_bb_h > 0) {
+    if (wnd && wnd_mgr_contains(wnd) && wnd->dev && wnd->dev->pixels && s_forth_bb_w > 0 && s_forth_bb_h > 0) {
         blit_scaled_backbuffer(wnd->dev->pixels, wnd->dev->width, wnd->dev->height,
-                               s_forth_backbuffer, s_forth_bb_w, s_forth_bb_h);
+                               (const COLOR *)s_forth_disp_target, s_forth_bb_w, s_forth_bb_h);
         wnd->img_valid = TRUE;
-        inval_wnd(wnd);
+        wnd_inval_damage_rect(&wnd->client);
     }
+    FORTH_UNLOCK();
 }
 
 static void clu_forth_wnd_size(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t *out_w, forth_cell_t *out_h) {

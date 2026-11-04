@@ -19,6 +19,10 @@
                 dw      0                       ; TEXT (none)
                 dw      0                       ; Reserved
 
+; ── RAM Variables (MSX Page 3: $C000..$FFFF) ─────────────────────────
+RAM_SCROLL_Y    equ     $C000
+RAM_SCROLL_X    equ     $C001
+
 ; ── Cartridge Entry Point ──────────────────────────────────────────────
 mars_start:
                 di
@@ -35,71 +39,104 @@ mars_start:
                 ld      b, 1
                 call    set_vdp_reg
 
-                ; Initialize scroll offsets
+                ; Initialize scroll offsets in RAM
                 xor     a
-                ld      (scroll_y), a
-                ld      (scroll_x), a
+                ld      (RAM_SCROLL_Y), a
+                ld      (RAM_SCROLL_X), a
 
 ; ── Interactive Main Loop ──────────────────────────────────────────────
 mars_loop:
-                ; Read keyboard row 8 (cursor keys: Space, Right, Down, Up, Left)
+                ; 1. Read keyboard row 8 (cursor keys: Space, Right, Down, Up, Left)
                 ld      a, 8
                 out     ($AA), a
                 in      a, ($A9)
-                ld      c, a                    ; Bit 7=Down, 6=Up, 5=Right, 4=Left, 0=Space
+                ld      c, a                    ; Active low: bit 7=Right, 6=Down, 5=Up, 4=Left, 0=Space
 
-                ; Check Up key (bit 5 / bit 6)
+                ; 2. Read Joystick Port 1 via PSG (active low: bit 0=Up, 1=Down, 2=Left, 3=Right)
+                ld      a, 15
+                out     ($A0), a
+                ld      a, $4F                  ; Select joypad 1 (bit 6 = 0)
+                out     ($A1), a
+                ld      a, 14
+                out     ($A0), a
+                in      a, ($A2)
+                ld      d, a                    ; Joystick bits
+
+                ; Check Up: Keyboard row 8 bit 5 OR Joypad bit 0
                 bit     5, c
+                jr      z, .move_up
+                bit     0, d
                 jr      nz, .check_down
-                ld      a, (scroll_y)
-                inc     a
-                ld      (scroll_y), a
-                jr      .apply_scroll
+.move_up:
+                ld      a, (RAM_SCROLL_Y)
+                dec     a
+                ld      (RAM_SCROLL_Y), a
+                jr      .check_horizontal
 
 .check_down:
+                ; Check Down: Keyboard row 8 bit 6 OR Joypad bit 1
                 bit     6, c
-                jr      nz, .check_left
-                ld      a, (scroll_y)
-                dec     a
-                ld      (scroll_y), a
-                jr      .apply_scroll
+                jr      z, .move_down
+                bit     1, d
+                jr      nz, .check_horizontal
+.move_down:
+                ld      a, (RAM_SCROLL_Y)
+                inc     a
+                ld      (RAM_SCROLL_Y), a
 
-.check_left:
+.check_horizontal:
+                ; Check Left: Keyboard row 8 bit 4 OR Joypad bit 2
                 bit     4, c
+                jr      z, .move_left
+                bit     2, d
                 jr      nz, .check_right
-                ld      a, (scroll_x)
+.move_left:
+                ld      a, (RAM_SCROLL_X)
                 dec     a
-                ld      (scroll_x), a
+                ld      (RAM_SCROLL_X), a
                 jr      .apply_scroll
 
 .check_right:
+                ; Check Right: Keyboard row 8 bit 7 OR Joypad bit 3
                 bit     7, c
+                jr      z, .move_right
+                bit     3, d
                 jr      nz, .apply_scroll
-                ld      a, (scroll_x)
+.move_right:
+                ld      a, (RAM_SCROLL_X)
                 inc     a
-                ld      (scroll_x), a
+                ld      (RAM_SCROLL_X), a
 
 .apply_scroll:
                 ; Update V9938 R#23 (Vertical scroll offset)
-                ld      a, (scroll_y)
+                ld      a, (RAM_SCROLL_Y)
                 ld      b, 23
                 call    set_vdp_reg
 
-                ; Update V9938 R#27 (Horizontal scroll low 3 bits)
-                ld      a, (scroll_x)
+                ; Update V9958 R#26 (Horizontal scroll high: 8-pixel units)
+                ld      a, (RAM_SCROLL_X)
+                srl     a
+                srl     a
+                srl     a
+                and     $3F
+                ld      b, 26
+                call    set_vdp_reg
+
+                ; Update V9958 R#27 (Horizontal scroll low 3 bits: 0..7 px)
+                ld      a, (RAM_SCROLL_X)
                 and     $07
                 ld      b, 27
                 call    set_vdp_reg
 
-                ; Small frame delay
-                ld      b, 20
+                ; Frame pacing delay
+                ld      b, 10
 .delay:
                 ld      d, 255
 .dloop:         dec     d
                 jr      nz, .dloop
                 djnz    .delay
 
-                jr      mars_loop
+                jp      mars_loop
 
 ; ── V9938 Screen 8 Initialization ──────────────────────────────────────
 init_screen8:
@@ -180,10 +217,6 @@ load_mars_frame:
                 out     ($98), a
                 djnz    .pixel_loop
                 jr      .unpack
-
-; ── Variables ──────────────────────────────────────────────────────────
-scroll_y:       db      0
-scroll_x:       db      0
 
 ; ── Include Calibrated Landscape RLE Stream ────────────────────────────
                 include "mars_rle.inc"

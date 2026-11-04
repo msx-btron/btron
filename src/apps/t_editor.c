@@ -777,6 +777,7 @@ int teditor_scan_fs_dir(const char *dir_path, TMenuTreeItem *out_items, int max_
                     BOOL is_text = FALSE;
                     if (nlen > 3 && strcmp(entry.name + nlen - 3, ".md") == 0) is_text = TRUE;
                     else if (nlen > 4 && strcmp(entry.name + nlen - 4, ".txt") == 0) is_text = TRUE;
+                    else if (nlen > 4 && strcmp(entry.name + nlen - 4, ".fth") == 0) is_text = TRUE;
                     if (is_text) {
                         strncpy(out_items[count].name, entry.name, sizeof(out_items[count].name) - 1);
                         out_items[count].name[sizeof(out_items[count].name) - 1] = '\0';
@@ -857,6 +858,7 @@ int teditor_scan_fs_dir(const char *dir_path, TMenuTreeItem *out_items, int max_
                     BOOL ok = FALSE;
                     if (nlen > 4 && strcmp(entry.name + nlen - 4, ".txt") == 0) ok = TRUE;
                     else if (nlen > 3 && strcmp(entry.name + nlen - 3, ".md") == 0) ok = TRUE;
+                    else if (nlen > 4 && strcmp(entry.name + nlen - 4, ".fth") == 0) ok = TRUE;
                     if (!ok) continue;
                 }
                 TMenuTreeItem *it = &out_items[count++];
@@ -905,6 +907,7 @@ int teditor_scan_fs_dir(const char *dir_path, TMenuTreeItem *out_items, int max_
                     BOOL ok = FALSE;
                     if (nlen > 4 && strcmp(de->d_name + nlen - 4, ".txt") == 0) ok = TRUE;
                     else if (nlen > 3 && strcmp(de->d_name + nlen - 3, ".md") == 0) ok = TRUE;
+                    else if (nlen > 4 && strcmp(de->d_name + nlen - 4, ".fth") == 0) ok = TRUE;
                     else if (nlen > 11 && strcmp(de->d_name + nlen - 11, ".anders.txt") == 0) ok = TRUE;
                     if (!ok) continue;
                 }
@@ -1225,6 +1228,28 @@ int teditor_get_asset_files(char files[][64], int max_files) {
             }
         }
         closedir(d);
+    }
+
+    /* Discover .fth files from host directory assets/forth */
+    DIR *df = opendir("assets/forth");
+    if (df) {
+        struct dirent *de;
+        while ((de = readdir(df)) != NULL && count < max_files) {
+            if (de->d_name[0] == '.') continue;
+            size_t nlen = strlen(de->d_name);
+            if (nlen > 4 && strcmp(de->d_name + nlen - 4, ".fth") == 0) {
+                BOOL dup = FALSE;
+                for (int i = 0; i < count; i++) {
+                    if (strcmp(files[i], de->d_name) == 0) { dup = TRUE; break; }
+                }
+                if (!dup) {
+                    strncpy(files[count], de->d_name, 63);
+                    files[count][63] = '\0';
+                    count++;
+                }
+            }
+        }
+        closedir(df);
     }
 #endif
 
@@ -2007,11 +2032,15 @@ int teditor_load_file(TEditor *ed, const char *filepath) {
             snprintf(alt_path, sizeof(alt_path), "assets/texts/%s", base);
             fp = fopen(alt_path, "r");
             if (!fp) {
-                snprintf(alt_path, sizeof(alt_path), "assets/%s", base);
+                snprintf(alt_path, sizeof(alt_path), "assets/forth/%s", base);
                 fp = fopen(alt_path, "r");
                 if (!fp) {
-                    snprintf(alt_path, sizeof(alt_path), "assets/anders/%s", base);
+                    snprintf(alt_path, sizeof(alt_path), "assets/%s", base);
                     fp = fopen(alt_path, "r");
+                    if (!fp) {
+                        snprintf(alt_path, sizeof(alt_path), "assets/anders/%s", base);
+                        fp = fopen(alt_path, "r");
+                    }
                 }
             }
         }
@@ -2105,6 +2134,10 @@ int teditor_save_file(TEditor *ed, const char *filepath) {
         if (!fp) {
             snprintf(alt_path, sizeof(alt_path), "assets/texts/%s", base);
             fp = fopen(alt_path, "w");
+            if (!fp) {
+                snprintf(alt_path, sizeof(alt_path), "assets/forth/%s", base);
+                fp = fopen(alt_path, "w");
+            }
         }
     }
     if (fp) {
