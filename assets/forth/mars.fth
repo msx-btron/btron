@@ -298,32 +298,30 @@ VARIABLE SKY-V
 \ 'q' / 'Q' / ESC (27): Quit
 : PROCESS-INPUT ( key -- )
   DUP 28 = IF
-    \ Smooth Yaw Turn Left (32 fine heading steps)
-    FINE-HEADING @ 1 - 31 AND FINE-HEADING !
-    FINE-HEADING @ 2 / 15 AND HEADING !
+    \ Snappy Yaw Turn Left (16 discrete headings matching original mars.c)
+    HEADING @ 1 - 15 AND HEADING !
   ELSE DUP 29 = IF
-    \ Smooth Yaw Turn Right (32 fine heading steps)
-    FINE-HEADING @ 1 + 31 AND FINE-HEADING !
-    FINE-HEADING @ 2 / 15 AND HEADING !
+    \ Snappy Yaw Turn Right (16 discrete headings matching original mars.c)
+    HEADING @ 1 + 15 AND HEADING !
   ELSE DUP 30 = OVER 119 = OR OVER 87 = OR IF
-    \ Move Forward along heading (0.5 map units per step)
-    HEADING @ GET-SIN 8 * CAM-FX +!
-    HEADING @ GET-COS 8 * CAM-FY +!
+    \ Move Forward along heading (2x viewport speed: 1.5 map units per step)
+    HEADING @ GET-SIN 24 * CAM-FX +!
+    HEADING @ GET-COS 24 * CAM-FY +!
     SYNC-CAM
   ELSE DUP 31 = OVER 115 = OR OVER 83 = OR IF
-    \ Move Reverse along heading (0.5 map units per step)
-    HEADING @ GET-SIN 8 * CAM-FX @ SWAP - CAM-FX !
-    HEADING @ GET-COS 8 * CAM-FY @ SWAP - CAM-FY !
+    \ Move Reverse along heading (2x viewport speed: 1.5 map units per step)
+    HEADING @ GET-SIN 24 * CAM-FX @ SWAP - CAM-FX !
+    HEADING @ GET-COS 24 * CAM-FY @ SWAP - CAM-FY !
     SYNC-CAM
   ELSE DUP 97 = OVER 65 = OR IF
-    \ Strafe Left
-    HEADING @ GET-COS 8 * CAM-FX @ SWAP - CAM-FX !
-    HEADING @ GET-SIN 8 * CAM-FY +!
+    \ Strafe Left (2x viewport speed: 1.5 map units per step)
+    HEADING @ GET-COS 24 * CAM-FX @ SWAP - CAM-FX !
+    HEADING @ GET-SIN 24 * CAM-FY +!
     SYNC-CAM
   ELSE DUP 100 = OVER 68 = OR IF
-    \ Strafe Right
-    HEADING @ GET-COS 8 * CAM-FX +!
-    HEADING @ GET-SIN 8 * CAM-FY @ SWAP - CAM-FY !
+    \ Strafe Right (2x viewport speed: 1.5 map units per step)
+    HEADING @ GET-COS 24 * CAM-FX +!
+    HEADING @ GET-SIN 24 * CAM-FY @ SWAP - CAM-FY !
     SYNC-CAM
   ELSE DUP 32 = IF
     \ Ballistic Jump Leap
