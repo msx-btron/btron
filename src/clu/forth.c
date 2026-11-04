@@ -154,10 +154,13 @@ static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
     if (!evt) return;
     if (evt->type == EV_KEY_DOWN) {
         UW k = evt->key;
+        uint16_t mod = (uint16_t)(uintptr_t)evt->data;
+        BOOL shift = (mod & BTRON_KMOD_SHIFT) != 0;
+
         if (k == BTRON_KEY_LEFT || k == 28) {
-            forth_enqueue_key(28);
+            forth_enqueue_key(shift ? 'a' : 28);
         } else if (k == BTRON_KEY_RIGHT || k == 29) {
-            forth_enqueue_key(29);
+            forth_enqueue_key(shift ? 'd' : 29);
         } else if (k == BTRON_KEY_UP || k == 30) {
             forth_enqueue_key(30);
         } else if (k == BTRON_KEY_DOWN || k == 31) {
@@ -172,9 +175,45 @@ static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
     }
 }
 
+#define FORTH_BACKBUFFER_MAX_W 800
+#define FORTH_BACKBUFFER_MAX_H 600
+#define FORTH_BACKBUFFER_SIZE  (FORTH_BACKBUFFER_MAX_W * FORTH_BACKBUFFER_MAX_H)
+static COLOR s_forth_backbuffer[FORTH_BACKBUFFER_SIZE];
+static H s_forth_bb_w = 0;
+static H s_forth_bb_h = 0;
+
+static void blit_scaled_backbuffer(COLOR *dst, H dw, H dh, const COLOR *src, H sw, H sh) {
+    if (!dst || !src || dw <= 0 || dh <= 0 || sw <= 0 || sh <= 0) return;
+    if (dw == sw && dh == sh) {
+        memcpy(dst, src, (size_t)dw * (size_t)dh * sizeof(COLOR));
+        return;
+    }
+    /* Fixed-point 16.16 fast streaming scaler (minimal latency, smooth scaling) */
+    uint32_t step_x = ((uint32_t)sw << 16) / (uint32_t)dw;
+    uint32_t step_y = ((uint32_t)sh << 16) / (uint32_t)dh;
+
+    uint32_t src_y_fp = 0;
+    for (H y = 0; y < dh; y++) {
+        H sy = (H)(src_y_fp >> 16);
+        if (sy >= sh) sy = sh - 1;
+        const COLOR *src_row = &src[sy * sw];
+        COLOR *dst_row = &dst[y * dw];
+
+        uint32_t src_x_fp = 0;
+        for (H x = 0; x < dw; x++) {
+            H sx = (H)(src_x_fp >> 16);
+            if (sx >= sw) sx = sw - 1;
+            dst_row[x] = src_row[sx];
+            src_x_fp += step_x;
+        }
+        src_y_fp += step_y;
+    }
+}
+
 static void forth_wnd_paint(WND *wnd, GDEV *dev) {
-    (void)dev;
-    if (wnd) {
+    if (wnd && dev && dev->pixels && s_forth_bb_w > 0 && s_forth_bb_h > 0) {
+        blit_scaled_backbuffer(dev->pixels, dev->width, dev->height,
+                               s_forth_backbuffer, s_forth_bb_w, s_forth_bb_h);
         wnd->img_valid = TRUE;
     }
 }
@@ -209,6 +248,14 @@ static forth_cell_t clu_forth_wnd_open(ForthVM *vm, forth_cell_t w, forth_cell_t
     s_forth_active_wnd = wnd;
     top_wnd(wnd);
     wnd->img_valid = TRUE;
+
+    /* Virtual Forth surface is fixed at requested (w, h) e.g. 320x240 for optimal raymarching speed */
+    s_forth_bb_w = (H)w;
+    s_forth_bb_h = (H)h;
+    if (s_forth_bb_w > FORTH_BACKBUFFER_MAX_W) s_forth_bb_w = FORTH_BACKBUFFER_MAX_W;
+    if (s_forth_bb_h > FORTH_BACKBUFFER_MAX_H) s_forth_bb_h = FORTH_BACKBUFFER_MAX_H;
+    memset(s_forth_backbuffer, 0, (size_t)s_forth_bb_w * (size_t)s_forth_bb_h * sizeof(COLOR));
+
     if (wnd->dev && wnd->dev->pixels) {
         memset(wnd->dev->pixels, 0, (size_t)wnd->dev->width * (size_t)wnd->dev->height * sizeof(COLOR));
     }
@@ -229,6 +276,12 @@ static void clu_forth_wnd_close(ForthVM *vm, forth_cell_t wnd_val) {
 
 static void clu_forth_wnd_pixel(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x, forth_cell_t y, forth_cell_t col) {
     (void)vm;
+    if (s_forth_bb_w > 0 && s_forth_bb_h > 0) {
+        if (x >= 0 && x < s_forth_bb_w && y >= 0 && y < s_forth_bb_h) {
+            s_forth_backbuffer[y * s_forth_bb_w + x] = (COLOR)col;
+        }
+        return;
+    }
     WND *wnd = (WND *)(uintptr_t)wnd_val;
     if (wnd && wnd->dev && wnd->dev->pixels) {
         if (x >= 0 && x < wnd->dev->width && y >= 0 && y < wnd->dev->height) {
@@ -239,6 +292,20 @@ static void clu_forth_wnd_pixel(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t 
 
 static void clu_forth_wnd_vline(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x, forth_cell_t y1, forth_cell_t y2, forth_cell_t col) {
     (void)vm;
+    if (s_forth_bb_w > 0 && s_forth_bb_h > 0) {
+        if (x < 0 || x >= s_forth_bb_w) return;
+        if (y1 > y2) { forth_cell_t tmp = y1; y1 = y2; y2 = tmp; }
+        if (y1 < 0) y1 = 0;
+        if (y2 >= s_forth_bb_h) y2 = s_forth_bb_h - 1;
+        if (y1 > y2) return;
+        COLOR *px = &s_forth_backbuffer[y1 * s_forth_bb_w + x];
+        H stride = s_forth_bb_w;
+        for (forth_cell_t y = y1; y <= y2; y++) {
+            *px = (COLOR)col;
+            px += stride;
+        }
+        return;
+    }
     WND *wnd = (WND *)(uintptr_t)wnd_val;
     if (wnd && wnd->dev && wnd->dev->pixels) {
         if (x < 0 || x >= wnd->dev->width) return;
@@ -257,6 +324,21 @@ static void clu_forth_wnd_vline(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t 
 
 static void clu_forth_wnd_rect(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x, forth_cell_t y, forth_cell_t w, forth_cell_t h, forth_cell_t col) {
     (void)vm;
+    if (s_forth_bb_w > 0 && s_forth_bb_h > 0 && w > 0 && h > 0) {
+        forth_cell_t x2 = x + w - 1;
+        forth_cell_t y2 = y + h - 1;
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x2 >= s_forth_bb_w) x2 = s_forth_bb_w - 1;
+        if (y2 >= s_forth_bb_h) y2 = s_forth_bb_h - 1;
+        for (forth_cell_t cy = y; cy <= y2; cy++) {
+            COLOR *row = &s_forth_backbuffer[cy * s_forth_bb_w + x];
+            for (forth_cell_t cx = x; cx <= x2; cx++) {
+                *row++ = (COLOR)col;
+            }
+        }
+        return;
+    }
     WND *wnd = (WND *)(uintptr_t)wnd_val;
     if (wnd && wnd->dev && wnd->dev->pixels && w > 0 && h > 0) {
         forth_cell_t x2 = x + w - 1;
@@ -275,7 +357,15 @@ static void clu_forth_wnd_rect(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t x
 }
 
 static void clu_forth_wnd_clear(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t col) {
-    (void)vm;
+    (void)vm; (void)wnd_val;
+    if (s_forth_bb_w > 0 && s_forth_bb_h > 0) {
+        size_t total = (size_t)s_forth_bb_w * (size_t)s_forth_bb_h;
+        COLOR c = (COLOR)col;
+        for (size_t i = 0; i < total; i++) {
+            s_forth_backbuffer[i] = c;
+        }
+        return;
+    }
     WND *wnd = (WND *)(uintptr_t)wnd_val;
     if (wnd && wnd->dev && wnd->dev->pixels) {
         size_t total = (size_t)wnd->dev->width * (size_t)wnd->dev->height;
@@ -289,22 +379,18 @@ static void clu_forth_wnd_clear(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t 
 static void clu_forth_wnd_update(ForthVM *vm, forth_cell_t wnd_val) {
     (void)vm;
     WND *wnd = (WND *)(uintptr_t)wnd_val;
-    if (wnd) {
+    if (wnd && wnd->dev && wnd->dev->pixels && s_forth_bb_w > 0 && s_forth_bb_h > 0) {
+        blit_scaled_backbuffer(wnd->dev->pixels, wnd->dev->width, wnd->dev->height,
+                               s_forth_backbuffer, s_forth_bb_w, s_forth_bb_h);
         wnd->img_valid = TRUE;
         inval_wnd(wnd);
     }
 }
 
 static void clu_forth_wnd_size(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t *out_w, forth_cell_t *out_h) {
-    (void)vm;
-    WND *wnd = (WND *)(uintptr_t)wnd_val;
-    if (wnd && wnd->dev) {
-        if (out_w) *out_w = (forth_cell_t)wnd->dev->width;
-        if (out_h) *out_h = (forth_cell_t)wnd->dev->height;
-    } else {
-        if (out_w) *out_w = 0;
-        if (out_h) *out_h = 0;
-    }
+    (void)vm; (void)wnd_val;
+    if (out_w) *out_w = (s_forth_bb_w > 0) ? s_forth_bb_w : 320;
+    if (out_h) *out_h = (s_forth_bb_h > 0) ? s_forth_bb_h : 240;
 }
 
 static int clu_forth_include_file(ForthVM *vm, const char *path) {

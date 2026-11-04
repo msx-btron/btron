@@ -287,6 +287,8 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_LT]         = &&lbl_lt,
         [FORTH_TOK_GT]         = &&lbl_gt,
         [FORTH_TOK_U_LT]       = &&lbl_u_lt,
+        [FORTH_TOK_NEQ]        = &&lbl_neq,
+        [FORTH_TOK_ZERO_NEQ]   = &&lbl_zero_neq,
         [FORTH_TOK_FETCH]      = &&lbl_fetch,
         [FORTH_TOK_STORE]      = &&lbl_store,
         [FORTH_TOK_C_FETCH]    = &&lbl_c_fetch,
@@ -297,6 +299,8 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_CHARS]      = &&lbl_chars,
         [FORTH_TOK_CHAR_PLUS]  = &&lbl_char_plus,
         [FORTH_TOK_ALLOT]      = &&lbl_allot,
+        [FORTH_TOK_COMMA]      = &&lbl_comma,
+        [FORTH_TOK_C_COMMA]    = &&lbl_c_comma,
         [FORTH_TOK_EXECUTE]    = &&lbl_execute,
         [FORTH_TOK_EXIT]       = &&lbl_exit,
         [FORTH_TOK_BRANCH]     = &&lbl_branch,
@@ -310,6 +314,7 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_CR]         = &&lbl_cr,
         [FORTH_TOK_BYE]        = &&lbl_bye,
         [FORTH_TOK_WORDS]      = &&lbl_words,
+        [FORTH_TOK_HERE]       = &&lbl_here,
         [FORTH_TOK_FIND_DEV]   = &&lbl_find_dev,
         [FORTH_TOK_PEER]       = &&lbl_peer,
         [FORTH_TOK_CHILD]      = &&lbl_child,
@@ -530,6 +535,17 @@ lbl_u_lt: {
     forth_push(vm, (a < b) ? -1 : 0);
     DISPATCH();
 }
+lbl_neq: {
+    forth_cell_t b = forth_pop(vm);
+    forth_cell_t a = forth_pop(vm);
+    forth_push(vm, (a != b) ? -1 : 0);
+    DISPATCH();
+}
+lbl_zero_neq: {
+    forth_cell_t a = forth_pop(vm);
+    forth_push(vm, (a != 0) ? -1 : 0);
+    DISPATCH();
+}
 lbl_fetch: {
     forth_cell_t addr = forth_pop(vm);
     if (addr >= 0 && addr + (forth_cell_t)sizeof(forth_cell_t) <= FORTH_ARENA_MAX) {
@@ -603,6 +619,29 @@ lbl_allot: {
         vm->here += n;
     } else {
         forth_abort(vm, "Arena allotment overflow");
+    }
+    DISPATCH();
+}
+lbl_comma: {
+    forth_cell_t val = forth_pop(vm);
+    vm->here = align_cell(vm->here);
+    if (vm->here + (forth_cell_t)sizeof(forth_cell_t) <= FORTH_ARENA_MAX) {
+        memcpy(&vm->arena[vm->here], &val, sizeof(forth_cell_t));
+        memcpy(&vm->ram[vm->here], &val, sizeof(forth_cell_t));
+        vm->here += sizeof(forth_cell_t);
+    } else {
+        forth_abort(vm, "Arena overflow in ,");
+    }
+    DISPATCH();
+}
+lbl_c_comma: {
+    forth_cell_t val = forth_pop(vm);
+    if (vm->here < FORTH_ARENA_MAX) {
+        vm->arena[vm->here] = (uint8_t)val;
+        vm->ram[vm->here] = (uint8_t)val;
+        vm->here++;
+    } else {
+        forth_abort(vm, "Arena overflow in C,");
     }
     DISPATCH();
 }
@@ -791,6 +830,10 @@ lbl_byte_load: {
 }
 lbl_words: {
     forth_words(vm);
+    DISPATCH();
+}
+lbl_here: {
+    forth_push(vm, vm->here);
     DISPATCH();
 }
 lbl_dev_tree: {
@@ -1120,6 +1163,17 @@ lbl_done:
                 forth_push(vm, (a > b) ? -1 : 0);
                 break;
             }
+            case FORTH_TOK_NEQ: {
+                forth_cell_t b = forth_pop(vm);
+                forth_cell_t a = forth_pop(vm);
+                forth_push(vm, (a != b) ? -1 : 0);
+                break;
+            }
+            case FORTH_TOK_ZERO_NEQ: {
+                forth_cell_t a = forth_pop(vm);
+                forth_push(vm, (a != 0) ? -1 : 0);
+                break;
+            }
             case FORTH_TOK_FETCH: {
                 forth_cell_t addr = forth_pop(vm);
                 if (addr >= 0 && addr + (forth_cell_t)sizeof(forth_cell_t) <= FORTH_ARENA_MAX)
@@ -1146,6 +1200,41 @@ lbl_done:
                     vm->arena[addr] = (uint8_t)val;
                 break;
             }
+            case FORTH_TOK_ALLOT: {
+                forth_cell_t n = forth_pop(vm);
+                if (vm->here + n <= FORTH_ARENA_MAX) {
+                    vm->here += n;
+                } else {
+                    forth_abort(vm, "Arena allotment overflow");
+                }
+                break;
+            }
+            case FORTH_TOK_COMMA: {
+                forth_cell_t val = forth_pop(vm);
+                vm->here = align_cell(vm->here);
+                if (vm->here + (forth_cell_t)sizeof(forth_cell_t) <= FORTH_ARENA_MAX) {
+                    memcpy(&vm->arena[vm->here], &val, sizeof(forth_cell_t));
+                    memcpy(&vm->ram[vm->here], &val, sizeof(forth_cell_t));
+                    vm->here += sizeof(forth_cell_t);
+                } else {
+                    forth_abort(vm, "Arena overflow in ,");
+                }
+                break;
+            }
+            case FORTH_TOK_C_COMMA: {
+                forth_cell_t val = forth_pop(vm);
+                if (vm->here < FORTH_ARENA_MAX) {
+                    vm->arena[vm->here] = (uint8_t)val;
+                    vm->ram[vm->here] = (uint8_t)val;
+                    vm->here++;
+                } else {
+                    forth_abort(vm, "Arena overflow in C,");
+                }
+                break;
+            }
+            case FORTH_TOK_HERE:
+                forth_push(vm, vm->here);
+                break;
             case FORTH_TOK_EMIT:
                 if (vm->emit_fn) vm->emit_fn((char)forth_pop(vm));
                 break;
@@ -1485,6 +1574,34 @@ static int forth_eval_internal(ForthVM *vm, const char *line) {
             continue;
         }
 
+        /* Create definition: 'CREATE <name>' (pushes address of data field) */
+        if (!vm->state && tok_len == 6 && forth_strncasecmp(tok, "create", 6) == 0) {
+            while (*p == ' ' || *p == '\t') p++;
+            const char *wstart = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
+            size_t wlen = p - wstart;
+            if (wlen > 0) {
+                char cname[32];
+                if (wlen >= sizeof(cname)) wlen = sizeof(cname) - 1;
+                memcpy(cname, wstart, wlen);
+                cname[wlen] = '\0';
+                vm->here = align_cell(vm->here);
+                if (vm->here + 2 + 2 * sizeof(forth_cell_t) < FORTH_ARENA_MAX) {
+                    dict_create_word(vm, cname, FORTH_TOK_ESCAPE, 0);
+                    vm->arena[vm->here++] = FORTH_TOK_LIT;
+                    forth_cell_t patch_addr = vm->here;
+                    vm->here += sizeof(forth_cell_t);
+                    vm->arena[vm->here++] = FORTH_TOK_EXIT;
+                    vm->here = align_cell(vm->here);
+                    forth_cell_t data_addr = vm->here;
+                    memcpy(&vm->arena[patch_addr], &data_addr, sizeof(forth_cell_t));
+                } else {
+                    forth_abort(vm, "Arena overflow defining create");
+                }
+            }
+            continue;
+        }
+
         /* File include: 'include <path>' */
         if (!vm->state && tok_len == 7 && forth_strncasecmp(tok, "include", 7) == 0) {
             while (*p == ' ' || *p == '\t') p++;
@@ -1815,6 +1932,8 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "<",          FORTH_TOK_LT,         0);
     dict_create_word(vm, ">",          FORTH_TOK_GT,         0);
     dict_create_word(vm, "U<",         FORTH_TOK_U_LT,       0);
+    dict_create_word(vm, "<>",         FORTH_TOK_NEQ,        0);
+    dict_create_word(vm, "0<>",        FORTH_TOK_ZERO_NEQ,   0);
 
     dict_create_word(vm, "@",          FORTH_TOK_FETCH,      0);
     dict_create_word(vm, "!",          FORTH_TOK_STORE,      0);
@@ -1826,6 +1945,9 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "CHARS",      FORTH_TOK_CHARS,      0);
     dict_create_word(vm, "CHAR+",      FORTH_TOK_CHAR_PLUS,  0);
     dict_create_word(vm, "ALLOT",      FORTH_TOK_ALLOT,      0);
+    dict_create_word(vm, ",",          FORTH_TOK_COMMA,      0);
+    dict_create_word(vm, "C,",         FORTH_TOK_C_COMMA,    0);
+    dict_create_word(vm, "HERE",       FORTH_TOK_HERE,       0);
 
     dict_create_word(vm, "EXECUTE",    FORTH_TOK_EXECUTE,    0);
     dict_create_word(vm, "EXIT",       FORTH_TOK_EXIT,       0);

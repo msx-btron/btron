@@ -129,6 +129,18 @@ int main(void) {
     forth_eval(&vm, "3 CELLS");
     TEST_ASSERT(vm.dstack[0] == 3 * FORTH_CELL_SIZE, "CELLS calculates byte size");
 
+    /* CREATE, COMMA (,), and 0<> */
+    forth_vm_reset_stacks(&vm);
+    forth_eval(&vm, "CREATE MY-TAB 10 , 20 , 30 ,");
+    forth_eval(&vm, "MY-TAB @");
+    TEST_ASSERT(vm.dstack[0] == 10, "MY-TAB @ = 10");
+    forth_eval(&vm, "MY-TAB CELL+ @");
+    TEST_ASSERT(vm.dstack[1] == 20, "MY-TAB CELL+ @ = 20");
+    forth_eval(&vm, "5 0<>");
+    TEST_ASSERT(vm.dstack[2] == -1, "5 0<> = true (-1)");
+    forth_eval(&vm, "0 0<>");
+    TEST_ASSERT(vm.dstack[3] == 0, "0 0<> = false (0)");
+
     /* 5. Colon Definition Compilation */
     printf("[5] Verifying Colon Definitions (: SQUARE DUP * ;)...\n");
     forth_vm_reset_stacks(&vm);

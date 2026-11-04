@@ -98,6 +98,8 @@ enum ForthToken {
     FORTH_TOK_LT           = 0x1F,
     FORTH_TOK_GT           = 0x20,
     FORTH_TOK_U_LT         = 0x21,
+    FORTH_TOK_NEQ          = 0x22,
+    FORTH_TOK_ZERO_NEQ     = 0x23,
 
     /* 0x24 - 0x2D: Memory Access & Portability */
     FORTH_TOK_FETCH        = 0x24,
@@ -110,6 +112,8 @@ enum ForthToken {
     FORTH_TOK_CHARS        = 0x2B,
     FORTH_TOK_CHAR_PLUS    = 0x2C,
     FORTH_TOK_ALLOT        = 0x2D,
+    FORTH_TOK_COMMA        = 0x2E,
+    FORTH_TOK_C_COMMA      = 0x2F,
 
     /* 0x30 - 0x37: Control & Inner Interpreter */
     FORTH_TOK_EXECUTE      = 0x30,
@@ -147,6 +151,7 @@ enum ForthToken {
     FORTH_TOK_CR           = 0x4C,
     FORTH_TOK_BYE          = 0x4D,
     FORTH_TOK_WORDS        = 0x4E,
+    FORTH_TOK_HERE         = 0x4F,
 
     /* 0x60 - 0x69: OpenFirmware (IEEE 1275) Device-Tree Extensions */
     FORTH_TOK_FIND_DEV     = 0x60,

@@ -133,6 +133,16 @@ __attribute__((weak)) WND *open_xmb_window(void) { return NULL; }
 __attribute__((weak)) WND *open_glgears_window(void) { return NULL; }
 __attribute__((weak)) WND *open_lilcu64_demo_window(void) { return NULL; }
 __attribute__((weak)) WND *open_msx_window(void) { return NULL; }
+__attribute__((weak)) WND *open_mars_window(void) { return NULL; }
+__attribute__((weak)) void clu_cmd_mars(const char *args, ShellOutputFn out, void *ud)
+{
+    (void)args; (void)out; (void)ud;
+}
+
+void clu_mars(const char *args, ShellOutputFn out, void *ud)
+{
+    clu_cmd_mars(args, out, ud);
+}
 
 void clu_quake(const char *args, ShellOutputFn out, void *ud)
 {
@@ -172,6 +182,7 @@ static const CluApp s_clu_apps[] = {
     { "lilcu",   "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
     { "lilcu64", "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
     { "msx",     "B-MSX Game System (MSX Cartridge Player)", open_msx_window },
+    { "mars",    "MARS 1993 Voxel Landscape (NASA JPL C99)", open_mars_window },
 };
 
 BOOL clu_launch_app(const char *verb, ShellOutputFn out, void *ud)

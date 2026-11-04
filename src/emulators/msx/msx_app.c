@@ -215,6 +215,8 @@ static uint16_t msx_machine_for(const char *name, size_t size)
      * then CHGMODs into SCREEN 5: it needs an MSX2 or later. */
     if (name && (strstr(name, "MSX_LOGO") || strstr(name, "msx_logo")))
         return BMSX_MACHINE_MSX2_CBIOS;
+    if (name && (strstr(name, "MARS") || strstr(name, "mars")))
+        return BMSX_MACHINE_MSX2_CBIOS;
     if (size > 65536u ||
         (name && (strstr(name, "BULLRUSH") || strstr(name, "NEON") ||
                   strstr(name, "NIGHT") || strstr(name, "btron") ||

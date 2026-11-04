@@ -41,6 +41,7 @@ CFLAGS ?= -O2 -Wall -Wextra -std=c99 -Iinclude -Iinclude/gl -Isrc/gl -Iinclude/d
         segui-screens tbios-tools tbios-roms test-tbios \
         test-mozc test-editor test-hmi test-tad test-chat test-wylie verify test-fs test-sps test-chokanji test-quake test-replay \
         test-hull test-view test-secret test-render test-drone test-drone-all test-zexall msx-trace \
+        test-mars-capture \
         run-posix run-qemu run-kernel run-yoko run-yoko4 run-sakamura run-foma run-uefi run-eufi run-uefu run-pc98 run-m68k run-ps2 run-mips debug-virtio debug-gdb clean \
         ps2-cfg ps2-dials \
         pi400 flash-pi400 fetch-pi400-fw
@@ -387,6 +388,7 @@ DEMO_SRCS = \
     src/demo/lilcu64_synth.c \
     src/demo/lilcu64_insert.c \
     src/demo/lilcu64_demo.c \
+    src/demo/mars.c \
     src/drivers/ps2/ps2_vu0_kernel.c
 
 # Targets that already pull DEMO_SRCS must not list this again.
@@ -851,7 +853,15 @@ $(TEST_TFW_FORTH_BIN): $(TEST_TFW_FORTH_OBJS) $(TFW_ROMS)
 test-tfw-forth: $(TEST_TFW_FORTH_BIN)
 	./$(TEST_TFW_FORTH_BIN)
 
-test-forth: test-clu-forth test-forth16 test-forth-perf test-tfw-forth
+TEST_MARS_CAPTURE_BIN = ./.build/test_mars_capture
+$(TEST_MARS_CAPTURE_BIN): verify/tests/test_mars_capture.c src/clu/forth_core.c src/clu/forth_devtree.c
+	@mkdir -p ./.build
+	$(CC) $(CFLAGS) $^ -o $@ -lz
+
+test-mars-capture: $(TEST_MARS_CAPTURE_BIN)
+	./$(TEST_MARS_CAPTURE_BIN)
+
+test-forth: test-clu-forth test-forth16 test-forth-perf test-tfw-forth test-mars-capture
 
 # ── Cho-Kanji (B-right/V 4.02) QCOW2 tests ───────────────────────────
 # The read-write tests create, append to and delete records, so they must never
@@ -3463,7 +3473,8 @@ TBIOS_ROMS = ./.build/tbios/tbios_main_msx2.rom \
              ./.build/tbios/tbios_sub.rom \
              ./.build/tbios/tbios_logo.rom \
              ./.build/tbios/tbios_music.rom \
-             ./.build/tbios/tdos_disk.rom
+             ./.build/tbios/tdos_disk.rom \
+             assets/msx/MARS.ROM
 
 ./.build/tbios/tbios_main_msx2.rom: src/emulators/msx/tbios/asm/entry_main.asm $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
@@ -3492,6 +3503,10 @@ TBIOS_ROMS = ./.build/tbios/tbios_main_msx2.rom \
 ./.build/tbios/tdos_disk.rom: src/emulators/msx/tbios/asm/entry_disk.asm $(PASMO_BIN)
 	@mkdir -p ./.build/tbios
 	@$(PASMO_BIN) -I src/emulators/msx/tbios/inc src/emulators/msx/tbios/asm/entry_disk.asm $@
+
+assets/msx/MARS.ROM: src/emulators/msx/tbios/asm/entry_mars.asm src/emulators/msx/tbios/asm/mars_rle.inc $(PASMO_BIN)
+	@mkdir -p assets/msx
+	@$(PASMO_BIN) -I src/emulators/msx/tbios/asm $< $@
 
 tbios-roms: $(TBIOS_ROMS)
 
@@ -3916,6 +3931,7 @@ CAPTURE_SCREENS_SRCS = src/tools/capture_screens.c \
                        src/demo/lilcu64_synth.c \
                        src/demo/lilcu64_insert.c \
                        src/demo/lilcu64_demo.c \
+                       src/demo/mars.c \
                        src/drivers/ps2/ps2_vu0_kernel.c
 
 CAPTURE_SCREENS_OBJS = $(CAPTURE_SCREENS_SRCS:.c=.test.o)
