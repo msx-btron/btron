@@ -6,6 +6,7 @@
 
 #include <btron/forth_vm.h>
 #include <btron/core.h>
+#include <btron/itron.h>
 #include <btron/wnd.h>
 #include <btron/event.h>
 #include <btron/libc_shim.h>
@@ -31,6 +32,28 @@ __attribute__((weak)) ER inval_wnd(WND *wnd) {
     (void)wnd;
     return E_OK;
 }
+__attribute__((weak)) ID cre_tsk(const T_CTSK *pk_ctsk) {
+    (void)pk_ctsk;
+    return -1;
+}
+__attribute__((weak)) ER sta_tsk(ID tskid, VW exinf) {
+    (void)tskid; (void)exinf;
+    return -1;
+}
+__attribute__((weak)) ER wup_tsk(ID tskid) {
+    (void)tskid;
+    return 0;
+}
+__attribute__((weak)) void dly_tsk(W dlytim) {
+    if (dlytim > 0) {
+#if BTRON_HOSTED
+        struct timespec ts;
+        ts.tv_sec = dlytim / 1000;
+        ts.tv_nsec = (dlytim % 1000) * 1000000L;
+        nanosleep(&ts, NULL);
+#endif
+    }
+}
 __attribute__((weak)) int vfs_read_file(const char *path, char *buf, size_t max_bytes, size_t *out_bytes) {
     (void)path; (void)buf; (void)max_bytes; (void)out_bytes;
     return -1;
@@ -43,6 +66,7 @@ static void *s_clu_ud = NULL;
 static char s_emit_buf[256];
 static size_t s_emit_idx = 0;
 static void clu_forth_flush(void);
+static int clu_forth_include_file(ForthVM *vm, const char *path);
 
 /* Keyboard Event Ring Buffer for Interactive Forth */
 static int s_forth_key_buf[64];
@@ -102,11 +126,26 @@ __attribute__((weak)) extern void btron_desktop_step(void);
 #endif
 
 static WND *s_forth_active_wnd = NULL;
+static ID s_forth_tskid = 0;
+static char s_forth_script_path[256];
+static volatile bool s_forth_task_running = false;
+
+static void forth_worker_task(VW exinf) {
+    (void)exinf;
+    s_forth_task_running = true;
+    clu_forth_include_file(&s_forth_vm, s_forth_script_path);
+    clu_forth_flush();
+    s_forth_task_running = false;
+    s_forth_tskid = 0;
+}
 
 static void forth_wnd_destroy(WND *wnd) {
     if (wnd == s_forth_active_wnd) {
         s_forth_active_wnd = NULL;
         s_forth_vm.halted = true;
+        if (s_forth_tskid > 0) {
+            wup_tsk(s_forth_tskid);
+        }
     }
 }
 
@@ -135,13 +174,8 @@ static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
 
 static void forth_wnd_paint(WND *wnd, GDEV *dev) {
     (void)dev;
-    if (wnd && wnd->user_data) {
-        forth_cell_t xt = (forth_cell_t)wnd->user_data;
-        if (xt > 0 && xt < FORTH_ARENA_MAX) {
-            forth_push(&s_forth_vm, xt);
-            uint8_t exec_tok = FORTH_TOK_EXECUTE;
-            forth_eval_fcode(&s_forth_vm, &exec_tok, 1);
-        }
+    if (wnd) {
+        wnd->img_valid = TRUE;
     }
 }
 
@@ -155,19 +189,9 @@ static void clu_forth_wnd_on_paint(ForthVM *vm, forth_cell_t wnd_val, forth_cell
 }
 
 static void clu_forth_ms(ForthVM *vm, forth_cell_t ms) {
-#if !defined(FORTH_STANDALONE)
-    if (btron_desktop_step) {
-        btron_desktop_step();
-    }
-#endif
     if (vm && vm->halted) return;
     if (ms > 0) {
-#if BTRON_HOSTED
-        struct timespec ts;
-        ts.tv_sec = ms / 1000;
-        ts.tv_nsec = (ms % 1000) * 1000000L;
-        nanosleep(&ts, NULL);
-#endif
+        dly_tsk((W)ms);
     }
 }
 
@@ -268,11 +292,6 @@ static void clu_forth_wnd_update(ForthVM *vm, forth_cell_t wnd_val) {
     if (wnd) {
         wnd->img_valid = TRUE;
         inval_wnd(wnd);
-#if !defined(FORTH_STANDALONE)
-        if (btron_desktop_step) {
-            btron_desktop_step();
-        }
-#endif
     }
 }
 
@@ -519,11 +538,38 @@ void clu_cmd_forth(const char *args, ShellOutputFn out, void *ud) {
             size_t alen = strlen(args);
             if ((alen > 4 && strcmp(args + alen - 4, ".fth") == 0) ||
                 (alen > 6 && strcmp(args + alen - 6, ".fcode") == 0)) {
-                clu_forth_include_file(&s_forth_vm, args);
+                if (s_forth_task_running) {
+                    out("forth: a script task is already running", COLOR_YELLOW, ud);
+                    return;
+                }
+
+                strncpy(s_forth_script_path, args, sizeof(s_forth_script_path) - 1);
+                s_forth_script_path[sizeof(s_forth_script_path) - 1] = '\0';
+                s_forth_vm.halted = false;
+
+                T_CTSK ctsk;
+                memset(&ctsk, 0, sizeof(ctsk));
+                ctsk.exinf = 0;
+                ctsk.tskatr = TA_HLNG;
+                ctsk.task = forth_worker_task;
+                ctsk.itskpri = 10;
+                ctsk.stksz = 32768;
+                ctsk.name = "forth_task";
+                s_forth_tskid = cre_tsk(&ctsk);
+                if (s_forth_tskid > 0) {
+                    sta_tsk(s_forth_tskid, 0);
+                    char msg[280];
+                    snprintf(msg, sizeof(msg), "Forth worker task started [task %d]: %s", (int)s_forth_tskid, args);
+                    out(msg, COLOR_GREEN, ud);
+                } else {
+                    /* Fallback to synchronous execution if task creation is unavailable */
+                    clu_forth_include_file(&s_forth_vm, args);
+                    clu_forth_flush();
+                }
             } else {
                 forth_eval(&s_forth_vm, args);
+                clu_forth_flush();
             }
-            clu_forth_flush();
             return;
         }
     }

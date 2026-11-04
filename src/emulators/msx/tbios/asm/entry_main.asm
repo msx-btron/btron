@@ -2105,7 +2105,18 @@ chget:
                 cpl
                 or      a
                 jr      z, .chk_r1
+                push    af
+                ld      a, 6
+                call    snsmat
+                cpl
+                and     $01
+                jr      nz, .r0_shifted
+                pop     af
                 ld      hl, .tbl_r0
+                jp      .decode_table
+.r0_shifted:
+                pop     af
+                ld      hl, .tbl_r0_s
                 jp      .decode_table
 
 .chk_r1:
@@ -2114,7 +2125,18 @@ chget:
                 cpl
                 or      a
                 jr      z, .chk_r2
+                push    af
+                ld      a, 6
+                call    snsmat
+                cpl
+                and     $01
+                jr      nz, .r1_shifted
+                pop     af
                 ld      hl, .tbl_r1
+                jp      .decode_table
+.r1_shifted:
+                pop     af
+                ld      hl, .tbl_r1_s
                 jp      .decode_table
 
 .chk_r2:
@@ -2123,7 +2145,18 @@ chget:
                 cpl
                 or      a
                 jr      z, .chk_r3
+                push    af
+                ld      a, 6
+                call    snsmat
+                cpl
+                and     $01
+                jr      nz, .r2_shifted
+                pop     af
                 ld      hl, .tbl_r2
+                jp      .decode_table
+.r2_shifted:
+                pop     af
+                ld      hl, .tbl_r2_s
                 jp      .decode_table
 
 .chk_r3:
@@ -2243,8 +2276,11 @@ chget:
                 ret
 
 .tbl_r0:        db      '0', '1', '2', '3', '4', '5', '6', '7'
+.tbl_r0_s:      db      ')', '!', '@', '#', '$', '%', '^', '&'
 .tbl_r1:        db      '8', '9', '-', '=', '\', '[', ']', ';'
+.tbl_r1_s:      db      '*', '(', '_', '+', '|', '{', '}', ':'
 .tbl_r2:        db      '`', 39,  ',', '.', '/', 0,   'A', 'B'
+.tbl_r2_s:      db      '~', '"',  '<', '>', '?', 0,   'A', 'B'
 .tbl_r3:        db      'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'
 .tbl_r4:        db      'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R'
 .tbl_r5:        db      'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'

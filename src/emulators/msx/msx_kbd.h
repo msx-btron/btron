@@ -72,60 +72,60 @@
 #define MSX_KBD_NO_KEY    0xFFu
 
 /* One generated array: ASCII (0x20…0x7F) to {row, column}, 0xFF where the
- * character has no key of its own.  Lower-case letters need SHIFT, which the
- * caller presses separately; the position is the same either way. */
+ * character has no key of its own. Lower-case letters and shifted symbols need
+ * SHIFT, which the caller can check via msx_kbd_is_shifted(). */
 static const uint8_t msx_kbd_ascii_row[96] = {
     /*  ' '  !    "    #    $    %    &    '  */
-    8, 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF, 2,
+    8, 0,   2,   0,   0,   0,   0,   2,
     /*  (    )    *    +    ,    -    .    /  */
-    0xFF,0xFF, 9, 9, 2, 1, 2, 2,
+    1, 0,   1,   1,   2,   1,   2,   2,
     /*  0    1    2    3    4    5    6    7   */
-    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0,   0,   0,   0,   0,   0,   0,
     /*  8    9    :    ;    <    =    >    ?   */
-    1, 1, 0xFF, 1, 0xFF, 1, 0xFF, 0xFF,
+    1, 1,   1,   1,   2,   1,   2,   2,
     /*  @    A    B    C    D    E    F    G   */
-    0xFF, 2, 2, 3, 3, 3, 3, 3,
+    0, 2,   2,   3,   3,   3,   3,   3,
     /*  H    I    J    K    L    M    N    O   */
-    3, 3, 3, 4, 4, 4, 4, 4,
+    3, 3,   3,   4,   4,   4,   4,   4,
     /*  P    Q    R    S    T    U    V    W   */
-    4, 4, 4, 5, 5, 5, 5, 5,
+    4, 4,   4,   5,   5,   5,   5,   5,
     /*  X    Y    Z    [    \    ]    ^    _   */
-    5, 5, 5, 1, 1, 1, 0xFF,0xFF,
+    5, 5,   5,   1,   1,   1,   0,   1,
     /*  `    a    b    c    d    e    f    g   */
-    2, 2, 2, 3, 3, 3, 3, 3,
+    2, 2,   2,   3,   3,   3,   3,   3,
     /*  h    i    j    k    l    m    n    o   */
-    3, 3, 3, 4, 4, 4, 4, 4,
+    3, 3,   3,   4,   4,   4,   4,   4,
     /*  p    q    r    s    t    u    v    w   */
-    4, 4, 4, 5, 5, 5, 5, 5,
+    4, 4,   4,   5,   5,   5,   5,   5,
     /*  x    y    z    {    |    }    ~    DEL */
-    5, 5, 5, 0xFF,0xFF,0xFF,0xFF,0xFF
+    5, 5,   5,   1,   1,   1,   2,   0xFF
 };
 
 static const uint8_t msx_kbd_ascii_col[96] = {
     /*  ' '  !    "    #    $    %    &    '  */
-    0, 0xFF,0xFF,0xFF,0xFF,0xFF,0xFF, 0,
+    0, 1,   1,   3,   4,   5,   7,   1,
     /*  (    )    *    +    ,    -    .    /  */
-    0xFF,0xFF, 1, 3, 2, 2, 3, 4,
+    1, 0,   0,   3,   2,   2,   3,   4,
     /*  0    1    2    3    4    5    6    7   */
-    0, 1, 2, 3, 4, 5, 6, 7,
+    0, 1,   2,   3,   4,   5,   6,   7,
     /*  8    9    :    ;    <    =    >    ?   */
-    0, 1, 0xFF, 7, 0xFF, 3, 0xFF, 0xFF,
+    0, 1,   7,   7,   2,   3,   3,   4,
     /*  @    A    B    C    D    E    F    G   */
-    0xFF, 6, 7, 0, 1, 2, 3, 4,
+    2, 6,   7,   0,   1,   2,   3,   4,
     /*  H    I    J    K    L    M    N    O   */
-    5, 6, 7, 0, 1, 2, 3, 4,
+    5, 6,   7,   0,   1,   2,   3,   4,
     /*  P    Q    R    S    T    U    V    W   */
-    5, 6, 7, 0, 1, 2, 3, 4,
+    5, 6,   7,   0,   1,   2,   3,   4,
     /*  X    Y    Z    [    \    ]    ^    _   */
-    5, 6, 7, 5, 4, 6, 0xFF,0xFF,
+    5, 6,   7,   5,   4,   6,   6,   2,
     /*  `    a    b    c    d    e    f    g   */
-    1, 6, 7, 0, 1, 2, 3, 4,
+    0, 6,   7,   0,   1,   2,   3,   4,
     /*  h    i    j    k    l    m    n    o   */
-    5, 6, 7, 0, 1, 2, 3, 4,
+    5, 6,   7,   0,   1,   2,   3,   4,
     /*  p    q    r    s    t    u    v    w   */
-    5, 6, 7, 0, 1, 2, 3, 4,
+    5, 6,   7,   0,   1,   2,   3,   4,
     /*  x    y    z    {    |    }    ~    DEL */
-    5, 6, 7, 0xFF,0xFF,0xFF,0xFF,0xFF
+    5, 6,   7,   5,   4,   6,   0,   0xFF
 };
 
 /* -> 1 when the character has a key; row/col are written only then. */
@@ -138,6 +138,20 @@ static inline int msx_kbd_position(char ch, uint8_t *row, uint8_t *col)
     *row = msx_kbd_ascii_row[idx];
     *col = msx_kbd_ascii_col[idx];
     return 1;
+}
+
+static inline int msx_kbd_is_shifted(char ch)
+{
+    switch ((uint8_t)ch) {
+        case '!': case '@': case '#': case '$': case '%':
+        case '^': case '&': case '*': case '(': case ')':
+        case '_': case '+': case '{': case '}': case '|':
+        case ':': case '"': case '<': case '>': case '?':
+        case '~':
+            return 1;
+        default:
+            return 0;
+    }
 }
 
 #endif /* _BTRON_EMULATOR_MSX_KBD_H_ */

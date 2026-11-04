@@ -157,6 +157,46 @@ int main(void) {
     TEST_ASSERT(found_devtree_echo, "Forth input was echoed to screen (DEV-TREE)");
     TEST_ASSERT(found_devtree_output, "Forth interpreter evaluated DEV-TREE and listed devices");
 
+    /* 4b2. Test Shift+[NUM] symbols input on MSX */
+    printf("[4b2] Testing Shift+[NUM] symbols input on MSX...\n");
+    /* Hold Shift (row 6, col 0) */
+    msx_kbd_down(6, 0);
+    for (int f = 0; f < 3; f++) msx_run_frame();
+    /* Press '1' (row 0, col 1) -> yields '!' */
+    msx_kbd_down(0, 1);
+    for (int f = 0; f < 3; f++) msx_run_frame();
+    msx_kbd_up(0, 1);
+    for (int f = 0; f < 3; f++) msx_run_frame();
+    /* Press '4' (row 0, col 4) -> yields '$' */
+    msx_kbd_down(0, 4);
+    for (int f = 0; f < 3; f++) msx_run_frame();
+    msx_kbd_up(0, 4);
+    for (int f = 0; f < 3; f++) msx_run_frame();
+    /* Release Shift */
+    msx_kbd_up(6, 0);
+    for (int f = 0; f < 15; f++) msx_run_frame();
+
+    int found_shifted_symbols = 0;
+    if (vram) {
+        printf("    -> VRAM Screen 0 after typing Shift+1, Shift+4:\n");
+        char linebuf[41];
+        for (int r = 0; r < 24; r++) {
+            memcpy(linebuf, vram + r * 40, 40);
+            linebuf[40] = '\0';
+            printf("       row %2d: [%s]\n", r, linebuf);
+            if (strstr(linebuf, "!$")) {
+                found_shifted_symbols = 1;
+            }
+        }
+    }
+    TEST_ASSERT(found_shifted_symbols, "Shift+[NUM] produced shifted symbols (!$) on MSX");
+
+    /* Clear the line with CR for subsequent tests */
+    msx_kbd_down(7, 7);
+    for (int f = 0; f < 3; f++) msx_run_frame();
+    msx_kbd_up(7, 7);
+    for (int f = 0; f < 10; f++) msx_run_frame();
+
     /* 4c. Interactive Forth Evaluation: 'MARS' and 'MANDELBROT' */
     printf("[4c] Testing Interactive Forth Evaluation: 'MARS'...\n");
     const char *mars_cmd = "MARS";

@@ -988,8 +988,12 @@ static const MsxKeyMap s_keymap[] = {
     { BTRON_KEY_F3,        0u, MSX_KEY_F3_R,     MSX_KEY_F3_C },
     { BTRON_KEY_F4,        0u, MSX_KEY_F4_R,     MSX_KEY_F4_C },
     { BTRON_KEY_F5,        0u, MSX_KEY_F5_R,     MSX_KEY_F5_C },
-    { 0x400000E2u,         0u, MSX_KEY_SHIFT_R,  MSX_KEY_SHIFT_C },
-    { 0x400000E6u,         0u, MSX_KEY_SHIFT_R,  MSX_KEY_SHIFT_C },
+    { BTRON_KEY_LSHIFT,    0u, MSX_KEY_SHIFT_R,  MSX_KEY_SHIFT_C },
+    { BTRON_KEY_RSHIFT,    0u, MSX_KEY_SHIFT_R,  MSX_KEY_SHIFT_C },
+    { 0x400000E1u,         0u, MSX_KEY_SHIFT_R,  MSX_KEY_SHIFT_C },
+    { 0x400000E5u,         0u, MSX_KEY_SHIFT_R,  MSX_KEY_SHIFT_C },
+    { BTRON_KEY_LCTRL,     0u, MSX_KEY_CTRL_R,   MSX_KEY_CTRL_C },
+    { BTRON_KEY_RCTRL,     0u, MSX_KEY_CTRL_R,   MSX_KEY_CTRL_C },
     { 0x400000E0u,         0u, MSX_KEY_CTRL_R,   MSX_KEY_CTRL_C },
     { 0x400000E4u,         0u, MSX_KEY_CODE_R,   MSX_KEY_CODE_C },
 };
@@ -1031,6 +1035,10 @@ static void msx_key(MsxViewer *st, UW key, BOOL down)
     }
 
     if (msx_kbd_position((char)key, &row, &col)) {
+        if (msx_kbd_is_shifted((char)key)) {
+            if (down) msx_kbd_down(MSX_KEY_SHIFT_R, MSX_KEY_SHIFT_C);
+            else      msx_kbd_up(MSX_KEY_SHIFT_R, MSX_KEY_SHIFT_C);
+        }
         if (down) msx_kbd_down(row, col);
         else      msx_kbd_up(row, col);
     }

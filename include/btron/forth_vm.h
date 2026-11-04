@@ -54,6 +54,7 @@ struct ForthVM {
     const uint8_t *ip;               /* Instruction pointer */
     const uint8_t *ip_limit;         /* Bounded execution limit */
     bool           halted;
+    bool           is_executing;     /* Re-entrancy guard */
     bool           state;            /* 0 = interpret, 1 = compile */
     forth_cell_t   latest;           /* Offset to latest dictionary header */
     forth_cell_t   here;             /* Compilation pointer in arena */

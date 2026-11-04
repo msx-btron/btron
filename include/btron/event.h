@@ -61,7 +61,8 @@ typedef struct {
 #define BTRON_KMOD_CAPS   0x2000
 
 /* Standard Functional Keys (SDL Scancode compatible) */
-#define BTRON_KEY_F1      0x4000003A
+#define BTRON_KEY_CAPSLOCK  0x40000039
+#define BTRON_KEY_F1        0x4000003A
 #define BTRON_KEY_F2      0x4000003B
 #define BTRON_KEY_F3      0x4000003C
 #define BTRON_KEY_F4      0x4000003D
@@ -90,6 +91,14 @@ typedef struct {
 #define BTRON_KEY_END       0x4000004D
 #define BTRON_KEY_PAGE_DOWN 0x4000004E
 #define BTRON_KEY_KP_ENTER  0x40000058
+#define BTRON_KEY_LCTRL     0x400000E0
+#define BTRON_KEY_LSHIFT    0x400000E1
+#define BTRON_KEY_LALT      0x400000E2
+#define BTRON_KEY_LGUI      0x400000E3
+#define BTRON_KEY_RCTRL     0x400000E4
+#define BTRON_KEY_RSHIFT    0x400000E5
+#define BTRON_KEY_RALT      0x400000E6
+#define BTRON_KEY_RGUI      0x400000E7
 
 /* ── Event Queue APIs ──────────────────────────────────────────── */
 ER init_evt_sys(void);

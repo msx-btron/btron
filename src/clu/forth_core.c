@@ -1367,7 +1367,7 @@ lbl_done:
 }
 
 /* ── Outer Interpreter & Evaluator ──────────────────────────────── */
-int forth_eval(ForthVM *vm, const char *line) {
+static int forth_eval_internal(ForthVM *vm, const char *line) {
     if (!vm || !line) return 0;
     vm->halted = false;
     const char *p = line;
@@ -1752,6 +1752,17 @@ int forth_eval(ForthVM *vm, const char *line) {
     }
 
     return vm->last_error;
+}
+
+int forth_eval(ForthVM *vm, const char *line) {
+    if (!vm || !line) return 0;
+    if (vm->is_executing) {
+        return -1; /* Prevent re-entrant VM corruption */
+    }
+    vm->is_executing = true;
+    int res = forth_eval_internal(vm, line);
+    vm->is_executing = false;
+    return res;
 }
 
 /* ── VM Initialization ──────────────────────────────────────────── */
