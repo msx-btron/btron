@@ -41,7 +41,13 @@
 #define TERRAIN_RAY_TABLE_COUNT (200 + 0x29 + 0x0a + 0x0a)
 
 /* ── Static NASA JPL Rule 3 Memory Pools ──────────────────────────── */
-static uint8_t  s_landscape_data[MARS_CANVAS_W * MARS_CANVAS_H];
+#define MARS_BUF_COUNT 3
+static uint8_t  s_landscape_buffers[MARS_BUF_COUNT][MARS_CANVAS_W * MARS_CANVAS_H];
+static volatile int  s_render_idx   = 0;
+static volatile int  s_ready_idx    = 1;
+static volatile int  s_display_idx  = 2;
+static volatile bool s_has_new_frame = false;
+
 static uint8_t  s_aux_array[MARS_MAP_SIZE];   /* 64 KB terrain height map */
 static uint8_t  s_terra_data[MARS_MAP_SIZE];  /* 64 KB slope & shading map */
 static uint8_t  s_sky_data[MARS_MAP_SIZE];    /* 64 KB sky plasma texture */
@@ -280,9 +286,9 @@ static uint16_t cr02_function(unsigned int terrain_idx, uint8_t frac_step) {
     return interp_color;
 }
 
-static void calculate_height(void) {
-    uint16_t player_x_rot = (uint16_t)((s_var_0355 >> 4) | (s_var_0355 << 12));
-    uint16_t player_y_rot = (uint16_t)((s_var_0357 >> 4) | (s_var_0357 << 12));
+static uint16_t calculate_height(uint16_t cam_x, uint16_t cam_y, int32_t jump_h) {
+    uint16_t player_x_rot = (uint16_t)((cam_x >> 4) | (cam_x << 12));
+    uint16_t player_y_rot = (uint16_t)((cam_y >> 4) | (cam_y << 12));
     unsigned int map_x = player_x_rot % 256;
     unsigned int map_y = player_y_rot % 256;
     unsigned int map_pos = MAP_IDX(map_x, map_y);
@@ -297,20 +303,22 @@ static void calculate_height(void) {
     uint16_t interp_x2 = (uint16_t)result;
 
     result = ((int32_t)(interp_x2 - interp_x) * (int16_t)player_y_rot) + (interp_x << 4);
-    s_var_0359 = (uint16_t)result;
-    uint32_t height_result = (s_var_0359 & 0xFF) | (((s_var_0359 >> 8) + 0x19) << 8);
-    height_result += (uint32_t)s_jump_height;
-    s_var_0359 = (height_result >= 0x10000) ? 0xffff : (uint16_t)height_result;
+    uint16_t v0359 = (uint16_t)result;
+    uint32_t height_result = (v0359 & 0xFF) | (((v0359 >> 8) + 0x19) << 8);
+    height_result += (uint32_t)jump_h;
+    v0359 = (height_result >= 0x10000) ? 0xffff : (uint16_t)height_result;
+    return v0359;
 }
 
 /* ── Rendering Pipeline ───────────────────────────────────────────── */
-static void render_sky(void) {
+static void render_sky(uint8_t *dst, uint16_t cam_x, uint16_t cam_y, uint16_t cam_h) {
+    if (!dst) return;
     size_t dst_idx = 0;
     const size_t render_px_count = MARS_CANVAS_W * MARS_CANVAS_H;
-    int32_t sky_offset = ((uint16_t)(-(int16_t)s_var_0359) + 0x20000) << 10;
+    int32_t sky_offset = ((uint16_t)(-(int16_t)cam_h) + 0x20000) << 10;
     int32_t sky_y_step = sky_offset;
-    int32_t sky_x_start = (int32_t)s_var_0355 << 9;
-    int32_t sky_y_start = (int32_t)s_var_0357 << 9;
+    int32_t sky_x_start = (int32_t)cam_x << 9;
+    int32_t sky_y_start = (int32_t)cam_y << 9;
 
     for (int32_t scan_line = 99; scan_line > 0; scan_line--) {
         uint32_t step_per_col = (uint32_t)(sky_y_step / scan_line);
@@ -322,7 +330,7 @@ static void render_sky(void) {
         uint16_t col_y_step = (uint16_t)((step_per_col >> 16) - 1);
 
         uint8_t sky_color = s_sky_data[sky_tex_idx++];
-        if (dst_idx < render_px_count) s_landscape_data[dst_idx] = sky_color;
+        if (dst_idx < render_px_count) dst[dst_idx] = sky_color;
         dst_idx++;
 
         for (int32_t col_counter = 255; col_counter > 0; col_counter--) {
@@ -330,44 +338,45 @@ static void render_sky(void) {
             sky_frac_x = (uint16_t)(frac_plus_step & 0xFFFF);
             sky_tex_idx += (uint16_t)(col_y_step + (frac_plus_step > 0xFFFF));
             sky_color = s_sky_data[sky_tex_idx++];
-            if (dst_idx < render_px_count) s_landscape_data[dst_idx] = sky_color;
+            if (dst_idx < render_px_count) dst[dst_idx] = sky_color;
             dst_idx++;
         }
     }
 
     for (int i = 0; i < 256; i++) {
-        if (dst_idx < render_px_count) s_landscape_data[dst_idx] = 80;
+        if (dst_idx < render_px_count) dst[dst_idx] = 80;
         dst_idx++;
     }
 
-    uint16_t ground_step = (uint16_t)((s_var_0359 / 2) + 10);
+    uint16_t ground_step = (uint16_t)((cam_h / 2) + 10);
     for (int32_t band = 4; band < 44; band++) {
         uint16_t shade = (uint16_t)(ground_step / band / 128);
         if (shade > 63) shade = 63;
         uint8_t color = (uint8_t)shade;
         for (int x = 0; x < 256; x++) {
-            if (dst_idx < render_px_count) s_landscape_data[dst_idx] = color;
+            if (dst_idx < render_px_count) dst[dst_idx] = color;
             dst_idx++;
         }
     }
 }
 
-static void render_terrain(void) {
+static void render_terrain(uint8_t *dst, uint16_t cam_x, uint16_t cam_y, uint16_t cam_h) {
+    if (!dst) return;
     for (int i = 0; i < 256; i++) {
         s_col_heights[i] = 0x7d00;
         s_col_colors[i] = 0;
     }
     int16_t ray_row = 60;
     while (ray_row > 0) {
-        uint16_t step_size = (uint16_t)((s_ray_table[ray_row + 200] << 4) + ((s_var_0357 & 0x0f) ^ 0x0f));
-        uint32_t temp_div = s_var_0359;
+        uint16_t step_size = (uint16_t)((s_ray_table[ray_row + 200] << 4) + ((cam_y & 0x0f) ^ 0x0f));
+        uint32_t temp_div = cam_h;
         int16_t tmp_03a2 = (int16_t)(temp_div / step_size) + 100;
         uint32_t step_scaled = (uint32_t)step_size << 6;
         uint16_t tmp_03a4 = (ray_row == 1) ? 0 : (uint16_t)(0x10000 / step_size);
         if (ray_row == 1) tmp_03a2 = 0x7d00;
 
-        uint32_t tex_x_pos = ((uint32_t)s_var_0355 << 12) - (step_scaled << 7);
-        uint16_t map_y_frac = (uint16_t)(s_var_0357 << 4);
+        uint32_t tex_x_pos = ((uint32_t)cam_x << 12) - (step_scaled << 7);
+        uint16_t map_y_frac = (uint16_t)(cam_y << 4);
         uint32_t terrain_pos = (uint32_t)((tex_x_pos >> 16 & 0xFFFF00FF) | (map_y_frac & 0xFF00));
         uint16_t sub_step = (uint16_t)(step_size >> 4);
         uint8_t tmp_add_bh_al = (uint8_t)(((terrain_pos & 0x0000FF00) >> 8) + (sub_step & 0xFF));
@@ -408,7 +417,7 @@ static void render_terrain(void) {
                 for (; index_row_offset != 1; index_row_offset++) {
                     int idx = (base_y + index_row_offset) * 256 + base_x;
                     if (idx >= 0 && idx < 256 * 200) {
-                        s_landscape_data[idx] = (uint8_t)(color / 256);
+                        dst[idx] = (uint8_t)(color / 256);
                     }
                     color += color_step;
                 }
@@ -429,7 +438,24 @@ static void mars_init_once(void) {
     load_palette();
     prepare_sky();
     prepare_terrain();
-    calculate_height();
+
+    uint16_t cam_x = s_var_0355;
+    uint16_t cam_y = s_var_0357;
+    int32_t jump_h = s_jump_height;
+    uint16_t cam_h = calculate_height(cam_x, cam_y, jump_h);
+    s_var_0359 = cam_h;
+
+    /* Prime all triple buffers with the initial perspective scene */
+    render_sky(s_landscape_buffers[0], cam_x, cam_y, cam_h);
+    render_terrain(s_landscape_buffers[0], cam_x, cam_y, cam_h);
+    memcpy(s_landscape_buffers[1], s_landscape_buffers[0], MARS_CANVAS_W * MARS_CANVAS_H);
+    memcpy(s_landscape_buffers[2], s_landscape_buffers[0], MARS_CANVAS_W * MARS_CANVAS_H);
+
+    s_render_idx = 0;
+    s_ready_idx = 1;
+    s_display_idx = 2;
+    s_has_new_frame = false;
+
     s_mars_initialized = true;
 }
 
@@ -444,9 +470,33 @@ static void mars_task_fn(VW exinf) {
                 s_jump_vel = 0;
             }
         }
-        calculate_height();
-        render_sky();
-        render_terrain();
+
+        /* 1. Atomically snapshot camera state for this frame */
+        uint16_t cam_x = s_var_0355;
+        uint16_t cam_y = s_var_0357;
+        int32_t jump_h = s_jump_height;
+        uint16_t cam_h = calculate_height(cam_x, cam_y, jump_h);
+        s_var_0359 = cam_h;
+
+        /* 2. Render complete frame into the designated backbuffer */
+        int r_idx = s_render_idx;
+        uint8_t *render_target = s_landscape_buffers[r_idx];
+        render_sky(render_target, cam_x, cam_y, cam_h);
+        render_terrain(render_target, cam_x, cam_y, cam_h);
+
+        /* 3. Publish finished frame */
+        s_ready_idx = r_idx;
+        s_has_new_frame = true;
+
+        /* 4. Rotate render buffer avoiding display and ready slots */
+        int cur_display = s_display_idx;
+        int next_render = 3 - s_ready_idx - cur_display;
+        if (next_render < 0 || next_render >= MARS_BUF_COUNT) {
+            next_render = (s_ready_idx + 1) % MARS_BUF_COUNT;
+        }
+        s_render_idx = next_render;
+
+        /* 5. Invalidate window to schedule compositor presentation */
         inval_wnd(s_mars_wnd);
         dly_tsk(16); /* ~60 FPS */
     }
@@ -463,12 +513,19 @@ static void mars_paint(WND *wnd, GDEV *dev) {
     int dh = dev->height;
     if (dw <= 0 || dh <= 0) return;
 
+    /* Lock-free fetch of latest ready buffer without blocking renderer */
+    if (s_has_new_frame) {
+        s_display_idx = s_ready_idx;
+        s_has_new_frame = false;
+    }
+    const uint8_t *src_frame = s_landscape_buffers[s_display_idx];
+
     /* Scaled smooth render filling entire window client rect */
     for (int y = 0; y < dh; y++) {
         int src_y = (y * MARS_CANVAS_H) / dh;
         if (src_y >= MARS_CANVAS_H) src_y = MARS_CANVAS_H - 1;
         COLOR *dst = &dev->pixels[y * dw];
-        const uint8_t *src_row = &s_landscape_data[src_y * MARS_CANVAS_W];
+        const uint8_t *src_row = &src_frame[src_y * MARS_CANVAS_W];
         for (int x = 0; x < dw; x++) {
             int src_x = (x * MARS_CANVAS_W) / dw;
             if (src_x >= MARS_CANVAS_W) src_x = MARS_CANVAS_W - 1;
@@ -483,15 +540,18 @@ void mars_render_to_buffer(COLOR *dst, int dw, int dh, uint16_t cam_x, uint16_t 
     s_var_0355 = cam_x;
     s_var_0357 = cam_y;
     s_jump_height = jump_h;
-    calculate_height();
-    render_sky();
-    render_terrain();
+    uint16_t cam_h = calculate_height(cam_x, cam_y, jump_h);
+    s_var_0359 = cam_h;
+
+    uint8_t *tmp_buf = s_landscape_buffers[0];
+    render_sky(tmp_buf, cam_x, cam_y, cam_h);
+    render_terrain(tmp_buf, cam_x, cam_y, cam_h);
 
     for (int y = 0; y < dh; y++) {
         int src_y = (y * MARS_CANVAS_H) / dh;
         if (src_y >= MARS_CANVAS_H) src_y = MARS_CANVAS_H - 1;
         COLOR *dst_row = &dst[y * dw];
-        const uint8_t *src_row = &s_landscape_data[src_y * MARS_CANVAS_W];
+        const uint8_t *src_row = &tmp_buf[src_y * MARS_CANVAS_W];
         for (int x = 0; x < dw; x++) {
             int src_x = (x * MARS_CANVAS_W) / dw;
             if (src_x >= MARS_CANVAS_W) src_x = MARS_CANVAS_W - 1;
@@ -520,23 +580,23 @@ static void mars_event(WND *wnd, const EVT *evt) {
             return;
         }
         if (k == 'a' || k == 'A') {
-            /* Lateral strafe left */
-            s_var_0355 -= 16;
+            /* Lateral strafe left (referential to mars.fth: 1.5 map units) */
+            s_var_0355 -= 24;
         } else if (k == 'd' || k == 'D') {
-            /* Lateral strafe right */
-            s_var_0355 += 16;
+            /* Lateral strafe right (referential to mars.fth: 1.5 map units) */
+            s_var_0355 += 24;
         } else if (k == BTRON_KEY_LEFT) {
             /* Shift + Left: strafe left, else pan/yaw turn left */
-            s_var_0355 -= (shift ? 16 : 6);
+            s_var_0355 -= (shift ? 24 : 12);
         } else if (k == BTRON_KEY_RIGHT) {
             /* Shift + Right: strafe right, else pan/yaw turn right */
-            s_var_0355 += (shift ? 16 : 6);
+            s_var_0355 += (shift ? 24 : 12);
         } else if (k == BTRON_KEY_UP || k == 'w' || k == 'W') {
-            /* Forward navigation */
-            s_var_0357 += 8;
+            /* Forward navigation (referential to mars.fth: 1.5 map units) */
+            s_var_0357 += 24;
         } else if (k == BTRON_KEY_DOWN || k == 's' || k == 'S') {
-            /* Reverse / brake */
-            s_var_0357 -= 8;
+            /* Reverse / brake (referential to mars.fth: 1.5 map units) */
+            s_var_0357 -= 24;
         } else if (k == ' ' || k == BTRON_KEY_SPACE) {
             /* Ballistic jump with physics arc */
             if (s_jump_height == 0) {
@@ -554,8 +614,8 @@ static void mars_event(WND *wnd, const EVT *evt) {
         if (s_mouse_down) {
             int dx = evt->pos.x - s_prev_x;
             int dy = evt->pos.y - s_prev_y;
-            s_var_0355 += (uint16_t)(dx * 4);
-            s_var_0357 -= (uint16_t)(dy * 4);
+            s_var_0355 += (uint16_t)(dx * 6);
+            s_var_0357 -= (uint16_t)(dy * 6);
             s_prev_x = evt->pos.x;
             s_prev_y = evt->pos.y;
         }

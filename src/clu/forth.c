@@ -223,8 +223,8 @@ static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
     }
 }
 
-#define FORTH_BACKBUFFER_MAX_W 800
-#define FORTH_BACKBUFFER_MAX_H 600
+#define FORTH_BACKBUFFER_MAX_W 320
+#define FORTH_BACKBUFFER_MAX_H 240
 #define FORTH_BACKBUFFER_SIZE  (FORTH_BACKBUFFER_MAX_W * FORTH_BACKBUFFER_MAX_H)
 static COLOR s_forth_backbuffer_0[FORTH_BACKBUFFER_SIZE];
 static COLOR s_forth_backbuffer_1[FORTH_BACKBUFFER_SIZE];
