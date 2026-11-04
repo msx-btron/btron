@@ -7,7 +7,9 @@
 #include <btron/forth_vm.h>
 #include <btron/core.h>
 #include <btron/wnd.h>
+#include <btron/event.h>
 #include <btron/libc_shim.h>
+#include <time.h>
 #include "vfs.h"
 
 __attribute__((weak)) WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr) {
@@ -35,9 +37,84 @@ static char s_emit_buf[256];
 static size_t s_emit_idx = 0;
 static void clu_forth_flush(void);
 
-static void forth_wnd_paint(WND *wnd, GDEV *dev) {
+/* Keyboard Event Ring Buffer for Interactive Forth */
+static int s_forth_key_buf[64];
+static int s_forth_key_head = 0;
+static int s_forth_key_tail = 0;
+
+static void forth_enqueue_key(int key) {
+    int next = (s_forth_key_head + 1) % 64;
+    if (next != s_forth_key_tail) {
+        s_forth_key_buf[s_forth_key_head] = key;
+        s_forth_key_head = next;
+    }
+}
+
+static bool clu_forth_key_q(void) {
+    return (s_forth_key_head != s_forth_key_tail);
+}
+
+static int clu_forth_key(void) {
+    if (s_forth_key_head == s_forth_key_tail) {
+        return 0;
+    }
+    int k = s_forth_key_buf[s_forth_key_tail];
+    s_forth_key_tail = (s_forth_key_tail + 1) % 64;
+    return k;
+}
+
+static void forth_wnd_event_handler(WND *wnd, const EVT *evt) {
     (void)wnd;
+    if (!evt) return;
+    if (evt->type == EV_KEY_DOWN) {
+        UW k = evt->key;
+        if (k == BTRON_KEY_LEFT) {
+            forth_enqueue_key(28);
+        } else if (k == BTRON_KEY_RIGHT) {
+            forth_enqueue_key(29);
+        } else if (k == BTRON_KEY_UP) {
+            forth_enqueue_key(30);
+        } else if (k == BTRON_KEY_DOWN) {
+            forth_enqueue_key(31);
+        } else if (k == BTRON_KEY_SPACE || k == ' ') {
+            forth_enqueue_key(32);
+        } else if (k < 128) {
+            forth_enqueue_key((int)k);
+        }
+    }
+}
+
+static void forth_wnd_paint(WND *wnd, GDEV *dev) {
     (void)dev;
+    if (wnd && wnd->user_data) {
+        forth_cell_t xt = (forth_cell_t)wnd->user_data;
+        if (xt > 0 && xt < FORTH_ARENA_MAX) {
+            forth_push(&s_forth_vm, xt);
+            uint8_t exec_tok = FORTH_TOK_EXECUTE;
+            forth_eval_fcode(&s_forth_vm, &exec_tok, 1);
+        }
+    }
+}
+
+static void clu_forth_wnd_on_paint(ForthVM *vm, forth_cell_t wnd_val, forth_cell_t xt) {
+    (void)vm;
+    WND *wnd = (WND *)(uintptr_t)wnd_val;
+    if (wnd) {
+        wnd->user_data = (VW)xt;
+        wnd->paint = forth_wnd_paint;
+    }
+}
+
+static void clu_forth_ms(ForthVM *vm, forth_cell_t ms) {
+    (void)vm;
+    if (ms > 0) {
+#if BTRON_HOSTED
+        struct timespec ts;
+        ts.tv_sec = ms / 1000;
+        ts.tv_nsec = (ms % 1000) * 1000000L;
+        nanosleep(&ts, NULL);
+#endif
+    }
 }
 
 static forth_cell_t clu_forth_wnd_open(ForthVM *vm, forth_cell_t w, forth_cell_t h) {
@@ -49,6 +126,7 @@ static forth_cell_t clu_forth_wnd_open(ForthVM *vm, forth_cell_t w, forth_cell_t
                        WND_ATTR_TITLE | WND_ATTR_BORDER | WND_ATTR_CLOSE | WND_ATTR_RESIZE);
     if (!wnd) return 0;
     wnd->paint = forth_wnd_paint;
+    wnd->event_handler = forth_wnd_event_handler;
     wnd->img_valid = TRUE;
     if (wnd->dev && wnd->dev->pixels) {
         memset(wnd->dev->pixels, 0, (size_t)wnd->dev->width * (size_t)wnd->dev->height * sizeof(COLOR));
@@ -351,6 +429,10 @@ static void clu_forth_init_vm(void) {
         s_forth_vm.wnd_clear_fn = clu_forth_wnd_clear;
         s_forth_vm.wnd_update_fn = clu_forth_wnd_update;
         s_forth_vm.wnd_size_fn = clu_forth_wnd_size;
+        s_forth_vm.wnd_on_paint_fn = clu_forth_wnd_on_paint;
+        s_forth_vm.ms_fn = clu_forth_ms;
+        s_forth_vm.key_q_fn = clu_forth_key_q;
+        s_forth_vm.key_fn = clu_forth_key;
         init_system_devtree(&s_forth_vm);
         s_vm_initialized = 1;
     }

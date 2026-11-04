@@ -87,6 +87,8 @@ struct ForthVM {
     void         (*wnd_clear_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t col);
     void         (*wnd_update_fn)(ForthVM *vm, forth_cell_t wnd);
     void         (*wnd_size_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t *out_w, forth_cell_t *out_h);
+    void         (*wnd_on_paint_fn)(ForthVM *vm, forth_cell_t wnd, forth_cell_t xt);
+    void         (*ms_fn)(ForthVM *vm, forth_cell_t ms);
 
     /* Error and status */
     int            last_error;

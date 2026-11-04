@@ -21,6 +21,11 @@ VARIABLE ITER-COUNT
 VARIABLE CELL-X
 VARIABLE CELL-Y
 VARIABLE CELL-ITER
+VARIABLE CELL-W
+VARIABLE CELL-H
+
+8 CELL-W !
+10 CELL-H !
 
 \ Palette calculation: map iteration count to 32-bit ARGB
 : CALC-COLOR ( iter -- color )
@@ -65,9 +70,9 @@ VARIABLE CELL-ITER
 
   \ Draw rectangle on GUI window if present
   CELL-ITER @ CALC-COLOR
-  CELL-X @ 8 *
-  CELL-Y @ 10 *
-  8 10
+  CELL-X @ CELL-W @ *
+  CELL-Y @ CELL-H @ *
+  CELL-W @ CELL-H @
   WND @ WND-RECT
 
   \ Draw character on console terminal / MSX Screen 0
@@ -86,28 +91,36 @@ VARIABLE CELL-ITER
   THEN
 ;
 
-\ Main Render Word
-: MANDELBROT
-  CR
-  320 240 WND-OPEN WND !
+\ Update cell dimensions based on current window size
+: UPDATE-DIMS
+  WND @ WND-SIZE
+  SWAP SCREEN-W / DUP 1 < IF DROP 1 THEN CELL-W !
+  SCREEN-H / DUP 1 < IF DROP 1 THEN CELL-H !
+;
 
-  \ Coordinate bounds (scaled by 40):
-  \ Real: -80 to +40 (step 3 per column) -> -2.0 to +1.0
-  \ Imag: -48 to +48 (step 4 per row)    -> -1.2 to +1.2
+\ Window repaint callback
+: MANDELBROT-PAINT
+  UPDATE-DIMS
   SCREEN-H 0 DO
     I 4 * 48 - C-IMAG !
-
     SCREEN-W 0 DO
       I 3 * 80 - C-REAL !
       I J MANDEL-PIXEL DRAW-CELL
     LOOP
-
     CR
     WND @ WND-UPDATE
   LOOP
-
   WND @ WND-UPDATE
+;
+
+\ Main Render Word
+: MANDELBROT
   CR
+  320 240 WND-OPEN WND !
+  WND @ ' MANDELBROT-PAINT WND-ON-PAINT
+  MANDELBROT-PAINT
+  CR
+;
 ;
 
 MANDELBROT

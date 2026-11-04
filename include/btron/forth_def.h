@@ -161,7 +161,7 @@ enum ForthToken {
     FORTH_TOK_HELP         = 0x69,
     FORTH_TOK_PWD          = 0x6A,
 
-    /* 0x70 - 0x79: B-System Window & Raster Graphics Extensions */
+    /* 0x70 - 0x7B: B-System Window & Raster Graphics Extensions */
     FORTH_TOK_WND_OPEN     = 0x70,
     FORTH_TOK_WND_CLOSE    = 0x71,
     FORTH_TOK_WND_PIXEL    = 0x72,
@@ -172,6 +172,8 @@ enum ForthToken {
     FORTH_TOK_WND_SIZE     = 0x77,
     FORTH_TOK_RGB          = 0x78,
     FORTH_TOK_INCLUDE      = 0x79,
+    FORTH_TOK_WND_ON_PAINT = 0x7A,
+    FORTH_TOK_MS           = 0x7B,
 
     /* 0xFF: Token Stream Escape */
     FORTH_TOK_ESCAPE       = 0xFF,

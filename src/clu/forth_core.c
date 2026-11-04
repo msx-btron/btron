@@ -26,7 +26,7 @@ static int default_key(void) {
 }
 
 static bool default_key_q(void) {
-    return true;
+    return false;
 }
 
 static int forth_strncasecmp(const char *s1, const char *s2, size_t n) {
@@ -200,6 +200,9 @@ static void dict_create_word(ForthVM *vm, const char *name, uint8_t token, uint8
     /* Align for CFA */
     here = align_cell(here);
     vm->arena[here++] = token;
+    if (token != FORTH_TOK_ESCAPE && here < FORTH_ARENA_MAX) {
+        vm->arena[here++] = FORTH_TOK_EXIT;
+    }
     vm->here = here;
 }
 
@@ -333,6 +336,8 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
         [FORTH_TOK_WND_SIZE]   = &&lbl_wnd_size,
         [FORTH_TOK_RGB]        = &&lbl_rgb,
         [FORTH_TOK_INCLUDE]    = &&lbl_include,
+        [FORTH_TOK_WND_ON_PAINT] = &&lbl_wnd_on_paint,
+        [FORTH_TOK_MS]         = &&lbl_ms,
     };
 
     #define DISPATCH() do { \
@@ -949,6 +954,21 @@ lbl_include: {
     }
     DISPATCH();
 }
+lbl_wnd_on_paint: {
+    forth_cell_t xt = forth_pop(vm);
+    forth_cell_t wnd = forth_pop(vm);
+    if (vm->wnd_on_paint_fn) {
+        vm->wnd_on_paint_fn(vm, wnd, xt);
+    }
+    DISPATCH();
+}
+lbl_ms: {
+    forth_cell_t ms = forth_pop(vm);
+    if (vm->ms_fn) {
+        vm->ms_fn(vm, ms);
+    }
+    DISPATCH();
+}
 lbl_unknown: {
     char errbuf[64];
     snprintf(errbuf, sizeof(errbuf), "Undefined FCode token 0x%02X at offset %ld",
@@ -1303,6 +1323,17 @@ lbl_done:
                 }
                 break;
             }
+            case FORTH_TOK_WND_ON_PAINT: {
+                forth_cell_t xt = forth_pop(vm);
+                forth_cell_t wnd = forth_pop(vm);
+                if (vm->wnd_on_paint_fn) vm->wnd_on_paint_fn(vm, wnd, xt);
+                break;
+            }
+            case FORTH_TOK_MS: {
+                forth_cell_t ms = forth_pop(vm);
+                if (vm->ms_fn) vm->ms_fn(vm, ms);
+                break;
+            }
             default:
                 forth_abort(vm, "Unknown token in switch");
                 return -1;
@@ -1581,6 +1612,37 @@ int forth_eval(ForthVM *vm, const char *line) {
             continue;
         }
 
+        /* Tick operator: ' <name> pushes execution token (xt) */
+        if (tok_len == 1 && tok[0] == '\'') {
+            while (*p == ' ' || *p == '\t') p++;
+            const char *wstart = p;
+            while (*p && *p != ' ' && *p != '\t' && *p != '\r' && *p != '\n') p++;
+            size_t wlen = p - wstart;
+            if (wlen > 0) {
+                uint8_t tflags = 0;
+                uint8_t ttoken = 0;
+                forth_cell_t tcfa = dict_find(vm, wstart, (uint8_t)wlen, &tflags, &ttoken);
+                if (tcfa != 0) {
+                    forth_cell_t xt = (ttoken == FORTH_TOK_ESCAPE) ? (tcfa + 1) : tcfa;
+                    if (vm->state) {
+                        if (vm->here + 1 + sizeof(forth_cell_t) < FORTH_ARENA_MAX) {
+                            vm->arena[vm->here++] = FORTH_TOK_LIT;
+                            memcpy(&vm->arena[vm->here], &xt, sizeof(forth_cell_t));
+                            vm->here += sizeof(forth_cell_t);
+                        }
+                    } else {
+                        forth_push(vm, xt);
+                    }
+                } else {
+                    char errmsg[64];
+                    snprintf(errmsg, sizeof(errmsg), "? word not found for tick");
+                    forth_abort(vm, errmsg);
+                    return -1;
+                }
+            }
+            continue;
+        }
+
         /* Check dictionary */
         uint8_t flags = 0;
         uint8_t token = 0;
@@ -1761,6 +1823,8 @@ void forth_vm_init(ForthVM *vm) {
     dict_create_word(vm, "WND-CLEAR",  FORTH_TOK_WND_CLEAR,  0);
     dict_create_word(vm, "WND-UPDATE", FORTH_TOK_WND_UPDATE, 0);
     dict_create_word(vm, "WND-SIZE",   FORTH_TOK_WND_SIZE,   0);
+    dict_create_word(vm, "WND-ON-PAINT", FORTH_TOK_WND_ON_PAINT, 0);
+    dict_create_word(vm, "MS",         FORTH_TOK_MS,         0);
     dict_create_word(vm, "INCLUDE",    FORTH_TOK_INCLUDE,    0);
 
     dict_create_word(vm, "find-device", FORTH_TOK_FIND_DEV,   0);
