@@ -33,43 +33,43 @@ static int s_tests_passed = 0;
 
 static void test_default_mode(void)
 {
-    printf("[1] Verifying default BIOS mode is C-BIOS...\n");
+    printf("[1] Verifying default BIOS mode is T-BIOS...\n");
     int mode = msx_get_bios_mode();
-    TEST_ASSERT(mode == BMSX_BIOS_CBIOS, "Default mode must be BMSX_BIOS_CBIOS");
+    TEST_ASSERT(mode == BMSX_BIOS_TBIOS, "Default mode must be BMSX_BIOS_TBIOS");
 
     int rc = msx_init(NULL);
-    TEST_ASSERT(rc == MSX_OK, "msx_init with default C-BIOS must succeed");
+    TEST_ASSERT(rc == MSX_OK, "msx_init with default T-BIOS must succeed");
     TEST_ASSERT(msx_get_pc() == 0x0000, "Reset PC must start at 0x0000");
 
     /* Run 5 frames */
     for (int i = 0; i < 5; i++) {
         msx_run_frame();
     }
-    printf("    -> C-BIOS boots and runs cleanly (PC=%04X)\n", msx_get_pc());
+    printf("    -> T-BIOS boots and runs cleanly (PC=%04X)\n", msx_get_pc());
 }
 
-static void test_tbios_mode_switch(void)
+static void test_cbios_mode_switch(void)
 {
-    printf("[2] Verifying mode switch to T-BIOS + T-DOS...\n");
-    msx_set_bios_mode(BMSX_BIOS_TBIOS);
-    TEST_ASSERT(msx_get_bios_mode() == BMSX_BIOS_TBIOS, "msx_get_bios_mode must report BMSX_BIOS_TBIOS");
+    printf("[2] Verifying mode switch to C-BIOS...\n");
+    msx_set_bios_mode(BMSX_BIOS_CBIOS);
+    TEST_ASSERT(msx_get_bios_mode() == BMSX_BIOS_CBIOS, "msx_get_bios_mode must report BMSX_BIOS_CBIOS");
 
     int rc = msx_init(NULL);
-    TEST_ASSERT(rc == MSX_OK, "msx_init with T-BIOS must succeed");
-    TEST_ASSERT(msx_get_pc() == 0x0000, "T-BIOS reset PC must start at 0x0000");
+    TEST_ASSERT(rc == MSX_OK, "msx_init with C-BIOS must succeed");
+    TEST_ASSERT(msx_get_pc() == 0x0000, "C-BIOS reset PC must start at 0x0000");
 
     uint16_t pc, sp, bc, de, hl;
     uint8_t a;
     msx_cpu_words(&pc, &sp, &bc, &de, &hl, &a);
     TEST_ASSERT(pc == 0x0000, "Initial PC must be 0x0000");
 
-    /* Run 10 frames in T-BIOS */
+    /* Run 10 frames in C-BIOS */
     for (int i = 0; i < 10; i++) {
         msx_run_frame();
     }
     msx_cpu_words(&pc, &sp, &bc, &de, &hl, &a);
-    printf("    -> T-BIOS ran 10 frames cleanly: PC=%04X, SP=%04X\n", pc, sp);
-    TEST_ASSERT(sp <= 0xF380, "T-BIOS SP must be initialized at or below 0xF380");
+    printf("    -> C-BIOS ran 10 frames cleanly: PC=%04X, SP=%04X\n", pc, sp);
+    TEST_ASSERT(sp <= 0xF380, "C-BIOS SP must be initialized at or below 0xF380");
 }
 
 static void test_tbios_fallback(void)
@@ -82,18 +82,18 @@ static void test_tbios_fallback(void)
     TEST_ASSERT(rc == MSX_OK, "bios_load must cleanly fallback to default search paths");
 }
 
-static void test_restore_cbios(void)
+static void test_restore_tbios(void)
 {
-    printf("[4] Verifying switching back to C-BIOS...\n");
-    msx_set_bios_mode(BMSX_BIOS_CBIOS);
-    TEST_ASSERT(msx_get_bios_mode() == BMSX_BIOS_CBIOS, "Mode restored to BMSX_BIOS_CBIOS");
+    printf("[4] Verifying switching back to T-BIOS...\n");
+    msx_set_bios_mode(BMSX_BIOS_TBIOS);
+    TEST_ASSERT(msx_get_bios_mode() == BMSX_BIOS_TBIOS, "Mode restored to BMSX_BIOS_TBIOS");
 
     int rc = msx_init(NULL);
-    TEST_ASSERT(rc == MSX_OK, "msx_init with restored C-BIOS must succeed");
+    TEST_ASSERT(rc == MSX_OK, "msx_init with restored T-BIOS must succeed");
     for (int i = 0; i < 5; i++) {
         msx_run_frame();
     }
-    printf("    -> C-BIOS running restored successfully (PC=%04X)\n", msx_get_pc());
+    printf("    -> T-BIOS running restored successfully (PC=%04X)\n", msx_get_pc());
 }
 
 int main(void)
@@ -103,9 +103,9 @@ int main(void)
     printf("==========================================================\n");
 
     test_default_mode();
-    test_tbios_mode_switch();
+    test_cbios_mode_switch();
     test_tbios_fallback();
-    test_restore_cbios();
+    test_restore_tbios();
 
     printf("==========================================================\n");
     printf(" T-BIOS Tests: %d/%d passed (100%% Success)\n", s_tests_passed, s_tests_run);

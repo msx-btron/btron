@@ -596,6 +596,11 @@ void v9938_write(v9938_t *v, uint8_t port, uint8_t val)
         v->ctrl_pending = 0;
         if (v->write_mode) {
             uint32_t a = cpu_addr(v) & (V9938_VRAM_SIZE - 1u);
+            if (a == 0x1801) {
+                extern uint16_t msx_get_pc(void);
+                extern uint64_t msx_total_cycles(void);
+                printf("DEBUG: Write to 0x1801: val=%02X from PC=%04X cyc=%llu\n", val, msx_get_pc(), (unsigned long long)msx_total_cycles());
+            }
             v->vram[a] = val;
             cpu_step(v);
         }
@@ -612,6 +617,10 @@ void v9938_write(v9938_t *v, uint8_t port, uint8_t val)
                 /* VRAM address set */
                 v->write_mode = (uint8_t)((val & 0x40u) ? 1 : 0);
                 v->vram_ptr = (uint16_t)(((uint32_t)val << 8 | v->latch) & 0x3FFFu);
+                if (v->vram_ptr >= 0x1800 && v->vram_ptr < 0x1B00 && v->write_mode) {
+                    static int cnt = 0;
+                    if (++cnt <= 10) printf("DEBUG: VRAM write addr set to %04X (val=%02X latch=%02X)\n", v->vram_ptr, val, v->latch);
+                }
                 if (!v->write_mode) {
                     uint32_t a = cpu_addr(v) & (V9938_VRAM_SIZE - 1u);
                     v->read_ahead = v->vram[a];

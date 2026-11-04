@@ -1216,12 +1216,18 @@ sz_trampolines: equ     $ - tbl_trampolines
 ; ==============================================================================
 
 keyint:
-                push    af
-                push    bc
-                push    de
                 push    hl
-                push    ix
+                push    de
+                push    bc
+                push    af
+                exx
+                ex      af, af'
+                push    hl
+                push    de
+                push    bc
+                push    af
                 push    iy
+                push    ix
 
                 ; 1. Read VDP Status Register 0 to clear VBlank interrupt
                 in      a, (VDP_STAT)
@@ -1254,12 +1260,18 @@ keyint:
                 call    H_TIMI
 
 .keyint_done:
-                pop     iy
                 pop     ix
-                pop     hl
-                pop     de
-                pop     bc
+                pop     iy
                 pop     af
+                pop     bc
+                pop     de
+                pop     hl
+                ex      af, af'
+                exx
+                pop     af
+                pop     bc
+                pop     de
+                pop     hl
                 ei
                 reti
 
