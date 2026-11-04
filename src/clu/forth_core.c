@@ -50,6 +50,8 @@ static bool is_valid_dev_node(const ForthVM *vm, const FCodeNode *n) {
     return false;
 }
 
+
+
 /* ── Stack Access Helpers with TOS Caching ──────────────────────── */
 void forth_push(ForthVM *vm, forth_cell_t val) {
     if (vm->dsp + 1 >= FORTH_STACK_MAX) {
