@@ -106,51 +106,13 @@ static volatile uint16_t s_button_edge_tail = 0;
 static volatile int s_async_irq_active = 0;
 static uint32_t s_irq_prev_us = 0;
 
-static int s_present_dma_enabled = 0;
-static int s_present_pending = 0;
-static int s_present_cursor_dirty = 0;
-static uint32_t s_present_dma_start_us = 0;
-static uint32_t s_present_dma_max_us = 0;
-static uint32_t s_present_front_page = 0;
-static uint32_t s_present_dma_page = 1;
-static int s_present_fast_key_update = 0;
-/* Budget-scheduler WCET telemetry for the two equal-priority planes.  Each
- * plane's worst-case run time is compared against ASYNC_*_BUDGET_US; these
- * are internal counters (not shown on the compact HUD) used to detect a plane
- * monopolising the CPU. */
-static uint32_t s_input_wcet_us = 0;
-static uint32_t s_ui_wcet_us = 0;
+/* Mature Tested B-System Compositor Telemetry */
 static uint32_t s_hud_comp_ms = 0;
 static uint32_t s_hud_pres_ms = 0;
 static uint32_t s_hud_wcet_ms = 0;
-static char s_hud_path_live = '-';
-static uint32_t s_hud_area_live = 0;
 static char s_hud_path = '-';
 static uint32_t s_hud_area = 0;
-/* Which presenter ran on the worst-WCET UI trip of the current second.  The
- * composite letter above only names the renderer that cost the most; this one
- * names the trip that blocked the plane, so a W spike with no expensive
- * composite is attributable (a 'n' trip is pure event dispatch).
- *   M preview/drag  K close  Z focus  L menu leave  F full render
- *   B bounded damage  O overlay  A in-app menu  P panel band
- *   T stale client-image repaint (a deferred capture flush or inval catch-up)
- * The lowercase composite letter is now chosen by the client-image cache:
- * 'd' blit-only (image still current), 'r' repaint required, 'f' full,
- * 'm' bounded move, 'v' preview, '-' nothing timed ran. */
-static char s_hud_wbranch_live = 'n';
 static char s_hud_wbranch = 'n';
-static int s_ui_mouse_urgent = 0;
-
-/* CPU presentation is sliced into row bands.  Each trip copies as many
- * PRESENT_COPY_ROWS_PER_STEP chunks as fit inside ASYNC_PRESENT_BUDGET_US, so a
- * full frame becomes visible within a few ms (not a slow 2-row wipe) while no
- * single trip blocks long enough to starve the 1 kHz input plane.
- * DMA/page-flip is intentionally disabled until it is reliable. */
-#define PRESENT_COPY_ROWS_PER_STEP 32u
-#define ASYNC_PRESENT_BUDGET_US    250u
-static volatile uint32_t *s_present_copy_fb;
-static uint32_t s_present_copy_row;
-static int s_present_copy_active;
 
 void async_rt_format_status(char *buf, size_t len) {
     uint32_t gap = s_async_rt_stats.input_gap_us;
@@ -196,53 +158,6 @@ void async_rt_format_compact_status(char *buf, size_t len) {
 
 /* Double-buffered 32-bpp Desktop Backbuffer */
 static COLOR s_desktop_backbuffer[BTRON_SCREEN_W * BTRON_SCREEN_H] __attribute__((aligned(64)));
-
-enum {
-    DRAG_PREVIEW_CAPTURE,
-    DRAG_PREVIEW_PREPARE,
-    DRAG_PREVIEW_RESTORE,
-    DRAG_PREVIEW_STAMP,
-    DRAG_PREVIEW_PRESENT,
-    DRAG_PREVIEW_IDLE
-};
-
-#define DRAG_PREVIEW_TILE_SIZE 32
-#define DRAG_PREVIEW_TILES_X ((BTRON_SCREEN_W + DRAG_PREVIEW_TILE_SIZE - 1) / DRAG_PREVIEW_TILE_SIZE)
-#define DRAG_PREVIEW_TILES_Y ((BTRON_SCREEN_H + DRAG_PREVIEW_TILE_SIZE - 1) / DRAG_PREVIEW_TILE_SIZE)
-
-typedef struct {
-    WND *target;
-    RECT bounds;
-    RECT wanted;
-    RECT stamp;
-    RECT compose;
-    H width;
-    H height;
-    H capture_row;
-    H opacity_row;
-    H compose_row;
-    H present_row;
-    int phase;
-    BOOL target_hidden;
-    BOOL opacity_known;
-    BOOL opacity_opaque;
-    BOOL finish_requested;
-    BOOL active;
-} drag_preview_t;
-
-static COLOR s_drag_preview_pixels[BTRON_SCREEN_W * BTRON_SCREEN_H] __attribute__((aligned(64)));
-static COLOR s_drag_preview_underlay[BTRON_SCREEN_W * BTRON_SCREEN_H] __attribute__((aligned(64)));
-static uint8_t s_drag_preview_tiles[DRAG_PREVIEW_TILES_X * DRAG_PREVIEW_TILES_Y];
-static drag_preview_t s_drag_preview;
-static int s_drag_preview_cpu_active;
-static WND *s_drag_preview_opacity_target;
-static GDEV *s_drag_preview_opacity_dev;
-static int s_drag_preview_opacity_valid;
-static int s_drag_preview_opacity_value;
-static int s_drag_preview_dma_enabled = 0;
-static int s_drag_preview_dma_active;
-static RECT s_drag_preview_dma_rect;
-static uint32_t s_drag_preview_dma_start_us;
 
 #define DMA_FB_SELFTEST_WORDS 32u
 static uint32_t s_dma_fb_selftest_src[DMA_FB_SELFTEST_WORDS] __attribute__((aligned(64)));
@@ -291,6 +206,23 @@ extern WND* open_t_editor_window(void);
 extern WND* open_gterm_window(void);
 extern WND* launch_beos_chat(void);
 extern WND* open_control_panel_window(void);
+extern void* malloc(size_t sz);
+extern void  free(void *ptr);
+extern WND* open_mars_window(void);
+extern WND* open_quake_window(int x, int y, int width, int height);
+extern WND* open_xmb_window(void);
+extern WND* open_glgears_window(void);
+extern WND* open_lilcu64_demo_window(void);
+extern WND* open_msx_window(void);
+extern WND* open_drivesetup_window(void);
+#include <btron/fs/block.h>
+#include <btron/fs/vol_api.h>
+#include <btron/fs/fs_internal.h>
+#include <btron/tty.h>
+#include "../clu/clu.h"
+
+extern Volume *g_sys_vol;
+extern Volume *g_anders_vol;
 #include <arch/bcm283x/bcm2711_dma.h>
 #include <btron/global_menu.h>
 #include <btron/tracker.h>
@@ -572,17 +504,29 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb);
  * than the console that calls it. */
 static int pi4_ptr_cal(void);
 
+static void pi4_shell_out(const char *text, COLOR col, void *user_data)
+{
+    (void)col; (void)user_data;
+    if (!text) return;
+    fb_log(text);
+    fb_log("\n");
+    uart_puts(text);
+    uart_puts("\n");
+}
+
 static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
 {
     if (tkl_strcmp(cmd, "help") == 0) {
         fb_log("Commands:\n");
-        fb_log("  startx / desktop / gui  - Launch B-System Workbench\n");
+        fb_log("  startx / desktop / gui  - Launch B-System Workbench GUI\n");
         fb_log("  exit / console          - Return to Stage 1 console\n");
-        fb_log("  open <app>              - cabinet | editor | terminal | chat | settings\n");
-        fb_log("  mem                     - Memory map\n");
-        fb_log("  ptrcal                  - Loopback-calibrate the pointer path (no mouse needed)\n");
-        fb_log("  ver                     - Kernel version\n");
-        fb_log("  clear                   - Clear screen\n");
+        fb_log("  ls, df, stat, cat <f>   - B-System CLU Filesystem (mounted /SYS)\n");
+        fb_log("  sc, tv, be              - CLU Apps (Sokhatsky Commander, TV, Binary Editor)\n");
+        fb_log("  mars, quake, msx        - 3D & Gaming Apps (MARS 1993, Quake, MSX Player)\n");
+        fb_log("  xmb, glgears, lilcu64   - 3D Demos & Media (XMB, GLGears, Lil Cu 64)\n");
+        fb_log("  drivesetup, forth, sps  - Disk Manager, Forth, DPS Publisher\n");
+        fb_log("  open <app>              - Open specific Workbench application\n");
+        fb_log("  mem, ver, ptrcal, clear - Diagnostics & utilities\n");
         fb_log("  reboot                  - Halt processor\n");
 
     } else if (tkl_strcmp(cmd, "startx") == 0 ||
@@ -611,6 +555,7 @@ static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
         fb_log("[MEM]   0x00000000-0xFCFFFFFF  RAM (usable)\n");
         fb_log("[MEM]   0xFD000000-0xFFFFFFFF  MMIO / PCIe\n");
         fb_log("[MEM]   Kernel heap: 0x02000000-0x38000000\n");
+        fb_log("[MEM]   Preloaded volumes: /SYS @ 0x03000000, /ANDERS @ 0x03200000\n");
         fb_log("[MEM]   Non-cacheable DMA window: 0x01C00000-0x01E00000\n");
 
     } else if (tkl_strcmp(cmd, "ver") == 0) {
@@ -626,6 +571,84 @@ static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
             s_fb_log_col = 0;
             s_fb_log_row = 0;
         }
+
+    } else if (tkl_strcmp(cmd, "ls") == 0 || tkl_strncmp(cmd, "ls ", 3) == 0 ||
+               tkl_strcmp(cmd, "dir") == 0 || tkl_strncmp(cmd, "dir ", 4) == 0) {
+        const char *arg = (tkl_strncmp(cmd, "ls", 2) == 0) ? (cmd + 2) : (cmd + 3);
+        while (*arg == ' ') arg++;
+        clu_ls(arg, pi4_shell_out, NULL);
+
+    } else if (tkl_strcmp(cmd, "df") == 0 || tkl_strncmp(cmd, "df ", 3) == 0) {
+        const char *arg = cmd + 2;
+        while (*arg == ' ') arg++;
+        clu_df(arg, pi4_shell_out, NULL);
+
+    } else if (tkl_strncmp(cmd, "stat ", 5) == 0) {
+        clu_stat(cmd + 5, pi4_shell_out, NULL);
+
+    } else if (tkl_strncmp(cmd, "tp ", 3) == 0) {
+        clu_tp(cmd + 3, pi4_shell_out, NULL);
+
+    } else if (tkl_strncmp(cmd, "cat ", 4) == 0) {
+        clu_tp(cmd + 4, pi4_shell_out, NULL);
+
+    } else if (tkl_strcmp(cmd, "sync") == 0) {
+        clu_sync_cmd("", pi4_shell_out, NULL);
+
+    } else if (tkl_strcmp(cmd, "forth") == 0 || tkl_strncmp(cmd, "forth ", 6) == 0) {
+        const char *arg = (tkl_strcmp(cmd, "forth") == 0) ? "" : (cmd + 6);
+        clu_forth(arg, pi4_shell_out, NULL);
+
+    } else if (tkl_strcmp(cmd, "sps") == 0 || tkl_strncmp(cmd, "sps ", 4) == 0) {
+        const char *arg = (tkl_strcmp(cmd, "sps") == 0) ? "" : (cmd + 4);
+        clu_sps(arg, pi4_shell_out, NULL);
+
+    } else if (tkl_strcmp(cmd, "sc") == 0 || tkl_strncmp(cmd, "sc ", 3) == 0) {
+        const char *arg = (tkl_strcmp(cmd, "sc") == 0) ? "" : (cmd + 3);
+        clu_sc(arg, pi4_shell_out, NULL);
+
+    } else if (tkl_strcmp(cmd, "tv") == 0 || tkl_strncmp(cmd, "tv ", 3) == 0) {
+        const char *arg = (tkl_strcmp(cmd, "tv") == 0) ? "" : (cmd + 3);
+        clu_tv(arg, pi4_shell_out, NULL);
+
+    } else if (tkl_strcmp(cmd, "be") == 0 || tkl_strncmp(cmd, "be ", 3) == 0) {
+        const char *arg = (tkl_strcmp(cmd, "be") == 0) ? "" : (cmd + 3);
+        clu_be(arg, pi4_shell_out, NULL);
+
+    } else if (tkl_strcmp(cmd, "mars") == 0 || tkl_strncmp(cmd, "mars ", 5) == 0) {
+        open_mars_window();
+        fb_log("[CON] Opened MARS 1993 Voxel Landscape window.\n");
+        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
+
+    } else if (tkl_strcmp(cmd, "quake") == 0 || tkl_strncmp(cmd, "quake ", 6) == 0) {
+        open_quake_window(120, 60, 480, 360);
+        fb_log("[CON] Opened Quake 3D window.\n");
+        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
+
+    } else if (tkl_strcmp(cmd, "xmb") == 0) {
+        open_xmb_window();
+        fb_log("[CON] Opened XMB window.\n");
+        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
+
+    } else if (tkl_strcmp(cmd, "glgears") == 0 || tkl_strcmp(cmd, "gears") == 0) {
+        open_glgears_window();
+        fb_log("[CON] Opened GLGears window.\n");
+        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
+
+    } else if (tkl_strcmp(cmd, "lilcu") == 0 || tkl_strcmp(cmd, "lilcu64") == 0) {
+        open_lilcu64_demo_window();
+        fb_log("[CON] Opened Lil Cu 64 Demoscene window.\n");
+        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
+
+    } else if (tkl_strcmp(cmd, "msx") == 0) {
+        open_msx_window();
+        fb_log("[CON] Opened MSX Cartridge Player window.\n");
+        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
+
+    } else if (tkl_strcmp(cmd, "drivesetup") == 0) {
+        open_drivesetup_window();
+        fb_log("[CON] Opened DriveSetup window.\n");
+        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
 
     } else if (tkl_strncmp(cmd, "open ", 5) == 0) {
         const char *app = cmd + 5;
@@ -650,8 +673,36 @@ static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
             open_control_panel_window();
             fb_log("[CON] Opened Settings.\n");
             opened = 1;
+        } else if (tkl_strcmp(app, "mars") == 0) {
+            open_mars_window();
+            fb_log("[CON] Opened MARS 1993 Voxel Landscape.\n");
+            opened = 1;
+        } else if (tkl_strcmp(app, "quake") == 0) {
+            open_quake_window(120, 60, 480, 360);
+            fb_log("[CON] Opened Quake 3D.\n");
+            opened = 1;
+        } else if (tkl_strcmp(app, "xmb") == 0) {
+            open_xmb_window();
+            fb_log("[CON] Opened XMB.\n");
+            opened = 1;
+        } else if (tkl_strcmp(app, "glgears") == 0 || tkl_strcmp(app, "gears") == 0) {
+            open_glgears_window();
+            fb_log("[CON] Opened GLGears.\n");
+            opened = 1;
+        } else if (tkl_strcmp(app, "lilcu") == 0 || tkl_strcmp(app, "lilcu64") == 0) {
+            open_lilcu64_demo_window();
+            fb_log("[CON] Opened Lil Cu 64 Demoscene.\n");
+            opened = 1;
+        } else if (tkl_strcmp(app, "msx") == 0) {
+            open_msx_window();
+            fb_log("[CON] Opened MSX Cartridge Player.\n");
+            opened = 1;
+        } else if (tkl_strcmp(app, "drivesetup") == 0) {
+            open_drivesetup_window();
+            fb_log("[CON] Opened DriveSetup.\n");
+            opened = 1;
         } else {
-            fb_log("[CON] Unknown app. Try: cabinet editor terminal chat settings\n");
+            fb_log("[CON] Unknown app. Try: cabinet editor terminal chat settings mars quake xmb glgears lilcu64 msx drivesetup\n");
         }
         if (opened && !s_gui_active) {
             launch_pi4_desktop_session(gpu_fb);
@@ -660,6 +711,11 @@ static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
     } else if (tkl_strcmp(cmd, "reboot") == 0) {
         fb_log("[CON] Halting processor.\n");
         while (1) __asm__ volatile("wfe");
+
+    } else if (clu_launch_app(cmd, pi4_shell_out, NULL)) {
+        if (!s_gui_active) {
+            launch_pi4_desktop_session(gpu_fb);
+        }
 
     } else if (cmd[0] != '\0') {
         fb_log("[CON] Unknown command: ");
@@ -769,703 +825,33 @@ static int pi4_shell_poll(uint32_t *gpu_fb)
     /* Stage 1 console line editing */
     if (k == '\n' || k == '\r') {
         fb_log_putc('\n');
+        uart_puts("\r\n");
         s_cmd_buf[s_cmd_pos] = '\0';
         pi4_shell_exec(s_cmd_buf, gpu_fb);
         s_cmd_pos = 0;
         /* Re-print prompt if still in Stage 1 */
-        if (!s_gui_active) fb_log("btron-pi400# ");
+        if (!s_gui_active) {
+            fb_log("btron-pi400# ");
+            uart_puts("btron-pi400# ");
+        }
     } else if (k == 8 || k == 127) {       /* Backspace / DEL */
         if (s_cmd_pos > 0) {
             s_cmd_pos--;
             fb_log_backspace();
+            uart_puts("\b \b");
         }
     } else if (k >= 0x20 && k < 0x7F &&
                s_cmd_pos < (int)sizeof(s_cmd_buf) - 1) {
         s_cmd_buf[s_cmd_pos++] = (char)k;
         fb_log_putc((char)k);
+        uart_putc((char)k);
     }
     return 1;
 }
 
-/* Restore 16x16 background under mouse cursor from pristine backbuffer */
-static inline void restore_cursor_area(volatile uint32_t *gpu_fb, H x, H y) {
-    H x0 = x, y0 = y, bw = 16, bh = 16;
-    if (x0 < 0) { bw += x0; x0 = 0; }
-    if (y0 < 0) { bh += y0; y0 = 0; }
-    if (x0 + bw > BTRON_SCREEN_W) bw = BTRON_SCREEN_W - x0;
-    if (y0 + bh > BTRON_SCREEN_H) bh = BTRON_SCREEN_H - y0;
-    if (bw <= 0 || bh <= 0) return;
-
-    for (H r = 0; r < bh; r++) {
-        uint32_t *d = (uint32_t *)(gpu_fb + (y0 + r) * BTRON_SCREEN_W + x0);
-        const COLOR *s = &s_desktop_backbuffer[(y0 + r) * BTRON_SCREEN_W + x0];
-        for (H c = 0; c < bw; c++) d[c] = s[c];
-    }
-}
-
-static void present_copy_step(void) {
-    if (!s_present_copy_active || !s_present_copy_fb) return;
-
-    uint32_t start_us = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    for (;;) {
-        uint32_t rows = BTRON_SCREEN_H - s_present_copy_row;
-        if (rows > PRESENT_COPY_ROWS_PER_STEP) rows = PRESENT_COPY_ROWS_PER_STEP;
-        arm64_fast_blit((void *)(s_present_copy_fb + s_present_copy_row * BTRON_SCREEN_W),
-                        &s_desktop_backbuffer[s_present_copy_row * BTRON_SCREEN_W],
-                        (size_t)rows * BTRON_SCREEN_W * sizeof(COLOR));
-        s_present_copy_row += rows;
-        if (s_present_copy_row >= BTRON_SCREEN_H) { s_present_copy_active = 0; break; }
-        if ((*(volatile uint32_t *)(TIMER_BASE + 0x04) - start_us) >= ASYNC_PRESENT_BUDGET_US)
-            break;
-    }
-
-    uint32_t elapsed = *(volatile uint32_t *)(TIMER_BASE + 0x04) - start_us;
-    s_async_rt_stats.blit_us = elapsed;
-    if (elapsed > s_async_rt_stats.blit_max_us)
-        s_async_rt_stats.blit_max_us = elapsed;
-    /* A copied band may have covered the cursor even when it did not move. */
-    s_present_cursor_dirty = 1;
-}
-
-/* Copy one backbuffer rect to the visible page.  Bounded by the rect, so an
- * interaction presents only the pixels that changed instead of a full 3 MB
- * sweep (the perceived-latency culprit for drag / focus / menu-open). */
-static void present_backbuffer_rect(volatile uint32_t *fb, H x0, H y0, H x1, H y1) {
-    if (!fb) return;
-    if (x0 < 0) x0 = 0;
-    if (y0 < 0) y0 = 0;
-    if (x1 > BTRON_SCREEN_W) x1 = BTRON_SCREEN_W;
-    if (y1 > BTRON_SCREEN_H) y1 = BTRON_SCREEN_H;
-    if (x1 <= x0 || y1 <= y0) return;
-    volatile uint32_t *dst = fb + s_present_front_page * BTRON_SCREEN_W * BTRON_SCREEN_H;
-    H width = x1 - x0;
-    uint32_t t0 = btron_render_perf_us();
-    for (H y = y0; y < y1; y++) {
-        const COLOR *srow = &s_desktop_backbuffer[y * BTRON_SCREEN_W + x0];
-        uint32_t *drow = (uint32_t *)(dst + y * BTRON_SCREEN_W + x0);
-        btron_row_blit(drow, srow, (size_t)width * sizeof(COLOR));
-    }
-    __asm__ volatile("dmb sy" : : : "memory");
-    /* The destination here is the GPU framebuffer, i.e. deliberately
-     * non-cacheable, so this is the one rate that is expected to be low.  It
-     * pairs with the cacheable probe below: the gap between the two is the
-     * prize for presenting less, and the gap within is a mapping bug. */
-    btron_render_stat_worst(&g_render_stats.pres_worst_us, &g_render_stats.pres_worst_px,
-                            btron_render_perf_us() - t0,
-                            (uint32_t)width * (uint32_t)(y1 - y0));
-    s_present_cursor_dirty = 1;
-}
-
-static int drag_preview_bounds_valid(const RECT *bounds) {
-    return bounds && bounds->left >= 0 && bounds->top >= 0 &&
-           bounds->right <= BTRON_SCREEN_W && bounds->bottom <= BTRON_SCREEN_H &&
-           bounds->right > bounds->left && bounds->bottom > bounds->top;
-}
-
-static RECT drag_preview_union(const RECT *a, const RECT *b) {
-    RECT out = *a;
-    if (b->left < out.left) out.left = b->left;
-    if (b->top < out.top) out.top = b->top;
-    if (b->right > out.right) out.right = b->right;
-    if (b->bottom > out.bottom) out.bottom = b->bottom;
-    return out;
-}
-
-/* Trip accumulator for the rect a present must cover: window geometry the
- * pointer mutates, plus whatever the dispatch invalidated. */
-typedef struct {
-    RECT r;
-    int valid;
-} MOVE_BOUND;
-
-static void move_bound_add(MOVE_BOUND *mb, const RECT *r) {
-    if (!r || r->right <= r->left || r->bottom <= r->top) return;
-    if (mb->valid) mb->r = drag_preview_union(&mb->r, r);
-    else { mb->r = *r; mb->valid = 1; }
-}
-
-/* Damage a held button accumulates ACROSS trips.  While a mouse button is
- * captured the pointer gets no repaint: a window whose art lives in its paint
- * callback otherwise re-runs that callback on every move, and on this CPU one
- * client repaint costs tens of milliseconds -- which is the spike, whatever
- * rectangle it is bounded to.  The deferred rect is repainted once on release.
- * (Windows on a 286 drove the pointer and dragged a proxy, and validated the
- * real image when the button came up; the input plane must never wait on art.) */
-static MOVE_BOUND s_capture_dirty;
-
-static void drag_preview_cache_tile(GDEV *screen, int tx, int ty) {
-    int index = ty * DRAG_PREVIEW_TILES_X + tx;
-    if (s_drag_preview_tiles[index]) return;
-    RECT tile = { tx * DRAG_PREVIEW_TILE_SIZE, ty * DRAG_PREVIEW_TILE_SIZE,
-                  (tx + 1) * DRAG_PREVIEW_TILE_SIZE, (ty + 1) * DRAG_PREVIEW_TILE_SIZE };
-    if (tile.right > BTRON_SCREEN_W) tile.right = BTRON_SCREEN_W;
-    if (tile.bottom > BTRON_SCREEN_H) tile.bottom = BTRON_SCREEN_H;
-    BOOL visible = s_drag_preview.target->visible;
-    s_drag_preview.target->visible = FALSE;
-    /* The tile cache is wiped on every capture (drag_preview_capture), so a
-     * drag start pays one composite per 32x32 tile: that work, not the drag
-     * itself, is what the HUD shows "before saturation". */
-    uint32_t t_tile = btron_render_perf_us();
-    workbench_render_damage(screen, &tile);
-    uint32_t tile_us = btron_render_perf_us() - t_tile;
-    s_drag_preview.target->visible = visible;
-    g_render_stats.tiles++;
-    btron_render_stat_max(&g_render_stats.tile_max_us, tile_us);
-    for (H y = tile.top; y < tile.bottom; y++)
-        btron_row_blit(&s_drag_preview_underlay[(size_t)y * BTRON_SCREEN_W + tile.left],
-                       &s_desktop_backbuffer[(size_t)y * BTRON_SCREEN_W + tile.left],
-                       (size_t)(tile.right - tile.left) * sizeof(COLOR));
-    s_drag_preview_tiles[index] = 1;
-}
-
-static int drag_preview_prepare_one_tile(GDEV *screen) {
-    RECT need = drag_preview_union(&s_drag_preview.bounds, &s_drag_preview.wanted);
-    int x0 = need.left / DRAG_PREVIEW_TILE_SIZE;
-    int y0 = need.top / DRAG_PREVIEW_TILE_SIZE;
-    int x1 = (need.right - 1) / DRAG_PREVIEW_TILE_SIZE;
-    int y1 = (need.bottom - 1) / DRAG_PREVIEW_TILE_SIZE;
-    for (int y = y0; y <= y1; y++) {
-        for (int x = x0; x <= x1; x++) {
-            if (!s_drag_preview_tiles[y * DRAG_PREVIEW_TILES_X + x]) {
-                drag_preview_cache_tile(screen, x, y);
-                return 1;
-            }
-        }
-    }
-    return 0;
-}
-
-static BOOL drag_preview_reset(void) {
-    BOOL redraw_needed = FALSE;
-    if (s_drag_preview_dma_active) bcm2711_dma_abort(0);
-    if (s_drag_preview.target && s_drag_preview.target_hidden &&
-        wnd_mgr_contains(s_drag_preview.target)) {
-        s_drag_preview.target->visible = TRUE;
-        redraw_needed = TRUE;
-    }
-    s_drag_preview_dma_active = 0;
-    s_drag_preview_cpu_active = 0;
-    s_drag_preview_dma_start_us = 0;
-    s_drag_preview.target = NULL;
-    s_drag_preview.active = FALSE;
-    s_drag_preview.target_hidden = FALSE;
-    s_drag_preview.finish_requested = FALSE;
-    s_drag_preview.phase = DRAG_PREVIEW_IDLE;
-    return redraw_needed;
-}
-
-static int drag_preview_capture(GDEV *screen, WND *target, const RECT *bounds) {
-    (void)screen;
-    if (!target || target != get_top_wnd() || !target->visible ||
-        !drag_preview_bounds_valid(bounds))
-        return 0;
-    if (s_drag_preview_opacity_valid && s_drag_preview_opacity_target == target &&
-        s_drag_preview_opacity_dev == target->dev && !s_drag_preview_opacity_value)
-        return 0;
-
-    H width = bounds->right - bounds->left;
-    H height = bounds->bottom - bounds->top;
-    if ((size_t)width * height > BTRON_SCREEN_W * BTRON_SCREEN_H) return 0;
-
-    s_drag_preview.target = target;
-    s_drag_preview.bounds = *bounds;
-    s_drag_preview.wanted = *bounds;
-    s_drag_preview.width = width;
-    s_drag_preview.height = height;
-    s_drag_preview.capture_row = 0;
-    s_drag_preview.opacity_row = 0;
-    s_drag_preview.compose_row = 0;
-    s_drag_preview.present_row = 0;
-    s_drag_preview.target_hidden = FALSE;
-    s_drag_preview.finish_requested = FALSE;
-    s_drag_preview.opacity_known = s_drag_preview_opacity_valid &&
-                                     s_drag_preview_opacity_target == target &&
-                                     s_drag_preview_opacity_dev == target->dev;
-    s_drag_preview.opacity_opaque = s_drag_preview_opacity_value;
-    s_drag_preview.phase = DRAG_PREVIEW_CAPTURE;
-    s_drag_preview.active = TRUE;
-    s_drag_preview_cpu_active = 1;
-    for (size_t i = 0; i < sizeof(s_drag_preview_tiles); i++)
-        s_drag_preview_tiles[i] = 0;
-    return 1;
-}
-
-static void drag_preview_cpu_step(GDEV *screen, volatile uint32_t *fb) {
-    if (!screen || !fb || !s_drag_preview_cpu_active || !s_drag_preview.active) return;
-    if (!wnd_mgr_contains(s_drag_preview.target)) {
-        drag_preview_reset();
-        return;
-    }
-
-    uint32_t start_us = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    volatile uint32_t *dst = fb + s_present_front_page * BTRON_SCREEN_W * BTRON_SCREEN_H;
-    while ((*(volatile uint32_t *)(TIMER_BASE + 0x04) - start_us) < ASYNC_PRESENT_BUDGET_US) {
-        if (s_drag_preview.phase == DRAG_PREVIEW_CAPTURE) {
-            if (s_drag_preview.capture_row < s_drag_preview.height) {
-                H y = s_drag_preview.capture_row++;
-                btron_row_blit(&s_drag_preview_pixels[(size_t)y * s_drag_preview.width],
-                               &s_desktop_backbuffer[(size_t)(s_drag_preview.bounds.top + y) * BTRON_SCREEN_W + s_drag_preview.bounds.left],
-                               (size_t)s_drag_preview.width * sizeof(COLOR));
-            }
-            if (!s_drag_preview.opacity_known && s_drag_preview.target->dev &&
-                s_drag_preview.opacity_row < s_drag_preview.target->dev->height) {
-                COLOR *row = &s_drag_preview.target->dev->pixels[(size_t)s_drag_preview.opacity_row++ * s_drag_preview.target->dev->width];
-                for (H x = 0; x < s_drag_preview.target->dev->width; x++) {
-                    if (row[x] == 0x00000000) {
-                        s_drag_preview_opacity_target = s_drag_preview.target;
-                        s_drag_preview_opacity_dev = s_drag_preview.target->dev;
-                        s_drag_preview_opacity_valid = 1;
-                        s_drag_preview_opacity_value = 0;
-                        drag_preview_reset();
-                        return;
-                    }
-                }
-            }
-            if (s_drag_preview.capture_row < s_drag_preview.height ||
-                (!s_drag_preview.opacity_known && s_drag_preview.target->dev &&
-                 s_drag_preview.opacity_row < s_drag_preview.target->dev->height))
-                continue;
-            s_drag_preview_opacity_target = s_drag_preview.target;
-            s_drag_preview_opacity_dev = s_drag_preview.target->dev;
-            s_drag_preview_opacity_valid = 1;
-            s_drag_preview_opacity_value = 1;
-            s_drag_preview.phase = DRAG_PREVIEW_PREPARE;
-            continue;
-        }
-        if (s_drag_preview.phase == DRAG_PREVIEW_PREPARE) {
-            if (drag_preview_prepare_one_tile(screen)) continue;
-            s_drag_preview.stamp = s_drag_preview.wanted;
-            s_drag_preview.compose = s_drag_preview.stamp;
-            s_drag_preview.compose_row = 0;
-            s_drag_preview.phase = DRAG_PREVIEW_RESTORE;
-            continue;
-        }
-        if (s_drag_preview.phase == DRAG_PREVIEW_RESTORE) {
-            if (s_drag_preview.compose_row < s_drag_preview.height) {
-                H y = s_drag_preview.bounds.top + s_drag_preview.compose_row++;
-                btron_row_blit(&s_desktop_backbuffer[(size_t)y * BTRON_SCREEN_W + s_drag_preview.bounds.left],
-                               &s_drag_preview_underlay[(size_t)y * BTRON_SCREEN_W + s_drag_preview.bounds.left],
-                               (size_t)s_drag_preview.width * sizeof(COLOR));
-                continue;
-            }
-            s_drag_preview.compose_row = 0;
-            s_drag_preview.phase = DRAG_PREVIEW_STAMP;
-            continue;
-        }
-        if (s_drag_preview.phase == DRAG_PREVIEW_STAMP) {
-            if (s_drag_preview.compose_row < s_drag_preview.height) {
-                H y = s_drag_preview.compose_row++;
-                if ((s_drag_preview.target->attr & WND_ATTR_COMPACT_TAB) && y < 28) {
-                    RECT tab;
-                    wget_tab_rect(s_drag_preview.target, &tab);
-                    /* The tab rect follows the window's live geometry while the
-                     * stamp follows the preview's, which lags it, so the two can
-                     * disagree.  Unclamped, tab_left indexes the snapshot before
-                     * its own row and a negative tab_width becomes a huge size_t
-                     * length. */
-                    H tab_left = tab.left - s_drag_preview.stamp.left;
-                    H tab_width = tab.right - tab.left;
-                    if (tab_left < 0) {
-                        tab_width += tab_left;
-                        tab_left = 0;
-                    }
-                    if (tab_width > s_drag_preview.width - tab_left)
-                        tab_width = s_drag_preview.width - tab_left;
-                    if (tab_width > 0) {
-                        btron_row_blit(&s_desktop_backbuffer[(size_t)(s_drag_preview.stamp.top + y) * BTRON_SCREEN_W + s_drag_preview.stamp.left + tab_left],
-                                       &s_drag_preview_pixels[(size_t)y * s_drag_preview.width + tab_left],
-                                       (size_t)tab_width * sizeof(COLOR));
-                    }
-                } else {
-                    btron_row_blit(&s_desktop_backbuffer[(size_t)(s_drag_preview.stamp.top + y) * BTRON_SCREEN_W + s_drag_preview.stamp.left],
-                                   &s_drag_preview_pixels[(size_t)y * s_drag_preview.width],
-                                   (size_t)s_drag_preview.width * sizeof(COLOR));
-                }
-                continue;
-            }
-            s_drag_preview.compose = drag_preview_union(&s_drag_preview.bounds, &s_drag_preview.compose);
-            s_drag_preview.present_row = 0;
-            s_drag_preview.phase = DRAG_PREVIEW_PRESENT;
-            continue;
-        }
-        if (s_drag_preview.phase == DRAG_PREVIEW_PRESENT) {
-            H height = s_drag_preview.compose.bottom - s_drag_preview.compose.top;
-            H width = s_drag_preview.compose.right - s_drag_preview.compose.left;
-            if (s_drag_preview.present_row < height) {
-                H y = s_drag_preview.compose.top + s_drag_preview.present_row++;
-                arm64_fast_blit((void *)(dst + (size_t)y * BTRON_SCREEN_W + s_drag_preview.compose.left),
-                                &s_desktop_backbuffer[(size_t)y * BTRON_SCREEN_W + s_drag_preview.compose.left],
-                                (size_t)width * sizeof(COLOR));
-                continue;
-            }
-            s_drag_preview.bounds = s_drag_preview.stamp;
-            s_drag_preview.target_hidden = TRUE;
-            s_present_cursor_dirty = 1;
-            s_hud_path_live = 'v';
-            s_hud_area_live = ((uint32_t)width * height * 100u) / ((uint32_t)BTRON_SCREEN_W * BTRON_SCREEN_H);
-            if (s_drag_preview.wanted.left != s_drag_preview.bounds.left ||
-                s_drag_preview.wanted.top != s_drag_preview.bounds.top ||
-                s_drag_preview.wanted.right != s_drag_preview.bounds.right ||
-                s_drag_preview.wanted.bottom != s_drag_preview.bounds.bottom) {
-                s_drag_preview.phase = DRAG_PREVIEW_PREPARE;
-            } else if (s_drag_preview.finish_requested) {
-                s_drag_preview.finish_requested = FALSE;
-                s_drag_preview.active = FALSE;
-                s_drag_preview.phase = DRAG_PREVIEW_IDLE;
-                s_drag_preview_cpu_active = 0;
-            } else {
-                s_drag_preview.phase = DRAG_PREVIEW_IDLE;
-                s_drag_preview_cpu_active = 0;
-            }
-            break;
-        }
-        break;
-    }
-
-    uint32_t elapsed = *(volatile uint32_t *)(TIMER_BASE + 0x04) - start_us;
-    s_async_rt_stats.composite_us = elapsed;
-    if (elapsed > s_async_rt_stats.composite_max_us)
-        s_async_rt_stats.composite_max_us = elapsed;
-    s_async_rt_stats.present_us = elapsed;
-    if (elapsed > s_async_rt_stats.present_max_us)
-        s_async_rt_stats.present_max_us = elapsed;
-}
-
-static int present_drag_preview(GDEV *screen, volatile uint32_t *fb, WND *target,
-                                const RECT *old, const RECT *current) {
-    (void)screen;
-    (void)fb;
-    if (!s_drag_preview.active || s_drag_preview.target != target ||
-        !drag_preview_bounds_valid(old) || !drag_preview_bounds_valid(current) ||
-        old->top < 28 || current->top < 28 ||
-        old->right - old->left != s_drag_preview.width ||
-        old->bottom - old->top != s_drag_preview.height ||
-        current->right - current->left != s_drag_preview.width ||
-        current->bottom - current->top != s_drag_preview.height)
-        return 0;
-    s_drag_preview.wanted = *current;
-    if (s_drag_preview.phase == DRAG_PREVIEW_IDLE) {
-        s_drag_preview.phase = DRAG_PREVIEW_PREPARE;
-        s_drag_preview_cpu_active = 1;
-    }
-    return 1;
-}
-
-static int finish_drag_preview(WND *target, const RECT *bounds) {
-    if (!s_drag_preview.active || s_drag_preview.target != target ||
-        !drag_preview_bounds_valid(bounds) ||
-        bounds->right - bounds->left != s_drag_preview.width ||
-        bounds->bottom - bounds->top != s_drag_preview.height)
-        return 0;
-    s_drag_preview.wanted = *bounds;
-    s_drag_preview.finish_requested = TRUE;
-    if (s_drag_preview.phase == DRAG_PREVIEW_IDLE) {
-        s_drag_preview.phase = DRAG_PREVIEW_PREPARE;
-        s_drag_preview_cpu_active = 1;
-    }
-    return 1;
-}
-
-/* Window-union of the previous full render.  Initialised to the whole screen
- * so the first full render presents everything (background, panel, test bar). */
-static RECT s_prev_win_union = { 0, 0, BTRON_SCREEN_W, BTRON_SCREEN_H };
-
-/* Full composite + present only old-union ∪ new-union.  A moved or restacked
- * window's vacated area lies inside that union, so partial present stays
- * correct while skipping the unchanged pure-desktop pixels.  `extra` (may be
- * NULL) widens the present region — used to fold in a menu rect that was open
- * at the start of this UI trip, so closing a menu repaints its (now-desktop)
- * pixels instead of leaving stale overlay artefacts on the framebuffer. */
-static void present_full_render(GDEV *screen, volatile uint32_t *fb, const RECT *extra) {
-    uint32_t t0 = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
-    uint32_t t1 = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    RECT cur;
-    wnd_get_union_bounds(&cur);
-    H x0 = cur.left  < s_prev_win_union.left  ? cur.left  : s_prev_win_union.left;
-    H y0 = cur.top   < s_prev_win_union.top   ? cur.top   : s_prev_win_union.top;
-    H x1 = cur.right > s_prev_win_union.right ? cur.right : s_prev_win_union.right;
-    H y1 = cur.bottom> s_prev_win_union.bottom? cur.bottom: s_prev_win_union.bottom;
-    if (extra && extra->right > extra->left && extra->bottom > extra->top) {
-        if (extra->left   < x0) x0 = extra->left;
-        if (extra->top    < y0) y0 = extra->top;
-        if (extra->right  > x1) x1 = extra->right;
-        if (extra->bottom > y1) y1 = extra->bottom;
-    }
-    s_prev_win_union = cur;
-    present_backbuffer_rect(fb, x0, y0, x1, y1);
-    uint32_t t2 = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    /* DIAGNOSTIC: split the full-render cost so we can confirm on hardware that
-     * window-move is composite-bound (workbench_render) not copy-bound (present).
-     * Reported once per second over UART, then reset. */
-    s_async_rt_stats.composite_us = t1 - t0;
-    if (s_async_rt_stats.composite_us > s_async_rt_stats.composite_max_us) {
-        s_async_rt_stats.composite_max_us = s_async_rt_stats.composite_us;
-        s_hud_path_live = 'f';
-        s_hud_area_live = ((uint32_t)(x1 - x0) * (uint32_t)(y1 - y0) * 100u) /
-                          ((uint32_t)BTRON_SCREEN_W * BTRON_SCREEN_H);
-    }
-    s_async_rt_stats.present_us = t2 - t1;
-    if (s_async_rt_stats.present_us > s_async_rt_stats.present_max_us)
-        s_async_rt_stats.present_max_us = s_async_rt_stats.present_us;
-}
-
-/* Damage-driven present for shell interactions (focus click, close, button
- * edges): repaint and transfer exactly the invalidated rects.  Reported to the
- * HUD as 'd' so a bounded click repaint is distinguishable from 'f' full render. */
-static void present_damage_render(GDEV *screen, volatile uint32_t *fb, const RECT *r) {
-    /* Whether the windows inside the rect must re-run their paint callback is
-     * a property of their client image cache, not of the event that triggered
-     * the present: a window whose pixmap still holds its current art only needs
-     * a blit (sub-millisecond), while one that was just opened, resized or
-     * inval_wnd()ed must be repainted or the blit stamps an empty client area
-     * over real pixels. */
-    BOOL need_paint = wnd_damage_needs_paint(r);
-    uint32_t t0 = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    if (need_paint) workbench_render_damage_paint(screen, r);
-    else            workbench_render_damage(screen, r);
-    uint32_t tm = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    present_backbuffer_rect(fb, r->left, r->top, r->right, r->bottom);
-    uint32_t t1 = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    wnd_get_union_bounds(&s_prev_win_union);
-    /* Composite and transfer are scored separately, exactly as the 'f' and 'm'
-     * paths do, so a HUD P-value is always attributable to a real present.
-     * 'd' = blit-only damage, 'r' = damage that required a repaint. */
-    if ((tm - t0) > s_async_rt_stats.composite_max_us) {
-        s_async_rt_stats.composite_max_us = tm - t0;
-        s_hud_path_live = need_paint ? 'r' : 'd';
-        s_hud_area_live = ((uint32_t)(r->right - r->left) * (uint32_t)(r->bottom - r->top) * 100u) /
-                          ((uint32_t)BTRON_SCREEN_W * BTRON_SCREEN_H);
-    }
-    if ((t1 - tm) > s_async_rt_stats.present_max_us)
-        s_async_rt_stats.present_max_us = t1 - tm;
-}
-
-static void present_move_render(GDEV *screen, volatile uint32_t *fb,
-                                const RECT *old_damage, const RECT *new_damage) {
-    if (!old_damage || !new_damage) return;
-
-    RECT old = *old_damage;
-    RECT current = *new_damage;
-    if (old.left < 0) old.left = 0;
-    if (old.top < 0) old.top = 0;
-    if (old.right > BTRON_SCREEN_W) old.right = BTRON_SCREEN_W;
-    if (old.bottom > BTRON_SCREEN_H) old.bottom = BTRON_SCREEN_H;
-    if (current.left < 0) current.left = 0;
-    if (current.top < 0) current.top = 0;
-    if (current.right > BTRON_SCREEN_W) current.right = BTRON_SCREEN_W;
-    if (current.bottom > BTRON_SCREEN_H) current.bottom = BTRON_SCREEN_H;
-    if (old.right <= old.left || old.bottom <= old.top ||
-        current.right <= current.left || current.bottom <= current.top)
-        return;
-
-    uint32_t t0 = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    workbench_render_damage(screen, &old);
-    workbench_render_damage(screen, &current);
-    uint32_t t1 = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    RECT cur;
-    wnd_get_union_bounds(&cur);
-    s_prev_win_union = cur;
-    present_backbuffer_rect(fb, old.left, old.top, old.right, old.bottom);
-    present_backbuffer_rect(fb, current.left, current.top, current.right, current.bottom);
-    uint32_t t2 = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-
-    H overlap_left = old.left > current.left ? old.left : current.left;
-    H overlap_top = old.top > current.top ? old.top : current.top;
-    H overlap_right = old.right < current.right ? old.right : current.right;
-    H overlap_bottom = old.bottom < current.bottom ? old.bottom : current.bottom;
-    uint32_t area = (uint32_t)(old.right - old.left) * (uint32_t)(old.bottom - old.top) +
-                    (uint32_t)(current.right - current.left) * (uint32_t)(current.bottom - current.top);
-    if (overlap_right > overlap_left && overlap_bottom > overlap_top)
-        area -= (uint32_t)(overlap_right - overlap_left) * (uint32_t)(overlap_bottom - overlap_top);
-
-    s_async_rt_stats.composite_us = t1 - t0;
-    if (s_async_rt_stats.composite_us > s_async_rt_stats.composite_max_us) {
-        s_async_rt_stats.composite_max_us = s_async_rt_stats.composite_us;
-        s_hud_path_live = 'm';
-        s_hud_area_live = (area * 100u) / ((uint32_t)BTRON_SCREEN_W * BTRON_SCREEN_H);
-    }
-    s_async_rt_stats.present_us = t2 - t1;
-    if (s_async_rt_stats.present_us > s_async_rt_stats.present_max_us)
-        s_async_rt_stats.present_max_us = s_async_rt_stats.present_us;
-}
-
-/* TRUE when the focused top window owns an open in-app menu (its private
- * APP_MENU_BAR dropdown).  Each app registers a `menu_open` callback; the
- * dropdown is painted inside that window's own paint callback, so hovering or
- * clicking it only needs a top-window repaint + that window's rect presented —
- * not a full desktop composite.  Returns FALSE when no window, no callback, or
- * the menu is closed, so callers safely fall back to the full-render path. */
-static int top_window_menu_open(void) {
-    WND *top = get_top_wnd();
-    if (top && top->menu_open) return top->menu_open(top) ? 1 : 0;
-    return 0;
-}
-
-/* ── Memory-path probe ────────────────────────────────────────────────────
- * Every composite stage measured on the Pi 400 has come in near 30 MB/s,
- * which is a non-cacheable rate, while the renderer's own buffers all sit
- * below the 16 MB line the MMU used to mark non-cacheable.  Rather than argue
- * from the source text, measure once at session start: a cacheable NEON row
- * blit, a cacheable byte loop, and the MAIR index the page tables really give
- * the desktop backbuffer.  If the cacheable pair comes back near the
- * framebuffer's rate then the memory map is the defect and no amount of
- * damage bounding will fix it; if it comes back an order of magnitude faster,
- * the spikes are bytes-touched and bounding is the whole game.
- *
- * Every stage number so far has been timed with the SoC system timer
- * (TIMER_BASE+0x04), which on BCM2711 is a separate clock from the ARM generic
- * timer.  If that counter does not run at 1 MHz then all of the milliseconds
- * in the HUD and in this probe are wrong by the same factor, so the probe is
- * timed by both counters and reports the ratio.  The bandwidth figures use the
- * generic timer, i.e. wall-clock truth whether or not the HUD's units are. */
-#define BTRON_PROBE_BYTES 262144u
-static uint8_t s_probe_src[BTRON_PROBE_BYTES] __attribute__((aligned(64)));
-static uint8_t s_probe_dst[BTRON_PROBE_BYTES] __attribute__((aligned(64)));
-static uint32_t s_probe_neon_mbs;
-static uint32_t s_probe_scalar_mbs;
-static uint32_t s_probe_sctlr;
-static uint32_t s_probe_el;
-static uint32_t s_probe_attr_backbuffer;
-static uint32_t s_probe_layout_ok;
-static uint32_t s_probe_frq_mhz;
-static uint32_t s_probe_st_us;      /* whole probe, SoC system timer */
-static uint32_t s_probe_ct_us;      /* whole probe, ARM generic timer */
-
-static uint32_t probe_mbs(uint64_t bytes, uint32_t us) {
-    if (!us) us = 1;
-    return (uint32_t)(bytes * 1000000ull / us / 1048576ull);
-}
-
-static uint64_t probe_ticks(void) {
-    uint64_t v;
-    __asm__ volatile("mrs %0, cntvct_el0\n\tisb" : "=r"(v) : : "memory");
-    return v;
-}
-
-static uint32_t probe_us(uint64_t ticks, uint64_t frq) {
-    if (!frq) return 0;
-    uint64_t us = ticks * 1000000ull / frq;
-    return us > 0xFFFFFFFFull ? 0xFFFFFFFFu : (uint32_t)us;
-}
-
-static void run_mem_probe(void) {
-    const uint64_t total = (uint64_t)BTRON_PROBE_BYTES * 4u;
-    uint64_t frq, ct0, ct1, ct_first;
-    uint32_t st1, st_first;
-
-    __asm__ volatile("mrs %0, cntfrq_el0" : "=r"(frq));
-    s_probe_frq_mhz = (uint32_t)(frq / 1000000ull);
-
-    st_first = btron_render_perf_us();
-    ct_first = probe_ticks();
-    for (int pass = 0; pass < 4; pass++) {
-        for (uint32_t off = 0; off + 4096u <= BTRON_PROBE_BYTES; off += 4096u)
-            btron_row_blit(&s_probe_dst[off], &s_probe_src[off], 4096u);
-    }
-    ct1 = probe_ticks();
-    s_probe_neon_mbs = probe_mbs(total, probe_us(ct1 - ct_first, frq));
-
-    /* volatile keeps this a genuine byte loop rather than a memcpy call. */
-    volatile uint8_t *vs = s_probe_src;
-    volatile uint8_t *vd = s_probe_dst;
-    ct0 = probe_ticks();
-    for (int pass = 0; pass < 4; pass++) {
-        for (uint32_t off = 0; off < BTRON_PROBE_BYTES; off++) vd[off] = vs[off];
-    }
-    ct1 = probe_ticks(); st1 = btron_render_perf_us();
-    s_probe_scalar_mbs = probe_mbs(total, probe_us(ct1 - ct0, frq));
-
-    /* Both counters over the same span.  If the system timer really runs at
-     * 1 MHz these two agree; if it does not, every millisecond the HUD has
-     * ever reported is off by the same factor. */
-    s_probe_st_us = st1 - st_first;
-    s_probe_ct_us = probe_us(ct1 - ct_first, frq);
-
-    uint64_t el;
-    __asm__ volatile("mrs %0, CurrentEL" : "=r"(el));
-    s_probe_el = (uint32_t)(el >> 2);
-    switch (s_probe_el) {
-        case 3:  __asm__ volatile("mrs %0, sctlr_el3" : "=r"(el)); break;
-        case 2:  __asm__ volatile("mrs %0, sctlr_el2" : "=r"(el)); break;
-        default: __asm__ volatile("mrs %0, sctlr_el1" : "=r"(el)); break;
-    }
-    s_probe_sctlr = (uint32_t)el;
-    s_probe_attr_backbuffer = (uint32_t)arm64_mmu_attr_of((uintptr_t)s_desktop_backbuffer);
-    s_probe_layout_ok = (uint32_t)arm64_mmu_layout_ok();
-}
-
-/* On-device composite profile (temporary diagnostic).  The compact HUD proves
- * a composite costs tens of milliseconds but not which stage does it, and the
- * source-level estimate for the same bounded blit is an order of magnitude
- * lower -- so the split has to be measured on the hardware.  The 1 Hz tick
- * takes the per-stage maxima of the last second and paints them over the
- * bottom colour-test band, where a photo of the screen names the stage:
- *   COMP whole damage composite   BG background restore  FW window decoration
- *   PT application paint callbacks  BL client composite  PN top panel band
- *   BD bottom test bars   TILE tiles x worst tile (drag-preview prep)
- *   WIN windows drawn / window-list length (a leaked list re-composites all)
- *   PRES/TRIP the same figures the HUD shows.
- * The slowest instance of BG, BL and PRES also reports the pixel area it
- * moved, so the pair divides into a byte rate.  Line 3 is the clock check: ST
- * is the microseconds the stage timers above are taken in, CT is wall clock
- * from the ARM generic timer, over the same probe span.  Line 4 is the memory
- * probe -- NE (NEON blit), SC (byte loop) and FB (framebuffer present) are all
- * megabytes of payload per second of wall clock.  Values on lines 1-2 are
- * milliseconds with one decimal. */
-static void render_diag_band(GDEV *screen, volatile uint32_t *fb)
-{
-    if (!screen || !fb) return;
-
-    RENDER_STATS s;
-    btron_render_stats_take(&s);
-
-    RECT band = { 0, BTRON_SCREEN_H - 76, BTRON_SCREEN_W, BTRON_SCREEN_H };
-    set_clip(screen, NULL);
-    fill_rec(screen, &band, COLOR_BLACK);
-
-    char line[96];
-    tkl_snprintf(line, sizeof(line),
-                 "CMP %u.%u BG %u.%u/%uk n%u FW %u.%u PN %u.%u",
-                 s.comp_us / 1000u, (s.comp_us / 100u) % 10u,
-                 s.bg_us / 1000u, (s.bg_us / 100u) % 10u,
-                 s.bg_worst_px / 1000u, s.bg_full_calls,
-                 s.frame_us / 1000u, (s.frame_us / 100u) % 10u,
-                 s.panel_us / 1000u, (s.panel_us / 100u) % 10u);
-    drw_tc_string(screen, 6, (H)(BTRON_SCREEN_H - 56), line, COLOR_WHITE, COLOR_BLACK);
-
-    tkl_snprintf(line, sizeof(line),
-                 "PT %u.%u BL %u.%u/%uk TIL %ux%u WIN %u/%u P%u W%u",
-                 s.paint_us / 1000u, (s.paint_us / 100u) % 10u,
-                 s.blit_us / 1000u, (s.blit_us / 100u) % 10u,
-                 s.blit_worst_px / 1000u, s.tiles,
-                 s.tile_max_us / 1000u, s.wins_drawn, s.wins_walked,
-                 s_hud_pres_ms, s_hud_wcet_ms);
-    drw_tc_string(screen, 6, (H)(BTRON_SCREEN_H - 38), line, COLOR_WHITE, COLOR_BLACK);
-
-    /* Rescale the system-timer stage times onto wall clock with the probe's
-     * own two readings, so FB and NE are the same unit and comparable. */
-    uint32_t fb_us = s.pres_worst_us;
-    if (s_probe_st_us)
-        fb_us = (uint32_t)(((uint64_t)s.pres_worst_us * s_probe_ct_us) / s_probe_st_us);
-    uint32_t fb_mbs = fb_us ? probe_mbs((uint64_t)s.pres_worst_px * 4u, fb_us) : 0u;
-
-    tkl_snprintf(line, sizeof(line),
-                 "CLK ST %u CT %u us FRQ %u MHz (CT==ST means HUD ms are real)",
-                 s_probe_st_us, s_probe_ct_us, s_probe_frq_mhz);
-    drw_tc_string(screen, 6, (H)(BTRON_SCREEN_H - 74), line, COLOR_CYAN, COLOR_BLACK);
-
-    tkl_snprintf(line, sizeof(line),
-                 "MEM NE %u SC %u FB %u MB/s %uk px  MMU el%u m%u c%u i%u at%u ok%u",
-                 s_probe_neon_mbs, s_probe_scalar_mbs, fb_mbs,
-                 s.pres_worst_px / 1000u, s_probe_el,
-                 s_probe_sctlr & 1u, (s_probe_sctlr >> 2) & 1u,
-                 (s_probe_sctlr >> 12) & 1u, s_probe_attr_backbuffer,
-                 s_probe_layout_ok);
-    drw_tc_string(screen, 6, (H)(BTRON_SCREEN_H - 20), line, COLOR_WHITE, COLOR_BLACK);
-
-    present_backbuffer_rect(fb, band.left, band.top, band.right, band.bottom);
-}
+/* ═══════════════════════════════════════════════════════════════════
+ * B-System Mature Tested Compositor Desktop Session
+ * ═══════════════════════════════════════════════════════════════════ */
 
 /* Stage 2: Launch full B-System Workbench desktop session. */
 static void launch_pi4_desktop_session(uint32_t *gpu_fb)
@@ -1473,8 +859,8 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     fb_log("\n[BOOT] Launching B-System Workbench...\n");
     s_gui_active = 1;
 
-    /* Keep backbuffer clean of cursor stamps for zero-latency cursor restores */
-    g_cursor_in_backbuffer = 0;
+    /* Enable cursor in backbuffer for clean atomic compositing */
+    g_cursor_in_backbuffer = 1;
 
     GDEV *screen = init_baremetal_desktop(
         (uint32_t *)s_desktop_backbuffer, BTRON_SCREEN_W, BTRON_SCREEN_H);
@@ -1484,12 +870,10 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
         return;
     }
     workbench_init(BTRON_SCREEN_W);
-    run_mem_probe();
+    set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
     workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
     blit_backbuffer_to_fb(gpu_fb);
 
-    /* Draw cursor directly to GPU front buffer */
-    draw_baremetal_cursor_raw(gpu_fb, s_mouse_x, s_mouse_y, BTRON_SCREEN_W, BTRON_SCREEN_H);
     H prev_mx = s_mouse_x;
     H prev_my = s_mouse_y;
 
@@ -1512,781 +896,112 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     s_input_last.acc_wheel = s_pointer_slot.acc_wheel;
     s_input_last.buttons = s_pointer_slot.buttons;
 
-    /* ASYNC.txt Tier-1 budget scheduler state.  Two equal-priority periodic
-     * planes share this CPU context; deadlines are ABSOLUTE (next += period)
-     * so a late or over-budget run never drifts the cadence, and a bounded
-     * catch-up prevents a death spiral after a long stall. */
-    uint32_t t_boot = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    uint32_t next_input_us = t_boot;
-    uint32_t next_ui_us    = t_boot;
-    uint32_t last_input_us = t_boot;
-    uint32_t last_clock    = t_boot;
+    uint32_t last_clock = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    uint32_t last_usb_poll = *(volatile uint32_t *)(TIMER_BASE + 0x04);
 
     EVT ev;
 
     while (s_gui_active) {
+        int need_redraw = 0;
         uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
 
-        /* ── INPUT plane: period 1 ms, budget ASYNC_INPUT_BUDGET_US ──────
-         * When the IRQ plane is armed the 1 kHz ISR is the sole xHCI
-         * producer, so this worker only consumes the seqlock snapshot and
-         * pops the SPSC rings.  It never renders, blits, or dispatches
-         * events (ASYNC.txt §4). */
-        if ((int32_t)(now - next_input_us) >= 0) {
-            uint32_t t_in = now;
-            uint32_t trbs = 0;
-            if (!s_async_irq_active && g_use_xhci)
-                trbs = xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
-            input_plane_task(screen, now);
+        /* 1. Poll USB / input devices */
+        if (g_use_xhci) {
             if (!s_async_irq_active) {
-                /* Cooperative path owns cadence telemetry; when the IRQ plane
-                 * is armed the ISR records it instead. */
-                uint32_t input_gap = now - last_input_us;
-                s_async_rt_stats.input_gap_us = input_gap;
-                if (input_gap > s_async_rt_stats.input_gap_max_us)
-                    s_async_rt_stats.input_gap_max_us = input_gap;
-                s_async_rt_stats.trb_per_input = trbs;
-                if (trbs > s_async_rt_stats.trb_max)
-                    s_async_rt_stats.trb_max = trbs;
+                xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
             }
-            last_input_us = now;
-            uint32_t in_cost = *(volatile uint32_t *)(TIMER_BASE + 0x04) - t_in;
-            if (in_cost > s_input_wcet_us) s_input_wcet_us = in_cost;
-            /* Advance the absolute deadline; bound catch-up to 100 periods. */
-            do { next_input_us += ASYNC_INPUT_PERIOD_US; }
-            while ((int32_t)(now - next_input_us) >= 0 &&
-                   (uint32_t)(now - next_input_us) < 100u * ASYNC_INPUT_PERIOD_US);
-        }
-
-        /* Present at most 8 KiB of pixels per trip around the loop. */
-        present_copy_step();
-        drag_preview_cpu_step(screen, gpu_fb);
-
-        /* DMA always fills the hidden VideoCore page.  Completion flips it
-         * atomically; this keeps the visible page available to the pointer and
-         * INPUT plane even when a full transfer spans many UI periods. */
-        if (s_present_dma_enabled && !bcm2711_dma_is_busy(0) && s_present_dma_start_us != 0) {
-            uint32_t dma_us = now - s_present_dma_start_us;
-            s_present_dma_start_us = 0;
-            if (dma_us > s_present_dma_max_us) s_present_dma_max_us = dma_us;
-            s_present_front_page = s_present_dma_page;
-            (void)mailbox_set_virtual_offset(0, s_present_front_page * BTRON_SCREEN_H);
-            s_present_cursor_dirty = 1;
-        }
-
-        /* Immediate cursor update on GPU front buffer (< 1 us glass-to-glass latency) */
-        if (!s_drag_preview_dma_active && !s_drag_preview_cpu_active &&
-            (!s_present_dma_enabled || !bcm2711_dma_is_busy(0)) &&
-            (s_mouse_x != prev_mx || s_mouse_y != prev_my || s_present_cursor_dirty)) {
-            volatile uint32_t *cursor_fb = gpu_fb + s_present_front_page * BTRON_SCREEN_W * BTRON_SCREEN_H;
-            restore_cursor_area(cursor_fb, prev_mx, prev_my);
-            draw_baremetal_cursor_raw(cursor_fb, s_mouse_x, s_mouse_y, BTRON_SCREEN_W, BTRON_SCREEN_H);
-            __asm__ volatile("dmb sy" : : : "memory");
-            prev_mx = s_mouse_x;
-            prev_my = s_mouse_y;
-            s_present_cursor_dirty = 0;
-        }
-
-        /* ── UI plane: period 8.33 ms, budget ASYNC_UI_BUDGET_US ─────────
-         * Drains a bounded number of events, then renders into the
-         * backbuffer and arms the banded presenter.  Equal priority with the
-         * INPUT plane: serviced by absolute deadline, never blocks input. */
-        if ((int32_t)(now - next_ui_us) >= 0 || s_ui_mouse_urgent) {
-        s_ui_mouse_urgent = 0;
-        uint32_t t_ui = now;
-        int redraw = 0;
-        int overlay_redraw = 0;
-        int menu_leave_redraw = 0;
-        int panel_redraw = 0;
-        int appmenu_redraw = 0;
-        RECT focus_damage = { 0, 0, 0, 0 };
-        int have_focus_damage = 0;
-        RECT focus_old_tab = { 0, 0, 0, 0 };
-        int have_focus_old_tab = 0;
-        RECT trip_damage = { 0, 0, 0, 0 };
-        int have_trip_damage = 0;
-        RECT button_damage = { 0, 0, 0, 0 };
-        int have_button_damage = 0;
-        int title_drag_release = 0;
-        RECT title_drag_old = { 0, 0, 0, 0 };
-        RECT title_drag_new = { 0, 0, 0, 0 };
-        int move_drag = 0;
-        int non_move_event = 0;
-        /* Letter of the presenter this trip ran; latched for the HUD when the
-         * trip is the second's worst.  Uppercase, to keep it distinct from the
-         * lowercase composite-path letter. */
-        char trip_branch = 'n';
-        int menu_open_at_loop_start = global_menu_is_open() || tracker_is_menu_open();
-        int appmenu_open_at_loop_start = top_window_menu_open();
-        /* Snapshot the rect any open menu occupies NOW.  If an event in this
-         * trip closes that menu, the full-render present below must repaint
-         * those pixels (now desktop) or stale overlay artfacts persist. */
-        RECT start_menu_rect;
-        int have_start_menu_rect = menu_open_at_loop_start &&
-                                   global_menu_get_open_rect(&start_menu_rect);
-        RECT move_damage = { 0, 0, 0, 0 };
-        RECT move_first = { 0, 0, 0, 0 };
-        RECT move_last = { 0, 0, 0, 0 };
-        int have_move_damage = 0;
-        RECT close_damage = { 0, 0, 0, 0 };
-        int have_close_damage = 0;
-        RECT close_focus_tab = { 0, 0, 0, 0 };
-        int have_close_focus_tab = 0;
-        /* Geometry the window manager mutates under a held button.  A resize
-         * only lands when wnd_mgr_flush_resize() applies the pending size
-         * after this loop, so its 'after' rect is sampled there too. */
-        WND *geom_target = NULL;
-        int geom_kind = 0;
-        RECT geom_first = { 0, 0, 0, 0 };
-        RECT slide_first = { 0, 0, 0, 0 };
-        MOVE_BOUND move_bound = { { 0, 0, 0, 0 }, 0 };
-        /* Damage produced between UI trips (async window output, timers) must
-         * reach the screen on this one. */
-        RECT pending_damage;
-        if (wnd_take_inval_damage(&pending_damage)) {
-            if (have_trip_damage)
-                trip_damage = drag_preview_union(&trip_damage, &pending_damage);
-            else
-                trip_damage = pending_damage;
-            have_trip_damage = 1;
-        }
-        for (uint32_t ev_iter = 0; ev_iter < ASYNC_UI_EVENT_BUDGET && get_evt(&ev, 0) == E_OK; ev_iter++) {
-            int preview_release = 0;
-            if (ev.type == EV_BUT_UP && s_drag_preview.active &&
-                wnd_mgr_get_drag_target() == s_drag_preview.target) {
-                title_drag_release = 1;
-                preview_release = 1;
-                title_drag_old = s_drag_preview.bounds;
-                title_drag_new = s_drag_preview.target->bounds;
+            input_plane_task(screen, now);
+        } else {
+            if ((now - last_usb_poll) >= 10000) {
+                last_usb_poll = now;
+                if (usb_poll_devices(screen)) {
+                    need_redraw = 1;
+                }
             }
-            if (ev.type != EV_MOUSE_MOVE && !preview_release) {
-                non_move_event = 1;
-                if (drag_preview_reset())
-                    redraw = 1;
+        }
+
+        /* 2. Poll PL011 UART for interactive keys & arrows */
+        if (uart_has_char()) {
+            int c = uart_getc();
+            if (c == 0x1B) {
+                int wait_tries = 2000;
+                while (!uart_has_char() && --wait_tries > 0) {
+                    __asm__ volatile("nop");
+                }
+                if (uart_has_char() && uart_getc() == '[') {
+                    wait_tries = 2000;
+                    while (!uart_has_char() && --wait_tries > 0) {
+                        __asm__ volatile("nop");
+                    }
+                    if (uart_has_char()) {
+                        int dir = uart_getc();
+                        if (dir == 'A') s_mouse_y = (s_mouse_y > 16) ? s_mouse_y - 16 : 10;
+                        else if (dir == 'B') s_mouse_y = (s_mouse_y < BTRON_SCREEN_H - 20) ? s_mouse_y + 16 : BTRON_SCREEN_H - 20;
+                        else if (dir == 'C') s_mouse_x = (s_mouse_x < BTRON_SCREEN_W - 20) ? s_mouse_x + 16 : BTRON_SCREEN_W - 20;
+                        else if (dir == 'D') s_mouse_x = (s_mouse_x > 16) ? s_mouse_x - 16 : 10;
+                        set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
+                        EVT mev;
+                        mev.type   = EV_MOUSE_MOVE;
+                        mev.pos.x  = s_mouse_x;
+                        mev.pos.y  = s_mouse_y;
+                        mev.button = 0;
+                        mev.data   = 0;
+                        snd_evt(&mev);
+                        need_redraw = 1;
+                    }
+                } else {
+                    s_gui_active = 0;
+                    break;
+                }
+            } else {
+                if (c == '\r') c = '\n';
+                ev.type   = EV_KEY_DOWN;
+                ev.key    = (UW)(uint8_t)c;
+                ev.pos.x  = s_mouse_x;
+                ev.pos.y  = s_mouse_y;
+                ev.button = 0;
+                ev.data   = 0;
+                snd_evt(&ev);
+                need_redraw = 1;
             }
-            if (ev.type == EV_KEY_DOWN && ev.key == 0x1B /* Escape */) {
+        }
+
+        /* 3. Dispatch queued BTRON events */
+        while (get_evt(&ev, 0) == E_OK) {
+            if (ev.type == EV_KEY_DOWN && ev.key == 0x1B) {
                 s_gui_active = 0;
                 break;
             }
-            if (ev.type == EV_KEY_DOWN && s_async_rt_stats.key_enqueue_us != 0)
-                s_async_rt_stats.key_dispatch_us = now - s_async_rt_stats.key_enqueue_us;
-
-            WND *drag_target = NULL;
-            RECT drag_old = { 0, 0, 0, 0 };
-            if (ev.type == EV_MOUSE_MOVE) {
-                drag_target = wnd_mgr_get_drag_target();
-                if (drag_target) {
-                    drag_old = drag_target->bounds;
-                    if (!s_drag_preview.active && !s_present_pending &&
-                        !menu_open_at_loop_start && !appmenu_open_at_loop_start)
-                        (void)drag_preview_capture(screen, drag_target, &drag_old);
-                }
-                if (!geom_target) {
-                    int ikind = 0;
-                    WND *inter = wnd_mgr_get_interaction(&ikind);
-                    if (inter && (ikind == WND_INTERACT_SLIDE || ikind == WND_INTERACT_RESIZE)) {
-                        geom_target = inter;
-                        geom_kind = ikind;
-                        geom_first = inter->bounds;
-                        if (ikind == WND_INTERACT_SLIDE) wget_tab_rect(inter, &slide_first);
-                    }
-                }
-            }
-
-            WND *button_top_before = NULL;
-            WND *button_hit = NULL;
-            int close_button_down = 0;
-            int title_drag_start = 0;
-            if (ev.type == EV_BUT_DOWN || ev.type == EV_BUT_UP) {
-                button_top_before = get_top_wnd();
-                button_hit = find_wnd_at(ev.pos.x, ev.pos.y);
-            }
-            if (ev.type == EV_BUT_DOWN) {
-                WND *hit = button_hit;
-                close_button_down = hit && whit_test_close_btn(hit, ev.pos.x, ev.pos.y);
-                if (close_button_down) {
-                    if (!have_close_damage) {
-                        close_damage = hit->bounds;
-                        have_close_damage = 1;
-                    } else {
-                        if (hit->bounds.left < close_damage.left) close_damage.left = hit->bounds.left;
-                        if (hit->bounds.top < close_damage.top) close_damage.top = hit->bounds.top;
-                        if (hit->bounds.right > close_damage.right) close_damage.right = hit->bounds.right;
-                        if (hit->bounds.bottom > close_damage.bottom) close_damage.bottom = hit->bounds.bottom;
-                    }
-                }
-                if (hit && !close_button_down && (hit->attr & WND_ATTR_TITLE)) {
-                    RECT tab;
-                    wget_tab_rect(hit, &tab);
-                    title_drag_start = ev.pos.y >= hit->bounds.top && ev.pos.y < tab.bottom;
-                }
-            }
-
             workbench_process_event(screen, &ev);
-
-            /* Whatever the dispatch invalidated (app inval_wnd, desktop icon
-             * action, window destruction) is real pixel damage; the union of
-             * the trip's events is the smallest honest present rect. */
-            if (wnd_take_inval_damage(&pending_damage)) {
-                if (have_trip_damage)
-                    trip_damage = drag_preview_union(&trip_damage, &pending_damage);
-                else
-                    trip_damage = pending_damage;
-                have_trip_damage = 1;
-            }
-
-            WND *button_top_after = get_top_wnd();
-            if (close_button_down) {
-                have_focus_damage = 0;
-                if (button_top_after && button_top_after->visible &&
-                    (button_top_after->attr & WND_ATTR_TITLE)) {
-                    wget_tab_rect(button_top_after, &close_focus_tab);
-                    have_close_focus_tab = 1;
-                }
-            }
-            if (!close_button_down && ev.type == EV_BUT_DOWN && button_top_before && button_top_after &&
-                button_top_after != button_top_before && button_top_after->visible) {
-                /* A pure z-order flip needs: the new top's full rect (anything it
-                 * previously hid must now show it) plus the old top's TAB only
-                 * (its decoration flips to unfocused; its body pixels elsewhere
-                 * are unchanged).  Painting the old-window/new-window bounding
-                 * union repainted both whole windows per focus click. */
-                focus_damage = button_top_after->bounds;
-                have_focus_damage = 1;
-                if (button_top_before->visible && (button_top_before->attr & WND_ATTR_TITLE)) {
-                    wget_tab_rect(button_top_before, &focus_old_tab);
-                    have_focus_old_tab = 1;
-                }
-            }
-
-            if (drag_target && wnd_mgr_contains(drag_target)) {
-                RECT drag_new = drag_target->bounds;
-                if (drag_old.left != drag_new.left || drag_old.top != drag_new.top ||
-                    drag_old.right != drag_new.right || drag_old.bottom != drag_new.bottom) {
-                    move_drag = 1;
-                    if (!have_move_damage) {
-                        move_damage = drag_old;
-                        move_first = drag_old;
-                        have_move_damage = 1;
-                    }
-                    move_last = drag_new;
-                    if (drag_old.left < move_damage.left) move_damage.left = drag_old.left;
-                    if (drag_old.top < move_damage.top) move_damage.top = drag_old.top;
-                    if (drag_old.right > move_damage.right) move_damage.right = drag_old.right;
-                    if (drag_old.bottom > move_damage.bottom) move_damage.bottom = drag_old.bottom;
-                    if (drag_new.left < move_damage.left) move_damage.left = drag_new.left;
-                    if (drag_new.top < move_damage.top) move_damage.top = drag_new.top;
-                    if (drag_new.right > move_damage.right) move_damage.right = drag_new.right;
-                    if (drag_new.bottom > move_damage.bottom) move_damage.bottom = drag_new.bottom;
-                }
-            }
-
-            if (ev.type == EV_MOUSE_MOVE) {
-                int menu_open_now = global_menu_is_open() || tracker_is_menu_open();
-                if (menu_open_at_loop_start && !menu_open_now) {
-                    menu_leave_redraw = 1;
-                } else if (menu_open_now) {
-                    /* Hovering an open menu only moves the highlight: repaint
-                     * the overlay, NOT the whole desktop.  A full composite per
-                     * mouse-move was starving the 1 ms INPUT plane (laggy menus). */
-                    overlay_redraw = 1;
-                } else if (top_window_menu_open()) {
-                    /* Hovering an open IN-APP menu moves its highlight inside the
-                     * top window.  Repaint just that window (its paint callback
-                     * redraws the dropdown), not a full desktop composite.  Without
-                     * this the highlight froze: no branch matched a menu hover. */
-                    appmenu_redraw = 1;
-                } else if (ev.pos.y >= 0 && ev.pos.y <= 25) {
-                    panel_redraw = 1;
-                } else if (wnd_mgr_is_interacting()) {
-                    /* Drag: bounded by the move damage and handed to the
-                     * preview.  Resize / sliding tab: bounded by the geometry
-                     * snapshots taken above.  A full composite here cost ~99 ms
-                     * on every held-move trip and froze the pointer. */
-                } else if (g_prev_mouse_btns != 0) {
-                    /* A held button captures the window under the pointer.  Do
-                     * not repaint it per move: accumulate the damage and let the
-                     * release trip present it once.  The pointer itself is drawn
-                     * straight into the visible page, so it stays live. */
-                    WND *top = get_top_wnd();
-                    if (top && top->visible &&
-                        ev.pos.x >= top->bounds.left && ev.pos.x < top->bounds.right &&
-                        ev.pos.y >= top->bounds.top && ev.pos.y < top->bounds.bottom)
-                        move_bound_add(&s_capture_dirty, &top->bounds);
-                }
-            } else {
-                int menu_open_now = global_menu_is_open() || tracker_is_menu_open();
-                if (menu_open_at_loop_start && !menu_open_now) {
-                    redraw = 1;
-                    have_focus_damage = 0;
-                } else if (ev.type == EV_BUT_DOWN && !menu_open_at_loop_start && menu_open_now) {
-                    /* Opening a menu only lays an overlay over an unchanged
-                     * desktop: repaint the overlay, skip the full composite. */
-                    overlay_redraw = 1;
-                } else if (ev.type == EV_BUT_DOWN &&
-                           appmenu_open_at_loop_start && !top_window_menu_open()) {
-                    /* An in-app menu just CLOSED on this click: the selected
-                     * command may have altered the window or the desktop (e.g.
-                     * Close Window), so take the artifact-free full-render path. */
-                    redraw = 1;
-                } else if (top_window_menu_open()) {
-                    /* In-app menu open (click opened it, or a click/hover within
-                     * it): repaint just the top window that owns the dropdown. */
-                    appmenu_redraw = 1;
-                } else if (have_focus_damage) {
-                } else if (title_drag_start) {
-                } else if (ev.type == EV_BUT_DOWN) {
-                    if (close_button_down) {
-                        /* The 'K' branch presents this window's damage on the
-                         * press; deferring the same rect as capture damage made
-                         * a close composite it twice. */
-                    } else {
-                        WND *cap = button_hit ? button_hit : button_top_before;
-                        if (!cap || !cap->visible) {
-                            /* A press on the desktop captures nothing, so there
-                             * is nothing to defer and nothing to repaint beyond
-                             * what the dispatch invalidated (icon plate,
-                             * deskbar).  The full render this used to force
-                             * re-ran every window's paint callback -- the f99
-                             * press spike, independent of where the pointer was. */
-                            if (have_trip_damage) {
-                                button_damage = trip_damage;
-                                have_button_damage = 1;
-                            }
-                        } else {
-                            /* A press captures the window: its repaint is
-                             * deferred to the release, so press + drag + release
-                             * costs ONE paint instead of one per event. */
-                            if (have_trip_damage)
-                                move_bound_add(&s_capture_dirty, &trip_damage);
-                            move_bound_add(&s_capture_dirty, &cap->bounds);
-                        }
-                    }
-                } else if (ev.type == EV_BUT_UP) {
-                    /* Release flushes exactly what the capture held plus this
-                     * event's own delta.  Adding the release window's whole
-                     * bounds here used to repaint a window the capture never
-                     * touched (a close's second composite, a desktop click's
-                     * phantom one); an appearance change that is real arrives
-                     * through trip_damage or the focus branch instead. */
-                    if (have_trip_damage)
-                        move_bound_add(&s_capture_dirty, &trip_damage);
-                    if (s_capture_dirty.valid) {
-                        button_damage = s_capture_dirty.r;
-                        have_button_damage = 1;
-                        s_capture_dirty.valid = 0;
-                        s_capture_dirty.r.left = s_capture_dirty.r.top = 0;
-                        s_capture_dirty.r.right = s_capture_dirty.r.bottom = 0;
-                    }
-                } else if (have_trip_damage && ev.type == EV_KEY_DOWN) {
-                    /* The dispatch told us exactly what its pixels changed. */
-                    button_damage = trip_damage;
-                    have_button_damage = 1;
-                }
-                if (ev.type == EV_KEY_DOWN && ev.key != '\r' && ev.key != '\n')
-                    s_present_fast_key_update = 1;
-            }
+            need_redraw = 1;
         }
+        if (!s_gui_active) break;
 
         orchestra_ui_tick();
         cassette_service();
 
-        if (wnd_mgr_flush_resize()) {
-            /* The resize lands here, not in the dispatch, and rsz_wnd re-opened
-             * the client device: the union of the two rects needs a paint, but
-             * it stays bounded by the geometry that actually changed. */
-            BOOL bounded = FALSE;
-            if (geom_target && geom_kind == WND_INTERACT_RESIZE &&
-                wnd_mgr_contains(geom_target)) {
-                RECT after = geom_target->bounds;
-                if (drag_preview_bounds_valid(&geom_first) && drag_preview_bounds_valid(&after) &&
-                    (after.left != geom_first.left || after.top != geom_first.top ||
-                     after.right != geom_first.right || after.bottom != geom_first.bottom)) {
-                    RECT u = drag_preview_union(&geom_first, &after);
-                    move_bound_add(&move_bound, &u);
-                    bounded = TRUE;
-                }
-            }
-            if (!bounded) redraw = 1;
-        }
+        /* 4. Detect state changes that require composite update */
+        if (wnd_mgr_flush_resize()) need_redraw = 1;
+        if (wnd_any_image_invalid()) need_redraw = 1;
+        if (s_mouse_x != prev_mx || s_mouse_y != prev_my) need_redraw = 1;
 
-        if (geom_target && geom_kind == WND_INTERACT_SLIDE && wnd_mgr_contains(geom_target)) {
-            /* Sliding the compact tab moves only the title rail. */
-            RECT after;
-            wget_tab_rect(geom_target, &after);
-            if (slide_first.left != after.left || slide_first.top != after.top ||
-                slide_first.right != after.right || slide_first.bottom != after.bottom) {
-                RECT u = drag_preview_union(&slide_first, &after);
-                move_bound_add(&move_bound, &u);
-            }
-        }
-
-        /* A present for this trip's window-manager geometry must also cover
-         * whatever the dispatch invalidated.  Folding it into the click-damage
-         * rect reuses the one bounded presenter that already sits ahead of the
-         * panel and menu branches. */
-        if (move_bound.valid) {
-            RECT bd = move_bound.r;
-            if (have_trip_damage) bd = drag_preview_union(&bd, &trip_damage);
-            if (have_button_damage) bd = drag_preview_union(&bd, &button_damage);
-            button_damage = bd;
-            have_button_damage = 1;
-        }
-
-        if (title_drag_release && !have_move_damage &&
-            (title_drag_old.left != title_drag_new.left ||
-             title_drag_old.top != title_drag_new.top ||
-             title_drag_old.right != title_drag_new.right ||
-             title_drag_old.bottom != title_drag_new.bottom)) {
-            move_drag = 1;
-            move_first = title_drag_old;
-            move_last = title_drag_new;
-            move_damage.left = move_first.left < move_last.left ? move_first.left : move_last.left;
-            move_damage.top = move_first.top < move_last.top ? move_first.top : move_last.top;
-            move_damage.right = move_first.right > move_last.right ? move_first.right : move_last.right;
-            move_damage.bottom = move_first.bottom > move_last.bottom ? move_first.bottom : move_last.bottom;
-            have_move_damage = 1;
-        }
-
-        if (!non_move_event && !s_drag_preview_dma_active && s_drag_preview.active &&
-            wnd_mgr_get_drag_target() == s_drag_preview.target) {
-            RECT current = s_drag_preview.target->bounds;
-            if (current.left != s_drag_preview.bounds.left ||
-                current.top != s_drag_preview.bounds.top ||
-                current.right != s_drag_preview.bounds.right ||
-                current.bottom != s_drag_preview.bounds.bottom) {
-                move_drag = 1;
-                move_first = s_drag_preview.bounds;
-                move_last = current;
-                move_damage.left = move_first.left < move_last.left ? move_first.left : move_last.left;
-                move_damage.top = move_first.top < move_last.top ? move_first.top : move_last.top;
-                move_damage.right = move_first.right > move_last.right ? move_first.right : move_last.right;
-                move_damage.bottom = move_first.bottom > move_last.bottom ? move_first.bottom : move_last.bottom;
-                have_move_damage = 1;
-            }
-        }
-
-        /* Periodic 1 Hz clock update */
-        if (now - last_clock >= 1000000) {
+        if ((now - last_clock) >= 1000000) {
             last_clock = now;
-            /* Only the panel clock changed: repaint the panel band, NOT the
-             * whole desktop.  A full composite here froze the mouse ~1x/sec. */
-            panel_redraw = 1;
-            /* Windowed cadence: the HUD 'G' field reports the worst INPUT gap
-             * of the LAST second, not an all-time high-water mark, so it tracks
-             * current responsiveness instead of latching a single boot stall. */
-            s_async_rt_stats.input_gap_max_us = s_async_rt_stats.input_gap_us;
-            s_hud_comp_ms = s_async_rt_stats.composite_max_us / 1000u;
-            s_hud_pres_ms = s_async_rt_stats.present_max_us / 1000u;
-            s_hud_wcet_ms = s_ui_wcet_us / 1000u;
-            if (s_hud_comp_ms > 99u) s_hud_comp_ms = 99u;
-            if (s_hud_pres_ms > 99u) s_hud_pres_ms = 99u;
-            if (s_hud_wcet_ms > 99u) s_hud_wcet_ms = 99u;
-            s_hud_path = s_hud_path_live;
-            s_hud_area = s_hud_area_live > 99u ? 99u : s_hud_area_live;
-            s_hud_path_live = '-';
-            s_hud_area_live = 0;
-            s_hud_wbranch = s_hud_wbranch_live;
-            s_hud_wbranch_live = 'n';
-            if (s_async_rt_stats.composite_max_us) {
-                uart_puts("[UI]C");
-                uart_hex32(s_async_rt_stats.composite_max_us);
-                uart_puts("P");
-                uart_hex32(s_async_rt_stats.present_max_us);
-                uart_puts("W");
-                uart_hex32(s_ui_wcet_us);
-                uart_puts("\n");
-            }
-            s_async_rt_stats.composite_max_us = 0;
-            s_async_rt_stats.present_max_us = 0;
-            s_ui_wcet_us = 0;
-            render_diag_band(screen, gpu_fb);
+            need_redraw = 1;
         }
 
-        RECT present_extra = { 0, 0, 0, 0 };
-        int have_present_extra = 0;
-        if (have_start_menu_rect) {
-            present_extra = start_menu_rect;
-            have_present_extra = 1;
-        }
-        if (have_move_damage) {
-            if (!have_present_extra) {
-                present_extra = move_damage;
-                have_present_extra = 1;
-            } else {
-                if (move_damage.left < present_extra.left) present_extra.left = move_damage.left;
-                if (move_damage.top < present_extra.top) present_extra.top = move_damage.top;
-                if (move_damage.right > present_extra.right) present_extra.right = move_damage.right;
-                if (move_damage.bottom > present_extra.bottom) present_extra.bottom = move_damage.bottom;
-            }
-        }
-
-        if (have_close_damage) {
-            if (!have_present_extra) {
-                present_extra = close_damage;
-                have_present_extra = 1;
-            } else {
-                if (close_damage.left < present_extra.left) present_extra.left = close_damage.left;
-                if (close_damage.top < present_extra.top) present_extra.top = close_damage.top;
-                if (close_damage.right > present_extra.right) present_extra.right = close_damage.right;
-                if (close_damage.bottom > present_extra.bottom) present_extra.bottom = close_damage.bottom;
-            }
-        }
-
-        /* Any full render in this trip must cover the bounded click / held-move
-         * damage too -- it already absorbed the app invalidations above. */
-        if (have_button_damage) {
-            if (!have_present_extra) {
-                present_extra = button_damage;
-                have_present_extra = 1;
-            } else {
-                if (button_damage.left < present_extra.left) present_extra.left = button_damage.left;
-                if (button_damage.top < present_extra.top) present_extra.top = button_damage.top;
-                if (button_damage.right > present_extra.right) present_extra.right = button_damage.right;
-                if (button_damage.bottom > present_extra.bottom) present_extra.bottom = button_damage.bottom;
-            }
-        }
-
-        if ((non_move_event && !move_drag) || menu_open_at_loop_start || appmenu_open_at_loop_start ||
-            overlay_redraw || appmenu_redraw) {
-            if (drag_preview_reset())
-                redraw = 1;
-        }
-
-        if (move_drag && (s_drag_preview.active || !non_move_event || title_drag_release) && !s_present_pending &&
-            !menu_open_at_loop_start && !appmenu_open_at_loop_start &&
-            !overlay_redraw && !appmenu_redraw && have_move_damage) {
-            trip_branch = 'M';
-            if (title_drag_release) {
-                if (!finish_drag_preview(s_drag_preview.target, &move_last)) {
-                    drag_preview_reset();
-                    present_move_render(screen, gpu_fb, &move_first, &move_last);
-                }
-            } else if (!present_drag_preview(screen, gpu_fb, s_drag_preview.target,
-                                             &move_first, &move_last)) {
-                drag_preview_reset();
-                present_move_render(screen, gpu_fb, &move_first, &move_last);
-            }
-            if (panel_redraw) {
-                render_system_panel(screen);
-                present_backbuffer_rect(gpu_fb, 0, 0, BTRON_SCREEN_W, 28);
-            }
-            s_present_cursor_dirty = 1;
-        }
-        else if (have_close_damage) {
-            trip_branch = 'K';
-            present_damage_render(screen, gpu_fb, &close_damage);
-            if (have_close_focus_tab)
-                present_damage_render(screen, gpu_fb, &close_focus_tab);
-            s_present_cursor_dirty = 1;
-        }
-        else if (have_focus_damage) {
-            trip_branch = 'Z';
-            present_damage_render(screen, gpu_fb, &focus_damage);
-            if (have_focus_old_tab)
-                present_damage_render(screen, gpu_fb, &focus_old_tab);
-            s_present_cursor_dirty = 1;
-        }
-        else if (menu_leave_redraw && have_start_menu_rect) {
-            trip_branch = 'L';
-            present_damage_render(screen, gpu_fb, &start_menu_rect);
-            s_present_cursor_dirty = 1;
-        }
-        /* Full UI path: redraw windows, menus, backbuffer blit */
-        else if (redraw || s_present_pending) {
-            trip_branch = 'F';
-            /* The full composite repaints every window from its paint callback,
-             * so anything the capture was holding is now on screen. */
-            s_capture_dirty.valid = 0;
-            if (s_present_dma_enabled && bcm2711_dma_is_busy(0)) {
-                s_present_pending = 1;
-            } else {
-            if (s_present_fast_key_update && s_present_dma_enabled) {
-                WND *top = get_top_wnd();
-                if (top && top->visible) {
-                    /* Text entry changes the bottom prompt line.  Repaint its
-                     * owner but transfer only that 32-pixel band to the
-                     * visible page, not the entire 3 MB desktop. */
-                    H left = top->client.left;
-                    H right = top->client.right;
-                    H top_y = top->client.bottom - 32;
-                    H bottom = top->client.bottom;
-                    if (left < 0) left = 0;
-                    if (right > BTRON_SCREEN_W) right = BTRON_SCREEN_W;
-                    if (top_y < 0) top_y = 0;
-                    if (bottom > BTRON_SCREEN_H) bottom = BTRON_SCREEN_H;
-                    redraw_top_window();
-                    arm64_clean_cache_range(&s_desktop_backbuffer[top_y * BTRON_SCREEN_W + left],
-                                            (size_t)(bottom - top_y) * BTRON_SCREEN_W * sizeof(COLOR));
-                    if (bcm2711_dma_blit2d_async(0,
-                        (uintptr_t)(gpu_fb + s_present_front_page * BTRON_SCREEN_W * BTRON_SCREEN_H +
-                                    top_y * BTRON_SCREEN_W + left), BTRON_SCREEN_W * sizeof(COLOR),
-                        (uintptr_t)(&s_desktop_backbuffer[top_y * BTRON_SCREEN_W + left]),
-                        BTRON_SCREEN_W * sizeof(COLOR), (right - left) * sizeof(COLOR), bottom - top_y) == 0) {
-                        s_present_dma_start_us = now;
-                        s_present_dma_page = s_present_front_page;
-                        s_present_cursor_dirty = 1;
-                    } else {
-                        s_present_pending = 1;
-                    }
-                }
-            } else if (s_present_fast_key_update) {
-                /* Non-DMA text entry (the live path: DMA is disabled).  Repaint
-                 * ONLY the top window and copy its band to the visible page,
-                 * instead of a full workbench_render composite per keystroke.
-                 * The full composite (background + every window + panel + test
-                 * bar) ran synchronously in the UI plane and starved the 1 ms
-                 * INPUT plane — that single blocking call is the G99 culprit. */
-                WND *top = get_top_wnd();
-                if (top && top->visible) {
-                    H left   = top->bounds.left;
-                    H right  = top->bounds.right;
-                    H top_y  = top->bounds.top;
-                    H bottom = top->bounds.bottom;
-                    if (left < 0) left = 0;
-                    if (right > BTRON_SCREEN_W) right = BTRON_SCREEN_W;
-                    if (top_y < 0) top_y = 0;
-                    if (bottom > BTRON_SCREEN_H) bottom = BTRON_SCREEN_H;
-                    redraw_top_window();
-                    present_backbuffer_rect(gpu_fb, left, top_y, right, bottom);
-                } else {
-                    present_full_render(screen, gpu_fb,
-                                        have_present_extra ? &present_extra : NULL);
-                }
-            } else {
-                present_full_render(screen, gpu_fb,
-                                    have_present_extra ? &present_extra : NULL);
-            }
-            s_present_fast_key_update = 0;
-            s_present_pending = 0;
-            if (s_present_dma_enabled) {
-                s_present_cursor_dirty = 1;
-            } else {
-                draw_baremetal_cursor_raw(gpu_fb, s_mouse_x, s_mouse_y, BTRON_SCREEN_W, BTRON_SCREEN_H);
-                prev_mx = s_mouse_x;
-                prev_my = s_mouse_y;
-            }
-            }
-        }
-        else if (have_button_damage) {
-            trip_branch = 'B';
-            if (panel_redraw) {
-                render_system_panel(screen);
-                present_backbuffer_rect(gpu_fb, 0, 0, BTRON_SCREEN_W, 28);
-            }
-            present_damage_render(screen, gpu_fb, &button_damage);
-            s_present_cursor_dirty = 1;
-        }
-        else if (overlay_redraw) {
-            trip_branch = 'O';
-            if (have_move_damage) {
-                /* Same geometry-damage rule as 'A': this fast path outranks 'M'
-                 * while the global menu is open, so it must heal the rect the
-                 * dragged window vacated before the overlay is stamped. */
-                present_damage_render(screen, gpu_fb, &move_damage);
-            }
-            RECT mr;
-            int have_current_menu_rect = global_menu_get_open_rect(&mr);
-            int menu_rect_changed = have_start_menu_rect &&
-                (!have_current_menu_rect || start_menu_rect.left != mr.left ||
-                 start_menu_rect.top != mr.top || start_menu_rect.right != mr.right ||
-                 start_menu_rect.bottom != mr.bottom);
-            if (menu_rect_changed) {
-                present_damage_render(screen, gpu_fb, &start_menu_rect);
-            }
-            if (have_current_menu_rect) {
-                workbench_render_overlay_only(screen);
-                present_backbuffer_rect(gpu_fb, mr.left, mr.top, mr.right, mr.bottom);
-            } else if (!menu_rect_changed) {
-                blit_backbuffer_to_fb(gpu_fb);
-            }
-            s_present_cursor_dirty = 1;
-        }
-        else if (appmenu_redraw) {
-            /* In-app menu hover/click: the dropdown lives inside the top window,
-             * so repaint ONLY that window (its paint callback redraws the menu)
-             * and present its rect — not a full desktop composite.  If the 1 Hz
-             * panel tick coincided, fold its band in so the clock never lags. */
-            trip_branch = 'A';
-            if (panel_redraw) {
-                render_system_panel(screen);
-                present_backbuffer_rect(gpu_fb, 0, 0, BTRON_SCREEN_W, 28);
-            }
-            WND *top = get_top_wnd();
-            if (top && top->visible) {
-                /* A move is geometry damage, and this branch outranks 'M'
-                 * whenever an in-app menu is open, so it owns the rect the
-                 * window just vacated.  redraw_top_window() only draws windows
-                 * over the existing backbuffer, and presenting top->bounds
-                 * covers only the new rect: a dragged window left a permanent
-                 * copy of itself at every position it passed through. */
-                RECT need = top->bounds;
-                if (have_move_damage) need = drag_preview_union(&need, &move_damage);
-                if (need.left < 0) need.left = 0;
-                if (need.right > BTRON_SCREEN_W) need.right = BTRON_SCREEN_W;
-                if (need.top < 0) need.top = 0;
-                if (need.bottom > BTRON_SCREEN_H) need.bottom = BTRON_SCREEN_H;
-                if (need.right > need.left && need.bottom > need.top) {
-                    workbench_render_damage_paint(screen, &need);
-                    present_backbuffer_rect(gpu_fb, need.left, need.top, need.right, need.bottom);
-                }
-            } else {
-                present_full_render(screen, gpu_fb,
-                                    have_present_extra ? &present_extra : NULL);
-            }
-            s_present_cursor_dirty = 1;
-        }
-        else if (panel_redraw) {
-            /* 1 Hz clock: repaint only the top system panel (rows 0..27, incl.
-             * the gold bar) and copy that band.  Bounded ~114 KB, sub-ms. */
-            trip_branch = 'P';
-            render_system_panel(screen);
-            present_backbuffer_rect(gpu_fb, 0, 0, BTRON_SCREEN_W, 28);
-        }
-        else if (g_prev_mouse_btns == 0 && !wnd_mgr_is_interacting() &&
-                 !s_drag_preview.active && wnd_any_image_invalid()) {
-            /* Convergence: a capture defers a window's repaint until its button
-             * releases, and an async inval can land on a trip that otherwise
-             * presents nothing.  Either way a stale client image must not
-             * survive past the trip after it was made.  Never runs while a
-             * button is held -- that is the entire point of the deferral.
-             * Reported as 'T' (repaint), not 'B' (bounded click damage). */
-            RECT stale;
-            wnd_get_invalid_image_bounds(&stale);
-            if (stale.right > stale.left && stale.bottom > stale.top) {
-                trip_branch = 'T';
-                present_damage_render(screen, gpu_fb, &stale);
-                s_present_cursor_dirty = 1;
-            }
-        }
-        uint32_t ui_cost = *(volatile uint32_t *)(TIMER_BASE + 0x04) - t_ui;
-        if (ui_cost > s_ui_wcet_us) {
-            s_ui_wcet_us = ui_cost;
-            s_hud_wbranch_live = trip_branch;
-        }
-        /* Advance the absolute UI deadline; bound catch-up to 100 periods. */
-        do { next_ui_us += ASYNC_UI_PERIOD_US; }
-        while ((int32_t)(now - next_ui_us) >= 0 &&
-               (uint32_t)(now - next_ui_us) < 100u * ASYNC_UI_PERIOD_US);
-        }
-
-        if (!s_drag_preview_dma_active && !s_drag_preview_cpu_active &&
-            (!s_present_dma_enabled || !bcm2711_dma_is_busy(0)) &&
-            (s_mouse_x != prev_mx || s_mouse_y != prev_my || s_present_cursor_dirty)) {
-            volatile uint32_t *cursor_fb = gpu_fb + s_present_front_page * BTRON_SCREEN_W * BTRON_SCREEN_H;
-            restore_cursor_area(cursor_fb, prev_mx, prev_my);
-            draw_baremetal_cursor_raw(cursor_fb, s_mouse_x, s_mouse_y, BTRON_SCREEN_W, BTRON_SCREEN_H);
-            __asm__ volatile("dmb sy" : : : "memory");
+        if (need_redraw) {
             prev_mx = s_mouse_x;
             prev_my = s_mouse_y;
-            s_present_cursor_dirty = 0;
+            workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
+            blit_backbuffer_to_fb(gpu_fb);
         }
 
+        __asm__ volatile("dsb sy" : : : "memory");
     }
 
     /* Return to Stage 1 console */
     fb_log_enable((volatile uint32_t *)gpu_fb);
-    /* Blank the screen */
     for (int i = 0; i < BTRON_SCREEN_W * BTRON_SCREEN_H; i++)
         ((uint32_t *)gpu_fb)[i] = 0xFF0A0F18u;
     s_fb_log_col = 0; s_fb_log_row = 0;
@@ -2396,35 +1111,9 @@ void kprintf(const char *fmt, ...) {
 
 void blit_backbuffer_to_fb(volatile uint32_t *gpu_fb) {
     if (!gpu_fb) return;
-    if (!s_present_dma_enabled) {
-        /* The source remains the same backbuffer, so a later redraw naturally
-         * updates the remaining bands without restarting an active transfer. */
-        if (!s_present_copy_active) {
-            s_present_copy_fb = gpu_fb;
-            s_present_copy_row = 0;
-            s_present_copy_active = 1;
-        }
-        return;
-    }
     uint32_t start_us = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-
-    if (s_present_dma_enabled) {
-        uint32_t target_page = s_present_front_page ^ 1u;
-        arm64_clean_cache_range(s_desktop_backbuffer,
-                                BTRON_SCREEN_W * BTRON_SCREEN_H * sizeof(COLOR));
-        if (bcm2711_dma_blit_linear_async(0,
-                                          (uintptr_t)gpu_fb + target_page *
-                                          BTRON_SCREEN_W * BTRON_SCREEN_H * sizeof(COLOR),
-                                          (uintptr_t)s_desktop_backbuffer,
-                                          BTRON_SCREEN_W * BTRON_SCREEN_H * sizeof(COLOR)) != 0) {
-            return; /* UI retains s_present_pending and retries next period. */
-        }
-        s_present_dma_page = target_page;
-        s_present_dma_start_us = start_us;
-    } else {
-        arm64_fast_blit((void *)gpu_fb, s_desktop_backbuffer,
-                        BTRON_SCREEN_W * BTRON_SCREEN_H * sizeof(COLOR));
-    }
+    arm64_fast_blit((void *)gpu_fb, s_desktop_backbuffer,
+                    BTRON_SCREEN_W * BTRON_SCREEN_H * sizeof(COLOR));
     s_async_rt_stats.blit_us = *(volatile uint32_t *)(TIMER_BASE + 0x04) - start_us;
     if (s_async_rt_stats.blit_us > s_async_rt_stats.blit_max_us)
         s_async_rt_stats.blit_max_us = s_async_rt_stats.blit_us;
@@ -2768,17 +1457,7 @@ static void mouse_motion_apply(int32_t rdx, int32_t rdy) {
     s_mouse_y = (H)ny;
     set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
 
-    /* Gate EV_MOUSE_MOVE: only enqueue to system event queue if UI needs it
-     * (menu open, button pressed/dragged, tab sliding, or top menu hover).
-     * Passive cursor movement is already rendered to GPU front buffer with
-     * zero latency.  MOVE is the droppable/coalescable class; KEY and
-     * BUTTON events are never gated (ASYNC.txt §3). */
-    if (pos_changed &&
-        (global_menu_is_open() || tracker_is_menu_open() ||
-         g_prev_mouse_btns != 0 || wnd_mgr_is_interacting() ||
-         s_mouse_y <= 25)) {
-        if (global_menu_is_open() || tracker_is_menu_open() || s_mouse_y <= 25)
-            s_ui_mouse_urgent = 1;
+    if (pos_changed) {
         EVT ev;
         ev.type   = EV_MOUSE_MOVE;
         ev.pos.x  = s_mouse_x;
@@ -3050,7 +1729,58 @@ void btron_core_mem_log(void) {
 void btron_core_hfds_log(void) {
     uart_puts("[HFDS] EMMC2 / SD Storage Interface: INIT  [OK]\n");
     uart_puts("[HFDS] HFDS Hierarchical File/Data Set: INIT  [OK]\n");
-    uart_puts("[HFDS] Root Cabinet: BTRON3_SPEC.TAD  T_KERNEL_20.TAD\n");
+
+    /* ── Mount /SYS volume ─────────────────────────────────────────── */
+    if (!g_sys_vol) {
+        const uint16_t *magic_ptr = (const uint16_t *)0x03000000UL;
+        if (*magic_ptr == 0xFE42 || *magic_ptr == 0x42FE) {
+            BlkDev *sys_blk = blk_mem_create((void *)0x03000000UL, 1024 * 1024, 0);
+            if (sys_blk) {
+                g_sys_vol = vol_mount(sys_blk);
+                if (g_sys_vol) {
+                    uart_puts("[FS  ] /SYS mounted from RAM 0x03000000 (btron_sys.vol)  [OK]\n");
+                    fb_log("[FS  ] /SYS mounted from RAM 0x03000000  [OK]\n");
+                } else {
+                    blk_destroy(sys_blk);
+                }
+            }
+        }
+        if (!g_sys_vol) {
+            void *ram_vol = malloc(1024 * 1024);
+            if (ram_vol) {
+                BlkDev *mem_blk = blk_mem_create(ram_vol, 1024 * 1024, 0);
+                if (mem_blk) {
+                    vol_format(mem_blk, 256, 1024, "SYS");
+                    g_sys_vol = vol_mount(mem_blk);
+                    if (g_sys_vol) {
+                        uart_puts("[FS  ] /SYS mounted on fallback RAM disk (1 MiB)  [OK]\n");
+                        fb_log("[FS  ] /SYS mounted on RAM disk (1 MiB)  [OK]\n");
+                    }
+                }
+            }
+        }
+    }
+
+    /* ── Mount /ANDERS volume ───────────────────────────────────────── */
+    if (!g_anders_vol) {
+        const uint16_t *anders_magic = (const uint16_t *)0x03200000UL;
+        if (*anders_magic == 0xFE42 || *anders_magic == 0x42FE) {
+            BlkDev *anders_blk = blk_mem_create((void *)0x03200000UL, 1024 * 1024, 0);
+            if (anders_blk) {
+                g_anders_vol = vol_mount(anders_blk);
+                if (g_anders_vol) {
+                    uart_puts("[FS  ] /ANDERS mounted from RAM 0x03200000 (btron_anders.vol)  [OK]\n");
+                    fb_log("[FS  ] /ANDERS mounted from RAM 0x03200000  [OK]\n");
+                } else {
+                    blk_destroy(anders_blk);
+                }
+            }
+        }
+    }
+
+    if (g_sys_vol) {
+        uart_puts("[HFDS] Root Volume: /SYS mounted  [OK]\n");
+    }
 }
 
 void btron_core_init(void) {
@@ -3227,10 +1957,6 @@ void btron_main(void) {
     btron_core_hfds_log();
 
     /* 4. Initialize BCM2711 Hardware Device Drivers */
-    /* The Pi 400 DMA/page-flip experiment is currently disabled: hardware
-     * measurements showed up to 244 ms stalls.  The bounded CPU presenter
-     * above keeps USB input live while a frame is copied in small bands. */
-    s_present_dma_enabled = 0;
 
     /* One row for all three: the open "[DRV]" prefix is the hang marker, and
      * each driver appends its own verdict.  Failures print their code, which

@@ -141,5 +141,7 @@ void blk_file_close(BlkDev *dev)
 
 #else
 /* Bare-metal builds don't need the file backend */
-void blk_file_close(void *dev) { (void)dev; }
+#include <btron/fs/block.h>
+BlkDev *blk_file_create(const char *path, int create_new, UW nblocks) { (void)path; (void)create_new; (void)nblocks; return NULL; }
+void blk_file_close(BlkDev *dev) { (void)dev; }
 #endif /* __STDC_HOSTED__ */

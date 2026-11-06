@@ -62,7 +62,11 @@ static void expand_indexed_to_rgba(const byte *indexed, int npixels, byte *rgba)
  * Quake BSP textures are at most 512×512; we cap uploads at that size.
  * Larger miptexes (rare) are skipped rather than overflowing BSS.
  */
+#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_)
+#define TEX_SCRATCH_MAX_PIXELS (256 * 256)
+#else
 #define TEX_SCRATCH_MAX_PIXELS (512 * 512)
+#endif
 static byte s_rgba_scratch[TEX_SCRATCH_MAX_PIXELS * 4]; /* 1 MiB BSS */
 
 /* ── Upload single miptex to GL ──────────────────────────────────── */

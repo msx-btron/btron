@@ -175,6 +175,10 @@ typedef struct {
     WND       *(*open)(void);
 } CluApp;
 
+static WND *open_quake_app_wnd(void) {
+    return open_quake_window ? open_quake_window(120, 60, 480, 360) : NULL;
+}
+
 static const CluApp s_clu_apps[] = {
     { "xmb",     "Cross Media Bar (XMB)",                    open_xmb_window },
     { "glgears", "GLGears (OpenGL ES 1.1 / TinyGL)",         open_glgears_window },
@@ -183,6 +187,7 @@ static const CluApp s_clu_apps[] = {
     { "lilcu64", "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
     { "msx",     "B-MSX Game System (MSX Cartridge Player)", open_msx_window },
     { "mars",    "MARS 1993 Voxel Landscape (NASA JPL C99)", open_mars_window },
+    { "quake",   "Quake 3D (OpenGL ES 1.1 / TinyGL)",        open_quake_app_wnd },
 };
 
 BOOL clu_launch_app(const char *verb, ShellOutputFn out, void *ud)
@@ -279,4 +284,26 @@ void clu_tv(const char *args, ShellOutputFn out, void *ud)
     out(msg, COLOR_YELLOW, ud);
     out("  Status   : In-window termios apps (sc, tv) inside gterm not available yet.", COLOR_YELLOW, ud);
     out("             Run 'tv <file>' in terminal console for full-screen TUI.", COLOR_LTGRAY, ud);
+}
+
+/* ── clu_be ──────────────────────────────────────────────────────── */
+
+__attribute__((weak)) void be_native_command_info(const char *args, char *out, size_t out_size)
+{
+    (void)args;
+    if (out && out_size > 0) out[0] = '\0';
+}
+
+void clu_be(const char *args, ShellOutputFn out, void *ud)
+{
+    char info_buf[256];
+    info_buf[0] = '\0';
+    out("Binary Editor (be) — Infosec Hex Editor with DASM", COLOR_CYAN, ud);
+    out("  Source   : src/clu/be/native.c (Interactive DASM/Hex Editor)", COLOR_LTGRAY, ud);
+    be_native_command_info(args, info_buf, sizeof(info_buf));
+    if (info_buf[0]) {
+        out(info_buf, COLOR_YELLOW, ud);
+    } else {
+        out("  Usage    : be [-vhdbao] <filename>", COLOR_LTGRAY, ud);
+    }
 }

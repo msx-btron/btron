@@ -59,6 +59,7 @@ __attribute__((weak, weak_import)) WND* open_lilcu64_demo_window(void);
 __attribute__((weak, weak_import)) WND* open_xmb_window(void);
 __attribute__((weak, weak_import)) WND* open_glgears_window(void);
 __attribute__((weak, weak_import)) WND* open_review_window(void);
+__attribute__((weak, weak_import)) WND* open_mars_window(void);
 /* Cho-Kanji suite */
 __attribute__((weak, weak_import)) WND* open_chokanji_cabinet_window(void);
 __attribute__((weak, weak_import)) WND* open_chokanji_doc_window(void);
@@ -83,6 +84,7 @@ extern WND* open_display_settings_window(void);
 extern WND* open_clarity_window(void);
 extern WND* open_paint_window(void);
 extern WND* open_paint_about_window(void);
+extern WND* open_mars_window(void);
 extern WND* open_chat_main_window(void *client);
 extern WND* open_drivesetup_window(void);
 extern WND* open_chokanji_cabinet_window(void);
@@ -166,7 +168,7 @@ static GMenuHeader g_headers[GMENU_HEADER_COUNT] = {
     {
         .title = "アプリ(A)",
         .rect = { 216, 2, 320, 23 },
-        .item_count = 24,
+        .item_count = 25,
         .items = {
             /* General B-System apps */
             { "Editor (文書編集...)",                "Ctrl+E", GMENU_CMD_APP_TEDITOR,    FALSE, FALSE, TRUE },
@@ -178,6 +180,7 @@ static GMenuHeader g_headers[GMENU_HEADER_COUNT] = {
             { "電子帳票 (Clarity DTP...)",            "",       GMENU_CMD_APP_CLARITY,    FALSE, FALSE, TRUE },
             { "校正・閲覧 (Review PDF Reader...)",    "Ctrl+R", GMENU_CMD_APP_REVIEW,     FALSE, FALSE, TRUE },
             { "ペイント (Paint Image Viewer...)",     "",       GMENU_CMD_APP_PAINT,      FALSE, FALSE, TRUE },
+            { "火星 3D (MARS 1993 Voxel...)",         "",       GMENU_CMD_APP_MARS,       FALSE, FALSE, TRUE },
             { "MSX ゲーム (B-MSX Emulator...)",      "",       GMENU_CMD_APP_MSX,        FALSE, FALSE, TRUE },
             { "Quake (3D FPS Game...)",              "Ctrl+Q", GMENU_CMD_APP_QUAKE,      FALSE, FALSE, TRUE },
             { "Lil Cu 64 Demo (3D Demoscene...)",    "Ctrl+L", GMENU_CMD_APP_DEMO,       FALSE, FALSE, TRUE },
@@ -541,6 +544,9 @@ static void global_menu_execute_cmd(int cmd) {
             break;
         case GMENU_CMD_APP_PAINT:
             if (open_paint_window) open_paint_window();
+            break;
+        case GMENU_CMD_APP_MARS:
+            if (open_mars_window) open_mars_window();
             break;
         case GMENU_CMD_APP_MSX:
             if (open_msx_window) open_msx_window();

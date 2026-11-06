@@ -8,6 +8,9 @@
 #define _GL_TIME_H_
 
 typedef long time_t;
+typedef long clock_t;
+#define CLOCKS_PER_SEC 1000000L
+static inline clock_t clock(void) { return 0; }
 
 struct tm {
     int tm_sec;

@@ -678,8 +678,8 @@ void tip_render_candidate_window(GDEV *dev, H caret_x, H caret_y) {
     drw_tc_string(dev, win_x + 8, list_y + 5, "1-9 Select   Esc Cancel", COLOR_GRAY, 0x00000000);
 }
 
-#if defined(BTRON_PS2_TARGET)
-#define MAX_TIP_PORTS 2
+#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_)
+#define MAX_TIP_PORTS 4
 #else
 #define MAX_TIP_PORTS 16
 #endif

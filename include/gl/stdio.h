@@ -49,10 +49,18 @@ static inline int sprintf(char *str, const char *format, ...)
  * engine, and left undefined — not stubbed — where that engine is absent, so a
  * port that has no /SYS fails at the link instead of reading a zero that looks
  * like an empty file.  The shape law is in include/btron/libc_shim.h. */
+#ifndef SEEK_SET
+#define SEEK_SET 0
+#define SEEK_CUR 1
+#define SEEK_END 2
+#endif
+
 extern FILE *fopen(const char *path, const char *mode);
 extern size_t fread(void *ptr, size_t size, size_t count, FILE *stream);
 extern size_t fwrite(const void *ptr, size_t size, size_t count, FILE *stream);
 extern int fclose(FILE *stream);
+extern int fseek(FILE *stream, long offset, int whence);
+extern long ftell(FILE *stream);
 
 #endif /* _GL_STDIO_H_ */
 #endif /* HOSTED */

@@ -7,6 +7,9 @@ arm_64bit=1
 kernel=kernel8.img
 kernel_address=0x80000
 
+# Mountable B-FS System Volumes preloaded into RAM
+initramfs btron_sys.vol 0x03000000
+
 # Pi 400 Device Tree
 device_tree=bcm2711-rpi-400.dtb
 

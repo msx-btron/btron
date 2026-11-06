@@ -63,6 +63,7 @@ enum {
     GMENU_CMD_APP_GEARS      = 218,
     GMENU_CMD_APP_MSX        = 219,
     GMENU_CMD_APP_REVIEW     = 222,
+    GMENU_CMD_APP_MARS       = 223,
 
     /* ── アプリ(A) — 超漢字 Cho-Kanji suite ── */
     GMENU_CMD_APP_CK_CABINET     = 210,

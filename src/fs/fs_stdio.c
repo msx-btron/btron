@@ -328,4 +328,26 @@ int fclose(FILE *stream)
     return rc;
 }
 
+int fseek(FILE *stream, long offset, int whence)
+{
+    FsStdio *f = (FsStdio *)stream;
+    if (!f) return -1;
+    long target = 0;
+    if (whence == 0 /* SEEK_SET */) target = offset;
+    else if (whence == 1 /* SEEK_CUR */) target = (long)f->pos + offset;
+    else if (whence == 2 /* SEEK_END */) target = (long)f->size + offset;
+    else return -1;
+    if (target < 0) return -1;
+    f->pos = (UW)target;
+    f->rec_left = 0u;
+    return 0;
+}
+
+long ftell(FILE *stream)
+{
+    FsStdio *f = (FsStdio *)stream;
+    if (!f) return -1;
+    return (long)f->pos;
+}
+
 #endif /* !BTRON_HOSTED */

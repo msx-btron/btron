@@ -635,8 +635,61 @@ BAREMETAL_LD       = src/drivers/bcm283x/cpu/link.ld
 # AArch64 lane -- which converts a 64-bit integer in one instruction -- must not
 # link it, and the house rule is to name a runtime only in the lanes measured
 # against it.  `make test-arm-aeabi` grades it against the host FPU.
+# Full B-System applications suite for Pi 400 & raspi4b bare-metal (Cortex-A72 / AArch64)
+ARM64_APPS_SRCS = \
+    src/chokanji/cab.c         \
+    src/chokanji/microscript.c \
+    src/chokanji/clock.c       \
+    src/chokanji/kconv.c       \
+    src/chokanji/xfconv.c      \
+    src/chokanji/bpk_core.c    \
+    src/chokanji/unpack.c      \
+    src/chokanji/launchers.c   \
+    src/apps/clarity.c         \
+    src/apps/clarity_layout.c  \
+    src/apps/clarity_render.c  \
+    src/apps/clarity_export.c  \
+    src/apps/pdf_reader.c      \
+    src/apps/review.c          \
+    src/apps/b_drivesetup.c    \
+    src/fs/blk_file.c          \
+    src/fs/blk_qcow2.c         \
+    src/fs/blk_part.c          \
+    src/graphics/image_decode.c \
+    src/demo/mars.c            \
+    src/hmi/hmi_core.c         \
+    src/hmi/hmi_switch.c       \
+    src/hmi/hmi_selector.c     \
+    src/hmi/hmi_volume.c       \
+    src/hmi/hmi_meter.c        \
+    src/hmi/hmi_controller.c   \
+    src/hmi/hmi_panel.c        \
+    src/emulators/msx/msx_app.c \
+    $(MSX_SRCS)                \
+    src/clu/lang.c             \
+    src/clu/term.c             \
+    src/clu/tty.c              \
+    src/clu/sc/files.c         \
+    src/clu/sc/input.c         \
+    src/clu/sc/menus.c         \
+    src/clu/sc/sc.c            \
+    src/clu/tv/tv.c            \
+    src/clu/be/native.c        \
+    src/drivers/ps2/ps2_vu0_kernel.c \
+    $(TINYGL_SRCS)             \
+    src/gl/gl_dispatch.c       \
+    src/gl/gl_backend_choice.c \
+    src/gl/egl_surface.c       \
+    src/gl/backend_tinygl.c    \
+    src/gl/backend_virgl.c     \
+    src/apps/glgears.c         \
+    src/apps/xmb.c             \
+    src/apps/xmb_wave.c        \
+    src/demo/lilcu64_demo.c    \
+    $(QUAKE_SRCS)
+
 ARM32_BAREMETAL_SRCS = src/cores/core_init.c src/cores/core_yoko.c $(TKERNEL_SAKAMURA_SRCS) $(ARCH_BCM_SRCS) $(BAREMETAL_STARTUP) $(COMMON_NO_SDL_SRCS) $(LILCU64_ENGINE_SRCS) src/kernel/libaeabi.c
-ARM64_BAREMETAL_SRCS = src/cores/core_init.c src/cores/core_arm64.c $(TKERNEL_SAKAMURA_SRCS) $(ARCH_BCM64_SRCS) $(BAREMETAL_STARTUP) $(COMMON_NO_SDL_SRCS) $(LILCU64_ENGINE_SRCS)
+ARM64_BAREMETAL_SRCS = src/cores/core_init.c src/cores/core_arm64.c $(TKERNEL_SAKAMURA_SRCS) $(ARCH_BCM64_SRCS) $(BAREMETAL_STARTUP) $(COMMON_NO_SDL_SRCS) $(LILCU64_ENGINE_SRCS) $(ARM64_APPS_SRCS)
 
 # ── Object lists ─────────────────────────────────────────────────
 POSIX_OBJS   = $(POSIX_SRCS:.c=.posix.o)
@@ -2678,7 +2731,7 @@ $(PI400_ARMSTUB_BIN): src/drivers/bcm283x/cpu/armstub8.S
 	$(LLVM_OBJCOPY) -O binary .build/pi400/armstub8.elf $@
 	@SZ=$$(wc -c < $@ | tr -d ' '); echo "[PI400] armstub8.bin: $$SZ bytes (EL3, linked @0x0)"
 
-$(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN)
+$(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol
 	@echo "=========================================================="
 	@echo " BTRON Pi 400 — SD Card Image Builder"
 	@echo " ELF     : $(ARM64_TARGET)"
@@ -2728,6 +2781,8 @@ $(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN)
 	cp $(PI400_CFG_DIR)/cmdline.txt     $$MOUNT_PT/cmdline.txt; \
 	cp .build/pi400/kernel8.img         $$MOUNT_PT/kernel8.img; \
 	cp .build/pi400/armstub8.bin        $$MOUNT_PT/armstub8.bin; \
+	cp btron_sys.vol                    $$MOUNT_PT/btron_sys.vol; \
+	if [ -f btron_anders.vol ]; then cp btron_anders.vol $$MOUNT_PT/btron_anders.vol; fi; \
 	echo "[PI400] SD image contents:"; \
 	ls -lh $$MOUNT_PT/; \
 	sync; \
@@ -2839,12 +2894,13 @@ run-yoko: $(ARM64_TARGET)
 	    exit 1; \
 	fi
 
-run-yoko4: $(ARM64_TARGET)
+run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol
 	@echo "=========================================================="
 	@echo " Launching T-Kernel AArch64 on QEMU Raspberry Pi 4B (BCM2711)"
 	@echo " Honoring : Takanori Yokoyama (横山 孝徳) — T-Kernel Pioneer"
 	@echo " Machine  : raspi4b  |  CPU: Cortex-A72 / AArch64  |  RAM: 2G"
 	@echo " ELF      : $(ARM64_TARGET)"
+	@echo " Volumes  : btron_sys.vol (@0x03000000), btron_anders.vol (@0x03200000)"
 	@echo " Devices  : USB Keyboard, USB Mouse & VideoCore GPU Display"
 	@echo "=========================================================="
 	@echo " INPUT CAPTURE:"
@@ -2854,6 +2910,8 @@ run-yoko4: $(ARM64_TARGET)
 	@echo "=========================================================="
 	@if command -v $(QEMU_AARCH64) >/dev/null 2>&1; then \
 	    $(QEMU_AARCH64) -M raspi4b -m 2G $(KERNEL_DISPLAY) \
+	        -device loader,file=btron_sys.vol,addr=0x03000000 \
+	        -device loader,file=btron_anders.vol,addr=0x03200000 \
 	        -device usb-kbd -device usb-mouse \
 	        -kernel $(ARM64_TARGET) -serial stdio; \
 	else \

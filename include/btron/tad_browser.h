@@ -17,7 +17,7 @@
 extern "C" {
 #endif
 
-#if defined(BTRON_PS2_TARGET)
+#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_)
 #define TAD_MAX_SPANS   128
 #else
 #define TAD_MAX_SPANS   1024

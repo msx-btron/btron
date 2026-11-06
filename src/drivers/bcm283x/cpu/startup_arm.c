@@ -107,6 +107,10 @@ void uart_puts(const char *s) {
     }
 }
 
+void uart_puts_raw(const char *s) {
+    uart_puts(s);
+}
+
 static void uart_hex8(uint8_t v) {
     const char *h = "0123456789ABCDEF";
     uart_putc(h[(v >> 4) & 0xF]);
@@ -149,6 +153,12 @@ void __aeabi_memcpy8(void *dest, const void *src, size_t n) { tkl_memcpy(dest, s
 void* Imalloc(size_t sz) {
     if (heap_ptr == 0) heap_ptr = HEAP_BASE;
     uintptr_t aligned = (heap_ptr + 15) & ~(uintptr_t)15;
+    /* Skip RAM window 0x03000000 - 0x05FFFFFF reserved for preloaded volumes & Quake hunk */
+    if (aligned >= 0x03000000UL && aligned < 0x06000000UL) {
+        aligned = 0x06000000UL;
+    } else if (aligned < 0x03000000UL && aligned + sz > 0x03000000UL) {
+        aligned = 0x06000000UL;
+    }
     if (aligned + sz > HEAP_LIMIT) return NULL;
     heap_ptr = aligned + sz;
     return (void*)aligned;

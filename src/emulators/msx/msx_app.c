@@ -269,6 +269,14 @@ static void msx_sort_rows(MsxViewer *st)
     }
 }
 
+static int msx_is_main_bios_name(const char *name)
+{
+    if (!name) return 0;
+    return (strstr(name, "tfw_main") != NULL ||
+            strstr(name, "tbios_main") != NULL ||
+            strstr(name, "cbios_main") != NULL);
+}
+
 #if BTRON_HOSTED
 static void msx_scan_roms(MsxViewer *st)
 {
@@ -287,14 +295,6 @@ static void msx_scan_roms(MsxViewer *st)
     }
     closedir(d);
     msx_sort_rows(st);
-}
-
-static int msx_is_main_bios_name(const char *name)
-{
-    if (!name) return 0;
-    return (strstr(name, "tfw_main") != NULL ||
-            strstr(name, "tbios_main") != NULL ||
-            strstr(name, "cbios_main") != NULL);
 }
 
 /* Read one cartridge image and hand it to the core. */

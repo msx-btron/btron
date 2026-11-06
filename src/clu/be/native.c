@@ -913,3 +913,13 @@ void be_native_session_close(BeNativeContext *ctx)
     }
     scr_invalidate();
 }
+
+__attribute__((weak)) int be_native_disasm_init(void) { return 0; }
+__attribute__((weak)) int be_native_disasm_decode(BeNativeContext *ctx, size_t offset,
+                                                  char *out, size_t out_size, size_t *length)
+{
+    (void)ctx; (void)offset;
+    if (out && out_size > 0) out[0] = '\0';
+    if (length) *length = 1u;
+    return -1;
+}

@@ -62,7 +62,7 @@ typedef struct {
 } mdl_header_t;
 
 /* ── In-memory model ─────────────────────────────────────────────────── */
-#if defined(BTRON_PS2_TARGET)
+#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_)
 #define MAX_MDL_VERTS    1024
 #define MAX_MDL_TRIS     1024
 #define MAX_MDL_FRAMES   64

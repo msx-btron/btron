@@ -9,13 +9,16 @@
 
 #include "../include/quakedef.h"
 
-#if defined(BTRON_PS2_TARGET)
+#if defined(_RPI_BCM283x_)
+#define HUNK_TOTAL_SIZE (64 * 1024 * 1024)
+static uint8_t *s_hunk_buffer = (uint8_t *)0x04000000UL;
+#elif defined(BTRON_PS2_TARGET)
 #define HUNK_TOTAL_SIZE (1 * 1024 * 1024)   /* 1 MiB: fits comfortably within PS2 32 MB RDRAM */
+static uint8_t s_hunk_buffer[HUNK_TOTAL_SIZE] __attribute__((aligned(4096)));
 #else
 #define HUNK_TOTAL_SIZE (64 * 1024 * 1024)  /* 64 MiB: 18.6 MB pak + BSP + headroom */
-#endif
-
 static uint8_t s_hunk_buffer[HUNK_TOTAL_SIZE] __attribute__((aligned(4096)));
+#endif
 static size_t  s_hunk_low = 0;
 static size_t  s_hunk_high = HUNK_TOTAL_SIZE;
 

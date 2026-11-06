@@ -481,7 +481,26 @@ static inline long long llround(double x) { return (long long)(x >= 0.0 ? x + 0.
 
 static inline double exp(double x) { return pow(M_E, x); }
 static inline float expf(float x) { return (float)exp((double)x); }
+static inline double log(double x) { return btron_log(x); }
+static inline float logf(float x) { return (float)btron_log((double)x); }
 static inline float log10f(float x) { return (float)log10((double)x); }
+static inline double tan(double x) {
+    double c = cos(x);
+    return (c != 0.0) ? (sin(x) / c) : 0.0;
+}
+static inline float tanf(float x) { return (float)tan((double)x); }
+static inline double ceil(double x) { return -floor(-x); }
+static inline float ceilf(float x) { return (float)ceil((double)x); }
+static inline double asin(double x) {
+    if (x >= 1.0) return 3.14159265358979323846 / 2.0;
+    if (x <= -1.0) return -3.14159265358979323846 / 2.0;
+    return atan(x / sqrt(1.0 - x * x));
+}
+static inline float asinf(float x) { return (float)asin((double)x); }
+static inline double acos(double x) {
+    return (3.14159265358979323846 / 2.0) - asin(x);
+}
+static inline float acosf(float x) { return (float)acos((double)x); }
 static inline double fmod(double x, double y) {
     if (y == 0.0) return 0.0;
     return x - (double)((long long)(x / y)) * y;

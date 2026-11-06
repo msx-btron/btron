@@ -7,6 +7,21 @@
 #ifndef _GL_CTYPE_H_
 #define _GL_CTYPE_H_
 
+#undef islower
+#undef isupper
+#undef isalpha
+#undef isdigit
+#undef isalnum
+#undef isxdigit
+#undef isspace
+#undef isblank
+#undef iscntrl
+#undef isprint
+#undef isgraph
+#undef ispunct
+#undef tolower
+#undef toupper
+
 static inline int islower(int c) { return c >= 'a' && c <= 'z'; }
 static inline int isupper(int c) { return c >= 'A' && c <= 'Z'; }
 static inline int isalpha(int c) { return islower(c) || isupper(c); }

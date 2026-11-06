@@ -80,7 +80,11 @@ static void dequantize(const dtrivert_t *tv, const float *scale, const float *or
 }
 
 /* ── Scratch RGBA buffer for skin upload (max 512×512 skin) ──────────── */
+#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_)
+#define SKIN_SCRATCH_MAX (256 * 256 * 4)
+#else
 #define SKIN_SCRATCH_MAX (512 * 512 * 4)
+#endif
 static byte s_skin_rgba[SKIN_SCRATCH_MAX];
 
 /* ── Names that are not MDL meshes ────────────────────────────────────── *

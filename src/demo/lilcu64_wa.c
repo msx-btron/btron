@@ -16,7 +16,7 @@
 #define M_PI 3.1415926535897932384626433832795
 #endif
 
-#if defined(BTRON_PS2_TARGET)
+#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_)
 #define WA_MAX_NODES 512
 #define WA_NOISE_LEN (44100 * 1)
 #else

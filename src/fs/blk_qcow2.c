@@ -394,6 +394,10 @@ int blk_qcow2_create_file(const char *path, uint64_t disk_size)
 }
 
 #else
+#include <btron/fs/block.h>
+#include <stdint.h>
+#include <stddef.h>
+
 BlkDev *blk_qcow2_create(const char *path, int read_only) { (void)path; (void)read_only; return NULL; }
 void    blk_qcow2_close(BlkDev *dev) { (void)dev; }
 int     blk_qcow2_create_file(const char *path, uint64_t disk_size) { (void)path; (void)disk_size; return -1; }

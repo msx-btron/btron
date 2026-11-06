@@ -7,7 +7,7 @@
 #define M_PI 3.14159265358979323846
 #endif
 
-#if defined(BTRON_PS2_TARGET)
+#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_)
 #define LC_DELAY_MAX 2048
 #else
 #define LC_DELAY_MAX 48000

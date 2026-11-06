@@ -311,10 +311,6 @@ int bmsx_cfg_load(const char *name_or_key, uint16_t machine, bmsx_machine_cfg_t 
 #if BTRON_HOSTED
     f = fopen(path, "r");
     if (!f) return 0;
-#else
-    /* Non-hosted parsing through VFS if text reader is wired */
-    return 0;
-#endif
 
     section[0] = '\0';
     while (fgets(line, sizeof(line), f)) {
@@ -455,10 +451,11 @@ int bmsx_cfg_load(const char *name_or_key, uint16_t machine, bmsx_machine_cfg_t 
         }
     }
 
-#if BTRON_HOSTED
     fclose(f);
-#endif
-
     return 1;
+#else
+    /* Non-hosted parsing through VFS if text reader is wired */
+    return 0;
+#endif
 }
 

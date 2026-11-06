@@ -34,7 +34,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
 #include <sys/stat.h>
+#endif
 
 #ifndef E_IO
 #define E_IO ER_IO
@@ -173,8 +175,10 @@ static ER unpack_extract_all(void) {
     }
 
     /* Ensure target directory exists */
+#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
     mkdir("btron_store", 0777);
     mkdir("btron_store/extracted", 0777);
+#endif
 
     int extracted = 0;
     for (UINT i = 0; i < a.nfiles; i++) {
