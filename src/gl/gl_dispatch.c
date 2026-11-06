@@ -22,6 +22,16 @@ extern void uart_puts_raw(const char *s);
 gl_ops_t *g_gl = NULL;
 static GL_BACKEND s_active_backend = GL_BACKEND_VIRGL;
 
+#if defined(BTRON_GL_BACKEND_TINYGL)
+__attribute__((weak)) gl_ops_t g_v3d_ops;
+__attribute__((weak)) void v3d_backend_init(int width, int height, void *pixel_buf) {
+    (void)width; (void)height; (void)pixel_buf;
+}
+__attribute__((weak)) void v3d_backend_resize(int width, int height, void *pixel_buf) {
+    (void)width; (void)height; (void)pixel_buf;
+}
+#endif
+
 GL_BACKEND gl_active_backend(void) {
     return s_active_backend;
 }

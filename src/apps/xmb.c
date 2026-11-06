@@ -61,6 +61,8 @@
 #include <btron/fs/vol_api.h> /* mounted volumes: names, sizes, free blocks */
 #include <btron/libc_shim.h>
 #include <math.h>
+
+__attribute__((weak)) void btron_cooperative_input_pump(void) {}
 #include "xmb_wave.h"   /* the sheet's lattice: xb_wave_step(), xb_rib_*, the far-tier trig */
 
 #if defined(BTRON_PS2_TARGET) && BTRON_PS2_GS_IDENT
@@ -3038,6 +3040,7 @@ static void xb_paint(WND *wnd, GDEV *dev)
     if (!surf) surf = s_surf;
     if (!surf) return;
 
+    btron_cooperative_input_pump();
     egl_make_current(surf);
 
     probing = (s_probe_left != 0u);

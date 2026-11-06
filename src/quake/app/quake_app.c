@@ -78,10 +78,14 @@ static void quake_task_fn(VW exinf) {
     /* Task naturally exits by returning */
 }
 
+__attribute__((weak)) void btron_cooperative_input_pump(void) {}
+
 /* ── Paint callback (called by compositor on inval_wnd) ──────────── */
 static void quake_paint(WND *wnd, GDEV *dev) {
     /* Guard against paint arriving after destroy (race between task & compositor) */
     if (!wnd || !dev || s_shutdown_req) return;
+
+    btron_cooperative_input_pump();
 
     EGL_SURFACE *surf = (EGL_SURFACE *)wnd->gl_surf;
     if (!surf) surf = s_surf;

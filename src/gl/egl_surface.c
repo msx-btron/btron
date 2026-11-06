@@ -272,11 +272,14 @@ void egl_surface_resize(EGL_SURFACE *surf, int width, int height) {
     gl_resize(width, height, surf->pixels);
 }
 
+__attribute__((weak)) void btron_cooperative_input_pump(void) {}
+
 void egl_swap_buffers(EGL_SURFACE *surf) {
     if (!surf) return;
     if (g_gl && g_gl->swap_buffers) {
         g_gl->swap_buffers();
     }
+    btron_cooperative_input_pump();
 #if BTRON_GL_FPS_OVERLAY
     /* Advance this window's counter and refresh its caption from the measured
      * rate.  Runs after the backend swap; wnd_set_title marks the tab dirty and

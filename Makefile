@@ -36,7 +36,7 @@ CFLAGS ?= -O2 -Wall -Wextra -std=c99 -Iinclude -Iinclude/gl -Isrc/gl -Iinclude/d
 
 .PHONY: all posix qemu kernel tkernel sakamura foma uefi pc98 arm-elf arm64-elf m68k ps2 mips \
         check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing \
-        test-xmb-render test-xmb-render-tgl test-gl-context \
+        test-xmb-render test-xmb-render-tgl test-gl-context test-async-input \
         html2tad book2tad tad_bin test test-kernel test-yoko test-yoko4 test-m68k test-mips test-ps2 test-foma test-foma-ui foma-screens \
         segui-screens tbios-tools tbios-roms test-tbios \
         test-mozc test-editor test-hmi test-tad test-chat test-wylie verify test-fs test-sps test-chokanji test-quake test-replay \
@@ -3135,6 +3135,22 @@ test-deskclip: $(TEST_CLIP_BIN)
 $(TEST_CLIP_BIN): $(TEST_CLIP_OBJS)
 	@mkdir -p ./.build
 	$(CC) $(TEST_CLIP_OBJS) -o $@ $(LDFLAGS) -lm
+
+# ═══════════════════════════════════════════════════════════════════
+# ASYNC Real-Time Input & Cursor Budget Test Suite
+# ═══════════════════════════════════════════════════════════════════
+TEST_ASYNC_INPUT_BIN = ./.build/test_async_input_budget
+TEST_ASYNC_INPUT_SRCS = verify/tests/test_async_input_budget.c
+
+$(TEST_ASYNC_INPUT_BIN): $(TEST_ASYNC_INPUT_SRCS)
+	@mkdir -p ./.build
+	$(CC) $(CFLAGS) $(TEST_ASYNC_INPUT_SRCS) -o $@ $(LDFLAGS) -lm
+
+test-async-input: $(TEST_ASYNC_INPUT_BIN)
+	@echo "=========================================================="
+	@echo " Running ASYNC Real-Time Input & Cursor Budget Tests..."
+	@echo "=========================================================="
+	@./$(TEST_ASYNC_INPUT_BIN)
 
 verify:
 	@$(MAKE) -C verify run

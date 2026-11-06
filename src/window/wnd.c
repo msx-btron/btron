@@ -11,6 +11,8 @@
 #include "pmc.h"
 #include <btron/libc_shim.h>
 
+__attribute__((weak)) void btron_cooperative_input_pump(void) {}
+
 static WND *g_wnd_head = NULL;
 static ID g_next_wnd_id = 1;
 static GDEV *g_screen_dev = NULL;
@@ -828,7 +830,9 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
              * and size are unchanged, so a window that paints alone pays nothing extra and only
              * a genuine switch between two GL windows re-opens a raster buffer. */
             if (s_gl_bind && wnd->gl_surf) s_gl_bind(wnd);
+            btron_cooperative_input_pump();
             wnd->paint(wnd, wnd->dev);
+            btron_cooperative_input_pump();
             t_paint += btron_render_perf_us() - t_mark;
             wnd->img_valid = TRUE;
             if (wnd->gl_layer) {

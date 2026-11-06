@@ -888,9 +888,72 @@ static int pi4_shell_poll(uint32_t *gpu_fb)
     return 1;
 }
 
+
 /* ═══════════════════════════════════════════════════════════════════
  * B-System Mature Tested Compositor Desktop Session
  * ═══════════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════════
+ * VideoCore GPU Framebuffer & Display Blitter (Single Physical Buffer)
+ * ═══════════════════════════════════════════════════════════════════ */
+
+void blit_backbuffer_to_fb(volatile uint32_t *gpu_fb) {
+    if (!gpu_fb) return;
+    uint32_t start_us = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    arm64_fast_blit((void *)gpu_fb, s_desktop_backbuffer,
+                    BTRON_SCREEN_W * BTRON_SCREEN_H * sizeof(COLOR));
+    s_async_rt_stats.blit_us = *(volatile uint32_t *)(TIMER_BASE + 0x04) - start_us;
+    if (s_async_rt_stats.blit_us > s_async_rt_stats.blit_max_us)
+        s_async_rt_stats.blit_max_us = s_async_rt_stats.blit_us;
+}
+
+static volatile uint32_t *s_active_gpu_fb = NULL;
+static H s_shown_mx = 0;
+static H s_shown_my = 0;
+static uint32_t s_last_paint_duration_us = 0;
+
+void arm64_fast_cursor_update(volatile uint32_t *gpu_fb, H mx, H my, H *p_prev_x, H *p_prev_y) {
+    if (!gpu_fb || !p_prev_x || !p_prev_y) return;
+    H ox = *p_prev_x;
+    H oy = *p_prev_y;
+    if (mx == ox && my == oy) return;
+
+    /* 1. Restore old 16x16 cursor bounding box from clean backbuffer */
+    for (int cy = 0; cy < 16; cy++) {
+        int py = oy + cy;
+        if (py < 0 || py >= BTRON_SCREEN_H) continue;
+        int sx = ox < 0 ? 0 : ox;
+        int ex = (ox + 16) > BTRON_SCREEN_W ? BTRON_SCREEN_W : (ox + 16);
+        int span = ex - sx;
+        if (span <= 0) continue;
+        tkl_memcpy((void*)&gpu_fb[py * BTRON_SCREEN_W + sx],
+                   (const void*)&s_desktop_backbuffer[py * BTRON_SCREEN_W + sx],
+                   (size_t)span * sizeof(uint32_t));
+    }
+
+    /* 2. Draw new 16x16 cursor directly onto GPU framebuffer */
+    draw_baremetal_cursor_raw(gpu_fb, mx, my, BTRON_SCREEN_W, BTRON_SCREEN_H);
+
+    /* 3. Update recorded position */
+    *p_prev_x = mx;
+    *p_prev_y = my;
+}
+
+void btron_cooperative_input_pump(void) {
+    if (!s_gui_active || !s_active_gpu_fb) return;
+    uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    if (g_use_xhci) {
+        if (!s_async_irq_active) {
+            xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
+        }
+        input_plane_task(NULL, now);
+    } else {
+        usb_poll_devices(NULL);
+    }
+    if (s_mouse_x != s_shown_mx || s_mouse_y != s_shown_my) {
+        arm64_fast_cursor_update(s_active_gpu_fb, s_mouse_x, s_mouse_y, &s_shown_mx, &s_shown_my);
+    }
+}
 
 /* Stage 2: Launch full B-System Workbench desktop session. */
 static void launch_pi4_desktop_session(uint32_t *gpu_fb)
@@ -898,8 +961,11 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     fb_log("\n[BOOT] Launching B-System Workbench...\n");
     s_gui_active = 1;
 
-    /* Enable cursor in backbuffer for clean atomic compositing */
-    g_cursor_in_backbuffer = 1;
+    /* Pristine backbuffer: cursor is drawn directly onto hardware display plane */
+    g_cursor_in_backbuffer = 0;
+    s_active_gpu_fb = gpu_fb;
+    s_shown_mx = s_mouse_x;
+    s_shown_my = s_mouse_y;
 
     GDEV *screen = init_baremetal_desktop(
         (uint32_t *)s_desktop_backbuffer, BTRON_SCREEN_W, BTRON_SCREEN_H);
@@ -912,6 +978,7 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
     workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
     blit_backbuffer_to_fb(gpu_fb);
+    draw_baremetal_cursor_raw(gpu_fb, s_shown_mx, s_shown_my, BTRON_SCREEN_W, BTRON_SCREEN_H);
 
     H prev_mx = s_mouse_x;
     H prev_my = s_mouse_y;
@@ -938,12 +1005,11 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     uint32_t last_clock = *(volatile uint32_t *)(TIMER_BASE + 0x04);
     uint32_t last_usb_poll = *(volatile uint32_t *)(TIMER_BASE + 0x04);
     uint32_t last_present = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    int pending_redraw = 1;
+    int pending_redraw = 0;
 
     EVT ev;
 
     while (s_gui_active) {
-        int need_redraw = 0;
         uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
 
         /* 1. Poll USB / input devices (ASYNC.txt 1 ms cadence) */
@@ -955,9 +1021,7 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
         } else {
             if ((now - last_usb_poll) >= ASYNC_INPUT_PERIOD_US) {
                 last_usb_poll = now;
-                if (usb_poll_devices(screen)) {
-                    need_redraw = 1;
-                }
+                usb_poll_devices(screen);
             }
         }
 
@@ -988,7 +1052,6 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
                         mev.button = 0;
                         mev.data   = 0;
                         snd_evt(&mev);
-                        need_redraw = 1;
                     }
                 } else {
                     ev.type   = EV_KEY_DOWN;
@@ -998,7 +1061,7 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
                     ev.button = 0;
                     ev.data   = 0;
                     snd_evt(&ev);
-                    need_redraw = 1;
+                    pending_redraw = 1;
                 }
             } else {
                 if (c == '\r') c = '\n';
@@ -1009,14 +1072,18 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
                 ev.button = 0;
                 ev.data   = 0;
                 snd_evt(&ev);
-                need_redraw = 1;
+                pending_redraw = 1;
             }
         }
 
         /* 3. Dispatch queued BTRON events */
         while (get_evt(&ev, 0) == E_OK) {
             workbench_process_event(screen, &ev);
-            need_redraw = 1;
+            if (ev.type != EV_MOUSE_MOVE || ev.button != 0 ||
+                wnd_mgr_is_interacting() || ev.pos.y <= 25 ||
+                global_menu_is_open() || tracker_is_menu_open()) {
+                pending_redraw = 1;
+            }
         }
         if (!s_gui_active) break;
 
@@ -1028,29 +1095,47 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
         btron_scheduler_dispatch();
 
         /* 5. Detect state changes that require composite update */
-        if (wnd_mgr_flush_resize()) need_redraw = 1;
-        if (wnd_any_image_invalid()) need_redraw = 1;
-        if (s_mouse_x != prev_mx || s_mouse_y != prev_my) need_redraw = 1;
+        if (wnd_mgr_flush_resize()) pending_redraw = 1;
+        if (wnd_any_image_invalid()) pending_redraw = 1;
 
         if ((now - last_clock) >= 1000000) {
             last_clock = now;
-            need_redraw = 1;
+            pending_redraw = 1;
         }
 
-        if (need_redraw) pending_redraw = 1;
-
         /* ASYNC presentation plane: budgeted cadence (ASYNC_UI_PERIOD_US) */
-        if (pending_redraw && ((now - last_present) >= ASYNC_UI_PERIOD_US)) {
+        uint32_t ui_interval = ASYNC_UI_PERIOD_US;
+        if (s_last_paint_duration_us > 15000) {
+            /* Heavy software 3D paint detected (e.g. Quake / XMB taking >15 ms).
+             * Throttle to budgeted slice cadence (~30 Hz / 33 ms) so the CPU is not
+             * 100% starved and the mouse task maintains dedicated budget. */
+            ui_interval = 33333u;
+        }
+
+        if (pending_redraw && ((now - last_present) >= ui_interval)) {
+            uint32_t t_render_start = *(volatile uint32_t *)(TIMER_BASE + 0x04);
             last_present = now;
             pending_redraw = 0;
-            prev_mx = s_mouse_x;
-            prev_my = s_mouse_y;
             workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
             blit_backbuffer_to_fb(gpu_fb);
+            s_shown_mx = s_mouse_x;
+            s_shown_my = s_mouse_y;
+            draw_baremetal_cursor_raw(gpu_fb, s_shown_mx, s_shown_my, BTRON_SCREEN_W, BTRON_SCREEN_H);
+            prev_mx = s_mouse_x;
+            prev_my = s_mouse_y;
+            s_last_paint_duration_us = *(volatile uint32_t *)(TIMER_BASE + 0x04) - t_render_start;
+        } else if (s_mouse_x != s_shown_mx || s_mouse_y != s_shown_my) {
+            /* Cursor-only fast damage: restore 16x16 old rect and draw 16x16 new rect */
+            arm64_fast_cursor_update(gpu_fb, s_mouse_x, s_mouse_y, &s_shown_mx, &s_shown_my);
+            prev_mx = s_mouse_x;
+            prev_my = s_mouse_y;
         }
 
         __asm__ volatile("dsb sy" : : : "memory");
     }
+
+    s_active_gpu_fb = NULL;
+    g_cursor_in_backbuffer = 1;
 
     /* Return to Stage 1 console */
     fb_log_enable((volatile uint32_t *)gpu_fb);
@@ -1157,19 +1242,6 @@ void kprintf(const char *fmt, ...) {
     va_end(ap);
 }
 
-/* ═══════════════════════════════════════════════════════════════════
- * VideoCore GPU Framebuffer & Display Blitter (Single Physical Buffer)
- * ═══════════════════════════════════════════════════════════════════ */
-
-void blit_backbuffer_to_fb(volatile uint32_t *gpu_fb) {
-    if (!gpu_fb) return;
-    uint32_t start_us = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    arm64_fast_blit((void *)gpu_fb, s_desktop_backbuffer,
-                    BTRON_SCREEN_W * BTRON_SCREEN_H * sizeof(COLOR));
-    s_async_rt_stats.blit_us = *(volatile uint32_t *)(TIMER_BASE + 0x04) - start_us;
-    if (s_async_rt_stats.blit_us > s_async_rt_stats.blit_max_us)
-        s_async_rt_stats.blit_max_us = s_async_rt_stats.blit_us;
-}
 
 /* ═══════════════════════════════════════════════════════════════════
  * BCM2711 / BCM2837 System Timer & 60Hz Tick
