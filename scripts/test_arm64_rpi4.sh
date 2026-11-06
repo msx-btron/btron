@@ -29,6 +29,7 @@ echo "[CI-TEST] Running QEMU ($QEMU_BIN) for $ELF_PATH on raspi4b..."
     -m 2G \
     -device loader,file=btron_sys.vol,addr=0x03000000 \
     -device loader,file=btron_anders.vol,addr=0x03200000 \
+    $([ -f assets/quake/pak/pak0.pak ] && echo "-device loader,file=assets/quake/pak/pak0.pak,addr=0x04000000") \
     -device usb-kbd -device usb-mouse \
     -display none \
     -kernel "$ELF_PATH" \

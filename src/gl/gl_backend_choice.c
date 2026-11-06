@@ -6,6 +6,10 @@
 
 #include "gl_backend_choice.h"
 
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+#include <arch/bcm283x/v3d.h>
+#endif
+
 /*
  * The build's own answer, and the only place that knows which rasteriser this image links.
  * BTRON_GL_BACKEND_TINYGL is defined by the Makefile lists that put src/gl/tinygl/ into a
@@ -33,6 +37,11 @@ GL_BACKEND gl_backend_default(void)
 {
 #ifdef BTRON_GL_PREFER_EEGS
     return GL_BACKEND_EEGS;
+#elif defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+    if (v3d_is_available()) {
+        return GL_BACKEND_V3D;
+    }
+    return gl_backend_software_default();
 #else
     return gl_backend_software_default();
 #endif

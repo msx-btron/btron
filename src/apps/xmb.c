@@ -1426,14 +1426,21 @@ static void xb_draw_ribbon(float alpha)
         return;
     }
 #endif
+    float last_b = -1.0f;
     for (r = 0; r < XB_RIBBON_ROWS - 1; r++) {
         for (c = 0; c < XB_RIBBON_COLS; c++) {
             int col = (r & 1) ? (XB_RIBBON_COLS - 1 - c) : c;
             float b = xb_rib_bri[r][col];
-            glColor4f(b, b, b, 1.0f);
+            if (b != last_b) {
+                glColor4f(b, b, b, 1.0f);
+                last_b = b;
+            }
             glVertex2f(xb_rib_px[r][col], xb_rib_py[r][col]);
             b = xb_rib_bri[r + 1][col];
-            glColor4f(b, b, b, 1.0f);
+            if (b != last_b) {
+                glColor4f(b, b, b, 1.0f);
+                last_b = b;
+            }
             glVertex2f(xb_rib_px[r + 1][col], xb_rib_py[r + 1][col]);
         }
     }
@@ -2991,9 +2998,20 @@ static void xb_go_back(void)
 static void xb_task(VW exinf)
 {
     (void)exinf;
+    SYSTIME t_prev = 0;
+    get_tim(&t_prev);
     while (s_wnd) {
         inval_wnd(s_wnd);
-        dly_tsk(s_frame_ms);
+        SYSTIME t_now = 0;
+        get_tim(&t_now);
+        W elapsed = (W)(t_now - t_prev);
+        W sleep_ms = s_frame_ms - elapsed;
+        if (sleep_ms < 1)
+            sleep_ms = 1;
+        else if (sleep_ms > s_frame_ms)
+            sleep_ms = s_frame_ms;
+        dly_tsk(sleep_ms);
+        get_tim(&t_prev);
     }
     s_tsk = 0;
 }
@@ -3138,10 +3156,10 @@ static void xb_paint(WND *wnd, GDEV *dev)
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT);
-    if (probing)
-        xb_phase("f_clear", canvas_px);
+    /* Fast-path: glClear(GL_COLOR_BUFFER_BIT) is bypassed because xb_draw_bg() immediately
+     * below unconditionally renders an opaque full-screen gradient quad with glDisable(GL_BLEND),
+     * completely overwriting every pixel from (0,0) to (dev->width, dev->height).
+     * Bypassing glClear eliminates redundant 3.1 MB framebuffer write bandwidth per frame. */
 
     /* xmb_draw_bg(): gradient, then the waving surface over it */
     xb_draw_bg(xb_minf(s_alpha, 0.90f));

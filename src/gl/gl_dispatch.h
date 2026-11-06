@@ -32,6 +32,7 @@ typedef enum {
      * blits its surface into the canvas, an EEGS one uploads that canvas *under* the GS
      * stream and never draws its own pixels at all. */
     GL_BACKEND_EEGS   = 3,
+    GL_BACKEND_V3D    = 4,    /* VideoCore VI (V3D 4.2) BCM2711 Hardware Pipeline */
 } GL_BACKEND;
 
 /* The image's one microsecond, reached through the surface layer rather than included

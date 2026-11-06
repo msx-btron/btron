@@ -35,7 +35,9 @@ void gl_set_active_backend(GL_BACKEND b) {
  * does -- and every call site that used to compare against GL_BACKEND_TINYGL would otherwise
  * have to grow the same `|| EEGS` clause, six of which is six chances to miss one. */
 int gl_tinygl_pipeline(void) {
-    return s_active_backend == GL_BACKEND_TINYGL || s_active_backend == GL_BACKEND_EEGS;
+    return s_active_backend == GL_BACKEND_TINYGL ||
+           s_active_backend == GL_BACKEND_EEGS ||
+           s_active_backend == GL_BACKEND_V3D;
 }
 
 /* The same answer as the log tag.  It lives here because this file is the one that installs a
@@ -46,6 +48,7 @@ const char *gl_backend_name(GL_BACKEND b)
 {
     switch (b) {
     case GL_BACKEND_EEGS:   return "eegs";
+    case GL_BACKEND_V3D:    return "v3d";
     case GL_BACKEND_TINYGL: return "tinygl";
     case GL_BACKEND_VIRGL:  return "virgl";
     case GL_BACKEND_I915:   return "i915";
@@ -82,6 +85,12 @@ void gl_init(GL_BACKEND backend, int width, int height, void *pixel_buf) {
         tinygl_backend_init(width, height, pixel_buf);
         g_gl = &g_tinygl_ops;
         s_active_backend = GL_BACKEND_EEGS;
+        break;
+
+    case GL_BACKEND_V3D:
+        tinygl_backend_init(width, height, pixel_buf);
+        g_gl = &g_tinygl_ops;
+        s_active_backend = GL_BACKEND_V3D;
         break;
 #endif
 

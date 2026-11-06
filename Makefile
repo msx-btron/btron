@@ -506,7 +506,9 @@ ARCH_BCM_SRCS = src/drivers/bcm283x/cpu/cache.c      \
 ARCH_BCM64_SRCS = $(ARCH_BCM_SRCS) \
                   src/drivers/bcm283x/pci/pcie_bcm2711.c \
                   src/drivers/bcm283x/usb/xhci.c \
-                  src/drivers/bcm283x/dma/bcm2711_dma.c
+                  src/drivers/bcm283x/dma/bcm2711_dma.c \
+                  src/drivers/bcm283x/gpu/v3d_init.c \
+                  src/drivers/bcm283x/gpu/v3d_cl.c
 
 TKERNEL_SAKAMURA_SRCS = \
     src/kernel/task.c         \
@@ -2912,6 +2914,7 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol
 	    $(QEMU_AARCH64) -M raspi4b -m 2G $(KERNEL_DISPLAY) \
 	        -device loader,file=btron_sys.vol,addr=0x03000000 \
 	        -device loader,file=btron_anders.vol,addr=0x03200000 \
+	        $$(test -f assets/quake/pak/pak0.pak && echo "-device loader,file=assets/quake/pak/pak0.pak,addr=0x04000000") \
 	        -device usb-kbd -device usb-mouse \
 	        -kernel $(ARM64_TARGET) -serial stdio; \
 	else \

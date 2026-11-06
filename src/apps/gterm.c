@@ -15,6 +15,7 @@
 #include "../clu/lang.h"
 #include "../clu/sc/sokhatsky.h"
 #include "../clu/tv/tv.h"
+#include "../clu/be/native.h"
 
 #if defined(__GNUC__) || defined(__clang__)
 __attribute__((weak)) int sc_session_init(const char *start_path, int rows, int cols) { (void)start_path; (void)rows; (void)cols; return -1; }
@@ -24,6 +25,10 @@ __attribute__((weak)) int sc_is_tv_active(void) { return 0; }
 __attribute__((weak)) int tv_session_init(const char *filepath, int view_only, int rows, int cols) { (void)filepath; (void)view_only; (void)rows; (void)cols; return -1; }
 __attribute__((weak)) int tv_session_step(int key) { (void)key; return 0; }
 __attribute__((weak)) void tv_session_close(void) {}
+__attribute__((weak)) int be_native_session_init(BeNativeContext *ctx, const char *args, int rows, int cols) { (void)ctx; (void)args; (void)rows; (void)cols; return -1; }
+__attribute__((weak)) int be_native_session_step(BeNativeContext *ctx, int key) { (void)ctx; (void)key; return 0; }
+__attribute__((weak)) void be_native_session_close(BeNativeContext *ctx) { (void)ctx; }
+__attribute__((weak)) void be_native_session_resize(BeNativeContext *ctx, int rows, int cols) { (void)ctx; (void)rows; (void)cols; }
 __attribute__((weak)) int term_get_cell(int r, int c, uint32_t *cp, int *style) { (void)r; (void)c; (void)cp; (void)style; return 0; }
 __attribute__((weak)) void term_get_style_colors(int style, uint32_t *fg, uint32_t *bg) { (void)style; if (fg) *fg = 0xFFFFFFFF; if (bg) *bg = 0xFF000000; }
 __attribute__((weak)) void term_get_cursor(int *row, int *col, int *visible) { if (row) *row = -1; if (col) *col = -1; if (visible) *visible = 0; }
@@ -104,6 +109,7 @@ typedef enum {
     GTERM_MODE_SHELL = 0,
     GTERM_MODE_SC,
     GTERM_MODE_TV,
+    GTERM_MODE_BE,
     GTERM_MODE_FORTH
 } GTermAppMode;
 
@@ -136,13 +142,14 @@ typedef struct {
     int   sb_drag_start_y; /* Initial mouse Y when dragging thumb */
     int   sb_drag_start_offset; /* Initial scroll_offset when dragging */
 
-    /* In-window termios app mode (SC, TV) */
+    /* In-window termios app mode (SC, TV, BE) */
     GTermAppMode app_mode;
     int          app_rows;
     int          app_cols;
     TermContext *term_ctx;
     ScContext   *sc_ctx;
     TvContext   *tv_ctx;
+    BeNativeContext *be_ctx;
 } GTermState;
 
 
@@ -519,6 +526,43 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
             }
         }
         clu_tv(arg, out_fn, user_data);
+        return;
+    }
+    if (strcmp(cmd, "be") == 0 || strcmp(cmd, "hex") == 0 ||
+        strcmp(cmd, "binedit") == 0 || strcmp(cmd, "bin/be") == 0 ||
+        strcmp(cmd, "./bin/be") == 0) {
+        GTermState *st_be = (GTermState *)user_data;
+        if (st_be && wnd) {
+            int row_h = (st_be->font_size >= 12 && st_be->font_size <= 20) ? st_be->font_size : 16;
+            int cli_w = wnd->client.right - wnd->client.left;
+            int cli_h = wnd->client.bottom - wnd->client.top;
+            int cols = (cli_w - 16) / 8;
+            int rows = (cli_h - (APP_MENU_BAR_HEIGHT + 4)) / row_h;
+            if (cols < 30) cols = 30;
+            if (rows < 8) rows = 8;
+            if (!st_be->term_ctx) st_be->term_ctx = term_context_create();
+            if (!st_be->be_ctx) st_be->be_ctx = (BeNativeContext *)calloc(1, sizeof(BeNativeContext));
+            term_set_context(st_be->term_ctx);
+            const char *file_p = (arg[0] != '\0') ? arg : "";
+            if (st_be->be_ctx && be_native_session_init(st_be->be_ctx, file_p, rows, cols) == 0) {
+                st_be->app_mode = GTERM_MODE_BE;
+                st_be->app_rows = rows;
+                st_be->app_cols = cols;
+                inval_wnd(wnd);
+                return;
+            } else {
+                gterm_report_app_refused(out_fn, user_data, "be", rows, cols);
+                if (st_be->be_ctx) {
+                    free(st_be->be_ctx);
+                    st_be->be_ctx = NULL;
+                }
+                if (st_be->term_ctx) {
+                    term_context_destroy(st_be->term_ctx);
+                    st_be->term_ctx = NULL;
+                }
+            }
+        }
+        clu_be(arg, out_fn, user_data);
         return;
     }
 
@@ -1217,8 +1261,8 @@ static void handle_gterm_event(WND *wnd, const EVT *evt) {
         return;
     }
 
-    /* ── Forward input to active termios app session (SC, TV) ────────────── */
-    if (st->app_mode == GTERM_MODE_SC || st->app_mode == GTERM_MODE_TV) {
+    /* ── Forward input to active termios app session (SC, TV, BE) ────────────── */
+    if (st->app_mode == GTERM_MODE_SC || st->app_mode == GTERM_MODE_TV || st->app_mode == GTERM_MODE_BE) {
         if (evt->type == EV_KEY_DOWN) {
             UW sym = evt->key;
             uint16_t mod = (uint16_t)(uintptr_t)evt->data;
@@ -1303,6 +1347,22 @@ static void handle_gterm_event(WND *wnd, const EVT *evt) {
                         }
                         st->app_mode = GTERM_MODE_SHELL;
                         gterm_append_line(st, "Terminal Vision session closed.", COLOR_GREEN);
+                    }
+                } else if (st->app_mode == GTERM_MODE_BE) {
+                    if (st->term_ctx) term_set_context(st->term_ctx);
+                    running = be_native_session_step(st->be_ctx, tk);
+                    if (!running) {
+                        be_native_session_close(st->be_ctx);
+                        if (st->be_ctx) {
+                            free(st->be_ctx);
+                            st->be_ctx = NULL;
+                        }
+                        if (st->term_ctx) {
+                            term_context_destroy(st->term_ctx);
+                            st->term_ctx = NULL;
+                        }
+                        st->app_mode = GTERM_MODE_SHELL;
+                        gterm_append_line(st, "Binary Editor session closed.", COLOR_GREEN);
                     }
                 }
                 inval_wnd(wnd);
@@ -1510,10 +1570,12 @@ static void paint_gterm(WND *wnd, GDEV *dev) {
     COLOR eff_fg = st->fg_color ? st->fg_color : 0xFFFFFFFF;
     int   row_h  = (st->font_size >= 12 && st->font_size <= 20) ? st->font_size : 16;
 
-    /* ── In-Window Termios Application Rendering (SC, TV) ─────────────── */
-    if (st->app_mode == GTERM_MODE_SC || st->app_mode == GTERM_MODE_TV) {
+    /* ── In-Window Termios Application Rendering (SC, TV, BE) ─────────────── */
+    if (st->app_mode == GTERM_MODE_SC || st->app_mode == GTERM_MODE_TV || st->app_mode == GTERM_MODE_BE) {
         BOOL is_tv = (st->app_mode == GTERM_MODE_TV) || (st->app_mode == GTERM_MODE_SC && sc_is_tv_active());
-        if (is_tv) {
+        if (st->app_mode == GTERM_MODE_BE) {
+            app_menu_set_right_text(&st->menu_bar, "[Binary Editor (be) | F10: 終了]");
+        } else if (is_tv) {
             app_menu_set_right_text(&st->menu_bar, "[Terminal Vision (tv) | F10: 終了]");
         } else {
             app_menu_set_right_text(&st->menu_bar, "[Sokhatsky Commander (sc) | F10: 終了]");
@@ -1535,10 +1597,12 @@ static void paint_gterm(WND *wnd, GDEV *dev) {
                 sc_session_step(K_RESIZE);
             } else if (st->app_mode == GTERM_MODE_TV) {
                 tv_session_step(K_RESIZE);
+            } else if (st->app_mode == GTERM_MODE_BE) {
+                be_native_session_resize(st->be_ctx, new_rows, new_cols);
             }
         }
 
-        COLOR app_bg = is_tv ? 0xFF000000 : 0xFF001A4E;
+        COLOR app_bg = (is_tv || st->app_mode == GTERM_MODE_BE) ? 0xFF000000 : 0xFF001A4E;
         RECT full_r = { 0, canvas_top, dev->width, dev->height };
         fill_rec(dev, &full_r, app_bg);
 
@@ -1784,6 +1848,8 @@ static void destroy_gterm(WND *wnd) {
             sc_session_close();
         } else if (st->app_mode == GTERM_MODE_TV) {
             tv_session_close();
+        } else if (st->app_mode == GTERM_MODE_BE) {
+            be_native_session_close(st->be_ctx);
         }
 
         if (st->sc_ctx) {
@@ -1793,6 +1859,10 @@ static void destroy_gterm(WND *wnd) {
         if (st->tv_ctx) {
             tv_context_destroy(st->tv_ctx);
             st->tv_ctx = NULL;
+        }
+        if (st->be_ctx) {
+            free(st->be_ctx);
+            st->be_ctx = NULL;
         }
         if (st->term_ctx) {
             term_context_destroy(st->term_ctx);

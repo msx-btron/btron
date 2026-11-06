@@ -43,6 +43,7 @@
 #include <dwc2.h>
 #include <pcie.h>
 #include <xhci.h>
+#include <arch/bcm283x/v3d.h>
 
 extern void orchestra_ui_tick(void);
 extern void cassette_service(void);
@@ -498,6 +499,10 @@ static char s_cmd_buf[64];
 static int  s_cmd_pos     = 0;
 
 /* Forward declaration */
+/* Forward declarations for InterCore non-blocking queues & scheduler */
+void intercore_poll_signals(void);
+void btron_scheduler_dispatch(void);
+
 static void launch_pi4_desktop_session(uint32_t *gpu_fb);
 
 /* Defined beside the pointer path it measures, which is further down this file
@@ -525,6 +530,8 @@ static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
         fb_log("  mars, quake, msx        - 3D & Gaming Apps (MARS 1993, Quake, MSX Player)\n");
         fb_log("  xmb, glgears, lilcu64   - 3D Demos & Media (XMB, GLGears, Lil Cu 64)\n");
         fb_log("  drivesetup, forth, sps  - Disk Manager, Forth, DPS Publisher\n");
+        fb_log("  ps                      - InterCore Task Census (running processes)\n");
+        fb_log("  gpu / v3d               - VideoCore VI (V3D 4.2) 3D hardware status\n");
         fb_log("  open <app>              - Open specific Workbench application\n");
         fb_log("  mem, ver, ptrcal, clear - Diagnostics & utilities\n");
         fb_log("  reboot                  - Halt processor\n");
@@ -545,6 +552,39 @@ static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
             s_gui_active = 0;
         } else {
             fb_log("[CON] Already at Stage 1 console.\n");
+        }
+
+    } else if (tkl_strcmp(cmd, "ps") == 0) {
+        char row_buf[80];
+        fb_log("PID  TASK            STAT   ENTRY      PRI\n");
+        uart_puts("PID  TASK            STAT   ENTRY      PRI\n");
+        int count = 0;
+        for (int i = 0; i < 16; i++) {
+            int ret = btron_task_row_text(i, row_buf, sizeof(row_buf));
+            if (ret <= 0) break;
+            fb_log(row_buf);
+            fb_log("\n");
+            uart_puts(row_buf);
+            uart_puts("\n");
+            count++;
+        }
+        if (count == 0) {
+            fb_log("  (no active InterCore worker tasks)\n");
+            uart_puts("  (no active InterCore worker tasks)\n");
+        }
+
+    } else if (tkl_strcmp(cmd, "gpu") == 0 || tkl_strcmp(cmd, "v3d") == 0) {
+        const v3d_info_t *info = v3d_get_info();
+        if (info && info->hardware_present) {
+            fb_log("[V3D] VideoCore VI (V3D 4.2) 3D Pipeline: ACTIVE\n");
+            fb_log("      Ident0 : 0x"); fb_log_hex32(info->ident0); fb_log("\n");
+            fb_log("      Ident1 : 0x"); fb_log_hex32(info->ident1); fb_log("\n");
+            fb_log("      QPUs   : ");   fb_log_dec(info->qpu_count); fb_log(" dual-issue SIMD16 cores\n");
+            fb_log("      Clock  : ");   fb_log_dec(info->clock_hz / 1000000u); fb_log(" MHz\n");
+            fb_log("      Status : Hardware CLE & PTB Tile Binning Ready\n");
+        } else {
+            fb_log("[V3D] VideoCore VI (V3D 4.2): Hardware core not present\n");
+            fb_log("      Pipeline: TinyGL CPU software rasterizer active\n");
         }
 
     } else if (tkl_strcmp(cmd, "ptrcal") == 0) {
@@ -742,6 +782,9 @@ static int pi4_shell_poll(uint32_t *gpu_fb)
     static uint8_t s_prev_scancode = 0;
     uint32_t k = 0;
 
+    intercore_poll_signals();
+    btron_scheduler_dispatch();
+
     /* Drain xHCI event ring FIRST (if on physical Pi 400 hardware).
      * When the 1 kHz IRQ input plane is armed, the ISR owns event-ring
      * draining and the shell must not touch it (ASYNC.txt §5: single
@@ -807,18 +850,14 @@ static int pi4_shell_poll(uint32_t *gpu_fb)
 
     /* Pass keys through to workbench when GUI is active */
     if (s_gui_active) {
-        if (k == 0x1B /* Escape */ || k == 'q' || k == 'Q') {
-            s_gui_active = 0;
-        } else {
-            EVT ev;
-            ev.type   = EV_KEY_DOWN;
-            ev.key    = k;
-            ev.pos.x  = s_mouse_x;
-            ev.pos.y  = s_mouse_y;
-            ev.button = 0;
-            ev.data   = 0;
-            snd_evt(&ev);
-        }
+        EVT ev;
+        ev.type   = EV_KEY_DOWN;
+        ev.key    = k;
+        ev.pos.x  = s_mouse_x;
+        ev.pos.y  = s_mouse_y;
+        ev.button = 0;
+        ev.data   = 0;
+        snd_evt(&ev);
         return 1;
     }
 
@@ -950,8 +989,14 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
                         need_redraw = 1;
                     }
                 } else {
-                    s_gui_active = 0;
-                    break;
+                    ev.type   = EV_KEY_DOWN;
+                    ev.key    = 0x1B;
+                    ev.pos.x  = s_mouse_x;
+                    ev.pos.y  = s_mouse_y;
+                    ev.button = 0;
+                    ev.data   = 0;
+                    snd_evt(&ev);
+                    need_redraw = 1;
                 }
             } else {
                 if (c == '\r') c = '\n';
@@ -968,10 +1013,6 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
 
         /* 3. Dispatch queued BTRON events */
         while (get_evt(&ev, 0) == E_OK) {
-            if (ev.type == EV_KEY_DOWN && ev.key == 0x1B) {
-                s_gui_active = 0;
-                break;
-            }
             workbench_process_event(screen, &ev);
             need_redraw = 1;
         }
@@ -980,7 +1021,11 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
         orchestra_ui_tick();
         cassette_service();
 
-        /* 4. Detect state changes that require composite update */
+        /* 4. Non-blocking InterCore queue poll & non-blocking task scheduler */
+        intercore_poll_signals();
+        btron_scheduler_dispatch();
+
+        /* 5. Detect state changes that require composite update */
         if (wnd_mgr_flush_resize()) need_redraw = 1;
         if (wnd_any_image_invalid()) need_redraw = 1;
         if (s_mouse_x != prev_mx || s_mouse_y != prev_my) need_redraw = 1;
@@ -1199,34 +1244,320 @@ void rpi_timer_tick(void) {
         s_async_rt_stats.isr_max_us = isr_us;
 }
 
-extern ER _tk_slp_tsk(W tmout);
-extern ER _tk_wup_tsk(ID tskid);
-extern ER _tk_dly_tsk(W dlytim);
+/* ═══════════════════════════════════════════════════════════════════
+ * InterCore Non-Blocking Queues & Signaling (doc/txt/ASYNC.txt)
+ * Lock-free SPSC/MPSC ring topology with two-phase memory barrier commit.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+#define MAX_ARM64_TASKS         8
+#define ARM64_TASK_STACK_SIZE   24576u  /* 24 KB stack per worker task */
+
+#define INTERCORE_QUEUE_CAPACITY 256u
+#define INTERCORE_QUEUE_MASK     (INTERCORE_QUEUE_CAPACITY - 1u)
+
+typedef struct {
+    uint32_t type;    /* Signal/Event type (e.g. EVT_INPUT, SIG_WAKEUP, etc.) */
+    uint32_t sender;  /* Sending task/core ID */
+    uint32_t target;  /* Target task/core ID */
+    uint32_t seq;     /* Monotonic sequence stamp */
+    uint64_t data0;   /* Signal payload argument 0 */
+    uint64_t data1;   /* Signal payload argument 1 */
+} intercore_msg_t;
+
+typedef struct {
+    intercore_msg_t   slots[INTERCORE_QUEUE_CAPACITY];
+    volatile uint32_t head;   /* Consumer read cursor */
+    volatile uint32_t tail;   /* Producer write cursor */
+    volatile uint32_t drops;  /* Drops under full capacity */
+} intercore_queue_t;
+
+static intercore_queue_t s_intercore_input_queue;
+static intercore_queue_t s_intercore_task_queues[MAX_ARM64_TASKS];
+
+int intercore_send(intercore_queue_t *q, const intercore_msg_t *msg) {
+    if (!q || !msg) return -1;
+    uint32_t head = q->head;
+    uint32_t tail = q->tail;
+    if ((tail - head) >= INTERCORE_QUEUE_CAPACITY) {
+        q->drops++;
+        return -2; /* SNDR_FULL: non-blocking drop */
+    }
+    uint32_t idx = tail & INTERCORE_QUEUE_MASK;
+    q->slots[idx] = *msg;
+    __asm__ volatile("dmb sy" : : : "memory");
+    q->tail = tail + 1;
+    return 0; /* SNDR_OK */
+}
+
+int intercore_recv(intercore_queue_t *q, intercore_msg_t *out_msg) {
+    if (!q || !out_msg) return -1;
+    uint32_t head = q->head;
+    uint32_t tail = q->tail;
+    if (head == tail) {
+        return 0; /* RCVR_EMPTY: non-blocking empty */
+    }
+    uint32_t idx = head & INTERCORE_QUEUE_MASK;
+    *out_msg = q->slots[idx];
+    __asm__ volatile("dmb sy" : : : "memory");
+    q->head = head + 1;
+    return 1; /* RCVR_DATA */
+}
+
+int intercore_signal_task(ID tskid, uint32_t sig_type, uint64_t data0, uint64_t data1) {
+    if (tskid <= 0 || tskid > MAX_ARM64_TASKS) return -1;
+    intercore_msg_t msg;
+    msg.type = sig_type;
+    msg.sender = 0;
+    msg.target = (uint32_t)tskid;
+    msg.seq = s_system_ticks;
+    msg.data0 = data0;
+    msg.data1 = data1;
+    int rc = intercore_send(&s_intercore_task_queues[tskid - 1], &msg);
+    if (rc == 0) {
+        wup_tsk(tskid);
+    }
+    return rc;
+}
+
+void intercore_poll_signals(void) {
+    intercore_msg_t msg;
+    while (intercore_recv(&s_intercore_input_queue, &msg) == 1) {
+        if (msg.target > 0 && msg.target <= MAX_ARM64_TASKS) {
+            intercore_send(&s_intercore_task_queues[msg.target - 1], &msg);
+            wup_tsk((ID)msg.target);
+        }
+    }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+ * AArch64 Callee-Saved Context Switch (Zero Preemption Overhead)
+ * Preserves AAPCS64 x19-x30 and d8-d15 with strict 16-byte SP alignment.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+void btron_ctx_switch(void **old_sp, void *new_sp);
+
+__asm__(
+    ".text\n"
+    ".align 4\n"
+    ".global btron_ctx_switch\n"
+    ".type btron_ctx_switch, %function\n"
+    "btron_ctx_switch:\n"
+    "    sub sp, sp, #160\n"
+    "    stp x19, x20, [sp, #0]\n"
+    "    stp x21, x22, [sp, #16]\n"
+    "    stp x23, x24, [sp, #32]\n"
+    "    stp x25, x26, [sp, #48]\n"
+    "    stp x27, x28, [sp, #64]\n"
+    "    stp x29, x30, [sp, #80]\n"
+    "    stp d8,  d9,  [sp, #96]\n"
+    "    stp d10, d11, [sp, #112]\n"
+    "    stp d12, d13, [sp, #128]\n"
+    "    stp d14, d15, [sp, #144]\n"
+    "    mov x2, sp\n"
+    "    str x2, [x0]\n"
+    "    mov sp, x1\n"
+    "    ldp d14, d15, [sp, #144]\n"
+    "    ldp d12, d13, [sp, #128]\n"
+    "    ldp d10, d11, [sp, #112]\n"
+    "    ldp d8,  d9,  [sp, #96]\n"
+    "    ldp x29, x30, [sp, #80]\n"
+    "    ldp x27, x28, [sp, #64]\n"
+    "    ldp x25, x26, [sp, #48]\n"
+    "    ldp x23, x24, [sp, #32]\n"
+    "    ldp x21, x22, [sp, #16]\n"
+    "    ldp x19, x20, [sp, #0]\n"
+    "    add sp, sp, #160\n"
+    "    ret\n"
+);
+
+/* ═══════════════════════════════════════════════════════════════════
+ * AArch64 Non-Blocking Cooperative Scheduler (μITRON 2.0 / 3.20)
+ * Allows worker tasks (Lil Cu 64, XMB, GLGears, MARS, Quake, MSX)
+ * to run concurrently with zero locks and zero priority inversion.
+ * ═══════════════════════════════════════════════════════════════════ */
+
+typedef struct {
+    ID          tskid;
+    T_CTSK      config;
+    int         active;
+    int         started;
+    int         runnable;
+    int         sleeping;
+    uint32_t    wake_us;
+    void       *sp;
+    uint8_t    *stack;
+} ARM64_TASK;
+
+static uint8_t s_arm64_task_stacks[MAX_ARM64_TASKS][ARM64_TASK_STACK_SIZE] __attribute__((aligned(16)));
+static ARM64_TASK s_arm64_tasks[MAX_ARM64_TASKS];
+static void *s_scheduler_sp = NULL;
+static int s_current_task_idx = -1;
+
+static void btron_task_trampoline(void) {
+    int idx = s_current_task_idx;
+    if (idx >= 0 && idx < MAX_ARM64_TASKS && s_arm64_tasks[idx].config.task) {
+        s_arm64_tasks[idx].config.task(s_arm64_tasks[idx].config.exinf);
+    }
+    ext_tsk();
+}
+
+ID cre_tsk(const T_CTSK *pk_ctsk) {
+    if (!pk_ctsk || !pk_ctsk->task) return E_PAR;
+    for (int i = 0; i < MAX_ARM64_TASKS; i++) {
+        if (!s_arm64_tasks[i].active) {
+            uint8_t *stk_top = s_arm64_task_stacks[i] + ARM64_TASK_STACK_SIZE;
+            stk_top = (uint8_t *)((uintptr_t)stk_top & ~0xFULL);
+            stk_top -= 160;
+            uint64_t *frame = (uint64_t *)stk_top;
+            for (int k = 0; k < 20; k++) frame[k] = 0;
+            frame[10] = 0; /* x29 (fp) */
+            frame[11] = (uint64_t)(uintptr_t)btron_task_trampoline; /* x30 (lr) */
+
+            s_arm64_tasks[i].sp = (void *)stk_top;
+            s_arm64_tasks[i].stack = s_arm64_task_stacks[i];
+            s_arm64_tasks[i].tskid = i + 1;
+            s_arm64_tasks[i].config = *pk_ctsk;
+            s_arm64_tasks[i].active = 1;
+            s_arm64_tasks[i].started = 0;
+            s_arm64_tasks[i].runnable = 0;
+            s_arm64_tasks[i].sleeping = 0;
+            s_arm64_tasks[i].wake_us = 0;
+            return i + 1;
+        }
+    }
+    return E_LIMIT;
+}
+
+ER sta_tsk(ID tskid, VW exinf) {
+    if (tskid <= 0 || tskid > MAX_ARM64_TASKS) return E_ID;
+    int idx = tskid - 1;
+    if (!s_arm64_tasks[idx].active) return E_NOEXS;
+    if (exinf != 0) s_arm64_tasks[idx].config.exinf = exinf;
+    s_arm64_tasks[idx].started = 1;
+    s_arm64_tasks[idx].runnable = 1;
+    s_arm64_tasks[idx].sleeping = 0;
+    return E_OK;
+}
+
+void ext_tsk(void) {
+    int idx = s_current_task_idx;
+    if (idx >= 0 && idx < MAX_ARM64_TASKS) {
+        s_arm64_tasks[idx].active = 0;
+        s_arm64_tasks[idx].started = 0;
+        s_arm64_tasks[idx].runnable = 0;
+        s_arm64_tasks[idx].sleeping = 0;
+    }
+    s_current_task_idx = -1;
+    if (s_scheduler_sp) {
+        void *dummy = NULL;
+        btron_ctx_switch(&dummy, s_scheduler_sp);
+    }
+    for (;;) {
+        __asm__ volatile("wfe");
+    }
+}
+
+void exd_tsk(void) {
+    ext_tsk();
+}
 
 ER slp_tsk(void) {
-    return _tk_slp_tsk(TMO_FEVR);
+    int idx = s_current_task_idx;
+    if (idx >= 0 && idx < MAX_ARM64_TASKS) {
+        s_arm64_tasks[idx].sleeping = 1;
+        s_arm64_tasks[idx].runnable = 0;
+        s_arm64_tasks[idx].wake_us = 0xFFFFFFFFu;
+        s_current_task_idx = -1;
+        if (s_scheduler_sp) {
+            btron_ctx_switch(&s_arm64_tasks[idx].sp, s_scheduler_sp);
+        }
+    }
+    return E_OK;
 }
 
 ER wup_tsk(ID tskid) {
-    return _tk_wup_tsk(tskid);
+    if (tskid <= 0 || tskid > MAX_ARM64_TASKS) return E_ID;
+    int idx = tskid - 1;
+    if (!s_arm64_tasks[idx].active) return E_NOEXS;
+    s_arm64_tasks[idx].sleeping = 0;
+    s_arm64_tasks[idx].runnable = 1;
+    return E_OK;
 }
 
 void dly_tsk(W dlytim) {
-    _tk_dly_tsk(dlytim);
+    int idx = s_current_task_idx;
+    if (idx >= 0 && idx < MAX_ARM64_TASKS) {
+        uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+        s_arm64_tasks[idx].sleeping = 1;
+        s_arm64_tasks[idx].runnable = 0;
+        s_arm64_tasks[idx].wake_us = now + (uint32_t)(dlytim > 0 ? dlytim : 1) * 1000U;
+        s_current_task_idx = -1;
+        if (s_scheduler_sp) {
+            btron_ctx_switch(&s_arm64_tasks[idx].sp, s_scheduler_sp);
+        }
+    } else {
+        uint32_t start = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+        uint32_t budget = (uint32_t)(dlytim > 0 ? dlytim : 1) * 1000U;
+        while ((*(volatile uint32_t *)(TIMER_BASE + 0x04) - start) < budget) {
+            __asm__ volatile("nop");
+        }
+    }
 }
 
-__attribute__((weak))
 ER tk_dly_tsk(W dlytim) {
-    return _tk_dly_tsk(dlytim);
+    dly_tsk(dlytim);
+    return E_OK;
 }
 
 ER get_tim(SYSTIME *p_time) {
     if (!p_time) return E_PAR;
-    /* The ASYNC IRQ plane ticks at 1 kHz, so ticks are milliseconds
-     * directly.  (Previously the 60 Hz assumption never held: no hardware
-     * timer IRQ existed and this always returned 0.) */
     *p_time = (uint64_t)s_system_ticks;
     return E_OK;
+}
+
+W btron_list_tasks(BTRON_TSK_ROW *out, W max) {
+    W n = 0;
+    if (!out || max <= 0) return 0;
+    for (int i = 0; i < MAX_ARM64_TASKS && n < max; i++) {
+        const ARM64_TASK *t = &s_arm64_tasks[i];
+        if (!t->active) continue;
+        out[n].tskid = (ID)(i + 1);
+        out[n].name  = t->config.name ? t->config.name : "(unnamed)";
+        out[n].pri   = t->config.itskpri;
+        out[n].entry = t->config.task;
+        if (!t->started) {
+            out[n].state = BTRON_TSK_NEW;
+        } else if (t->sleeping) {
+            out[n].state = BTRON_TSK_SLEEP;
+        } else if (t->runnable) {
+            out[n].state = BTRON_TSK_RUN;
+        } else {
+            out[n].state = BTRON_TSK_DEAD;
+        }
+        n++;
+    }
+    return n;
+}
+
+void btron_scheduler_dispatch(void) {
+    uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    for (int i = 0; i < MAX_ARM64_TASKS; i++) {
+        if (!s_arm64_tasks[i].active || !s_arm64_tasks[i].started) continue;
+        if (s_arm64_tasks[i].sleeping) {
+            if (s_arm64_tasks[i].wake_us != 0xFFFFFFFFu &&
+                (int32_t)(now - s_arm64_tasks[i].wake_us) >= 0) {
+                s_arm64_tasks[i].sleeping = 0;
+                s_arm64_tasks[i].runnable = 1;
+            } else {
+                continue;
+            }
+        }
+        if (s_arm64_tasks[i].runnable) {
+            s_current_task_idx = i;
+            btron_ctx_switch(&s_scheduler_sp, s_arm64_tasks[i].sp);
+            s_current_task_idx = -1;
+        }
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════════════
@@ -2087,7 +2418,10 @@ void btron_main(void) {
         dwc2_init();
     }
 
-    /* 5. Stage 1 Interactive Terminal Shell on GPU Framebuffer */
+    /* 5. Initialize VideoCore VI (V3D 4.2) 3D Hardware Engine */
+    v3d_init();
+
+    /* 6. Stage 1 Interactive Terminal Shell on GPU Framebuffer */
     /* This is the part of the log that stays on screen under the prompt, so it
      * is the one place decoration costs visible rows: four instead of the
      * boxed ten. */

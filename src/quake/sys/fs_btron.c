@@ -112,11 +112,31 @@ static const fs_ht_slot_t *ht_find(const char *path) {
 /*   Hosted build (POSIX / QEMU)                                     */
 /* ────────────────────────────────────────────────────────────────── */
 
-#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1 && !defined(BTRON_UEFI_TARGET)
+#if (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1 && !defined(BTRON_UEFI_TARGET)) || defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
 
 int FS_Init(void) {
     memset(s_ht, 0, sizeof(s_ht));
     memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
+
+    /* ── Check for RAM memory-mapped PAK (e.g. QEMU loader / Pi 400 preload at 0x04000000) ── */
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64) || defined(__aarch64__)
+    volatile const char *ram_pak = (const char *)0x04000000;
+    if (ram_pak[0] == 'P' && ram_pak[1] == 'A' && ram_pak[2] == 'C' && ram_pak[3] == 'K') {
+        const dpackheader_t *hdr = (const dpackheader_t *)ram_pak;
+        s_pak_image = (byte *)ram_pak;
+        s_pak_size = hdr->dirofs + hdr->dirlen;
+        s_pak_path_str = "RAM@0x04000000";
+        int num_entries = hdr->dirlen / (int)sizeof(packfile_t);
+        if (num_entries > FS_HT_SIZE / 2) num_entries = FS_HT_SIZE / 2;
+        const packfile_t *dir = (const packfile_t *)(s_pak_image + hdr->dirofs);
+        for (int i = 0; i < num_entries; i++) {
+            if (dir[i].filelen <= 0 || dir[i].filepos < 0) continue;
+            ht_insert(fnv1a(dir[i].name), dir[i].filepos, dir[i].filelen, dir[i].name);
+        }
+        Con_Printf("FS_Init: PAK memory-mapped from RAM @ 0x04000000 (%d entries)\n", num_entries);
+        return 1;
+    }
+#endif
 
     for (int pi = 0; s_search_paths[pi]; pi++) {
         FILE *f = fopen(s_search_paths[pi], "rb");
