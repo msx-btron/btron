@@ -10,6 +10,11 @@
 
 #include <btron/libc_shim.h>
 #include "../clu/vfs.h"
+
+__attribute__((weak)) int vfs_read_blob(const char *path, void *buf, size_t cap, size_t *out_bytes) {
+    (void)path; (void)buf; (void)cap; (void)out_bytes;
+    return -1;
+}
 #if BTRON_HOSTED
 #include <zlib.h>
 #include <dirent.h>

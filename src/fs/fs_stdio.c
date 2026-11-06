@@ -162,6 +162,19 @@ int stat(const char *path, struct stat *st)
     if (path == 0 || st == 0) return -1;
     memset(st, 0, sizeof *st);
     fd = opn_fil(path, F_READ);
+    if (fd < 0 && path[0] != '/') {
+        char syspath[128];
+        snprintf(syspath, sizeof(syspath), "/SYS/%s", path);
+        fd = opn_fil(syspath, F_READ);
+    }
+    if (fd < 0) {
+        const char *base = strrchr(path, '/');
+        if (base && *(base + 1)) {
+            char syspath[128];
+            snprintf(syspath, sizeof(syspath), "/SYS/%s", base + 1);
+            fd = opn_fil(syspath, F_READ);
+        }
+    }
     if (fd < 0) return -1;
     of = &g_open_files[(int)fd];
     st->st_size  = (long long)of->hdr.total_size;
@@ -177,9 +190,9 @@ FILE *fopen(const char *path, const char *mode)
     ID fd;
     int wr = 0;
     if (path == 0 || mode == 0) return 0;
-    if (mode[1] != 0) return 0;               /* "r+b" and friends are not modelled */
     if (mode[0] == 'w') wr = 1;
     else if (mode[0] != 'r') return 0;
+    if (mode[1] != 0 && (mode[1] != 'b' || mode[2] != 0)) return 0;
 
     f = slot_take();
     if (!f) return 0;
@@ -200,6 +213,19 @@ FILE *fopen(const char *path, const char *mode)
         fd = cre_fil(path, F_WRITE);
     } else {
         fd = opn_fil(path, F_READ);
+        if (fd < 0 && path[0] != '/') {
+            char syspath[128];
+            snprintf(syspath, sizeof(syspath), "/SYS/%s", path);
+            fd = opn_fil(syspath, F_READ);
+        }
+        if (fd < 0) {
+            const char *base = strrchr(path, '/');
+            if (base && *(base + 1)) {
+                char syspath[128];
+                snprintf(syspath, sizeof(syspath), "/SYS/%s", base + 1);
+                fd = opn_fil(syspath, F_READ);
+            }
+        }
     }
     if (fd < 0) { Ifree(f->buf); f->used = 0; return 0; }
     f->fd   = fd;

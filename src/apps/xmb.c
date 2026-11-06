@@ -3507,6 +3507,9 @@ WND* open_xmb_window_rect(int x, int y, int w, int h)
     }
 
     if (w <= 0 || h <= 0) {
+#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+        x = 20; y = 34; w = 520; h = 360;
+#else
         x = 16; y = 16; w = 960; h = 600;
         desk = get_btron_desktop();
         if (desk && desk->width > 160 && desk->height > 160) {
@@ -3517,6 +3520,7 @@ WND* open_xmb_window_rect(int x, int y, int w, int h)
             if (w > 1440) w = 1440;
             if (h > 900)  h = 900;
         }
+#endif
     }
 
     s_phase_t0 = btron_render_perf_us();

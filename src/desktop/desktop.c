@@ -28,11 +28,12 @@ typedef struct {
 } DESKTOP_ICON_DEF;
 
 static const DESKTOP_ICON_DEF s_desktop_icons[] = {
-    { "cabinet",   "実身・仮身",   "実身", COLOR_NAVY,  open_vobj_manager_window },
-    { "t_editor",  "基本エディタ", "文書", COLOR_BLACK, open_t_editor_window },
-    { "terminal",  "端末シェル",   "端末", COLOR_BLACK, open_gterm_window },
-    { "sound",     "音響機器",     "音響", COLOR_RED,   open_audio_player_window },
-    { "chat",      "会話通信",     "対話", COLOR_NAVY,  launch_beos_chat },
+    { "cabinet",   "実身・仮身",   "実身", COLOR_NAVY,   open_vobj_manager_window },
+    { "t_editor",  "基本エディタ", "文書", COLOR_BLACK,  open_t_editor_window },
+    { "terminal",  "端末シェル",   "端末", COLOR_BLACK,  open_gterm_window },
+    { "sound",     "音響機器",     "音響", COLOR_RED,    open_audio_player_window },
+    { "chat",      "会話通信",     "対話", COLOR_NAVY,   launch_beos_chat },
+    { "xmb",       "ＸＭＢ",       "ＸＭ", COLOR_NAVY,   open_xmb_window },
 };
 
 static BTRON_DESKTOP g_desktop;
@@ -526,9 +527,9 @@ GDEV* init_baremetal_desktop(uint32_t *fb, uint32_t w, uint32_t h) {
     init_vobj_sys("./btron_store");
     tip_init();
     init_evt_sys();
+    btron_desktop_note_size(w, h);
 
 #if defined(BTRON_PS2_TARGET)
-    btron_desktop_note_size(w, h);
     gl_backend_select(GL_BACKEND_EEGS);
     /* 4 OpenGL apps opened in Tile mode:
      * Quadrant 0 (Top-Left): Terminal (392x276, client 384x248)

@@ -119,7 +119,7 @@ int FS_Init(void) {
     memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
 
     /* ── Check for RAM memory-mapped PAK (e.g. QEMU loader / Pi 400 preload at 0x04000000) ── */
-#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64) || defined(__aarch64__)
+#if (defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)) && !defined(BTRON_HOSTED) && !defined(__APPLE__)
     volatile const char *ram_pak = (const char *)0x04000000;
     if (ram_pak[0] == 'P' && ram_pak[1] == 'A' && ram_pak[2] == 'C' && ram_pak[3] == 'K') {
         const dpackheader_t *hdr = (const dpackheader_t *)ram_pak;
@@ -221,6 +221,19 @@ byte *FS_LoadFile(const char *path, int *out_len) {
 
     /* 2. Direct filesystem fallback (loose files, modded content) */
     FILE *f = fopen(path, "rb");
+    if (!f && path[0] != '/') {
+        char syspath[128];
+        snprintf(syspath, sizeof(syspath), "/SYS/%s", path);
+        f = fopen(syspath, "rb");
+    }
+    if (!f) {
+        const char *base = strrchr(path, '/');
+        if (base && *(base + 1)) {
+            char syspath[128];
+            snprintf(syspath, sizeof(syspath), "/SYS/%s", base + 1);
+            f = fopen(syspath, "rb");
+        }
+    }
     if (!f) return NULL;
 
     fseek(f, 0, SEEK_END);

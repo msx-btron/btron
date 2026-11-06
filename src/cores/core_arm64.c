@@ -937,6 +937,8 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
 
     uint32_t last_clock = *(volatile uint32_t *)(TIMER_BASE + 0x04);
     uint32_t last_usb_poll = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    uint32_t last_present = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    int pending_redraw = 1;
 
     EVT ev;
 
@@ -944,14 +946,14 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
         int need_redraw = 0;
         uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
 
-        /* 1. Poll USB / input devices */
+        /* 1. Poll USB / input devices (ASYNC.txt 1 ms cadence) */
         if (g_use_xhci) {
             if (!s_async_irq_active) {
                 xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
             }
             input_plane_task(screen, now);
         } else {
-            if ((now - last_usb_poll) >= 10000) {
+            if ((now - last_usb_poll) >= ASYNC_INPUT_PERIOD_US) {
                 last_usb_poll = now;
                 if (usb_poll_devices(screen)) {
                     need_redraw = 1;
@@ -1035,7 +1037,12 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
             need_redraw = 1;
         }
 
-        if (need_redraw) {
+        if (need_redraw) pending_redraw = 1;
+
+        /* ASYNC presentation plane: budgeted cadence (ASYNC_UI_PERIOD_US) */
+        if (pending_redraw && ((now - last_present) >= ASYNC_UI_PERIOD_US)) {
+            last_present = now;
+            pending_redraw = 0;
             prev_mx = s_mouse_x;
             prev_my = s_mouse_y;
             workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
@@ -1511,7 +1518,8 @@ ER tk_dly_tsk(W dlytim) {
 
 ER get_tim(SYSTIME *p_time) {
     if (!p_time) return E_PAR;
-    *p_time = (uint64_t)s_system_ticks;
+    uint32_t us = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    *p_time = (uint64_t)(us / 1000u);
     return E_OK;
 }
 
@@ -1793,7 +1801,7 @@ static void mouse_motion_apply(int32_t rdx, int32_t rdy) {
         ev.type   = EV_MOUSE_MOVE;
         ev.pos.x  = s_mouse_x;
         ev.pos.y  = s_mouse_y;
-        ev.button = 0;
+        ev.button = (g_prev_mouse_btns & 1u) ? 1 : ((g_prev_mouse_btns & 2u) ? 2 : ((g_prev_mouse_btns & 4u) ? 3 : 0));
         ev.data   = 0;
         snd_evt(&ev);
     }
@@ -1954,8 +1962,8 @@ static int usb_poll_devices(GDEV *screen) {
     }
 
     if (mouse_activity) {
-        mouse_motion_apply(accum_dx, accum_dy);
         mouse_buttons_apply(latest_buttons);
+        mouse_motion_apply(accum_dx, accum_dy);
         activity = 1;
     }
 
@@ -1999,9 +2007,7 @@ static void input_plane_task(GDEV *screen, uint32_t now_us) {
     int32_t rdy = snap.acc_dy - s_input_last.acc_dy;
     s_input_last = snap;
 
-    if (snap.present && (rdx != 0 || rdy != 0))
-        mouse_motion_apply(rdx, rdy);
-
+    /* 1. Update button state and emit edges */
     int button_edge_seen = 0;
     while (s_button_edge_tail != s_button_edge_head) {
         __asm__ volatile("dmb sy" : : : "memory");
@@ -2013,6 +2019,10 @@ static void input_plane_task(GDEV *screen, uint32_t now_us) {
     if (!button_edge_seen && snap.buttons != s_input_prev_buttons)
         mouse_buttons_apply(snap.buttons);
     s_input_prev_buttons = snap.buttons;
+
+    /* 2. Coalesced motion application with current button state */
+    if (snap.present && (rdx != 0 || rdy != 0))
+        mouse_motion_apply(rdx, rdy);
 
     /* Keyboard: drain the SPSC ring (ISR is the sole producer) */
     usb_kbd_report_t kbd_rep;

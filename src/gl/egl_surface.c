@@ -190,7 +190,7 @@ EGL_SURFACE* egl_create_window_surface(WND *wnd) {
      * that no console heap has to spare, spent on a context nothing will draw with. */
     GL_BACKEND want = gl_backend_selected();
 #if defined(BTRON_GL_BACKEND_TINYGL)
-    if (want != GL_BACKEND_TINYGL && want != GL_BACKEND_EEGS)
+    if (want != GL_BACKEND_TINYGL && want != GL_BACKEND_EEGS && want != GL_BACKEND_V3D)
 #endif
         virgl_backend_make_current(surf->width, surf->height, surf->pixels);
     gl_init(want, surf->width, surf->height, surf->pixels);

@@ -49,6 +49,16 @@ FILE "mars_height.bin"           BIN   assets/forth/mars_height.bin
 FILE "mars_shade.bin"            BIN   assets/forth/mars_shade.bin
 FILE "mars_sky.bin"              BIN   assets/forth/mars_sky.bin
 
+# Quake Attract-Mode Demos (drone1m1..drone1m8)
+FILE "drone1m1.dem"              BIN   assets/quake/drone1m1.dem
+FILE "drone1m2.dem"              BIN   assets/quake/drone1m2.dem
+FILE "drone1m3.dem"              BIN   assets/quake/drone1m3.dem
+FILE "drone1m4.dem"              BIN   assets/quake/drone1m4.dem
+FILE "drone1m5.dem"              BIN   assets/quake/drone1m5.dem
+FILE "drone1m6.dem"              BIN   assets/quake/drone1m6.dem
+FILE "drone1m7.dem"              BIN   assets/quake/drone1m7.dem
+FILE "drone1m8.dem"              BIN   assets/quake/drone1m8.dem
+
 # Clarity Ceremony Assets
 FILE "clarity.png"               PNG   assets/icons/clarity.png
 FILE "Clarity-Sample.TAD"        TAD   -

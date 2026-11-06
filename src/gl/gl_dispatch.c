@@ -8,6 +8,7 @@
 #include "backend_virgl.h"
 #if defined(BTRON_GL_BACKEND_TINYGL)
 #include "backend_tinygl.h"
+#include "backend_v3d.h"
 #endif
 /* The EE/GS case answers with the build's own default, so it needs the rule that says what
  * that is -- which lives in its own TU precisely so this file and the Display applet cannot
@@ -88,8 +89,8 @@ void gl_init(GL_BACKEND backend, int width, int height, void *pixel_buf) {
         break;
 
     case GL_BACKEND_V3D:
-        tinygl_backend_init(width, height, pixel_buf);
-        g_gl = &g_tinygl_ops;
+        v3d_backend_init(width, height, pixel_buf);
+        g_gl = &g_v3d_ops;
         s_active_backend = GL_BACKEND_V3D;
         break;
 #endif
@@ -124,6 +125,10 @@ void gl_init(GL_BACKEND backend, int width, int height, void *pixel_buf) {
 void gl_resize(int width, int height, void *pixel_buf) {
     if (!g_gl) return;
 #if defined(BTRON_GL_BACKEND_TINYGL)
+    if (s_active_backend == GL_BACKEND_V3D) {
+        v3d_backend_resize(width, height, pixel_buf);
+        return;
+    }
     if (gl_tinygl_pipeline()) {
         tinygl_backend_resize(width, height, pixel_buf);
         return;

@@ -115,6 +115,7 @@ ARM_CFLAGS   = -O2 -Wall -Wextra -std=c99 -mno-unaligned-access \
                $(BCM_INC)
 ARM64_CFLAGS = -O2 -Wall -Wextra -std=c99 -mstrict-align \
                -D_RPI_BCM283x_ -DTYPE_RPI=3 -DBTRON_TARGET=6 \
+               -DBTRON_GL_BACKEND_TINYGL \
                -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast -Wno-unused-parameter \
                $(BCM_INC)
 
@@ -683,6 +684,7 @@ ARM64_APPS_SRCS = \
     src/gl/gl_backend_choice.c \
     src/gl/egl_surface.c       \
     src/gl/backend_tinygl.c    \
+    src/gl/backend_v3d.c       \
     src/gl/backend_virgl.c     \
     src/apps/glgears.c         \
     src/apps/xmb.c             \

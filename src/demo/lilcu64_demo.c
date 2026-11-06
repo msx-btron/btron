@@ -1678,6 +1678,7 @@ static void demo_event(WND *wnd, const EVT *evt) {
         s_drag_dist = 0.0f;
         s_cube_velx = 0.0f;
         s_cube_vely = 0.0f;
+        inval_wnd(wnd);
     } else if (evt->type == EV_BUT_UP) {
         s_dragging = 0;
         s_cube_velx *= 0.5f;
@@ -1691,6 +1692,7 @@ static void demo_event(WND *wnd, const EVT *evt) {
             trigger_radiant_wave(false);
             set_animation(ANIM_SING);
         }
+        inval_wnd(wnd);
     } else if (evt->type == EV_MOUSE_MOVE) {
         float cx = (float)wnd->client.left + (float)(wnd->client.right - wnd->client.left) * 0.5f;
         float cy = (float)wnd->client.top + (float)(wnd->client.bottom - wnd->client.top) * 0.38f;
