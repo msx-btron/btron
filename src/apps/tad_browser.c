@@ -9,6 +9,7 @@
 #include <btron/error.h>
 
 #include <btron/libc_shim.h>
+#include "../clu/vfs.h"
 #if BTRON_HOSTED
 #include <zlib.h>
 #include <dirent.h>
@@ -430,25 +431,55 @@ ER tad_browser_load_file(TAD_BROWSER *tb, const char *filepath) {
 
 #if BTRON_HOSTED
     FILE *f = fopen(filepath, "rb");
-    if (!f) return E_NOEXS;
-    fseek(f, 0, SEEK_END);
-    long sz = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (f) {
+        fseek(f, 0, SEEK_END);
+        long sz = ftell(f);
+        fseek(f, 0, SEEK_SET);
 
-    if (sz <= 0) { fclose(f); return E_SYS; }
-    char *buf = (char*)malloc(sz + 1);
-    if (!buf) { fclose(f); return E_NOMEM; }
+        if (sz > 0) {
+            char *buf = (char*)malloc(sz + 1);
+            if (buf) {
+                size_t read_bytes = fread(buf, 1, sz, f);
+                fclose(f);
+                buf[read_bytes] = '\0';
 
-    size_t read_bytes = fread(buf, 1, sz, f);
-    fclose(f);
-    buf[read_bytes] = '\0';
-
-    ER er = tad_browser_load_buffer(tb, buf, (UW)read_bytes, filepath);
-    free(buf);
-    return er;
-#else
-    return E_NOSPT;
+                ER er = tad_browser_load_buffer(tb, buf, (UW)read_bytes, filepath);
+                free(buf);
+                return er;
+            }
+        }
+        fclose(f);
+    }
 #endif
+
+    /* Cleanroom VFS fallback (bare-metal BTRON volumes /SYS, /ANDERS, etc.) */
+    char vfs_path[256];
+    if (filepath[0] == '/') {
+        strncpy(vfs_path, filepath, sizeof(vfs_path) - 1);
+    } else {
+        snprintf(vfs_path, sizeof(vfs_path), "/SYS/%s", filepath);
+    }
+    vfs_path[sizeof(vfs_path) - 1] = '\0';
+
+    size_t cap = 256 * 1024;
+    char *vbuf = (char*)malloc(cap + 1);
+    if (!vbuf) return E_NOMEM;
+
+    size_t out_bytes = 0;
+    int rc = vfs_read_blob(vfs_path, vbuf, cap, &out_bytes);
+    if (rc != 0 && filepath[0] != '/') {
+        rc = vfs_read_blob(filepath, vbuf, cap, &out_bytes);
+    }
+
+    if (rc == 0 && out_bytes > 0) {
+        vbuf[out_bytes] = '\0';
+        ER er = tad_browser_load_buffer(tb, vbuf, (UW)out_bytes, vfs_path);
+        free(vbuf);
+        return er;
+    }
+
+    free(vbuf);
+    return E_NOEXS;
 }
 
 /* Japanese / CJK Kinsoku Shori (行頭禁則文字 - characters that must not begin a wrapped line) */

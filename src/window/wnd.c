@@ -79,7 +79,7 @@ void wnd_set_gl_bind(WndGLBind bind) { s_gl_bind = bind; }
 
 ER init_wnd_mgr(GDEV *screen_dev) { if (!screen_dev) return E_PAR;
     g_screen_dev = screen_dev;
-    g_wnd_head = NULL;
+    /* Preserve existing windows if any were opened before screen attachment */
     return E_OK;
 }
 

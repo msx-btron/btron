@@ -2418,7 +2418,8 @@ void btron_main(void) {
         dwc2_init();
     }
 
-    /* 5. Initialize VideoCore VI (V3D 4.2) 3D Hardware Engine */
+    /* 5. Initialize B-System Workbench Desktop Subsystem & V3D 4.2 */
+    init_baremetal_desktop((uint32_t *)s_desktop_backbuffer, BTRON_SCREEN_W, BTRON_SCREEN_H);
     v3d_init();
 
     /* 6. Stage 1 Interactive Terminal Shell on GPU Framebuffer */

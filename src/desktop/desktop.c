@@ -513,10 +513,14 @@ void redraw_baremetal_desktop_rect_paint(GDEV *screen, const RECT *damage) {
     redraw_baremetal_desktop_mode(screen, damage, FALSE);
 }
 
+static GDEV *s_baremetal_screen = NULL;
+
 GDEV* init_baremetal_desktop(uint32_t *fb, uint32_t w, uint32_t h) {
+    if (s_baremetal_screen) return s_baremetal_screen;
     if (!fb) return NULL;
     GDEV *screen = opn_dev_vram((H)w, (H)h, (COLOR*)fb);
     if (!screen) return NULL;
+    s_baremetal_screen = screen;
 
     init_wnd_mgr(screen);
     init_vobj_sys("./btron_store");

@@ -16,6 +16,7 @@
 #include <btron/dnd.h>
 
 #include <btron/libc_shim.h>
+#include "../clu/vfs.h"
 #if BTRON_HOSTED
 #include <dirent.h>
 #include <sys/stat.h>
@@ -706,6 +707,45 @@ static const char* deduce_gif_icon(const CABINET_ITEM *it) {
     return "tad_browser";
 }
 
+static void cabinet_discover_vfs(CABINET_EXPLORER *cab, const char *dir_path) {
+    VfsEntry entries[64];
+    int count = vfs_list_dir(dir_path, entries, 64);
+    for (int i = 0; i < count && cab->item_count < MAX_CABINET_ITEMS; i++) {
+        char full_path[128];
+        vfs_child_path(full_path, sizeof(full_path), dir_path, entries[i].name, entries[i].fid);
+        if (entries[i].is_dir) {
+            cabinet_discover_vfs(cab, full_path);
+        } else {
+            CABINET_ITEM *it = &cab->items[cab->item_count++];
+            it->robj_id = entries[i].fid ? entries[i].fid : (100 + cab->item_count);
+            int len = strlen(entries[i].name);
+            BOOL is_png = (len > 4 && strcmp(entries[i].name + len - 4, ".png") == 0);
+            BOOL is_gif = (len > 4 && strcmp(entries[i].name + len - 4, ".gif") == 0);
+            BOOL is_md  = (len > 3 && strcmp(entries[i].name + len - 3, ".md") == 0);
+            BOOL is_txt = (len > 4 && strcmp(entries[i].name + len - 4, ".txt") == 0) ||
+                          (len > 4 && strcmp(entries[i].name + len - 4, ".fth") == 0) ||
+                          (len > 3 && strcmp(entries[i].name + len - 3, ".ps") == 0);
+            if (is_png || is_gif) {
+                it->type = VOBJ_TYPE_DRAW;
+                it->icon_tag = "[img]";
+            } else if (is_md) {
+                it->type = VOBJ_TYPE_TEXT;
+                it->icon_tag = "[md]";
+            } else if (is_txt) {
+                it->type = VOBJ_TYPE_TEXT;
+                it->icon_tag = "[txt]";
+            } else {
+                it->type = VOBJ_TYPE_TEXT;
+                it->icon_tag = "[tad]";
+            }
+            strncpy(it->name, entries[i].name, sizeof(it->name) - 1);
+            vfs_display_path(full_path, it->path, sizeof(it->path));
+            it->size_bytes = entries[i].size;
+            it->category = dir_path;
+        }
+    }
+}
+
 static void cabinet_init_defaults(CABINET_EXPLORER *cab) {
     memset(cab, 0, sizeof(CABINET_EXPLORER));
     cab->selected_idx = 0;
@@ -721,6 +761,10 @@ static void cabinet_init_defaults(CABINET_EXPLORER *cab) {
     cabinet_discover_dir(cab, "assets/texts");
     cabinet_discover_dir(cab, "assets/icons");
     cabinet_discover_dir(cab, "btron_store");
+#else
+    /* Dynamic discovery on bare-metal from mounted VFS volumes (/SYS and /ANDERS) */
+    cabinet_discover_vfs(cab, "/SYS");
+    cabinet_discover_vfs(cab, "/ANDERS");
 #endif
 
     if (cab->item_count > 0) {
