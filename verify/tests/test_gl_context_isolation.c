@@ -46,6 +46,7 @@
 #include <GL/gl.h>
 
 #include "gl_dispatch.h"
+#include "../../src/gl/backend_tinygl.h"
 #include "../../src/gl/tinygl/zgl.h"
 
 /* The two host seams every GL suite stubs.  uart_puts_raw() is captured rather than dropped
@@ -411,6 +412,100 @@ int main(void)
         dump_ppm(".build/gl_iso_A_second_session.ppm", bufA, PAINT_W, PAINT_H);
     }
     gl_shutdown();
+
+    /* ── Multi-surface concurrent tiling and isolation test ──────────────── */
+    /* Simulates desktop with 3 concurrent GL windows (e.g. XMB, GLGears, LilCu64)
+     * being tiled simultaneously, resized to smaller or larger extents, and repainted.
+     * Verifies:
+     *  1. No heap corruption or write past bounds when shrinking.
+     *  2. Viewports and ZBuffers are properly resized.
+     *  3. Windows are not left blank or solid gray. */
+    {
+        gl_init(GL_BACKEND_TINYGL, 64, 64, bufA);
+        mint_window_objects();
+
+        void *ctx1 = NULL;
+        void *ctx2 = NULL;
+        void *ctx3 = NULL;
+
+        /* Window 1: 64x64, Window 2: 48x48, Window 3: 32x32 */
+        PIXEL *w1_buf = (PIXEL *)calloc(64 * 64, sizeof(PIXEL));
+        PIXEL *w2_buf = (PIXEL *)calloc(48 * 48, sizeof(PIXEL));
+        PIXEL *w3_buf = (PIXEL *)calloc(32 * 32, sizeof(PIXEL));
+
+        tinygl_backend_make_current_ctx(&ctx1, 64, 64, w1_buf);
+        CHECK(ctx1 != NULL, "tiling: ctx1 initialized (64x64)");
+        glClearColor(0.2f, 0.8f, 0.2f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        tinygl_backend_make_current_ctx(&ctx2, 48, 48, w2_buf);
+        CHECK(ctx2 != NULL, "tiling: ctx2 initialized (48x48)");
+        glClearColor(0.8f, 0.2f, 0.2f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        tinygl_backend_make_current_ctx(&ctx3, 32, 32, w3_buf);
+        CHECK(ctx3 != NULL, "tiling: ctx3 initialized (32x32)");
+        paint_textured_quad(32, 32);
+
+        /* Now simulate wnd_tile_all: All 3 windows are resized to 40x30 */
+        const int tile_w = 40;
+        const int tile_h = 30;
+        const int tile_n = tile_w * tile_h;
+
+        free(w1_buf);
+        free(w2_buf);
+        free(w3_buf);
+
+        PIXEL *tiled_buf1 = (PIXEL *)calloc(tile_n, sizeof(PIXEL));
+        PIXEL *tiled_buf2 = (PIXEL *)calloc(tile_n, sizeof(PIXEL));
+        PIXEL *tiled_buf3 = (PIXEL *)calloc(tile_n, sizeof(PIXEL));
+
+        /* Make ctx1 current with new tiled size (shrunk from 64x64 to 40x30) */
+        tinygl_backend_make_current_ctx(&ctx1, tile_w, tile_h, tiled_buf1);
+        glClearColor(0.1f, 0.9f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        int w1_non_gray = 0;
+        for (int i = 0; i < tile_n; i++) {
+            if (tiled_buf1[i] != 0 && tiled_buf1[i] != 0xFFD4D0C8u) w1_non_gray++;
+        }
+        CHECK(w1_non_gray == tile_n, "tiling: window 1 rendered non-gray after tile shrink (%d/%d px)",
+              w1_non_gray, tile_n);
+
+        /* Make ctx2 current with new tiled size (shrunk from 48x48 to 40x30) */
+        tinygl_backend_make_current_ctx(&ctx2, tile_w, tile_h, tiled_buf2);
+        glClearColor(0.9f, 0.1f, 0.1f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+        int w2_non_gray = 0;
+        for (int i = 0; i < tile_n; i++) {
+            if (tiled_buf2[i] != 0 && tiled_buf2[i] != 0xFFD4D0C8u) w2_non_gray++;
+        }
+        CHECK(w2_non_gray == tile_n, "tiling: window 2 rendered non-gray after tile shrink (%d/%d px)",
+              w2_non_gray, tile_n);
+
+        /* Make ctx3 current with new tiled size (grew from 32x32 to 40x30) */
+        tinygl_backend_make_current_ctx(&ctx3, tile_w, tile_h, tiled_buf3);
+        paint_textured_quad(tile_w, tile_h);
+        long modal = 0;
+        int nd = distinct_words(tiled_buf3, tile_w, tile_h, &modal);
+        int w3_non_gray = 0;
+        for (int i = 0; i < tile_n; i++) {
+            if (tiled_buf3[i] != 0 && tiled_buf3[i] != 0xFFD4D0C8u) w3_non_gray++;
+        }
+        CHECK(nd > 1 && w3_non_gray == tile_n,
+              "tiling: window 3 textured quad rendered without gray (%d distinct words, %d/%d px)",
+              nd, w3_non_gray, tile_n);
+
+        /* Clean up contexts */
+        tinygl_backend_destroy_ctx(ctx1);
+        tinygl_backend_destroy_ctx(ctx2);
+        tinygl_backend_destroy_ctx(ctx3);
+
+        free(tiled_buf1);
+        free(tiled_buf2);
+        free(tiled_buf3);
+
+        gl_shutdown();
+    }
 
     free(s_atlas);
 

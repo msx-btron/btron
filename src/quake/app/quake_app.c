@@ -93,7 +93,10 @@ static void quake_paint(WND *wnd, GDEV *dev) {
 
     egl_make_current(surf);
 
-    if (surf->width != dev->width || surf->height != dev->height) {
+    static int s_quake_w = 0, s_quake_h = 0;
+    if (s_quake_w != dev->width || s_quake_h != dev->height || surf->width != dev->width || surf->height != dev->height) {
+        s_quake_w = dev->width;
+        s_quake_h = dev->height;
         egl_surface_resize(surf, dev->width, dev->height);
         /* Only re-init the GL viewport/projection, NOT the full engine */
         R_Resize(dev->width, dev->height);

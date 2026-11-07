@@ -908,39 +908,10 @@ void blit_backbuffer_to_fb(volatile uint32_t *gpu_fb) {
 }
 
 static volatile uint32_t *s_active_gpu_fb = NULL;
-static H s_shown_mx = 0;
-static H s_shown_my = 0;
 static uint32_t s_last_paint_duration_us = 0;
 
-void arm64_fast_cursor_update(volatile uint32_t *gpu_fb, H mx, H my, H *p_prev_x, H *p_prev_y) {
-    if (!gpu_fb || !p_prev_x || !p_prev_y) return;
-    H ox = *p_prev_x;
-    H oy = *p_prev_y;
-    if (mx == ox && my == oy) return;
-
-    /* 1. Restore old 16x16 cursor bounding box from clean backbuffer */
-    for (int cy = 0; cy < 16; cy++) {
-        int py = oy + cy;
-        if (py < 0 || py >= BTRON_SCREEN_H) continue;
-        int sx = ox < 0 ? 0 : ox;
-        int ex = (ox + 16) > BTRON_SCREEN_W ? BTRON_SCREEN_W : (ox + 16);
-        int span = ex - sx;
-        if (span <= 0) continue;
-        tkl_memcpy((void*)&gpu_fb[py * BTRON_SCREEN_W + sx],
-                   (const void*)&s_desktop_backbuffer[py * BTRON_SCREEN_W + sx],
-                   (size_t)span * sizeof(uint32_t));
-    }
-
-    /* 2. Draw new 16x16 cursor directly onto GPU framebuffer */
-    draw_baremetal_cursor_raw(gpu_fb, mx, my, BTRON_SCREEN_W, BTRON_SCREEN_H);
-
-    /* 3. Update recorded position */
-    *p_prev_x = mx;
-    *p_prev_y = my;
-}
-
 void btron_cooperative_input_pump(void) {
-    if (!s_gui_active || !s_active_gpu_fb) return;
+    if (!s_gui_active) return;
     uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
     if (g_use_xhci) {
         if (!s_async_irq_active) {
@@ -950,9 +921,6 @@ void btron_cooperative_input_pump(void) {
     } else {
         usb_poll_devices(NULL);
     }
-    if (s_mouse_x != s_shown_mx || s_mouse_y != s_shown_my) {
-        arm64_fast_cursor_update(s_active_gpu_fb, s_mouse_x, s_mouse_y, &s_shown_mx, &s_shown_my);
-    }
 }
 
 /* Stage 2: Launch full B-System Workbench desktop session. */
@@ -961,11 +929,9 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     fb_log("\n[BOOT] Launching B-System Workbench...\n");
     s_gui_active = 1;
 
-    /* Pristine backbuffer: cursor is drawn directly onto hardware display plane */
-    g_cursor_in_backbuffer = 0;
+    /* Clean double-buffered atomic cursor: eliminates square bounding box & flicker */
+    g_cursor_in_backbuffer = 1;
     s_active_gpu_fb = gpu_fb;
-    s_shown_mx = s_mouse_x;
-    s_shown_my = s_mouse_y;
 
     GDEV *screen = init_baremetal_desktop(
         (uint32_t *)s_desktop_backbuffer, BTRON_SCREEN_W, BTRON_SCREEN_H);
@@ -978,7 +944,6 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
     workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
     blit_backbuffer_to_fb(gpu_fb);
-    draw_baremetal_cursor_raw(gpu_fb, s_shown_mx, s_shown_my, BTRON_SCREEN_W, BTRON_SCREEN_H);
 
     H prev_mx = s_mouse_x;
     H prev_my = s_mouse_y;
@@ -1097,6 +1062,10 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
         /* 5. Detect state changes that require composite update */
         if (wnd_mgr_flush_resize()) pending_redraw = 1;
         if (wnd_any_image_invalid()) pending_redraw = 1;
+        if (s_mouse_x != prev_mx || s_mouse_y != prev_my) {
+            set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
+            pending_redraw = 1;
+        }
 
         if ((now - last_clock) >= 1000000) {
             last_clock = now;
@@ -1116,19 +1085,11 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
             uint32_t t_render_start = *(volatile uint32_t *)(TIMER_BASE + 0x04);
             last_present = now;
             pending_redraw = 0;
+            prev_mx = s_mouse_x;
+            prev_my = s_mouse_y;
             workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
             blit_backbuffer_to_fb(gpu_fb);
-            s_shown_mx = s_mouse_x;
-            s_shown_my = s_mouse_y;
-            draw_baremetal_cursor_raw(gpu_fb, s_shown_mx, s_shown_my, BTRON_SCREEN_W, BTRON_SCREEN_H);
-            prev_mx = s_mouse_x;
-            prev_my = s_mouse_y;
             s_last_paint_duration_us = *(volatile uint32_t *)(TIMER_BASE + 0x04) - t_render_start;
-        } else if (s_mouse_x != s_shown_mx || s_mouse_y != s_shown_my) {
-            /* Cursor-only fast damage: restore 16x16 old rect and draw 16x16 new rect */
-            arm64_fast_cursor_update(gpu_fb, s_mouse_x, s_mouse_y, &s_shown_mx, &s_shown_my);
-            prev_mx = s_mouse_x;
-            prev_my = s_mouse_y;
         }
 
         __asm__ volatile("dsb sy" : : : "memory");

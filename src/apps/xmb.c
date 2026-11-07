@@ -3051,7 +3051,7 @@ static void xb_paint(WND *wnd, GDEV *dev)
         s_phase_t0 = t_draw0;
     canvas_px = (unsigned)dev->width * (unsigned)dev->height;
 
-    if (surf->width != dev->width || surf->height != dev->height) {
+    if (s_w != dev->width || s_h != dev->height || surf->width != dev->width || surf->height != dev->height) {
         egl_surface_resize(surf, dev->width, dev->height);
         xb_layout(dev->width, dev->height);
         xb_layout_nodes();

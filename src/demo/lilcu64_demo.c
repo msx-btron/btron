@@ -1535,7 +1535,10 @@ static void demo_paint(WND *wnd, GDEV *dev) {
     /* CRITICAL: restore EGL surface so OpenGL operations target this window's buffer */
     egl_make_current(surf);
 
-    if (surf->width != dev->width || surf->height != dev->height) {
+    static int s_demo_w = 0, s_demo_h = 0;
+    if (s_demo_w != dev->width || s_demo_h != dev->height || surf->width != dev->width || surf->height != dev->height) {
+        s_demo_w = dev->width;
+        s_demo_h = dev->height;
         egl_surface_resize(surf, dev->width, dev->height);
     }
 

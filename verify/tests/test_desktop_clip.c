@@ -60,6 +60,7 @@ WND* open_review_window(void) { return NULL; }
 WND* open_xmb_window(void) { return NULL; }
 WND* open_glgears_window(void) { return NULL; }
 WND* open_lilcu64_demo_window(void) { return NULL; }
+WND* open_mars_window(void) { return NULL; }
 /* The rest of the launcher set global_menu.c references, plus the TIP state its
  * bar renderer reads -- the strong-extern half of its weak/strong split. */
 WND* open_chat_main_window(void *client) { (void)client; return NULL; }

@@ -985,9 +985,14 @@ void wnd_cascade_all(void) {
                 (H)(base_y + (idx % 10) * step + def_h)
             };
             wrsz_wnd(curr, &r);
+            inval_wnd(curr);
             idx++;
         }
         curr = curr->next;
+    }
+    if (g_screen_dev) {
+        RECT full = { 0, 0, g_screen_dev->width, g_screen_dev->height };
+        wnd_inval_damage_rect(&full);
     }
 }
 
@@ -1035,9 +1040,14 @@ void wnd_tile_all(void) {
                 (H)(top_margin + r_idx * tile_h + h)
             };
             wrsz_wnd(curr, &r);
+            inval_wnd(curr);
             idx++;
         }
         curr = curr->next;
+    }
+    if (g_screen_dev) {
+        RECT full = { 0, 0, g_screen_dev->width, g_screen_dev->height };
+        wnd_inval_damage_rect(&full);
     }
 }
 

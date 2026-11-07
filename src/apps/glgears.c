@@ -188,7 +188,10 @@ static void glgears_paint(WND *wnd, GDEV *dev) {
 
     egl_make_current(surf);
 
-    if (surf->width != dev->width || surf->height != dev->height) {
+    static int s_gears_w = 0, s_gears_h = 0;
+    if (s_gears_w != dev->width || s_gears_h != dev->height || surf->width != dev->width || surf->height != dev->height) {
+        s_gears_w = dev->width;
+        s_gears_h = dev->height;
         egl_surface_resize(surf, dev->width, dev->height);
     }
 

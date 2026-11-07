@@ -226,6 +226,16 @@ void tinygl_backend_init(int w, int h, void *pixel_buf) {
     uart_puts_raw("[GL] TinyGL ZBuffer init\n");
 }
 
+/* ── Per-surface context isolation (matching VirGL / POSIX architecture) ── */
+
+typedef struct tinygl_context_s {
+    GLContext  gl;
+    ZBuffer   *zb;
+    int        w;
+    int        h;
+    void      *pixel_buf;
+} tinygl_context_t;
+
 void tinygl_backend_resize(int w, int h, void *pixel_buf) {
     if (!s_zb) return;
     const int fresh = (pixel_buf != s_pixel_buf) || (w != s_width) || (h != s_height);
@@ -233,6 +243,12 @@ void tinygl_backend_resize(int w, int h, void *pixel_buf) {
     s_width     = w;
     s_height    = h;
     s_pixel_buf = pixel_buf;
+    if (gl_current_context) {
+        tinygl_context_t *ctx = (tinygl_context_t *)gl_current_context;
+        ctx->w = w;
+        ctx->h = h;
+        ctx->pixel_buf = pixel_buf;
+    }
     ZB_resize(s_zb, pixel_buf, w, h);
     s_stamp_surface_alpha();
 
@@ -296,16 +312,6 @@ int tinygl_backend_shutdown(void) {
     s_height    = 0;
     return 0;
 }
-
-/* ── Per-surface context isolation (matching VirGL / POSIX architecture) ── */
-
-typedef struct tinygl_context_s {
-    GLContext  gl;
-    ZBuffer   *zb;
-    int        w;
-    int        h;
-    void      *pixel_buf;
-} tinygl_context_t;
 
 void tinygl_backend_make_current_ctx(void **p_ctx, int w, int h, void *pixel_buf) {
     if (!p_ctx) {
