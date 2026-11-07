@@ -1,22 +1,14 @@
-├── kernel/{t-kernel,clean-room}
-├── cores/{pc98,eufi,ps2,smp,posix,pi4}
-├── fs/{bfsv1,bfsv2,chokanji}
-├── drivers/{pc98,eufi,ps2}
-├── desktop/{tip,vobject,window,font,graphics}
-├── apps/{be,sc,tv,sh}
-├── media/{daw,sdr}
-├── emulators/{msx,bx8}
-└── languages/{forth,ms,cc}
-
+BTRON/
+├── tools/
 ├── kernel/
 ├── cores/
 ├── fs/
 ├── drivers/
-│   ├── bcm283x/
+│   ├── broadcom/
 │   ├── m68k/
 │   ├── mips/
 │   ├── pc98/
-│   ├── ps2/
+│   ├── playstation2/
 │   ├── uefi/
 │   ├── vesa/
 │   └── virtio/
@@ -51,7 +43,6 @@
 │   ├── bx8/
 │   ├── msx/
 │   └── sega/
-├── tools/
 ├── languages/
 │   ├── forth/
 │   ├── microscript/

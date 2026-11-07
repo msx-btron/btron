@@ -42,8 +42,19 @@ int v3d_clear(uint32_t color, uint32_t width, uint32_t height);
 /* Emit a test triangle using V3D 4.2 CLE (Tile Binning + Render) */
 int v3d_test_triangle(uint32_t width, uint32_t height);
 
+typedef struct {
+    float x, y, z, w;
+    float r, g, b, a;
+    float u, v;
+    float nx, ny, nz;
+    float pad;
+} v3d_vertex_t;
+
 /* Submit vertex batches to V3D 4.2 Control List Executor */
 int v3d_submit_primitives(int shader_type, const void *vertex_data, uint32_t vertex_count, uint32_t stride);
+
+/* Emit graphical primitive batch (Triangles, Strips, Fans, Lines) with QPU shader */
+int v3d_emit_primitive_batch(int prim_type, int shader_type, const v3d_vertex_t *vertices, uint32_t vertex_count);
 
 /* Set hardware tile clip / viewport */
 int v3d_set_viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);

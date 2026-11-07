@@ -488,12 +488,24 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
         format++;
         if (*format == '\0') break;
 
-        /* Skip width / formatting flags like %-18s, %02d, %d, %s, %x, %p */
+        /* Skip width / formatting flags like %-18s, %02d, %d, %s, %x, %p, %.1f */
         int width = 0;
         int left_align = 0;
         if (*format == '-') { left_align = 1; format++; }
         while (*format >= '0' && *format <= '9') {
             width = width * 10 + (*format - '0');
+            format++;
+        }
+        int prec = -1;
+        if (*format == '.') {
+            format++;
+            prec = 0;
+            while (*format >= '0' && *format <= '9') {
+                prec = prec * 10 + (*format - '0');
+                format++;
+            }
+        }
+        if (*format == 'l' || *format == 'z') {
             format++;
         }
 
@@ -538,6 +550,36 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
         } else if (*format == 'c') {
             char c = (char)va_arg(ap, int);
             *out++ = c;
+        } else if (*format == 'f') {
+            double fval = va_arg(ap, double);
+            if (fval < 0.0) {
+                if (out < end) *out++ = '-';
+                fval = -fval;
+            }
+            if (prec < 0) prec = 6;
+            unsigned long long ipart = (unsigned long long)fval;
+            double fpart = fval - (double)ipart;
+            char tmp[32];
+            int p = 0;
+            if (ipart == 0) tmp[p++] = '0';
+            else {
+                while (ipart > 0) {
+                    tmp[p++] = (char)('0' + (ipart % 10));
+                    ipart /= 10;
+                }
+            }
+            while (p > 0 && out < end) *out++ = tmp[--p];
+            if (prec > 0 && out < end) {
+                *out++ = '.';
+                for (int i = 0; i < prec && out < end; i++) {
+                    fpart *= 10.0;
+                    int d = (int)fpart;
+                    if (d > 9) d = 9;
+                    if (d < 0) d = 0;
+                    *out++ = (char)('0' + d);
+                    fpart -= (double)d;
+                }
+            }
         } else if (*format == '%') {
             *out++ = '%';
         }

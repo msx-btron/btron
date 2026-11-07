@@ -2701,7 +2701,7 @@ $(ARM64_TARGET): $(ARM64_OBJS) $(BAREMETAL_LD)
 #   make fetch-pi400-fw     — download start4.elf + fixup4.dat
 # ═══════════════════════════════════════════════════════════════════
 PI400_IMG      = btron-pi400.img
-PI400_IMG_SIZE = 64
+PI400_IMG_SIZE = 128
 PI400_FW_DIR   = third_party/pi400
 PI400_CFG_DIR  = src/drivers/bcm283x/pi400
 
@@ -2788,6 +2788,9 @@ $(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol
 	cp .build/pi400/armstub8.bin        $$MOUNT_PT/armstub8.bin; \
 	cp btron_sys.vol                    $$MOUNT_PT/btron_sys.vol; \
 	if [ -f btron_anders.vol ]; then cp btron_anders.vol $$MOUNT_PT/btron_anders.vol; fi; \
+	python3 scripts/mk_pi400_payload.py .build/pi400/btron_payload.bin; \
+	cp .build/pi400/btron_payload.bin   $$MOUNT_PT/btron_payload.bin; \
+	if [ -f assets/quake/pak/pak0.pak ]; then cp assets/quake/pak/pak0.pak $$MOUNT_PT/pak0.pak; fi; \
 	echo "[PI400] SD image contents:"; \
 	ls -lh $$MOUNT_PT/; \
 	sync; \

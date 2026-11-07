@@ -54,7 +54,7 @@ void R_DrawTurbSurface(const dface_t *face, const texinfo_t *ti,
     int phase = (int)(s_surf_time * TURB_SPEED * (float)TURB_SIZE) & TURB_MASK;
 
     glColor3f(light, light * 0.88f, light * 0.72f); /* warm water tint */
-    glBegin(GL_POLYGON);
+    glBegin(GL_TRIANGLE_FAN);
 
     for (int e = 0; e < face->numedges; e++) {
         int se = face->firstedge + e;
@@ -107,7 +107,7 @@ void R_DrawSkySurface(const dface_t *face, const texinfo_t *ti) {
                   g * s_sky_alphas[layer],
                   b * s_sky_alphas[layer]);
 
-        glBegin(GL_POLYGON);
+        glBegin(GL_TRIANGLE_FAN);
         for (int e = 0; e < face->numedges; e++) {
             int se = face->firstedge + e;
             if (se >= g_world.numsurfedges) break;

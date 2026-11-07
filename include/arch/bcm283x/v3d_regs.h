@@ -72,11 +72,34 @@
 #define V3D42_SCOREBOARD_WAIT           0x19
 #define V3D42_SCOREBOARD_UNLOCK         0x1A
 
+/* Geometry & Primitive Draw Opcodes */
+#define V3D42_INDEXED_PRIMITIVES        0x20
+#define V3D42_VERTEX_ARRAY_PRIMITIVES   0x21
+
+/* Tile & Pipeline Configuration Opcodes */
+#define V3D42_CLIP_WINDOW               0x18
+#define V3D42_VIEWPORT_OFFSET           0x19
+#define V3D42_CONFIG_STATE              0x38
+#define V3D42_FLAT_SHADE_FLAGS          0x39
+#define V3D42_POINT_SIZE                0x3A
+#define V3D42_LINE_WIDTH                0x3B
+#define V3D42_RHT_X_BOUNDARY            0x3C
+#define V3D42_DEPTH_OFFSET              0x3D
+
 #define V3D42_TILE_BINNING_MODE_CFG     0x70
 #define V3D42_TILE_RENDERING_MODE_CFG   0x71
 #define V3D42_CLEAR_COLORS              0x72
 #define V3D42_TILE_COORDINATES          0x73
 #define V3D42_STORE_TILE_BUFFER_GENERAL 0x74
+
+/* Primitive Topology Types */
+#define V3D_PRIM_POINTS                 0x00
+#define V3D_PRIM_LINES                  0x01
+#define V3D_PRIM_LINE_LOOP              0x02
+#define V3D_PRIM_LINE_STRIP             0x03
+#define V3D_PRIM_TRIANGLES              0x04
+#define V3D_PRIM_TRIANGLE_STRIP         0x05
+#define V3D_PRIM_TRIANGLE_FAN           0x06
 
 /* Mailbox Tags for V3D */
 #define RPI_MBOX_TAG_GET_CLOCK_RATE     0x00030002

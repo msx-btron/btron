@@ -169,10 +169,10 @@ void R_DrawWorld(void) {
             int cnt = 0;
             for (int e = 0; e < face->numedges && cnt < 3; e++) {
                 int se = face->firstedge + e;
-                if (se >= g_world.numsurfedges) break;
+                if (se >= g_world.numsurfedges || se < 0) break;
                 int ev = g_world.surfedges[se];
                 int vi = (ev>=0)?g_world.edges[ev].v[0]:g_world.edges[-ev].v[1];
-                if (vi < g_world.numvertexes) {
+                if (vi >= 0 && vi < g_world.numvertexes) {
                     face_center[0] += g_world.vertexes[vi].point[0];
                     face_center[1] += g_world.vertexes[vi].point[1];
                     face_center[2] += g_world.vertexes[vi].point[2];
@@ -220,22 +220,23 @@ void R_DrawWorld(void) {
         float nx = plane->normal[0], ny = plane->normal[1], nz = plane->normal[2];
         if (face->side) { nx=-nx; ny=-ny; nz=-nz; }
         glNormal3f(nx, ny, nz);
-        glBegin(GL_POLYGON);
+        glBegin(GL_TRIANGLE_FAN);
 
         for (int e = 0; e < face->numedges; e++) {
             int se = face->firstedge + e;
-            if (se >= g_world.numsurfedges) break;
+            if (se >= g_world.numsurfedges || se < 0) break;
             int ev = g_world.surfedges[se];
-            int vi = (ev>=0)?g_world.edges[ev].v[0]:g_world.edges[-ev].v[1];
-            if (vi < g_world.numvertexes) {
-                const float *p = g_world.vertexes[vi].point;
-                if (ti) {
-                    float s, t;
-                    compute_uv(p, ti, tex_w, tex_h, &s, &t);
-                    glTexCoord2f(s, t);
-                }
-                glVertex3f(p[0], p[1], p[2]);
+            int abs_ev = (ev >= 0) ? ev : -ev;
+            if (abs_ev >= g_world.numedges) break;
+            int vi = (ev >= 0) ? g_world.edges[ev].v[0] : g_world.edges[-ev].v[1];
+            if (vi < 0 || vi >= g_world.numvertexes) break;
+            const float *p = g_world.vertexes[vi].point;
+            if (ti) {
+                float s, t;
+                compute_uv(p, ti, tex_w, tex_h, &s, &t);
+                glTexCoord2f(s, t);
             }
+            glVertex3f(p[0], p[1], p[2]);
         }
         glEnd();
         if (has_tex) glBindTexture(GL_TEXTURE_2D, 0);
@@ -325,7 +326,7 @@ void R_DrawBModel(int model_idx, const float *origin, const float *angles) {
         float nx = plane->normal[0], ny = plane->normal[1], nz = plane->normal[2];
         if (face->side) { nx = -nx; ny = -ny; nz = -nz; }
         glNormal3f(nx, ny, nz);
-        glBegin(GL_POLYGON);
+        glBegin(GL_TRIANGLE_FAN);
 
         for (int e = 0; e < face->numedges; e++) {
             int se = face->firstedge + e;

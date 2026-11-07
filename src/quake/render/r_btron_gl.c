@@ -472,46 +472,38 @@ void R_RenderView(void) {
         char hbuf[48];
         int hp  = (g_prvm.num_edicts >= 2) ? (int)EF(&g_prvm.edicts[1], F_HEALTH)      : 100;
         int amm = (g_prvm.num_edicts >= 2) ? (int)EF(&g_prvm.edicts[1], F_CURRENTAMMO) : 25;
-        int i = 0; const char *fmt;
-        /* "ARMOR: 0" */
-        fmt = "ARMOR: "; while(*fmt) hbuf[i++]=*fmt++;
-        int a=0, tmp=a; if(tmp==0){hbuf[i++]='0';} else{ char d[8]; int di=0; while(tmp){d[di++]=(char)('0'+tmp%10);tmp/=10;} while(di--)hbuf[i++]=d[di+1];} hbuf[i]=0;
-        Draw_String(16, s_vid_height - 28, hbuf);
-        /* "HEALTH: N" */
-        i=0; fmt="HEALTH: "; while(*fmt) hbuf[i++]=*fmt++;
-        tmp=hp>0?hp:0; if(tmp==0){hbuf[i++]='0';} else{char d[8];int di=0;while(tmp){d[di++]=(char)('0'+tmp%10);tmp/=10;}while(di--)hbuf[i++]=d[di+1];} hbuf[i]=0;
-        Draw_String(140, s_vid_height - 28, hbuf);
-        /* "AMMO: N" */
-        i=0; fmt="AMMO: "; while(*fmt) hbuf[i++]=*fmt++;
-        tmp=amm>0?amm:0; if(tmp==0){hbuf[i++]='0';} else{char d[8];int di=0;while(tmp){d[di++]=(char)('0'+tmp%10);tmp/=10;}while(di--)hbuf[i++]=d[di+1];} hbuf[i]=0;
-        Draw_String(270, s_vid_height - 28, hbuf);
-        /* "WEAPON: <held>" — the viewmodel itself is off, so this is the only cue */
-        i=0; fmt="WEAPON: "; while(*fmt) hbuf[i++]=*fmt++;
-        {
-            const char *wn = Player_WeaponName();
-            while (*wn && i < 40) hbuf[i++] = *wn++;
-            hbuf[i] = 0;
-        }
-        Draw_String(372, s_vid_height - 28, hbuf);
-    }
 
-    char map_tag[32];
-    if (g_world.is_loaded) {
-        /* Format map basename in uppercase */
-        const char *mname = g_world.name;
-        const char *slash = q_strrchr(mname, '/');
-        if (slash) mname = slash + 1;
-        int i = 0;
-        for (; i < 15 && mname[i] && mname[i] != '.'; i++) {
-            char c = mname[i];
-            if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
-            map_tag[i] = c;
+        tkl_snprintf(hbuf, sizeof(hbuf), "ARMOR: 0");
+        Draw_String(16, s_vid_height - 28, hbuf);
+
+        tkl_snprintf(hbuf, sizeof(hbuf), "HEALTH: %d", hp > 0 ? hp : 0);
+        Draw_String(105, s_vid_height - 28, hbuf);
+
+        tkl_snprintf(hbuf, sizeof(hbuf), "AMMO: %d", amm > 0 ? amm : 0);
+        Draw_String(215, s_vid_height - 28, hbuf);
+
+        tkl_snprintf(hbuf, sizeof(hbuf), "WEAPON: %s", Player_WeaponName());
+        Draw_String(310, s_vid_height - 28, hbuf);
+
+        if (s_vid_width >= 540) {
+            char map_tag[32];
+            if (g_world.is_loaded) {
+                const char *mname = g_world.name;
+                const char *slash = q_strrchr(mname, '/');
+                if (slash) mname = slash + 1;
+                int mi = 0;
+                for (; mi < 15 && mname[mi] && mname[mi] != '.'; mi++) {
+                    char c = mname[mi];
+                    if (c >= 'a' && c <= 'z') c -= ('a' - 'A');
+                    map_tag[mi] = c;
+                }
+                map_tag[mi] = '\0';
+            } else {
+                strncpy(map_tag, "SLIPGATE", sizeof(map_tag));
+            }
+            Draw_String(s_vid_width - 80, s_vid_height - 28, map_tag);
         }
-        map_tag[i] = '\0';
-    } else {
-        strncpy(map_tag, "SLIPGATE", sizeof(map_tag));
     }
-    Draw_String(s_vid_width - 150, s_vid_height - 28, map_tag);
 
     /* Crosshair */
     int cx = s_vid_width / 2;
@@ -520,7 +512,12 @@ void R_RenderView(void) {
     Draw_Fill(cx, cy - 3, 1, 7, 0xFFCC00);
 
     /* Engine Watermark & Top HUD Controls */
-    Draw_String(12, 12, "QUAKE BTRON 3D (OpenGL ES 1.1 / VirtIO-GPU)");
+    {
+        char wm[64];
+        const char *bname = gl_backend_name(gl_active_backend());
+        tkl_snprintf(wm, sizeof(wm), "QUAKE BTRON 3D (OpenGL ES / %s)", bname ? bname : "GL");
+        Draw_String(12, 12, wm);
+    }
     Draw_Fill(s_vid_width - 180, 8, 82, 18, g_menu_active ? 0x8C2020 : 0x2A2420);
     Draw_String(s_vid_width - 175, 13, "[ESC] MENU");
     Draw_Fill(s_vid_width - 92, 8, 86, 18, g_console_active ? 0x8C2020 : 0x2A2420);

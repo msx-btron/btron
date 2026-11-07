@@ -27,6 +27,10 @@ typedef struct {
     WND* (*action)(void);
 } DESKTOP_ICON_DEF;
 
+static WND* open_quake_desktop(void) {
+    return open_quake_window ? open_quake_window(120, 60, 480, 360) : NULL;
+}
+
 static const DESKTOP_ICON_DEF s_desktop_icons[] = {
     { "cabinet",   "実身・仮身",   "実身", COLOR_NAVY,   open_vobj_manager_window },
     { "t_editor",  "基本エディタ", "文書", COLOR_BLACK,  open_t_editor_window },
@@ -34,6 +38,7 @@ static const DESKTOP_ICON_DEF s_desktop_icons[] = {
     { "sound",     "音響機器",     "音響", COLOR_RED,    open_audio_player_window },
     { "chat",      "会話通信",     "対話", COLOR_NAVY,   launch_beos_chat },
     { "xmb",       "ＸＭＢ",       "ＸＭ", COLOR_NAVY,   open_xmb_window },
+    { "quake",     "Quake 3D",     "Ｑ３", COLOR_BLACK,  open_quake_desktop },
 };
 
 static BTRON_DESKTOP g_desktop;
