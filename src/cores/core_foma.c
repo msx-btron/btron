@@ -4,8 +4,8 @@
  * Routes BTRON API calls directly into Sakamura T-Kernel 2.0 Real-Time Operating System.
  */
 
-#include <tk/tkernel.h>
-#include <device/virtio.h>
+#include <kernel/tkernel.h>
+#include <drivers/virtio/virtio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,8 +17,8 @@
 #include "timer.h"
 #include <btron/core.h>
 #include <sys/utsname.h>
-#include <btron/fs/vol_api.h>
-#include <btron/fs/block.h>
+#include <fs/vol_api.h>
+#include <fs/block.h>
 
 extern void tkernel_init_subsystems(int full_suite);
 

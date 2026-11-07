@@ -40,7 +40,7 @@
 #include <btron/event.h>
 #include <btron/apps.h>
 #include <btron/settings.h>
-#include <btron/fs/vol_api.h>
+#include <fs/vol_api.h>
 #include <libstr.h>
 
 extern void orchestra_ui_tick(void);
@@ -63,13 +63,13 @@ extern void cassette_service(void);
 #include "ps2_irq.h"
 #include "ps2_ptr_stroke.h"     /* Pointer dynamics and pointer stroke handling */
 
-#include "../gl/eegs_present.h" /* GS frame presentation and GIF DMA stream staging */
-#include "../gl/backend_eegs.h"  /* Native EE/GS OpenGL hardware driver backend */
-#include "../gl/gl_backend_choice.h"
+#include "../desktop/graphics/eegs/eegs_present.h" /* GS frame presentation and GIF DMA stream staging */
+#include "../desktop/graphics/eegs/backend_eegs.h"  /* Native EE/GS OpenGL hardware driver backend */
+#include "../desktop/graphics/gles/gl_backend_choice.h"
 /* The [MSX] phase's own instruments: the volume reader the XMB Games band and
  * B-MSX both go through, and the machine they fill.  Relative paths, as above. */
-#include "../clu/vfs.h"
-#include <emulators/tronmsx.h>
+#include "../apps/clu/vfs.h"
+#include <btron/tronmsx.h>
 /* <btron/libc_shim.h>, which vfs.h reaches through cluc.h, rewrites malloc/calloc/
  * free into the kernel names on a bare-metal target -- and this file is the one
  * that defines those names.  The reader's prototypes are wanted, the renamers are

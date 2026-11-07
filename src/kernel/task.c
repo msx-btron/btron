@@ -24,7 +24,7 @@
 #include "cpu_task.h"
 #include "tkdev_timer.h"
 #include "check.h"
-#include <sys/rominfo.h>
+#include <kernel/rominfo.h>
 
 /*
  * Task dispatch disable state

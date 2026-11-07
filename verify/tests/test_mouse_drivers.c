@@ -21,9 +21,9 @@
 
 #include <btron/types.h>
 #include <btron/event.h>
-#include <drivers/ps2_mouse.h>
-#include <drivers/pc98_mouse.h>
-#include <drivers/pc98_kbd.h>
+#include <drivers/uefi/ps2_mouse.h>
+#include <drivers/pc98/pc98_mouse.h>
+#include <drivers/pc98/pc98_kbd.h>
 
 /* Baremetal desktop mouse position stub */
 static H s_baremetal_mx = 512, s_baremetal_my = 384;

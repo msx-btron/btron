@@ -20,7 +20,7 @@
 #ifndef _WAIT_
 #define _WAIT_
 
-#include <sys/queue.h>
+#include <kernel/queue.h>
 #include "timer.h"
 #include "task.h"
 

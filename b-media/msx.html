@@ -194,7 +194,7 @@
         <div class="callout callout-jpl">
           <div class="callout-title">Implementation status</div>
           B-MSX is a specification. The tree contains no <code>src/emulators/msx/</code>, no
-          <code>include/emulators/tronmsx.h</code>, no <code>include/emulators/tronmsx_tt.h</code> and no
+          <code>include/btron/tronmsx.h</code>, no <code>include/emulators/tronmsx_tt.h</code> and no
           <code>msx-*</code> make targets. The file names in <a href="#coreapi">Part 5</a>,
           <a href="#ttapi">8.3</a> and <a href="#ttwindow">8.4.1</a> are the required shape of the module to
           implement. Every vector in Part 9 is labelled NOT BUILT and reports SKIP, not PASS, until the
@@ -1028,7 +1028,7 @@
           MSX2+ machine it implements covers V9958 as V9938 plus the MSX2+ I/O bit, one cartridge, and PSG
           square waves, which is the set that fits the bounded, heap-free envelope of 5.3.
         </p>
-        <h3>5.1 <code>include/emulators/tronmsx.h</code></h3>
+        <h3>5.1 <code>include/btron/tronmsx.h</code></h3>
         <pre><code>/* all state static, bounded; NO malloc/free inside this module */
 typedef struct {
     const char *bios_key;      /* "bios.msx2p" | NULL = C-BIOS */
@@ -1470,7 +1470,7 @@ src/tools/mssym.c   (C99, single file)
         </p>
         <table class="api-table">
           <caption>The eleven translation units of <code>src/emulators/msx/</code>. Names and responsibilities
-          are <span class="basis basis-norm">Normative</span>; <code>include/emulators/tronmsx.h</code>
+          are <span class="basis basis-norm">Normative</span>; <code>include/btron/tronmsx.h</code>
           (<a href="#coreapi">Part 5</a>) and <code>include/emulators/tronmsx_tt.h</code> (8.3) are the only
           public headers, and AV-8 asserts the C99-only rule over this list.</caption>
           <thead><tr><th>Unit</th><th>Responsibility</th><th>Specified in</th></tr></thead>

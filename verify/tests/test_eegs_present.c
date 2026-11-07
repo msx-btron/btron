@@ -68,13 +68,13 @@
  * left it off would be gating a TU whose instrument branch never compiled. */
 #define BTRON_PS2_GS_IDENT 1
 
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_vram.c"
-#include "../../src/drivers/ps2/ps2_gs_rec.c"
-#include "../../src/drivers/ps2/ps2_gs_env.c"
-#include "../../src/drivers/ps2/ps2_gif_ring.c"
-#include "../../src/gl/backend_eegs.c"
-#include "../../src/gl/eegs_present.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_vram.c"
+#include "../../src/drivers/playstation2/ps2_gs_rec.c"
+#include "../../src/drivers/playstation2/ps2_gs_env.c"
+#include "../../src/drivers/playstation2/ps2_gif_ring.c"
+#include "../../src/desktop/graphics/eegs/backend_eegs.c"
+#include "../../src/desktop/graphics/eegs/eegs_present.c"
 
 #include "gs_group_view.h"
 

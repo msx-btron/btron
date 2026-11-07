@@ -7,16 +7,16 @@
 #include <string.h>
 #include <math.h>
 #include "../../include/btron/types.h"
-#include "../../src/quake/include/quakedef.h"
-#include "../../src/quake/include/world.h"
-#include "../../src/quake/include/render.h"
-#include "../../src/quake/include/r_alias.h"
-#include "../../src/quake/include/r_brush.h"
-#include "../../src/quake/include/quake_ui.h"
-#include "../../src/quake/include/fs_btron.h"
-#include "../../src/quake/include/texture.h"
-#include "../../src/quake/include/r_light.h"
-#include "../../src/gl/gl_dispatch.h"
+#include "../../src/media/quake/include/quakedef.h"
+#include "../../src/media/quake/include/world.h"
+#include "../../src/media/quake/include/render.h"
+#include "../../src/media/quake/include/r_alias.h"
+#include "../../src/media/quake/include/r_brush.h"
+#include "../../src/media/quake/include/quake_ui.h"
+#include "../../src/media/quake/include/fs_btron.h"
+#include "../../src/media/quake/include/texture.h"
+#include "../../src/media/quake/include/r_light.h"
+#include "../../src/desktop/graphics/gles/gl_dispatch.h"
 
 /* ── Stubs: symbols not supplied by any linked Quake source ───────── */
 /* uart_puts_raw: provided by platform UART driver in full builds      */

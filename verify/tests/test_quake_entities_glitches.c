@@ -13,13 +13,13 @@
 #include <assert.h>
 #include <math.h>
 
-#include "../../src/quake/include/quakedef.h"
-#include "../../src/quake/include/server.h"
-#include "../../src/quake/include/world.h"
-#include "../../src/quake/include/progs.h"
-#include "../../src/quake/include/render.h"
-#include "../../src/quake/include/r_alias.h"
-#include "../../src/quake/include/mathlib.h"
+#include "../../src/media/quake/include/quakedef.h"
+#include "../../src/media/quake/include/server.h"
+#include "../../src/media/quake/include/world.h"
+#include "../../src/media/quake/include/progs.h"
+#include "../../src/media/quake/include/render.h"
+#include "../../src/media/quake/include/r_alias.h"
+#include "../../src/media/quake/include/mathlib.h"
 
 int g_console_active = 0;
 int g_menu_active = 0;

@@ -20,7 +20,7 @@
 #include <btron/types.h>
 #include <btron/event.h>
 #include <btron/desktop.h>
-#include <drivers/ps2_mouse.h>
+#include <drivers/uefi/ps2_mouse.h>
 
 /* Port I/O definitions */
 #if defined(__x86_64__) || defined(__i386__)

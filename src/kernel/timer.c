@@ -22,7 +22,7 @@
 #include "timer.h"
 #include "task.h"
 #include "tkdev_timer.h"
-#include <sys/rominfo.h>
+#include <kernel/rominfo.h>
 
 /*
  * Timer interrupt interval (us)

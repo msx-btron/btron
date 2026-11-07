@@ -11,7 +11,7 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <btron/proc.h>
-#include <btron/fs/fs_types.h>
+#include <fs/fs_types.h>
 
 #ifdef __cplusplus
 extern "C" {

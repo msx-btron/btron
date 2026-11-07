@@ -54,6 +54,7 @@ WND* open_quake_window(void)                { return NULL; }
 WND* open_msx_window(void)                  { return NULL; }
 WND* open_lilcu64_demo_window(void)         { return NULL; }
 WND* open_glgears_window(void)              { return NULL; }
+WND* open_mars_window(void)                 { return NULL; }
 WND* open_xmb_window(void)                  { return NULL; }
 ER snd_evt(const EVT *p_evt)                { (void)p_evt; return E_OK; }
 BTRON_DESKTOP* get_btron_desktop(void)      { return NULL; }

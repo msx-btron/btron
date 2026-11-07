@@ -22,12 +22,12 @@
 #define _KERNEL_
 
 #include <basic.h>
-#include <tk/typedef.h>
-#include <tk/errno.h>
-#include <tk/syscall.h>
-#include <tk/dbgspt.h>
-#include <sys/imalloc.h>
-#include <sys/queue.h>
+#include <kernel/typedef.h>
+#include <kernel/errno.h>
+#include <kernel/syscall.h>
+#include <kernel/dbgspt.h>
+#include <kernel/imalloc.h>
+#include <kernel/queue.h>
 #include <libstr.h>
 
 /*

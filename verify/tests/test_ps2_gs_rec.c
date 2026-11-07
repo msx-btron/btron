@@ -46,8 +46,8 @@
  * 2 + 3*3 + 1 = 12 of them, and every split point below is arithmetic on those two numbers. */
 #define GS_REC_QW_CAP 32u
 
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_rec.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_rec.c"
 #include "gs_group_view.h"
 
 /* ── The capture sink ───────────────────────────────────────────────────

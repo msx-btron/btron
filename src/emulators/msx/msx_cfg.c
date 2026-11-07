@@ -5,7 +5,7 @@
 
 #include "msx_cfg.h"
 #include "msx_int.h"
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
@@ -13,7 +13,7 @@
 
 #include <btron/libc_shim.h>
 #if !BTRON_HOSTED
-#include "../clu/vfs.h"
+#include "../../apps/clu/vfs.h"
 #endif
 
 bmsx_machine_cfg_t g_bmsx_cfg;

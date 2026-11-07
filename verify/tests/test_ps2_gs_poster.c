@@ -28,8 +28,8 @@
  * first because the poster is made of its field encoders, and the same idiom as the gs_rec and
  * gs_tex gates means the identical translation unit is what this suite measures and what links
  * into btron-ps2.elf. */
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_poster.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_poster.c"
 
 static int s_checks, s_failures;
 

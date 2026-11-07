@@ -19,7 +19,7 @@
  */
 
 #include <stdio.h>
-#include "../../src/gl/gl_dispatch.h"
+#include "../../src/desktop/graphics/gles/gl_dispatch.h"
 
 /* One port per value of the dial; see gl_backend_choice_plain_port.c. */
 GL_BACKEND plain_default(void);

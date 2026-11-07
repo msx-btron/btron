@@ -23,7 +23,7 @@
 #include "task.h"
 #include "wait.h"
 #include "check.h"
-#include <sys/rominfo.h>
+#include <kernel/rominfo.h>
 
 #ifdef NUM_MBXID
 

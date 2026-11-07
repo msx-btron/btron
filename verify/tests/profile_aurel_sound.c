@@ -11,7 +11,7 @@
  *   - Audio buffer drop simulation (queue overrun / starvation)
  */
 
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include "../../src/emulators/msx/msx_int.h"
 #include "../../src/emulators/msx/v9938.h"
 

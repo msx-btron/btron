@@ -34,7 +34,7 @@
 #include <btron/apps.h>
 #include <btron/workbench.h>
 #include <libstr.h>
-#include <dwc2.h>
+#include <drivers/broadcom/dwc2.h>
 
 extern void orchestra_ui_tick(void);
 extern void cassette_service(void);

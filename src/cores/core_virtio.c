@@ -4,12 +4,12 @@
  */
 
 #include <btron/itron.h>
-#include <device/virtio.h>
+#include <drivers/virtio/virtio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <btron/fs/vol_api.h>
-#include <btron/fs/block.h>
+#include <fs/vol_api.h>
+#include <fs/block.h>
 #include <sys/time.h>
 #include <pthread.h>
 #include <time.h>

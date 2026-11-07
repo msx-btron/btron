@@ -3,7 +3,7 @@
  * Complete VirtIO-GPU 2D Display & VirtIO-Console Driver Engine
  */
 
-#include <device/virtio.h>
+#include <drivers/virtio/virtio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

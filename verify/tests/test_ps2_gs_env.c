@@ -32,9 +32,9 @@
 
 /* The three sources under test, compiled in: the encoders the environment packet is built
  * from, the allocator, and the builder itself. */
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_vram.c"
-#include "../../src/drivers/ps2/ps2_gs_env.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_vram.c"
+#include "../../src/drivers/playstation2/ps2_gs_env.c"
 
 static int s_checks, s_failures;
 

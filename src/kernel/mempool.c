@@ -25,7 +25,7 @@
 #include "wait.h"
 #include "check.h"
 #include "tk_limits.h"
-#include <sys/rominfo.h>
+#include <kernel/rominfo.h>
 
 #ifdef NUM_MPLID
 

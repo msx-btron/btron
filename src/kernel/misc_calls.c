@@ -21,7 +21,7 @@
 #include "kernel.h"
 #include "task.h"
 #include "check.h"
-#include <sys/rominfo.h>
+#include <kernel/rominfo.h>
 
 IMPORT const T_RVER kernel_version;
 

@@ -25,18 +25,18 @@
 #include <btron/btron.h>
 #include <btron/wnd.h>
 #include <btron/apps.h>
-#include "../../src/clu/clu.h"
-#include "../../src/gl/gl_dispatch.h"
-#include "../../src/gl/gl_backend_choice.h"
-#include "../../src/gl/backend_eegs.h"
-#include "../../src/gl/gscube_nexus.h"
-#include "../../src/drivers/ps2/ps2_vu1_geom.h"
-#include "../../src/drivers/ps2/ps2_vu0_kernel.h"
-#include "../../src/drivers/ps2/ps2_gs_pack.h"
-#include "../../src/drivers/ps2/ps2_gs_env.h"
-#include "../../src/drivers/ps2/ps2_gs_vram.h"
-#include "../../src/drivers/ps2/ps2_gs_tex.h"
-#include "../../src/drivers/ps2/ps2_gif_ring.h"
+#include "../../src/apps/clu/clu.h"
+#include "../../src/desktop/graphics/gles/gl_dispatch.h"
+#include "../../src/desktop/graphics/gles/gl_backend_choice.h"
+#include "../../src/desktop/graphics/eegs/backend_eegs.h"
+#include "../../src/desktop/graphics/eegs/gscube_nexus.h"
+#include "../../src/drivers/playstation2/ps2_vu1_geom.h"
+#include "../../src/drivers/playstation2/ps2_vu0_kernel.h"
+#include "../../src/drivers/playstation2/ps2_gs_pack.h"
+#include "../../src/drivers/playstation2/ps2_gs_env.h"
+#include "../../src/drivers/playstation2/ps2_gs_vram.h"
+#include "../../src/drivers/playstation2/ps2_gs_tex.h"
+#include "../../src/drivers/playstation2/ps2_gif_ring.h"
 
 /* ── Hardware simulation hooks for ps2_gif_ring ─────────────────── */
 static uint32_t s_gif_sim_busy = 0;
@@ -61,14 +61,14 @@ uint32_t ps2_gif_hw_us(void) {
 }
 
 /* ── Implementation includes for self-contained execution ───────── */
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_env.c"
-#include "../../src/drivers/ps2/ps2_gs_vram.c"
-#include "../../src/drivers/ps2/ps2_gif_ring.c"
-#include "../../src/drivers/ps2/ps2_vu1_geom.c"
-#include "../../src/drivers/ps2/ps2_vu0_kernel.c"
-#include "../../src/gl/gscube_nexus.c"
-#include "../../src/gl/gl_backend_choice.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_env.c"
+#include "../../src/drivers/playstation2/ps2_gs_vram.c"
+#include "../../src/drivers/playstation2/ps2_gif_ring.c"
+#include "../../src/drivers/playstation2/ps2_vu1_geom.c"
+#include "../../src/drivers/playstation2/ps2_vu0_kernel.c"
+#include "../../src/desktop/graphics/eegs/gscube_nexus.c"
+#include "../../src/desktop/graphics/gles/gl_backend_choice.c"
 
 const char *gl_backend_name(GL_BACKEND b)
 {

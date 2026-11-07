@@ -13,7 +13,7 @@
  *   blk_destroy(dev);
  */
 
-#include <btron/fs/block.h>
+#include <fs/block.h>
 
 #include <btron/libc_shim.h>
 

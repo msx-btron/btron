@@ -84,9 +84,9 @@
 
 #define GS_REC_QW_CAP 32u
 
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_rec.c"
-#include "../../src/gl/backend_eegs.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_rec.c"
+#include "../../src/desktop/graphics/eegs/backend_eegs.c"
 #include "gs_group_view.h"
 
 /* LANE 12f's batch entry submits a whole mesh in one call, so one frame of it is many groups: an

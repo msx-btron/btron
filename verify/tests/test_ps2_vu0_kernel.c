@@ -11,8 +11,8 @@
 #include <string.h>
 #include <math.h>
 
-#include "../../src/drivers/ps2/ps2_vu0_kernel.h"
-#include "../../src/drivers/ps2/ps2_vu0_kernel.c"
+#include "../../src/drivers/playstation2/ps2_vu0_kernel.h"
+#include "../../src/drivers/playstation2/ps2_vu0_kernel.c"
 
 static int s_checks, s_failures;
 

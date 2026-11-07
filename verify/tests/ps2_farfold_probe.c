@@ -1,5 +1,5 @@
 /*
- * ps2_farfold_probe.c - the shape of include/gl/math.h's large-argument trig fold,
+ * ps2_farfold_probe.c - the shape of include/rt/math.h's large-argument trig fold,
  *                       compiled the way the PS2 image is compiled.
  *
  * Why a probe and not a disassembly of the image: sinf is `static inline`, so in
@@ -17,7 +17,7 @@
  * Copyright 2026 Synrc Research Center. MIT License.
  */
 
-#include <math.h>          /* include/gl/math.h, reached by -Iinclude/gl as everywhere else */
+#include <math.h>          /* include/rt/math.h, reached by -Iinclude/rt as everywhere else */
 
 float btron_farfold_probe(float x)
 {

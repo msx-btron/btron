@@ -3,9 +3,9 @@
  * Verification & Test Suite for Secure PostScript (sps) & Forth VM
  */
 
-#include "../../src/clu/ps_vm.h"
-#include "../../src/clu/sps.h"
-#include "../../src/font/schrift.h"
+#include "../../src/apps/clu/ps_vm.h"
+#include "../../src/apps/clu/sps.h"
+#include "../../src/desktop/font/schrift.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

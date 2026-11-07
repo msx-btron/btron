@@ -93,16 +93,16 @@
 #include <math.h>
 
 /* zgl.h FIRST: it owns GLContext, the vertex record and the colour-channel constants, and it
- * resolves <GL/gl.h> -- including that header's `inline void glOrtho(...){}`, which is a no-op for
+ * resolves <graphics/gl.h> -- including that header's `inline void glOrtho(...){}`, which is a no-op for
  * an app and has to be shadowed.  gl_dispatch.h after it, because that header #defines glOrtho,
  * glVertex2f and glColor4f into calls through the backend's op table, and a function declaration
  * whose name expands into a dispatch call does not compile. */
-#include "../../src/gl/tinygl/zgl.h"
-#include "../../src/gl/gl_dispatch.h"
-#include "../../src/gl/grid_map.h"
-#include "../../src/gl/backend_tinygl.h"
-#include "../../src/apps/xmb_wave.h"   /* the ribbon's own mesh, for the run that names why=7 */
-#include "../../src/drivers/ps2/ps2_gs_pack.h" /* gs_float_scale_pow2(), the ST field's unit */
+#include "../../src/desktop/graphics/tinygl/zgl.h"
+#include "../../src/desktop/graphics/gles/gl_dispatch.h"
+#include "../../src/desktop/graphics/gles/grid_map.h"
+#include "../../src/desktop/graphics/gles/backend_tinygl.h"
+#include "../../src/media/xmb/xmb_wave.h"   /* the ribbon's own mesh, for the run that names why=7 */
+#include "../../src/drivers/playstation2/ps2_gs_pack.h" /* gs_float_scale_pow2(), the ST field's unit */
 
 /* backend_tinygl.c's banner lines and gl_dispatch.c's bracketing clock; this link has no core, and
  * dp_core.c's weak defaults are not in it.  Both answers are the ones a host build gives. */

@@ -512,7 +512,7 @@ In B-System, on-disk storage is governed by historical continuity and cleanroom 
 \begin{enumerate}[leftmargin=*]
     \item \textbf{Authentic Cho-Kanji (B-right/V 4.02) Compatibility:} In \path{src/fs/vol.c}, B-System natively mounts commercial Cho-Kanji disk partitions, recognizing little-endian volume magic (\texttt{0x52FE}) and the official filesystem identifier \texttt{FS\_TYPE\_BRIGHTV} (\texttt{0x6402}). It parses the authentic 128-byte \texttt{BrightVVolumeHeader}, handles historical 16-bit File Identifier (FID) tables, and resolves the Cho-Kanji on-disk quirk where Real Body Headers reside at block offset $\text{blk} - 1$.
     \item \textbf{Self-Contained QCOW2 Block Driver:} B-System incorporates an embedded QCOW2 block driver (\texttt{blk\_qcow2.c}) that mounts commercial 2001 Cho-Kanji virtual disk images directly without external dependencies.
-    \item \textbf{Modern 64-bit B-FS (V2):} For modern storage, B-System specifies B-FS V2 (\path{include/btron/fs/bfs_disk.h}): featuring dual-anchor superblocks (\texttt{VOL\_MAGIC\_V2 = 0x62FE}), 64-bit FID addressing (\texttt{block\_run\_64}), extent allocation trees, inline small-document inodes, transaction journaling, and \texttt{xxHash64} checksumming.
+    \item \textbf{Modern 64-bit B-FS (V2):} For modern storage, B-System specifies B-FS V2 (\path{include/fs/bfs_disk.h}): featuring dual-anchor superblocks (\texttt{VOL\_MAGIC\_V2 = 0x62FE}), 64-bit FID addressing (\texttt{block\_run\_64}), extent allocation trees, inline small-document inodes, transaction journaling, and \texttt{xxHash64} checksumming.
 \end{enumerate}
 
 \subsection{Filesystem Verdict}

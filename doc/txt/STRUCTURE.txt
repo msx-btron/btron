@@ -1,0 +1,504 @@
+STRUCTURE.txt — Canonical Architecture and Subsystem Topology for All Targets
+=============================================================================
+
+B-System / BTRON 3.20 Cleanroom Operating System
+Reference Hierarchy for Multicore, Heterogeneous Hardware & Freestanding Cores
+Related: ASYNC.txt, IO.txt, RENDER.txt, VC4.txt, PS2.txt, SMP.md, TAD.md
+
+Status: Architectural Standard & Directory Specification
+Normative Target: Single unified source tree supporting all target platforms:
+  - Broadcom BCM2711 / BCM2837 (Raspberry Pi 400 / Pi 4B, Cortex-A72 / A53)
+  - Sony PlayStation 2 (Emotion Engine MIPS R5900 + Graphics Synthesizer)
+  - NEC PC-9801 / PC-9821 (x86 Real/Protected Mode + GDC Graphic Display)
+  - Silicon Graphics / MIPS Malta (MIPS R4000 / 24Kf)
+  - Apple Macintosh Quadra 800 (Motorola 68040 + DAFB Framebuffer)
+  - UEFI Standard Workstations (x86_64 Freestanding GOP Scanout)
+  - QEMU VirtIO System Emulator (AArch64 / ARM32 / x86 / RISC-V)
+  - Hosted POSIX Workstation Target (macOS / Linux / BSD via libSDL2)
+
+
+0. Directory Tree Hierarchy
+---------------------------
+
+```
+tools/
+src/
+├── kernel/
+├── cores/
+├── fs/
+├── drivers/
+│   ├── broadcom/
+│   ├── m68k/
+│   ├── mips/
+│   ├── pc98/
+│   ├── playstation2/
+│   ├── uefi/
+│   ├── vesa/
+│   └── virtio/
+├── apps/
+│   ├── chat/
+│   ├── cabinet/
+│   ├── clarity/
+│   ├── browser/
+│   ├── review/
+│   ├── editor/
+│   ├── workbench/
+│   ├── volumes/
+│   ├── clock/
+│   ├── preferences/
+│   ├── terminal/
+│   ├── chokanji/
+│   └── clu/
+│       ├── be/
+│       ├── sc/
+│       ├── sh/
+│       └── tv/
+├── media/
+│   ├── cassette/
+│   ├── paint/
+│   ├── orchestra/
+│   ├── msx/
+│   ├── xmb/
+│   ├── sdk/
+│   └── quake/
+├── emulators/
+│   ├── amiga/
+│   ├── bx8/
+│   ├── msx/
+│   └── sega/
+├── languages/
+│   ├── forth/
+│   ├── microscript/
+│   └── sh/
+└── desktop/
+    ├── font/
+    ├── graphics/
+    │   ├── eegs/
+    │   ├── virgl/
+    │   ├── v3d/
+    │   ├── gles/
+    │   └── tinygl/
+    ├── industrial/
+    │   ├── segui/
+    │   └── hmi/
+    ├── settings/
+    ├── tip/
+    │   ├── tibetan/
+    │   ├── japanese/
+    │   ├── mandarin/
+    │   ├── sanskrit/
+    │   └── ukrainian/
+    ├── vobject/
+    └── window/
+```
+
+
+1. The Story Behind Each Folder
+-------------------------------
+
+### tools/
+The `tools/` root directory contains offline and host-side development tools,
+compilers, volume builders, asset compressors, and debug extractors. Unlike
+kernel or guest code, tools execute on the developer's build host (POSIX/macOS/
+Linux/Windows) to generate binary artifacts consumed by target architectures:
+  - `mkbtronfs`: Compiles textual volume manifests (`manifest.txt`) into native
+    B-System hierarchical file storage images (`btron_sys.vol`, `btron_anders.vol`).
+  - `album_encode`: Offline encoder compressing audio albums into native ADPCM
+    and B-Audio streaming blocks.
+  - `dump_mars_assets` & `sim_msx_voxel`: Extraction tools for classic 1993 Mars
+    voxel landscapes and real-time simulator prototypes.
+  - `capture_screens` / `capture_foma` / `capture_segui`: Automated frame dumpers
+    and regression validators driving headless guest framebuffers.
+
+
+### src/kernel/
+The cleanroom μITRON 3.0 / T-Kernel 2.0 microkernel engine.
+This subsystem implements the foundational real-time operating system primitives
+mandated by the TRON Architecture specifications designed by Dr. Ken Sakamura:
+  - Task dispatching, preemptive priority scheduling, and ready queues.
+  - Synchronization and communication: semaphores (`sem`), event flags (`flg`),
+    mailboxes (`mbx`), message buffers (`mbf`), and rendezvous (`por`).
+  - High-resolution hardware timers, clock managers (`clk_mgr`), and alarms.
+  - Memory management: fixed block pools (`mempfix`) and variable heaps (`mempool`).
+  - Freestanding C runtime primitives (`libstr.c`, `libaeabi.c`, `libint64.c`),
+    providing NASA JPL Rule 3 zero-dynamic-allocation guarantees and avoiding any
+    host C library pollution on bare-metal Silicon.
+
+
+### src/cores/
+Architecture-specific startup, asymmetric multiprocessing (AMP) orchestration,
+and platform adaptation layers ("cores").
+Each core adapts the generic B-System microkernel to a specific computing environment:
+  - `core_arm64.c`: Cortex-A72 64-bit engine for Raspberry Pi 400 / Pi 4B,
+    managing MMU MAIR attributes, Mailbox GPU allocations, and xHCI USB.
+  - `core_yoko.c`: 32-bit ARM Yokoyama platform engine for Raspberry Pi 2/3 and
+    QEMU versatilepb/raspi2.
+  - `core_ps2.c`: Sony PlayStation 2 128-bit Emotion Engine (MIPS R5900) entry point,
+    DMA scratchpad blitting, and GS packet dispatch.
+  - `core_pc98.c`: NEC PC-9801 / PC-9821 Japanese personal computer platform core,
+    managing 640x400 planar VRAM and keyboard INT 18h.
+  - `core_mips.c`: SGI / MIPS Malta architecture core for MIPS32/64 R4000.
+  - `core_m68k.c`: Motorola 68040 Macintosh Quadra 800 core.
+  - `core_virtio.c` & `core_tkernel.c`: Generic VirtIO QEMU device driver cores.
+  - `core_posix.c`: Desktop workstation simulator mapping B-System events to SDL2.
+  - `core_smp.c`: Lock-free MPSC actor-isolated inter-core queue coordinator.
+
+
+### src/fs/
+The B-System Hierarchical File System (HFDS) and Block Layer.
+Unlike flat Unix byte streams or DOS FAT tables, the TRON File System models
+hypermedia networks, records, and Real-Time storage:
+  - `file.c` & `vol.c`: Core file and directory operations implementing TRON HFDS.
+  - `blk_mem.c`: Memory-mapped read-only root volumes (ROM disks / initrd).
+  - `blk_file.c`: Host file backed virtual block devices.
+  - `blk_part.c`: MBR / GPT partition table parsers.
+  - `blk_qcow2.c`: Copy-on-write sparse disk image reader for virtualization.
+  - `fs_stdio.c`: Freestanding stream bridges for legacy asset loaders.
+
+
+### src/drivers/
+Hardware device drivers categorized by hardware platform and bus architecture:
+  - `broadcom/` (formerly `bcm283x/`): Broadcom BCM2711 / BCM2835 SoC silicon:
+    - `gpu/`: VideoCore VI (V3D 4.2) 3D hardware pipeline, control lists (`v3d_cl`),
+      QPU shader bytecode assembler (`v3d_qpu`), and mailbox interfaces.
+    - `dma/`: Hardware 2D DMA blitters (Channels 0 & 7) for zero-copy scanouts.
+    - `usb/`: Synopsys DWC2 and Cadence xHCI USB host controllers with 6KRO.
+    - `pci/`: BCM2711 PCIe Gen 2 Root Complex and VL805 bridge initialization.
+    - `cpu/`: ARMv8-A MMU page tables, cache maintenance, and armstub8 firmware.
+  - `playstation2/` (formerly `ps2/`): Sony PlayStation 2 hardware silicon:
+    - Direct Graphics Synthesizer (GS) rasterization, GIF packet ring buffers.
+    - Vector Unit 0/1 microcode (`ps2_vu0_kernel`, `ps2_vu1_geom.vsm`).
+    - SIO serial terminal, DualShock 2 gamepad pad driver, and USB keyboard.
+  - `pc98/`: NEC PC-9801 GDC graphics controller, planar 16-color graphics, and
+    PC-98 JIS keyboard matrix decoding.
+  - `m68k/`: Apple Quadra 68040 DAFB video controllers and Mac ROM integration.
+  - `mips/`: MIPS Malta 16550A UART and PCI controller glue.
+  - `uefi/`: UEFI Graphics Output Protocol (GOP) linear framebuffer scanout.
+  - `vesa/`: VESA BIOS Extensions (VBE 2.0/3.0) linear framebuffers for x86 PCs.
+  - `virtio/`: VirtIO modern block and VirtIO-GPU para-virtualized devices.
+
+
+### src/apps/
+User-facing productivity, communication, and desktop applications:
+  - `chat/`: B-System LAN/RTP interactive messaging and XML chat protocol client.
+  - `cabinet/`: Hierarchical document cabinet, virtual object manager (`vobj_manager.c`), and databox filing manager.
+  - `clarity/`: The Clarity rich document authoring and typography studio,
+    supporting interactive vector figures, mathematical expressions, and TAD export.
+  - `browser/`: Hypermedia TAD browser navigating local volumes and remote links.
+  - `review/`: Code and document review tool with interactive diffs and annotations.
+  - `editor/`: Canonical TRON text editor (`t_editor`) with multi-lingual TIP input.
+  - `workbench/`: Classic BTRON Workbench desktop shell, task tracker, deskbar, global menus, and compositor:
+    - `workbench.c`, `tracker.c`, `desktop.c`, `about.c`, `global_menu.c`, `main.c`: Desktop environment.
+    - `desktop_mobile.c`, `workbench_mobile.c`, `main_mobile.c`: Mobile/FOMA phone desktop UI.
+  - `volumes/`: Disk volume manager, formatter, and drive setup utility (`b_drivesetup`).
+  - `clock/`: Real-time desktop analog/digital clock and calculation desk accessories.
+  - `preferences/`: System configuration, display resolutions, and sound panel.
+  - `terminal/`: High-performance graphical terminal emulator (`gterm`).
+  - `chokanji/`: Cho-Kanji (超漢字) compatibility and interoperability engine:
+    - `bpk_core.c` & `unpack.c`: BPK package installer and archive extractor.
+    - `kconv.c` & `xfconv.c`: TRON Character Code (Tcode / GT code) to Unicode converters.
+  - `clu/`: Command Line Utility subsystem (moved from root `src/clu/`):
+    - `be/`: Binary back-end tools, disassemblers, and machine code generators.
+    - `sc/`: Spreadsheet Calculator curses-style console application.
+    - `sh/`: Command-line shell interpreter with pipeline and redirection support.
+    - `tv/`: Text-mode Terminal Viewer and file browser.
+
+
+### src/media/
+Audiovisual, gaming, streaming, and creative media subsystems:
+  - `cassette/`: Virtual cassette tape player and digital sound playback desk accessory.
+  - `paint/`: Bitmap paint studio with airbrush, geometric fills, and TAD graphic import.
+  - `orchestra/`: The 16-channel Orchestra digital audio workstation (DAW),
+    synthesizer, SMF MIDI engine, and Lukhash tracker sound engine.
+  - `msx/`: MSX media integration, PSG / SCC / FM-PAC music player and cassette deck.
+  - `xmb/`: XrossMediaBar hardware-accelerated fluid menu carousel with dynamic
+    sine-wave ribbon rendering.
+  - `sdk/`: Media Software Development Kit, demoscene procedural graphics & DSP audio
+    (Lil Cu 64 synth, score, insertion, and OpenGL demo), Mars 1993 voxel heightmap renderer,
+    and B-System RTP/GStreamer real-time streaming pipelines.
+  - `quake/`: Real-time hardware-accelerated 3D Quake engine port for B-System:
+    - Real-time BSP geometry renderer, lightmap processor, and alias model pipeline.
+    - Built-in QuakeC virtual machine interpreter (`pr_exec.c`).
+    - B-System windowed desktop client with 60 FPS wall-clock synchronization.
+
+
+### src/emulators/
+Full hardware emulation environments running guest systems inside B-System windows:
+  - `amiga/`: Commodore Amiga 500/1200 OCS/AGA hardware emulator.
+  - `bx8/`: B-System 8-bit Virtual Computer (BX-8 / BX-16) educational machine.
+  - `msx/`: Canonical MSX1 / MSX2 / MSX2+ / MSX turbo R emulator with Z80/R800 CPU,
+    V9938/V9958 VDP, and cleanroom T-BIOS ROM firmware.
+  - `sega/`: Sega Master System / Game Gear / Mega Drive console emulator.
+
+
+### src/languages/
+Programmable script engines, macro languages, and conversational interpreters:
+  - `forth/`: Freestanding eForth / ANS Forth interactive interpreter and compiler,
+    providing bare-metal debugging, memory inspection, and game scripting.
+  - `microscript/`: TRON MicroScript interpreted scripting language for document
+    automation, button actions, and hypermedia links.
+  - `sh/`: B-System interactive command shell language.
+
+
+### src/desktop/
+The complete graphical desktop environment, display server, and UI stack:
+  - `font/`: Multilingual font rendering subsystem:
+    - Truetype and outline rasterizer (`schrift`).
+    - JIS X 0208 / 0212 Kanji font bitmaps, Tibetan dbus-can fonts, and Unicode tables.
+    - TRON Character Code (TAD character plane) font mapping.
+  - `graphics/`: Display primitives, blitters, and 3D hardware acceleration drivers:
+    - `dp_core.c`, `dp_cal.c`: Canonical Display Primitive (DP) 2D vector graphics.
+    - `image_decode.c`: BMP, PNG, and TAD bitmap decoder.
+    - `gles/`: Hardware OpenGL ES 1.1 / 2.0 dispatch and EGL 1.4 surface manager.
+    - `v3d/`: Broadcom VideoCore VI hardware acceleration backend.
+    - `eegs/`: Sony PlayStation 2 Emotion Engine GS hardware acceleration backend.
+    - `virgl/`: QEMU VirtIO VirGL hardware acceleration backend.
+    - `tinygl/`: High-performance software Z-buffer 3D rasterizer fallback.
+  - `industrial/`: High-reliability and industrial embedded HMI interfaces:
+    - `segui/`: Soft Electronic Graphical User Interface for automotive and appliances.
+    - `hmi/`: Human-Machine Interface instrumentation widgets (dials, gauges, meters, switches).
+  - `settings/`: Desktop control panel and settings inspectors (Appearance, Network, Sound).
+  - `tip/`: Text Input Processor (TIP / FEP / IME) multilingual keyboard systems:
+    - `japanese/`: Mozc Kana-Kanji conversion dictionary engine.
+    - `tibetan/`: Tibetan Wylie transliteration and Sambhota dictionary lookup.
+    - `mandarin/`: Pinyin / Bopomofo Chinese character entry.
+    - `sanskrit/`: IAST / Devanagari transliteration tables.
+    - `ukrainian/`: Cyrillic phonetic input table.
+  - `vobject/`: Virtual Object (V-Object) hypermedia linking and container protocol.
+  - `window/`: Window manager (`wnd.c`), drop-down menus (`app_menu.c`), drag-and-drop
+    (`dnd.c`), and asynchronous event queue routing (`event.c`).
+
+
+2. Guiding Architectural Principles
+-----------------------------------
+
+1. Zero Symbolic Links Policy (STRICT):
+   No symbolic links are permitted anywhere in the repository. All files and
+   directories reside at their true canonical paths. Every reference in Makefiles,
+   linker scripts, volume manifests, test harnesses, and C #includes points
+   directly to the physical target without filesystem indirection.
+
+2. Zero Sub-Repositories Policy (STRICT):
+   The repository is a single, self-contained monolithic tree. No git submodules,
+   git subtrees, or external repository dependencies are allowed.
+
+3. Single-Producer Invariants (ASYNC.txt):
+   Every ring buffer crossing cores or hardware execution units has exactly ONE
+   producer and ONE consumer. Directory structures must cleanly isolate device
+   drivers from desktop compositors to prevent cross-subsystem state corruption.
+
+4. NASA JPL Rule 3 Freestanding Compliance:
+   Kernel, drivers, and desktop services must never rely on hosted C library
+   dynamic memory allocations (`malloc`/`free`) during real-time rendering.
+   All allocations are pre-reserved in `.nocache` or static frame pools.
+
+5. Cleanroom Japanese Computing Heritage:
+   Respects Dr. Ken Sakamura's TRON specifications while preserving compatibility
+   with Cho-Kanji, BTRON3, BeOS, and modern high-resolution 60 FPS hardware pipelines.
+
+--------------------
+
+# Implementation Refactoring Plan: Canonical Directory Structure for All Targets
+
+**Target Architecture:** All B-System Targets (Pi 400 AArch64, PS2 MIPS R5900, PC-98 x86, M68K Quadra, MIPS Malta, UEFI x86_64, VirtIO QEMU, Hosted POSIX)  
+**Reference Specification:** [`src/index.txt`](file:///Users/tonpa/depot/bitedits/btron/src/index.txt) & [`doc/txt/STRUCTURE.txt`](file:///Users/tonpa/depot/bitedits/btron/doc/txt/STRUCTURE.txt)  
+
+---
+
+## 1. Core Architectural Mandates
+
+1. **Zero Symbolic Links Policy (STRICT):**
+   - **No symbolic links allowed anywhere in the source tree.**
+   - Every file and directory must reside at its true physical path on the filesystem.
+   - All references in `Makefile`, linker scripts (`link.ld`), test scripts (`test_structure.sh`, `test_*.sh`), volume manifests (`manifest.txt`), and C source `#include` directives must point **directly** to the canonical paths without relying on `ln -s` aliases or filesystem indirection.
+   - All temporary/transitional symlinks in `src/` must be completely removed upon path canonicalization.
+
+2. **Zero Sub-Repositories Policy (STRICT):**
+   - **No git submodules, git subtrees, or nested sub-repositories.**
+   - The entire operating system, kernel, drivers, desktop, emulators, media, and productivity suite reside in a single, unified, self-contained monolithic git repository.
+
+3. **Minimal, Non-Destructive Moves:**
+   - Moves are performed via `git mv` at the folder level.
+   - Code files are never destructively split or fragmented, maintaining git history, authorship, and NASA JPL Rule 3 zero-dynamic-allocation guarantees.
+
+---
+
+## 2. Exhaustive Canonical Path Mapping (Direct Paths, No Symlinks)
+
+| Current Physical Location | Direct Canonical Target Path (`src/index.txt`) | Subsystem & Scope |
+| :--- | :--- | :--- |
+| `src/tools/` | `tools/` | Offline build tools (`mkbtronfs.c`, `album_encode.c`, manifests) |
+| `src/drivers/bcm283x/` | `src/drivers/broadcom/` | Broadcom BCM2711 / BCM2835 drivers (GPU, DMA, USB, PCI, CPU) |
+| `src/drivers/ps2/` | `src/drivers/playstation2/` | Sony PlayStation 2 drivers (GS, VU0/VU1, SIO, Pad, IOP) |
+| `src/quake/` | `src/media/quake/` | Quake 3D engine (`core/`, `render/`, `sys/`, `app/`, `include/`) |
+| `src/clu/` | `src/apps/clu/` | Command Line Utilities (`be/`, `sc/`, `sh/`, `tv/`, `vfs`, `tty`) |
+| `src/chokanji/` | `src/apps/chokanji/` | Cho-Kanji BPK package engine, T-Code conversion, MicroScript |
+| `src/segui/` | `src/desktop/industrial/segui/` | Soft Electronic GUI industrial controls |
+| `src/hmi/` | `src/desktop/industrial/hmi/` | Human-Machine Interface instrumentation widgets |
+| `src/font/` | `src/desktop/font/` | Multilingual typography (Schrift, JIS, Tibetan, TRON codes) |
+| `src/vobject/` | `src/desktop/vobject/` | Virtual Object hypermedia container engine (`vobj.c`, `omgr.c`) |
+| `src/window/` | `src/desktop/window/` | Window manager, menus, drag-and-drop, event queues |
+| `src/settings/` | `src/desktop/settings/` | Desktop configuration, control panel, appearance |
+| `src/tip/` | `src/desktop/tip/` | Multilingual Text Input Processors (Mozc, Wylie) |
+| `src/gl/` & `src/graphics/` | `src/desktop/graphics/` | 2D Display Primitives + 3D backends (`eegs/`, `virgl/`, `v3d/`, `gles/`, `tinygl/`) |
+| `src/apps/*.c` | `src/apps/{chat,clarity,browser,editor,...}/` | Individual application subdirectories |
+| `src/media/*.c` | `src/media/{cassette,paint,orchestra,msx,xmb,sdk}/` | Individual media subdirectories |
+| `src/demo/` | `src/media/sdk/` | Demoscene Lil Cu 64 & Mars 1993 voxel simulator (MOVED, zero symlinks) |
+| `src/languages/` | `src/languages/{forth,microscript,sh}/` | Programmable languages and shell interpreters |
+
+---
+
+## 3. Direct Makefile & Tooling Canonicalization (Symlink Elimination)
+
+To enforce the **Zero Symbolic Links** mandate, all paths across the build harness must be directly converted:
+
+### 3.1 `Makefile` Source Variables
+- **Broadcom Driver**:
+  - `ARCH_BCM_SRCS`: Change `src/drivers/bcm283x/...` $\rightarrow$ `src/drivers/broadcom/...`
+  - `PI400_CFG_DIR`: Change `src/drivers/bcm283x/pi400` $\rightarrow$ `src/drivers/broadcom/pi400`
+  - `BAREMETAL_STARTUP`: `src/drivers/broadcom/cpu/startup_arm.c`
+  - `BAREMETAL_LD`: `src/drivers/broadcom/cpu/link.ld`
+  - Pattern rules: `src/drivers/broadcom/cpu/%.tkernel.o: src/drivers/broadcom/cpu/%.c`
+- **PlayStation 2 Driver**:
+  - `PS2_SRCS`: Change `src/drivers/ps2/...` $\rightarrow$ `src/drivers/playstation2/...`
+  - `PS2_PW_SRCS`: `src/drivers/playstation2/ps2_paint_worker.c`
+  - Include paths: `-Isrc/drivers/playstation2`
+- **Quake 3D**:
+  - `QUAKE_SRCS`: Change `src/quake/...` $\rightarrow$ `src/media/quake/...`
+  - Include paths: `-Isrc/media/quake/include`
+  - Test suites: `TEST_QUAKE*_SRCS`: update to `src/media/quake/...`
+- **CLU**:
+  - `CLU_APPS_SRCS`, `CLU_CORE_SRCS`, `BE_DASM_SRCS`, `SC_SRCS`: Change `src/clu/...` $\rightarrow$ `src/apps/clu/...`
+  - Include paths: `-Isrc/apps/clu`
+- **Cho-Kanji**:
+  - `TEST_CHOKANJI_APPS_SRCS`: Change `src/chokanji/...` $\rightarrow$ `src/apps/chokanji/...`
+- **Desktop Subsystems**:
+  - Update `src/font/...` $\rightarrow$ `src/desktop/font/...`
+  - Update `src/vobject/...` $\rightarrow$ `src/desktop/vobject/...`
+  - Update `src/window/...` $\rightarrow$ `src/desktop/window/...`
+  - Update `src/settings/...` $\rightarrow$ `src/desktop/settings/...`
+  - Update `src/tip/...` $\rightarrow$ `src/desktop/tip/...`
+  - Update `src/segui/...` & `src/hmi/...` $\rightarrow$ `src/desktop/industrial/segui/...` & `src/desktop/industrial/hmi/...`
+  - Update `src/graphics/...` & `src/gl/...` $\rightarrow$ `src/desktop/graphics/...`
+- **Tools & Volume Manifests**:
+  - `btron_sys.vol`: Target `tools/manifest.txt` (not `src/tools/manifest.txt`)
+  - `btron_anders.vol`: Target `tools/manifest_anders.txt`
+  - Build recipes: `mkbtronfs tools/manifest.txt -o btron_sys.vol`
+
+### 3.2 Script Canonicalization
+- **`scripts/test_structure.sh`**:
+  - Line 111: `LINK_LD=src/drivers/broadcom/cpu/link.ld`
+  - Rule 1 & Rule 2 checks: point directly to canonical paths.
+- **`scripts/test_ps2.sh`**:
+  - Update object checks to `src/drivers/playstation2/...`
+- **`scripts/ps2_gif_ring_controls.sh`**:
+  - Update paths: `RING=src/drivers/playstation2/ps2_gif_ring.c`, `PRES=src/desktop/graphics/eegs_present.c`
+- **`scripts/test_arm64_rpi4.sh`**:
+  - Validate image payload against `src/drivers/broadcom/` artifacts.
+
+### 3.3 Symlink Purge Execution
+Upon completing the Makefile and script updates, execute:
+```sh
+rm -f src/quake src/settings src/tools src/segui src/drivers/ps2 \
+      src/drivers/bcm283x src/chokanji src/hmi src/clu src/tip \
+      src/window src/font src/vobject
+```
+Ensure zero broken paths exist in the entire tree.
+
+---
+
+## 4. Verification Checkpoints: All Targets & Test Suites
+
+Every target, verification suite, volume generation step, and screenshot tool must compile and pass cleanly using **only direct physical paths**:
+
+### 4.1 All 12 Hardware & Platform Build Targets
+1. **`make arm64-elf` / `make yoko4`**:
+   - Raspberry Pi 400 & Raspberry Pi 4B (BCM2711, Cortex-A72 AArch64 bare-metal).
+   - Generates: `btron-aarch64-baremetal.elf`, `btron-pi400.img`.
+2. **`make arm32-elf` / `make yoko`**:
+   - Raspberry Pi 2/3 & versatilepb (BCM2835/BCM2836/BCM2837 ARMv7 bare-metal).
+   - Generates: `btron-arm-baremetal.elf`.
+3. **`make posix`**:
+   - Hosted Workstation build for macOS / Linux / BSD with SDL2 scanout.
+   - Generates: `btron-posix`.
+4. **`make qemu`**:
+   - VirtIO QEMU guest system emulator with VirtIO-GPU and block device.
+   - Generates: `btron-qemu.elf`.
+5. **`make kernel` / `make tkernel`**:
+   - Standalone cleanroom T-Kernel 2.0 microkernel engine.
+   - Generates: `btron-tkernel.elf`.
+6. **`make sakamura`**:
+   - Takanori Yokoyama Reference Engine conforming to Dr. Sakamura's TRON specifications.
+   - Generates: `btron-sakamura.elf`.
+7. **`make foma`**:
+   - FOMA / 3G Mobile Handset handheld profile with compact portrait UI.
+   - Generates: `btron-foma.elf`.
+8. **`make pc98` / `make morris`**:
+   - NEC PC-9801 / PC-9821 Japanese personal computer (x86 Real/Protected mode).
+   - Generates: `btron-pc98.elf`.
+9. **`make uefi` / `make uchida`**:
+   - UEFI Standard Workstation freestanding GOP linear framebuffer scanout.
+   - Generates: `btron-uefi.elf`.
+10. **`make m68k`**:
+    - Apple Macintosh Quadra 800 (Motorola 68040 + DAFB framebuffer).
+    - Generates: `btron-m68k.elf`.
+11. **`make ps2` & `make ps2-bench`**:
+    - Sony PlayStation 2 (Emotion Engine MIPS R5900 + Graphics Synthesizer).
+    - Generates: `btron-ps2.elf`, `btron-ps2-bench.elf`, `build/ps2_iso/btron-ps2.iso`.
+12. **`make mips`**:
+    - MIPS Malta / SGI Workstation (MIPS R4000 / 24Kf).
+    - Generates: `btron-mips.elf`.
+
+### 4.2 Comprehensive Verification & Regression Test Suites
+- **Automated CI Architecture Tests:**
+  - `make test-yoko4`: 15/15 QEMU raspi4b hardware boot, MMU, DMA, DWC2, and console markers.
+  - `make test-qemu`: QEMU VirtIO device initialization and console readiness.
+  - `make test-pc98`: PC-9801 GDC, 640x400 VRAM, and keyboard driver tests.
+  - `make test-uefi`: UEFI GOP scanout and memory map acquisition tests.
+  - `make test-m68k`: Motorola 68040 Quadra boot and exception vectors.
+  - `make test-mips`: MIPS Malta UART and interrupt controllers.
+  - `make test-foma` & `make test-foma-ui`: FOMA mobile touch layout and keypad navigation.
+  - `make test-ps2`: Complete 18+ PS2 hardware tests (softfloat, GS pack, VU0, VU1, GIF ring, raster).
+- **Core Kernel & FS Subsystem Tests:**
+  - `make test-fs`: 20/20 HFDS volume, block, directory, multi-record, and link tests.
+  - `make test-sps`: Streaming protocol and IPC synchronization.
+  - `make test-termios`: Terminal I/O and POSIX tty emulation.
+  - `make test-async-input`: Single-producer ASYNC input ring budgets and latency.
+  - `make test-ski`: Lock-free MPSC inter-core queue actors.
+- **Language & Interpreter Suites:**
+  - `make test-forth`: Full Forth verification (`test-clu-forth` 48/48, `test-forth16` 12/12, `test-forth-perf` 12/12, `test-tfw-forth`, `test-mars-capture`).
+  - `make test-chokanji` & `make test-chokanji-apps`: BPK extraction, T-Code conversion, and MicroScript.
+- **Emulators & Guest Systems:**
+  - `make test-msx`: Z80/R800 CPU, V9938 VDP, PSG/SCC audio, and cassette tape.
+  - `make test-hd64180`: Hitachi HD64180 MMU and extended opcodes.
+  - `make test-zexall`: Rigorous Z80 instruction set compliance suite.
+  - `make test-tbios`: Cleanroom MSX T-BIOS ROM firmware (core, video, audio, cpu, megarom, disk).
+  - `make test-bmsx-cfg` & `make test-aurel-vault`: blueMSX emulator configuration profiles.
+- **Desktop, Windowing & Multilingual TIP:**
+  - `make test-editor`: 244/244 canonical TRON text editor tests (TAD, menus, file I/O).
+  - `make test-wylie`: 7/7 Tibetan Extended Wylie Transliteration Scheme (EWTS) tests.
+  - `make test-mozc`: Japanese Kana-Kanji conversion dictionary tests.
+  - `make test-hmi`: 33/33 TRON HMI standard library tests (switches, selectors, dials, panels).
+  - `make test-tad`: Hypermedia TAD browser navigation, V-Object embedding, and drag-and-drop.
+  - `make test-chat`: LAN/RTP XML interactive messaging.
+  - `make test-tracker` & `make test-deskclip`: Workbench desktop tracker and clipping bounds.
+  - `make test-settings` & `make test-global-menu`: Control panels and global menu bars.
+  - `make test-clarity` & `make test-clarity-hypermedia`: Clarity typography and vector graphics.
+- **Graphics & 3D Acceleration Suites:**
+  - `make test-quake`: 9/9 QuakeC VM, demo replays, episode 1 menu, and real-time physics.
+  - `make test-xmb-render`, `make test-xmb-render-tgl`, `make test-xmb-atlas`: XMB ribbon carousels.
+  - `make test-gl-context`, `make test-gl-backend-choice`, `make test-gl-math`: OpenGL ES tract backends.
+- **Codebase Sanity Check:**
+  - `./scripts/test_structure.sh`: Verifies Rule 1 (one main per target), Rule 2 (one libc mapping), and Rule 3 (exact `.nocache` memory layout).
+
+### 4.3 FS Volume & Payload Generation
+- `mkbtronfs`: Built directly from `tools/mkbtronfs.c`.
+- `btron_sys.vol`: Regenerated directly from `tools/manifest.txt` with dependency tracking (`btron_sys.vol.d`).
+- `btron_anders.vol`: Regenerated directly from `tools/manifest_anders.txt` (`btron_anders.vol.d`).
+- `tad_bin`: Unified batch compilation of 106 HTML documents + 14 B-Book guides into native binary TAD.
+
+### 4.4 Automated Screen Capture & Documentation Dumps
+- Host capture tools: `tools/capture_screens`, `tools/capture_foma`, `tools/capture_segui`.
+- Screen update scripts: `scripts/update_foma_screens.py`, `scripts/update_segui_screens.py`, `scripts/update_quake_screens.py`, `scripts/populate_doc_screens.py`.
+
+

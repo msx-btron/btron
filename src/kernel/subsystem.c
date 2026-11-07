@@ -21,8 +21,8 @@
 #include "kernel.h"
 #include "task.h"
 #include "check.h"
-#include <sys/bitop.h>
-#include <sys/rominfo.h>
+#include <kernel/bitop.h>
+#include <kernel/rominfo.h>
 
 EXPORT ID	max_ssyid;	/* Maximum subsystem ID */
 EXPORT PRI	max_ssypri;	/* Maximum subsystem priority */

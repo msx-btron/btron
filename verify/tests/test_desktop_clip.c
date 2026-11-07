@@ -699,7 +699,7 @@ static void freeze_refuses_the_layer_not_the_pixmap(void)
  *
  * The composite's named residue is this overlay block (PS2.txt LANE 12i), and
  * with the launcher's list up it called `tracker_render_menu()` twice per pass:
- * once inside `global_menu_render_overlay()` (src/desktop/global_menu.c:406)
+ * once inside `global_menu_render_overlay()` (src/apps/workbench/global_menu.c:406)
  * and once by the workbench's own `if (tracker_is_menu_open())`, which the
  * merged tree replaced with a dispatch.  Three independent facts are asserted,
  * because each can fail on its own:
@@ -713,7 +713,7 @@ static void freeze_refuses_the_layer_not_the_pixmap(void)
  *     which is the book's "every store is opaque" claim turned into a
  *     measurement.  It is shown DETECTING a change on the first draw first;
  *     a census that never counts anything would make 0 pass vacuously.
- *  3. THE COUNT: a second harness build compiles every TU but src/desktop/tracker.c
+ *  3. THE COUNT: a second harness build compiles every TU but src/apps/workbench/tracker.c
  *     and this one with `-Dtracker_render_menu=counted_tracker_render_menu`, so
  *     the rename lands on the CALL SITES in workbench.c and global_menu.c and on
  *     this file's duplicate-block call, while the definition keeps its real name;

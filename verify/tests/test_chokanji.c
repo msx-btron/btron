@@ -12,12 +12,12 @@
 #include <assert.h>
 #include <strings.h>
 
-#include <btron/fs/block.h>
-#include <btron/fs/fs_types.h>
-#include <btron/fs/vol_api.h>
-#include <btron/fs/volume.h>
+#include <fs/block.h>
+#include <fs/fs_types.h>
+#include <fs/vol_api.h>
+#include <fs/volume.h>
 #include <btron/file.h>
-#include <btron/fs/fs_internal.h>
+#include <fs/fs_internal.h>
 #include <btron/tad.h>
 #include "clu/clu.h"
 

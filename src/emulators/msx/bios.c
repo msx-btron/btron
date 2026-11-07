@@ -6,7 +6,7 @@
 #include "msx_int.h"
 #include "msx_body.h"
 #include "msx_cfg.h"
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include <string.h>
 
 #include "t9769b.h"
@@ -14,7 +14,7 @@
 
 #include <btron/libc_shim.h>
 #if !BTRON_HOSTED
-#include "../clu/vfs.h"
+#include "../../apps/clu/vfs.h"
 #endif
 
 static uint8_t s_main[MSX_BIOS_SIZE];

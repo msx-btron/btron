@@ -24,12 +24,12 @@
 
 #include "../../include/btron/event.h"
 #include "../../include/btron/wnd.h"
-#include "../../src/quake/include/quakedef.h"
-#include "../../src/quake/include/world.h"
-#include "../../src/quake/include/progs.h"
-#include "../../src/quake/include/render.h"
-#include "../../src/quake/include/mathlib.h"
-#include "../../src/quake/include/fs_btron.h"
+#include "../../src/media/quake/include/quakedef.h"
+#include "../../src/media/quake/include/world.h"
+#include "../../src/media/quake/include/progs.h"
+#include "../../src/media/quake/include/render.h"
+#include "../../src/media/quake/include/mathlib.h"
+#include "../../src/media/quake/include/fs_btron.h"
 
 /* ── Host stubs: the engine objects reference these, the renderer does not ── */
 refdef_t r_refdef;

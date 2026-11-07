@@ -65,5 +65,4 @@ src/
     │   ├── mandarin/
     │   ├── sanskrit/
     │   └── ukrainian/
-    ├── vobject/
     └── window/

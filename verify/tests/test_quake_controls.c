@@ -10,12 +10,12 @@
 
 #include "../../include/btron/event.h"
 #include "../../include/btron/wnd.h"
-#include "../../src/quake/include/quakedef.h"
-#include "../../src/quake/include/server.h"
-#include "../../src/quake/include/world.h"
-#include "../../src/quake/include/progs.h"
-#include "../../src/quake/include/render.h"
-#include "../../src/quake/include/mathlib.h"
+#include "../../src/media/quake/include/quakedef.h"
+#include "../../src/media/quake/include/server.h"
+#include "../../src/media/quake/include/world.h"
+#include "../../src/media/quake/include/progs.h"
+#include "../../src/media/quake/include/render.h"
+#include "../../src/media/quake/include/mathlib.h"
 
 /* Exported controls from in_btron.c */
 extern int in_forward;

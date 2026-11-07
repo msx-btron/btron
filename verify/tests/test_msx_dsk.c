@@ -10,7 +10,7 @@
  * which is the File menu returning to another image.
  * Build: make msx-dsk
  */
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include "../../src/emulators/msx/msx_int.h"
 
 #include <stdio.h>

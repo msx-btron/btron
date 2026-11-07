@@ -39,16 +39,16 @@
 #include <btron/dp.h>
 #include <btron/troncode.h>
 #include <btron/nyan_bitmaps.h>
-#include <GL/gl.h>
+#include <graphics/gl.h>
 
-#include "../../src/gl/tinygl/zbuffer.h"
+#include "../../src/desktop/graphics/tinygl/zbuffer.h"
 
 #if defined(BTRON_PS2_TARGET)
 /* The registry the plane-publish half of texture.c writes into.  Both builds link it -- the
  * COLOR-order binary simply never puts anything in it -- so paint_gl()'s release gate can name the
  * entry the upload created, and the retire that follows it, without a suite of its own. */
-#include "../../src/drivers/ps2/ps2_gs_tex.h"
-#include "../../src/drivers/ps2/ps2_gs_vram.h"
+#include "../../src/drivers/playstation2/ps2_gs_tex.h"
+#include "../../src/drivers/playstation2/ps2_gs_vram.h"
 #endif
 
 /* dp_core.c's stage timings ask the platform core for a counter; this link has no core. */
@@ -123,7 +123,7 @@ static void make_texture(unsigned char *tex)
 
 /*
  * Both matrices stay identity, so a vertex is a clip-space coordinate and the viewport
- * alone turns it into pixels: no glOrtho, which <GL/gl.h> declares only inside the
+ * alone turns it into pixels: no glOrtho, which <graphics/gl.h> declares only inside the
  * commented-out block of functions TinyGL does not have.
  */
 static void quad_tex(GLfloat x0, GLfloat y0, GLfloat x1, GLfloat y1)

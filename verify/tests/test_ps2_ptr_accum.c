@@ -49,7 +49,7 @@
 
 /* The code under test itself, not a copy of its arithmetic: this is the identical
  * translation unit that links into btron-ps2.elf. */
-#include "../../src/graphics/dp_accel.c"
+#include "../../src/desktop/graphics/dp_accel.c"
 
 static int s_checks, s_failures;
 

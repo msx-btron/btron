@@ -21,7 +21,7 @@
 #include "kernel.h"
 #include "timer.h"
 #include "task.h"
-#include <tm/tmonitor.h>
+#include <kernel/tmonitor.h>
 
 /*
  * Start initial task

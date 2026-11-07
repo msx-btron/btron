@@ -48,8 +48,8 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3 scripts/html2tad.py --test
-          python3 scripts/book2tad.py --test
+          python3 scripts/tool_html2tad.py --test
+          python3 scripts/tool_book2tad.py --test
 
       - name: Tree Structure Checks
         run: |
@@ -121,8 +121,8 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3 scripts/html2tad.py --test
-          python3 scripts/book2tad.py --test
+          python3 scripts/tool_html2tad.py --test
+          python3 scripts/tool_book2tad.py --test
 
       - name: Build POSIX Desktop
         run: |
@@ -171,8 +171,8 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3 scripts/html2tad.py --test
-          python3 scripts/book2tad.py --test
+          python3 scripts/tool_html2tad.py --test
+          python3 scripts/tool_book2tad.py --test
 
       - name: Build POSIX Desktop
         run: |
@@ -224,8 +224,8 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3.13 scripts/html2tad.py --test
-          python3.13 scripts/book2tad.py --test
+          python3.13 scripts/tool_html2tad.py --test
+          python3.13 scripts/tool_book2tad.py --test
 
       - name: Build POSIX Desktop
         run: |
@@ -282,8 +282,8 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3.12 scripts/html2tad.py --test
-          python3.12 scripts/book2tad.py --test
+          python3.12 scripts/tool_html2tad.py --test
+          python3.12 scripts/tool_book2tad.py --test
 
       - name: Build POSIX Desktop
         run: |

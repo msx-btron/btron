@@ -347,7 +347,7 @@ type mem_region = {
 (* Mirrors include/btron/arm64_mem.h and src/drivers/bcm283x/cpu/link.ld: the
    static image ends below BTRON_NOCACHE_BASE, the 2 MB attr2 window runs from
    there to BTRON_NOCACHE_END, and the bump heap starts at HEAP_BASE 0x02000000.
-   Move the window and this table moves with it -- scripts/check_structure.sh
+   Move the window and this table moves with it -- scripts/test_structure.sh
    compares the real header against link.ld, and arm64_mmu_layout_ok() checks the
    same three bounds on the device. *)
 let btron_regions = [

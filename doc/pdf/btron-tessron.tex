@@ -615,7 +615,7 @@ A decisive, critical point of comparison between B-System and TessronOS lies in 
 \subsection{Authentic Cho-Kanji (BTRON V1 / B-right/V 4.02) Support in B-System}
 In B-System, the storage subsystem (\texttt{src/fs/}) provides complete, backward-compatible on-disk support for authentic historical Cho-Kanji volumes:
 \begin{enumerate}[leftmargin=*]
-    \item \textbf{Superblock Recognition and Dual-Endian Support:} In \texttt{src/fs/vol.c} and \texttt{include/btron/fs/volume.h}, B-System natively detects:
+    \item \textbf{Superblock Recognition and Dual-Endian Support:} In \texttt{src/fs/vol.c} and \texttt{include/fs/volume.h}, B-System natively detects:
     \begin{itemize}
         \item \texttt{VOL\_MAGIC\_BE} (\texttt{0x42FE}): Classic big-endian BTRON volume header.
         \item \texttt{VOL\_MAGIC\_LE} (\texttt{0x52FE}): Little-endian B-right/V x86 volume header.
@@ -647,7 +647,7 @@ UH   fs_locat[20];/* +0x58 device locat (T-Code) */
 \end{enumerate}
 
 \subsection{Modern BTRON V2 Filesystem Architecture (B-FS)}
-In addition to V1/Cho-Kanji compatibility, B-System specifies and implements the next-generation \textbf{B-FS (BTRON V2)} on-disk filesystem (\texttt{include/btron/fs/bfs\_disk.h}):
+In addition to V1/Cho-Kanji compatibility, B-System specifies and implements the next-generation \textbf{B-FS (BTRON V2)} on-disk filesystem (\texttt{include/fs/bfs\_disk.h}):
 \begin{itemize}[leftmargin=*]
     \item \textbf{Dual-Anchor Superblock:} Block 0 houses a 128-byte \texttt{VolumeHeaderV2} (\texttt{VOL\_MAGIC\_V2 = 0x62FE}, \texttt{FS\_TYPE\_MODERN = 0x6403}), while Block 1 houses a 512-byte \texttt{bfs\_super\_block\_v2}.
     \item \textbf{64-bit FID Addressing:} Implements \texttt{block\_run\_64} supporting up to 48-bit allocation group indices and 16-bit intra-group block offsets, lifting the historical 16-bit FID limitation ($65,535$ files) to $2^{64}$ files.

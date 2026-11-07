@@ -9,7 +9,7 @@
  * make target.  Usage:  test_msx_boot <rom-file> [frames] [dump-prefix]
  */
 
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include "../../src/emulators/msx/v9938.h"
 #include "../../src/emulators/msx/geo3d.h"
 

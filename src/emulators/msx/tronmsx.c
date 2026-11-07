@@ -1,7 +1,7 @@
 /*
  * tronMSX — top-level machine: wires the Z80 / R800 core to the slot map, VDP,
  * PSG, PPI and keyboard, drives the frame loop and exposes the public surface of
- * include/emulators/tronmsx.h.  B-MSX Rev 1.05, Part 5.
+ * include/btron/tronmsx.h.  B-MSX Rev 1.05, Part 5.
  *
  * Full support for the complete set of 18 MSX2 / MSX2+ / Turbo R machines
  * with TurboR R800, V9938/V9958, S1985, T9769B, T9769C emulation.
@@ -10,7 +10,7 @@
 #include "msx_int.h"
 #include "msx_body.h"
 
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include <string.h>
 #include <stdio.h>
 

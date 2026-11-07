@@ -9,7 +9,7 @@
  * would rename the real rasteriser away, and inside the counting wrapper itself
  * it would rewrite the delegation into self-recursion.  So the wrapper lives
  * here, in a TU the harness compiles WITHOUT the rename, where
- * `tracker_render_menu` below is the real symbol from src/desktop/tracker.c.
+ * `tracker_render_menu` below is the real symbol from src/apps/workbench/tracker.c.
  * The renamed TUs (workbench.c, global_menu.c) call
  * `counted_tracker_render_menu`, which lands here, increments, and delegates.
  *

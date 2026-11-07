@@ -30,7 +30,7 @@ Rules:
 - One **on-disk volume format** for all targets.
 - Only the **block backend** changes (memdisk, flash, UEFI file, PC-98 disk, VirtIO).
 - Do **not** store the FS as ad-hoc C structs in `.data`. Embed a **raw volume image** (sequence of logical blocks).
-- Public API stays in `file.h`; on-disk structs live under `include/btron/fs/`.
+- Public API stays in `file.h`; on-disk structs live under `include/fs/`.
 
 
 ## 2. Fundamental units

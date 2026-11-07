@@ -53,8 +53,8 @@
  * The shipped values live in ps2_paint_worker.h and the defaults in ps2_paint_worker.c; overriding
  * the cap here is the same idiom the ring suite uses to reach its capacity path. */
 #define PS2_PW_MAX 4u
-#include "../../src/drivers/ps2/ps2_paint_worker.h"
-#include "../../src/drivers/ps2/ps2_paint_worker.c"
+#include "../../src/drivers/playstation2/ps2_paint_worker.h"
+#include "../../src/drivers/playstation2/ps2_paint_worker.c"
 
 static int s_checks, s_failures;
 

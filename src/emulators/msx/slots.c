@@ -10,7 +10,7 @@
  */
 
 #include "msx_int.h"
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include <string.h>
 #include <stdio.h>
 

@@ -18,7 +18,7 @@
  */
 
 #include <basic.h>
-#include <tk/tkernel.h>
+#include <kernel/tkernel.h>
 #include "version.h"
 
 EXPORT const T_RVER kernel_version = {

@@ -9,7 +9,7 @@
 
 #if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
 
-#include <btron/fs/block.h>
+#include <fs/block.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -108,7 +108,7 @@ BlkDev *blk_mbr_find_btron_partition(BlkDev *dev, UW fs_block_size)
 }
 
 #else
-#include <btron/fs/block.h>
+#include <fs/block.h>
 #include <stddef.h>
 
 BlkDev *blk_partition_create(BlkDev *parent, UW start_lba, UW nblocks, UW block_size) {

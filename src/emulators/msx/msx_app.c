@@ -14,11 +14,11 @@
 #include <btron/itron.h>
 #include <btron/app_menu.h>
 #include <btron/troncode.h>
-#include <emulators/tronmsx.h>
-#include <device/virtio.h>
+#include <btron/tronmsx.h>
+#include <drivers/virtio/virtio.h>
 #include "msx_kbd.h"
 #include "msx_int.h"
-#include "../../clu/vfs.h"          /* the /SYS catalogue: src/clu/vfs.c */
+#include "../../apps/clu/vfs.h"          /* the /SYS catalogue: src/apps/clu/vfs.c */
 #include <stdint.h>
 
 #include <btron/libc_shim.h>

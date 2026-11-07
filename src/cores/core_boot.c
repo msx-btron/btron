@@ -13,10 +13,10 @@
 #include <btron/tip.h>
 #include <btron/smp.h>
 #include <btron/workbench.h>
-#include <drivers/vesa.h>
-#include <drivers/virtio_gpu.h>
-#include <drivers/ps2_mouse.h>
-#include <drivers/pc98_mouse.h>
+#include <drivers/vesa/vesa.h>
+#include <drivers/virtio/virtio_gpu.h>
+#include <drivers/uefi/ps2_mouse.h>
+#include <drivers/pc98/pc98_mouse.h>
 #include <btron/libc_shim.h>
 
 extern void orchestra_ui_tick(void);
@@ -156,7 +156,7 @@ static char ps2_scancode_to_ascii(uint8_t sc, int shift) {
 }
 
 #if defined(BTRON_PC98_TARGET)
-#include <drivers/pc98_kbd.h>
+#include <drivers/pc98/pc98_kbd.h>
 #define btron_kbd_init()                       pc98_kbd_init()
 #define btron_kbd_has_key()                    pc98_kbd_has_key()
 #define btron_kbd_get_scancode()               pc98_kbd_get_scancode()

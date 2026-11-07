@@ -32,8 +32,8 @@
 #ifndef __TS_BPK_H__
 #define __TS_BPK_H__
 
-#include <tk/typedef.h>
-#include <tk/errno.h>
+#include <kernel/typedef.h>
+#include <kernel/errno.h>
 #include <stddef.h>
 
 #ifdef __cplusplus

@@ -57,12 +57,12 @@
 #include <btron/pmc.h>
 #include <btron/tip.h>
 #include <btron/file.h>
-#include <btron/fs/block.h>
-#include <btron/fs/vol_api.h>
-#include <btron/fs/fs_internal.h>
+#include <fs/block.h>
+#include <fs/vol_api.h>
+#include <fs/fs_internal.h>
 #include <btron/tad.h>
-#include "../../src/apps/xmb.h"
-#include "../../src/clu/vfs.h"
+#include "../../src/media/xmb/xmb.h"
+#include "../../src/apps/clu/vfs.h"
 
 #define XW 960
 #define XH 600
@@ -262,9 +262,9 @@ static void system_state_init(void)
 
 
 /* The real GL stack */
-#include "../../src/gl/gl_dispatch.h"
-#include "../../src/gl/egl_surface.h"
-#include "../../src/gl/gl_backend_choice.h"
+#include "../../src/desktop/graphics/gles/gl_dispatch.h"
+#include "../../src/desktop/graphics/gles/egl_surface.h"
+#include "../../src/desktop/graphics/gles/gl_backend_choice.h"
 
 /* ── Assertions ──────────────────────────────────────────────────────── */
 

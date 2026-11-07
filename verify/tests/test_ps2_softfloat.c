@@ -35,7 +35,7 @@
 
 /* The runtime's own source, not a link against it: its format table and engine are
  * file-static, and only the definitions of the libcalls are exported. */
-#include "../../src/drivers/ps2/ps2_builtins.c"
+#include "../../src/drivers/playstation2/ps2_builtins.c"
 
 /* The same reason for the three integer libcalls, which moved to
  * src/kernel/libint64.c so the i386 lanes could link the ones the DAW asks for.

@@ -22,7 +22,7 @@
 #define _READY_QUEUE_
 
 #include <libstr.h>
-#include <sys/bitop.h>
+#include <kernel/bitop.h>
 
 /*
  * Definition of ready queue structure

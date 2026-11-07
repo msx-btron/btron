@@ -30,9 +30,25 @@
 #   test-kernel   Test Pi 2B ELF in QEMU (raspi2b, serial-only, headless)
 #   debug-gdb     QEMU + GDB stub on Pi 2B
 
+COMMON_INCLUDES = -Iinclude -Iinclude/rt -Iinclude/graphics -Iinclude/drivers -Iinclude/drivers/broadcom -Isrc/kernel -Isrc/cores \
+                  -Isrc/desktop -Isrc/desktop/graphics -Isrc/desktop/graphics/gles \
+                  -Isrc/desktop/graphics/virgl -Isrc/desktop/graphics/v3d \
+                  -Isrc/desktop/graphics/eegs -Isrc/desktop/graphics/tinygl \
+                  -Isrc/desktop/window -Isrc/desktop/font -Isrc/desktop/tip \
+                  -Isrc/desktop/tip/japanese -Isrc/desktop/tip/tibetan \
+                  -Isrc/desktop/settings -Isrc/desktop/industrial \
+                  -Isrc/apps -Isrc/apps/chat -Isrc/apps/clarity -Isrc/apps/browser \
+                  -Isrc/apps/review -Isrc/apps/editor -Isrc/apps/workbench \
+                  -Isrc/apps/volumes -Isrc/apps/clock -Isrc/apps/preferences \
+                  -Isrc/apps/terminal -Isrc/apps/clu -Isrc/apps/chokanji -Isrc/apps/cabinet \
+                  -Isrc/languages -Isrc/languages/forth -Isrc/languages/microscript \
+                  -Isrc/media -Isrc/media/cassette -Isrc/media/paint -Isrc/media/orchestra \
+                  -Isrc/media/xmb -Isrc/media/sdk -Isrc/media/quake/include \
+                  -Isrc/drivers/broadcom -Isrc/drivers/playstation2
+
 CC ?= gcc
 CXX ?= c++
-CFLAGS ?= -O2 -Wall -Wextra -std=c99 -Iinclude -Iinclude/gl -Isrc/gl -Iinclude/drivers -Isrc/kernel -Isrc/cores -Isrc/quake/include
+CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
 
 .PHONY: all posix qemu kernel tkernel sakamura foma uefi pc98 arm-elf arm64-elf m68k ps2 mips \
         check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing \
@@ -88,7 +104,7 @@ MIPS_CC     ?= $(LLVM_CLANG) --target=mipsel-unknown-elf -march=mips32r2 -mabi=3
 # R5900 FPU is single-precision, so a hardware .d instruction is not merely slow, it
 # is illegal and does nothing at all.  Under this flag a floating value travels in
 # integer registers, so mixing it with a build that uses the FPU would corrupt every
-# float argument that crosses the boundary -- and src/drivers/ps2/ps2_builtins.c
+# float argument that crosses the boundary -- and src/drivers/playstation2/ps2_builtins.c
 # supplies the runtime the link then needs.
 # Three objects take the FPU switched back on (see PS2_FP near %.pbench.o), chosen for the
 # same reason: no float ever crosses into or out of them.  ps2_builtins.c *is* the
@@ -109,7 +125,7 @@ PS2_CC      ?= $(LLVM_CLANG) --target=mipsel-unknown-elf -march=mips2 -mabi=32 -
 MIPS_LD ?= $(if $(shell command -v mipsel-linux-gnu-ld 2>/dev/null),mipsel-linux-gnu-ld,$(LLD_BIN) -EL)
 
 # BCM283x bare-metal flags (TYPE_RPI=2 → BCM2836, Pi 2B, Cortex-A7)
-BCM_INC      = -Iinclude -Iinclude/gl -Iinclude/arch/bcm283x -Isrc/kernel -Isrc/cores
+BCM_INC      = $(COMMON_INCLUDES)
 ARM_CFLAGS   = -O2 -Wall -Wextra -std=c99 -mno-unaligned-access \
                -D_RPI_BCM283x_ -DTYPE_RPI=2 -DBTRON_TARGET=2 -mfpu=vfpv4 -mfloat-abi=softfp \
                $(BCM_INC)
@@ -162,12 +178,12 @@ else
 endif
 
 # ── Text Input Primitives (TIP) / Mozc IME sources ────────────────
-IME_SRCS    = src/tip/mozc_kkc.c       \
-              src/tip/tip_ife.c        \
-              src/tip/tip_task.c       \
-              src/tip/tip_vobj.c       \
-              src/tip/wylie.c          \
-              src/tip/tibetan_dict.c
+IME_SRCS    = src/desktop/tip/japanese/mozc_kkc.c       \
+              src/desktop/tip/tip_ife.c        \
+              src/desktop/tip/tip_task.c       \
+              src/desktop/tip/tip_vobj.c       \
+              src/desktop/tip/tibetan/wylie.c          \
+              src/desktop/tip/tibetan/tibetan_dict.c
 
 # ── tronMSX core: the machine src/emulators/msx/msx_app.c drives ───────────────────
 MSX_SRCS = src/emulators/msx/z80.c        \
@@ -196,48 +212,48 @@ MSX_SRCS = src/emulators/msx/z80.c        \
            src/emulators/msx/tronmsx.c
 
 # ── CLU Applications (POSIX commands) ─────────────────────────────
-CLU_APPS_SRCS = src/clu/fs.c \
-                src/clu/ls.c \
-                src/clu/cp.c \
-                src/clu/rm.c \
-                src/clu/mv.c \
-                src/clu/ln.c \
-                src/clu/df.c \
-                src/clu/st.c \
-                src/clu/tp.c \
-                src/clu/ps_vm.c \
-                src/clu/sps.c \
-                src/clu/forth_core.c \
-                src/clu/forth_devtree.c \
-                src/clu/forth.c
+CLU_APPS_SRCS = src/apps/clu/fs.c \
+                src/apps/clu/ls.c \
+                src/apps/clu/cp.c \
+                src/apps/clu/rm.c \
+                src/apps/clu/mv.c \
+                src/apps/clu/ln.c \
+                src/apps/clu/df.c \
+                src/apps/clu/st.c \
+                src/apps/clu/tp.c \
+                src/apps/clu/ps_vm.c \
+                src/apps/clu/sps.c \
+                src/languages/forth/forth_core.c \
+                src/languages/forth/forth_devtree.c \
+                src/languages/forth/forth.c
 
 CLU_APPS_HOST_OBJS = $(CLU_APPS_SRCS:.c=.host.o)
 CLU_APPS_POSIX_OBJS = $(CLU_APPS_SRCS:.c=.posix.o)
 
 # ── Common SDL2-hosted app sources ────────────────────────────────
-BE_DASM_SRCS = src/clu/be/native_dasm.c \
-               src/clu/be/arch/x86/insnsd.c src/clu/be/arch/x86/insnsa.c \
-               src/clu/be/arch/x86/insnsb.c src/clu/be/arch/x86/insnsn.c \
-               src/clu/be/arch/x86/disasm.c src/clu/be/arch/x86/regdis.c \
-               src/clu/be/arch/x86/regs.c src/clu/be/arch/x86/regflags.c \
-               src/clu/be/arch/x86/regvals.c src/clu/be/arch/x86/iflag.c \
-               src/clu/be/arch/x86/sync.c src/clu/be/arch/x86/disp8.c \
-               src/clu/be/arch/x86/nctype.c src/clu/be/arch/x86/readnum.c \
-               src/clu/be/arch/x86/common.c src/clu/be/arch/x86/alloc.c \
-               src/clu/be/arch/x86/string.c src/clu/be/arch/x86/warnings.c \
-               src/clu/be/arch/x86/error.c src/clu/be/arch/x86/ver.c \
-               src/clu/be/arch/arm64/BranchExcSys.c \
-               src/clu/be/arch/arm64/DataProcessingImmediate.c \
-               src/clu/be/arch/arm64/LoadsAndStores.c src/clu/be/arch/arm64/bits.c \
-               src/clu/be/arch/arm64/strext.c \
-               src/clu/be/arch/arm64/DataProcessingFloatingPoint.c \
-               src/clu/be/arch/arm64/DataProcessingRegister.c \
-               src/clu/be/arch/arm64/armadillo.c src/clu/be/arch/arm64/instruction.c \
-               src/clu/be/arch/arm64/utils.c src/clu/be/arch/arm32/armv7.c \
-               src/clu/be/arch/riscv/riscv-disas.c src/clu/be/arch/ppc/ppc_disasm.c \
-               src/clu/be/arch/m68k/dis68k.c src/clu/be/arch/sh4/sh4.c \
-               src/clu/be/arch/mips/mips-rsp.c \
-               src/clu/be/arch/pdp11/pdp11.c
+BE_DASM_SRCS = src/apps/clu/be/native_dasm.c \
+               src/apps/clu/be/arch/x86/insnsd.c src/apps/clu/be/arch/x86/insnsa.c \
+               src/apps/clu/be/arch/x86/insnsb.c src/apps/clu/be/arch/x86/insnsn.c \
+               src/apps/clu/be/arch/x86/disasm.c src/apps/clu/be/arch/x86/regdis.c \
+               src/apps/clu/be/arch/x86/regs.c src/apps/clu/be/arch/x86/regflags.c \
+               src/apps/clu/be/arch/x86/regvals.c src/apps/clu/be/arch/x86/iflag.c \
+               src/apps/clu/be/arch/x86/sync.c src/apps/clu/be/arch/x86/disp8.c \
+               src/apps/clu/be/arch/x86/nctype.c src/apps/clu/be/arch/x86/readnum.c \
+               src/apps/clu/be/arch/x86/common.c src/apps/clu/be/arch/x86/alloc.c \
+               src/apps/clu/be/arch/x86/string.c src/apps/clu/be/arch/x86/warnings.c \
+               src/apps/clu/be/arch/x86/error.c src/apps/clu/be/arch/x86/ver.c \
+               src/apps/clu/be/arch/arm64/BranchExcSys.c \
+               src/apps/clu/be/arch/arm64/DataProcessingImmediate.c \
+               src/apps/clu/be/arch/arm64/LoadsAndStores.c src/apps/clu/be/arch/arm64/bits.c \
+               src/apps/clu/be/arch/arm64/strext.c \
+               src/apps/clu/be/arch/arm64/DataProcessingFloatingPoint.c \
+               src/apps/clu/be/arch/arm64/DataProcessingRegister.c \
+               src/apps/clu/be/arch/arm64/armadillo.c src/apps/clu/be/arch/arm64/instruction.c \
+               src/apps/clu/be/arch/arm64/utils.c src/apps/clu/be/arch/arm32/armv7.c \
+               src/apps/clu/be/arch/riscv/riscv-disas.c src/apps/clu/be/arch/ppc/ppc_disasm.c \
+               src/apps/clu/be/arch/m68k/dis68k.c src/apps/clu/be/arch/sh4/sh4.c \
+               src/apps/clu/be/arch/mips/mips-rsp.c \
+               src/apps/clu/be/arch/pdp11/pdp11.c
 
 # The nvidia half of the `be` editor's decoders -- the assembler and disassembler of the
 # G80..Maxwell microcode, 27 units carried over from the nvclock/nvd3d9 tooling.  It is its own
@@ -245,99 +261,99 @@ BE_DASM_SRCS = src/clu/be/native_dasm.c \
 # in the PS2 link is 44% of every byte spent on .data (gm107.c alone is 1,382,528).  Naming it
 # separately changes no list that is in use -- the `+=` below puts it back exactly where it was
 # for every lane -- and only gives a lane a way to answer for it.  See PS2_NV.
-NV_SRCS = src/clu/be/arch/nv/core-as.c src/clu/be/arch/nv/ctx.c \
-          src/clu/be/arch/nv/falcon.c src/clu/be/arch/nv/gk110.c \
-          src/clu/be/arch/nv/macro.c src/clu/be/arch/nv/vp1.c \
-          src/clu/be/arch/nv/hash.c src/clu/be/arch/nv/g80.c \
-          src/clu/be/arch/nv/gm107.c src/clu/be/arch/nv/nv.c \
-          src/clu/be/arch/nv/vuc.c src/clu/be/arch/nv/xtensa.c \
-          src/clu/be/arch/nv/astr.c src/clu/be/arch/nv/colors.c \
-          src/clu/be/arch/nv/core-dis.c src/clu/be/arch/nv/core.c \
-          src/clu/be/arch/nv/gf100.c src/clu/be/arch/nv/hwsq.c \
-          src/clu/be/arch/nv/vcomp.c src/clu/be/arch/nv/mask.c \
-          src/clu/be/arch/nv/varinfo.c src/clu/be/arch/nv/vardata.c \
-          src/clu/be/arch/nv/symtab.c src/clu/be/arch/nv/easm.c \
-          src/clu/be/arch/nv/aprintf.c src/clu/be/arch/nv/easm_xfrm.c \
-          src/clu/be/arch/nv/easm_print.c
+NV_SRCS = src/apps/clu/be/arch/nv/core-as.c src/apps/clu/be/arch/nv/ctx.c \
+          src/apps/clu/be/arch/nv/falcon.c src/apps/clu/be/arch/nv/gk110.c \
+          src/apps/clu/be/arch/nv/macro.c src/apps/clu/be/arch/nv/vp1.c \
+          src/apps/clu/be/arch/nv/hash.c src/apps/clu/be/arch/nv/g80.c \
+          src/apps/clu/be/arch/nv/gm107.c src/apps/clu/be/arch/nv/nv.c \
+          src/apps/clu/be/arch/nv/vuc.c src/apps/clu/be/arch/nv/xtensa.c \
+          src/apps/clu/be/arch/nv/astr.c src/apps/clu/be/arch/nv/colors.c \
+          src/apps/clu/be/arch/nv/core-dis.c src/apps/clu/be/arch/nv/core.c \
+          src/apps/clu/be/arch/nv/gf100.c src/apps/clu/be/arch/nv/hwsq.c \
+          src/apps/clu/be/arch/nv/vcomp.c src/apps/clu/be/arch/nv/mask.c \
+          src/apps/clu/be/arch/nv/varinfo.c src/apps/clu/be/arch/nv/vardata.c \
+          src/apps/clu/be/arch/nv/symtab.c src/apps/clu/be/arch/nv/easm.c \
+          src/apps/clu/be/arch/nv/aprintf.c src/apps/clu/be/arch/nv/easm_xfrm.c \
+          src/apps/clu/be/arch/nv/easm_print.c
 BE_DASM_SRCS += $(NV_SRCS)
 
-COMMON_SRCS = src/graphics/dp_core.c   \
-              src/graphics/image_decode.c \
-              src/graphics/icons_bundle.c \
-              src/window/dnd.c         \
-              src/graphics/dp_sdl.c    \
-              src/font/troncode.c      \
-              src/font/jis_fonts.c     \
-              src/font/tibetan_fonts.c \
-              src/font/font_mgr.c      \
-              src/font/schrift.c       \
-              src/window/wnd.c         \
-              src/window/app_menu.c    \
-              src/window/event.c       \
-              src/chokanji/pmc.c       \
-              src/chokanji/cab.c       \
-              src/chokanji/microscript.c \
-              src/chokanji/clock.c     \
-              src/chokanji/kconv.c     \
-              src/chokanji/xfconv.c    \
-              src/chokanji/bpk_core.c  \
-              src/chokanji/unpack.c    \
-              src/chokanji/launchers.c \
-              src/vobject/vobj.c       \
-              src/desktop/desktop.c    \
-              src/desktop/workbench.c  \
-              src/desktop/tracker.c    \
-              src/desktop/about.c      \
-              src/desktop/global_menu.c \
-              src/desktop/main.c       \
-              src/apps/vobj_manager.c  \
-              src/apps/tad_browser.c   \
-              src/apps/paint.c         \
-              src/apps/gterm.c         \
-              src/apps/t_editor.c      \
-              src/apps/clarity.c        \
-              src/apps/clarity_layout.c \
-              src/apps/clarity_render.c \
-              src/apps/clarity_export.c \
-              src/apps/pdf_reader.c     \
-              src/apps/review.c         \
-              src/apps/audio_player.c  \
-              src/apps/b_drivesetup.c  \
-              src/media/orchestra.c     \
-              src/media/orchestra_stage.c \
-              src/media/orchestra_arrange.c \
-              src/media/orchestra_piano.c \
-              src/media/orchestra_score.c \
-              src/media/orchestra_mix.c \
-              src/media/orchestra_insert.c \
-              src/media/orchestra_about.c \
-              src/media/orchestra_session.c \
-              src/media/orchestra_smf.c \
-              src/media/gst_rt.c       \
-              src/media/lukhash_score.c \
-              src/apps/chat.c          \
-              src/apps/chat_xml.c      \
+COMMON_SRCS = src/desktop/graphics/dp_core.c   \
+              src/desktop/graphics/image_decode.c \
+              src/desktop/graphics/icons_bundle.c \
+              src/desktop/window/dnd.c         \
+              src/desktop/graphics/dp_sdl.c    \
+              src/desktop/font/troncode.c      \
+              src/desktop/font/jis_fonts.c     \
+              src/desktop/font/tibetan_fonts.c \
+              src/desktop/font/font_mgr.c      \
+              src/desktop/font/schrift.c       \
+              src/desktop/window/wnd.c         \
+              src/desktop/window/app_menu.c    \
+              src/desktop/window/event.c       \
+              src/apps/chokanji/pmc.c       \
+              src/apps/chokanji/cab.c       \
+              src/languages/microscript/microscript.c \
+              src/apps/chokanji/clock.c     \
+              src/apps/chokanji/kconv.c     \
+              src/apps/chokanji/xfconv.c    \
+              src/apps/chokanji/bpk_core.c  \
+              src/apps/chokanji/unpack.c    \
+              src/apps/chokanji/launchers.c \
+              src/apps/cabinet/vobj.c       \
+              src/apps/workbench/desktop.c    \
+              src/apps/workbench/workbench.c  \
+              src/apps/workbench/tracker.c    \
+              src/apps/workbench/about.c      \
+              src/apps/workbench/global_menu.c \
+              src/apps/workbench/main.c       \
+              src/apps/cabinet/vobj_manager.c  \
+              src/apps/browser/tad_browser.c   \
+              src/media/paint/paint.c         \
+              src/apps/terminal/gterm.c         \
+              src/apps/editor/t_editor.c      \
+              src/apps/clarity/clarity.c        \
+              src/apps/clarity/clarity_layout.c \
+              src/apps/clarity/clarity_render.c \
+              src/apps/clarity/clarity_export.c \
+              src/apps/browser/pdf_reader.c     \
+              src/apps/review/review.c         \
+              src/media/cassette/audio_player.c  \
+              src/apps/volumes/b_drivesetup.c  \
+              src/media/orchestra/orchestra.c     \
+              src/media/orchestra/orchestra_stage.c \
+              src/media/orchestra/orchestra_arrange.c \
+              src/media/orchestra/orchestra_piano.c \
+              src/media/orchestra/orchestra_score.c \
+              src/media/orchestra/orchestra_mix.c \
+              src/media/orchestra/orchestra_insert.c \
+              src/media/orchestra/orchestra_about.c \
+              src/media/orchestra/orchestra_session.c \
+              src/media/orchestra/orchestra_smf.c \
+              src/media/sdk/gst_rt.c       \
+              src/media/orchestra/lukhash_score.c \
+              src/apps/chat/chat.c          \
+              src/apps/chat/chat_xml.c      \
               src/emulators/msx/msx_app.c       \
               $(MSX_SRCS)              \
-              src/settings/language.c  \
-              src/settings/control_panel.c \
-              src/settings/appearance.c \
-              src/settings/desktop.c \
-              src/settings/display.c \
-              src/settings/input.c \
-              src/settings/sound.c \
-              src/settings/network.c \
-              src/settings/media.c \
-              src/settings/security.c \
-              src/settings/system.c    \
-              src/settings/terminal.c  \
-              src/hmi/hmi_core.c       \
-              src/hmi/hmi_switch.c     \
-              src/hmi/hmi_selector.c   \
-              src/hmi/hmi_volume.c     \
-              src/hmi/hmi_meter.c      \
-              src/hmi/hmi_controller.c \
-              src/hmi/hmi_panel.c      \
+              src/desktop/settings/language.c  \
+              src/desktop/settings/control_panel.c \
+              src/desktop/settings/appearance.c \
+              src/desktop/settings/desktop.c \
+              src/desktop/settings/display.c \
+              src/desktop/settings/input.c \
+              src/desktop/settings/sound.c \
+              src/desktop/settings/network.c \
+              src/desktop/settings/media.c \
+              src/desktop/settings/security.c \
+              src/desktop/settings/system.c    \
+              src/desktop/settings/terminal.c  \
+              src/desktop/industrial/hmi/hmi_core.c       \
+              src/desktop/industrial/hmi/hmi_switch.c     \
+              src/desktop/industrial/hmi/hmi_selector.c   \
+              src/desktop/industrial/hmi/hmi_volume.c     \
+              src/desktop/industrial/hmi/hmi_meter.c      \
+              src/desktop/industrial/hmi/hmi_controller.c \
+              src/desktop/industrial/hmi/hmi_panel.c      \
               $(IME_SRCS)              \
               src/fs/blk_mem.c         \
               src/fs/blk_file.c        \
@@ -345,68 +361,68 @@ COMMON_SRCS = src/graphics/dp_core.c   \
               src/fs/blk_part.c        \
               src/fs/vol.c             \
               src/fs/file.c            \
-              src/clu/lang.c           \
-              src/clu/term.c           \
-              src/clu/tty.c            \
-              src/clu/vfs.c            \
-              src/clu/sc/files.c       \
-              src/clu/sc/input.c       \
-              src/clu/sc/menus.c       \
-              src/clu/sc/sc.c          \
-              src/clu/tv/tv.c          \
-              src/clu/be/native.c      \
+              src/apps/clu/lang.c           \
+              src/apps/clu/term.c           \
+              src/apps/clu/tty.c            \
+              src/apps/clu/vfs.c            \
+              src/apps/clu/sc/files.c       \
+              src/apps/clu/sc/input.c       \
+              src/apps/clu/sc/menus.c       \
+              src/apps/clu/sc/sc.c          \
+              src/apps/clu/tv/tv.c          \
+              src/apps/clu/be/native.c      \
               $(BE_DASM_SRCS)          \
               $(CLU_APPS_SRCS)         \
-              src/clu/clu.c
+              src/apps/clu/clu.c
 
 QUAKE_SRCS = \
-    src/quake/core/mathlib.c \
-    src/quake/core/mem.c \
-    src/quake/core/cvar.c \
-    src/quake/core/cmd.c \
-    src/quake/core/wad.c \
-    src/quake/core/world.c \
-    src/quake/core/pr_exec.c \
-    src/quake/core/sv_phys.c \
-    src/quake/core/sv_main.c \
-    src/quake/sys/sys_btron.c \
-    src/quake/sys/in_btron.c \
-    src/quake/sys/fs_btron.c \
-    src/quake/render/r_btron_gl.c \
-    src/quake/render/r_brush.c \
-    src/quake/render/r_light.c \
-    src/quake/render/r_surf.c \
-    src/quake/render/r_alias.c \
-    src/quake/render/r_part.c \
-    src/quake/render/texture.c \
-    src/quake/core/cl_demo.c \
-    src/quake/app/quake_ui.c \
-    src/quake/app/quake_app.c
+    src/media/quake/core/mathlib.c \
+    src/media/quake/core/mem.c \
+    src/media/quake/core/cvar.c \
+    src/media/quake/core/cmd.c \
+    src/media/quake/core/wad.c \
+    src/media/quake/core/world.c \
+    src/media/quake/core/pr_exec.c \
+    src/media/quake/core/sv_phys.c \
+    src/media/quake/core/sv_main.c \
+    src/media/quake/sys/sys_btron.c \
+    src/media/quake/sys/in_btron.c \
+    src/media/quake/sys/fs_btron.c \
+    src/media/quake/render/r_btron_gl.c \
+    src/media/quake/render/r_brush.c \
+    src/media/quake/render/r_light.c \
+    src/media/quake/render/r_surf.c \
+    src/media/quake/render/r_alias.c \
+    src/media/quake/render/r_part.c \
+    src/media/quake/render/texture.c \
+    src/media/quake/core/cl_demo.c \
+    src/media/quake/app/quake_ui.c \
+    src/media/quake/app/quake_app.c
 
 DEMO_SRCS = \
-    src/demo/lilcu64_wa.c \
-    src/demo/lilcu64_score.c \
-    src/demo/lilcu64_synth.c \
-    src/demo/lilcu64_insert.c \
-    src/demo/lilcu64_demo.c \
-    src/demo/mars.c \
-    src/drivers/ps2/ps2_vu0_kernel.c
+    src/media/sdk/lilcu64_wa.c \
+    src/media/sdk/lilcu64_score.c \
+    src/media/sdk/lilcu64_synth.c \
+    src/media/sdk/lilcu64_insert.c \
+    src/media/sdk/lilcu64_demo.c \
+    src/media/sdk/mars.c \
+    src/drivers/playstation2/ps2_vu0_kernel.c
 
 # Targets that already pull DEMO_SRCS must not list this again.
 LILCU64_ENGINE_SRCS = \
-    src/demo/lilcu64_wa.c \
-    src/demo/lilcu64_score.c \
-    src/demo/lilcu64_synth.c \
-    src/demo/lilcu64_insert.c
+    src/media/sdk/lilcu64_wa.c \
+    src/media/sdk/lilcu64_score.c \
+    src/media/sdk/lilcu64_synth.c \
+    src/media/sdk/lilcu64_insert.c
 
 VIRGL_SRCS = \
-    src/gl/gl_dispatch.c \
-    src/gl/gl_backend_choice.c \
-    src/gl/egl_surface.c \
-    src/gl/backend_virgl.c \
-    src/apps/glgears.c \
-    src/apps/xmb.c \
-    src/apps/xmb_wave.c \
+    src/desktop/graphics/gles/gl_dispatch.c \
+    src/desktop/graphics/gles/gl_backend_choice.c \
+    src/desktop/graphics/gles/egl_surface.c \
+    src/desktop/graphics/virgl/backend_virgl.c \
+    src/media/sdk/glgears.c \
+    src/media/xmb/xmb.c \
+    src/media/xmb/xmb_wave.c \
     $(QUAKE_SRCS) \
     $(DEMO_SRCS)
 
@@ -427,42 +443,42 @@ QEMU_SRCS    = $(QEMU_STARTUP)          \
                 $(COMMON_SRCS)
 
 TINYGL_SRCS = \
-    src/gl/tinygl/api.c \
-    src/gl/tinygl/arrays.c \
-    src/gl/tinygl/clear.c \
-    src/gl/tinygl/clip.c \
-    src/gl/tinygl/get.c \
-    src/gl/tinygl/image_util.c \
-    src/gl/tinygl/init.c \
-    src/gl/tinygl/light.c \
-    src/gl/tinygl/list.c \
-    src/gl/tinygl/matrix.c \
-    src/gl/tinygl/memory.c \
-    src/gl/tinygl/misc.c \
-    src/gl/tinygl/msghandling.c \
-    src/gl/tinygl/select.c \
-    src/gl/tinygl/specbuf.c \
-    src/gl/tinygl/texture.c \
-    src/gl/tinygl/vertex.c \
-    src/gl/tinygl/vertex_stage.c \
-    src/gl/tinygl/zbuffer.c \
-    src/gl/tinygl/zline.c \
-    src/gl/tinygl/zmath.c \
-    src/gl/tinygl/ztriangle.c \
-    src/gl/tinygl/accum.c \
-    src/gl/tinygl/zpostprocess.c \
-    src/gl/tinygl/zraster.c \
-    src/gl/tinygl/ztext.c
+    src/desktop/graphics/tinygl/api.c \
+    src/desktop/graphics/tinygl/arrays.c \
+    src/desktop/graphics/tinygl/clear.c \
+    src/desktop/graphics/tinygl/clip.c \
+    src/desktop/graphics/tinygl/get.c \
+    src/desktop/graphics/tinygl/image_util.c \
+    src/desktop/graphics/tinygl/init.c \
+    src/desktop/graphics/tinygl/light.c \
+    src/desktop/graphics/tinygl/list.c \
+    src/desktop/graphics/tinygl/matrix.c \
+    src/desktop/graphics/tinygl/memory.c \
+    src/desktop/graphics/tinygl/misc.c \
+    src/desktop/graphics/tinygl/msghandling.c \
+    src/desktop/graphics/tinygl/select.c \
+    src/desktop/graphics/tinygl/specbuf.c \
+    src/desktop/graphics/tinygl/texture.c \
+    src/desktop/graphics/tinygl/vertex.c \
+    src/desktop/graphics/tinygl/vertex_stage.c \
+    src/desktop/graphics/tinygl/zbuffer.c \
+    src/desktop/graphics/tinygl/zline.c \
+    src/desktop/graphics/tinygl/zmath.c \
+    src/desktop/graphics/tinygl/ztriangle.c \
+    src/desktop/graphics/tinygl/accum.c \
+    src/desktop/graphics/tinygl/zpostprocess.c \
+    src/desktop/graphics/tinygl/zraster.c \
+    src/desktop/graphics/tinygl/ztext.c
 
 GL_SRCS = \
-    src/gl/gl_dispatch.c \
-    src/gl/gl_backend_choice.c \
-    src/gl/egl_surface.c \
-    src/gl/backend_tinygl.c \
-    src/gl/backend_virgl.c \
-    src/apps/glgears.c \
-    src/apps/xmb.c \
-    src/apps/xmb_wave.c \
+    src/desktop/graphics/gles/gl_dispatch.c \
+    src/desktop/graphics/gles/gl_backend_choice.c \
+    src/desktop/graphics/gles/egl_surface.c \
+    src/desktop/graphics/gles/backend_tinygl.c \
+    src/desktop/graphics/virgl/backend_virgl.c \
+    src/media/sdk/glgears.c \
+    src/media/xmb/xmb.c \
+    src/media/xmb/xmb_wave.c \
     $(QUAKE_SRCS) \
     $(DEMO_SRCS)
 
@@ -480,37 +496,37 @@ UEFI_SRCS    = $(UEFI_STARTUP)          \
                $(COMMON_NO_SDL_SRCS)
 
 # ── NEC PC-98 build (Target 5) ──────────────────────────────────
-PC98_STARTUP = src/cores/core_pc98.c src/drivers/pc98/boot/boot_pc98.c
+PC98_STARTUP = src/cores/core_pc98.c src/drivers/pc98/boot_pc98.c
 PC98_SRCS    = $(PC98_STARTUP)          \
                src/cores/core_boot.c   \
                src/cores/core_init.c   \
                src/kernel/libstr.c      \
                src/kernel/libint64.c    \
                src/drivers/vesa/vesa.c  \
-               src/drivers/pc98/input/pc98_mouse.c \
-               src/drivers/pc98/input/pc98_kbd.c \
+               src/drivers/pc98/pc98_mouse.c \
+               src/drivers/pc98/pc98_kbd.c \
                src/drivers/uefi/ps2_mouse.c \
                $(COMMON_NO_SDL_SRCS) \
                $(LILCU64_ENGINE_SRCS)
 
 # ── BCM283x (Pi 2B) bare-metal arch sources ───────────────────────
-ARCH_BCM_SRCS = src/drivers/bcm283x/cpu/cache.c      \
-                src/drivers/bcm283x/cpu/chkplv.c     \
-                src/drivers/bcm283x/cpu/cntwus.c     \
-                src/drivers/bcm283x/cpu/cpu_calls.c  \
-                src/drivers/bcm283x/cpu/cpu_init.c   \
-                src/drivers/bcm283x/cpu/devinit.c    \
-                src/drivers/bcm283x/cpu/power.c      \
-                src/drivers/bcm283x/cpu/tkdev_init.c \
-                src/drivers/bcm283x/usb/dwc2.c
+ARCH_BCM_SRCS = src/drivers/broadcom/cache.c      \
+                src/drivers/broadcom/chkplv.c     \
+                src/drivers/broadcom/cntwus.c     \
+                src/drivers/broadcom/cpu_calls.c  \
+                src/drivers/broadcom/cpu_init.c   \
+                src/drivers/broadcom/devinit.c    \
+                src/drivers/broadcom/power.c      \
+                src/drivers/broadcom/tkdev_init.c \
+                src/drivers/broadcom/dwc2.c
 
 ARCH_BCM64_SRCS = $(ARCH_BCM_SRCS) \
-                  src/drivers/bcm283x/pci/pcie_bcm2711.c \
-                  src/drivers/bcm283x/usb/xhci.c \
-                  src/drivers/bcm283x/dma/bcm2711_dma.c \
-                  src/drivers/bcm283x/gpu/v3d_init.c \
-                  src/drivers/bcm283x/gpu/v3d_cl.c \
-                  src/drivers/bcm283x/gpu/v3d_qpu.c
+                  src/drivers/broadcom/pcie_bcm2711.c \
+                  src/drivers/broadcom/xhci.c \
+                  src/drivers/broadcom/bcm2711_dma.c \
+                  src/drivers/broadcom/v3d_init.c \
+                  src/drivers/broadcom/v3d_cl.c \
+                  src/drivers/broadcom/v3d_qpu.c
 
 TKERNEL_SAKAMURA_SRCS = \
     src/kernel/task.c         \
@@ -547,93 +563,93 @@ FOMA_SRCS = $(FOMA_STARTUP)             \
             src/drivers/virtio/virtio.c \
             src/cores/core_init.c       \
             $(TKERNEL_SAKAMURA_SRCS)     \
-            src/graphics/dp_core.c      \
-            src/graphics/icons_bundle.c \
-            src/graphics/dp_sdl.c       \
-            src/font/troncode.c         \
-            src/font/jis_fonts.c        \
-            src/font/tibetan_fonts.c    \
-            src/window/wnd.c            \
-            src/window/app_menu.c       \
-            src/window/event.c          \
-            src/chokanji/pmc.c          \
+            src/desktop/graphics/dp_core.c      \
+            src/desktop/graphics/icons_bundle.c \
+            src/desktop/graphics/dp_sdl.c       \
+            src/desktop/font/troncode.c         \
+            src/desktop/font/jis_fonts.c        \
+            src/desktop/font/tibetan_fonts.c    \
+            src/desktop/window/wnd.c            \
+            src/desktop/window/app_menu.c       \
+            src/desktop/window/event.c          \
+            src/apps/chokanji/pmc.c          \
             $(IME_SRCS)                 \
-            src/apps/gterm.c            \
-            src/apps/t_editor.c         \
-            src/settings/terminal.c     \
-            src/desktop/desktop_mobile.c \
-            src/desktop/workbench_mobile.c \
-            src/desktop/main_mobile.c   \
+            src/apps/terminal/gterm.c            \
+            src/apps/editor/t_editor.c         \
+            src/desktop/settings/terminal.c     \
+            src/apps/workbench/desktop_mobile.c \
+            src/apps/workbench/workbench_mobile.c \
+            src/apps/workbench/main_mobile.c   \
             src/fs/blk_mem.c            \
             src/fs/blk_file.c           \
             src/fs/vol.c                \
             src/fs/file.c               \
             $(CLU_APPS_SRCS)            \
-            src/clu/clu.c
+            src/apps/clu/clu.c
 
 # Bare-metal: SDL-free subset only
 COMMON_NO_SDL_SRCS = \
-    src/graphics/dp_core.c \
-    src/graphics/dp_accel.c \
-    src/graphics/dp_cal.c \
-    src/graphics/icons_bundle.c \
-    src/font/troncode.c    \
-    src/font/jis_fonts.c   \
-    src/font/tibetan_fonts.c \
-    src/window/wnd.c       \
-    src/window/app_menu.c  \
-    src/window/event.c     \
-    src/window/dnd.c       \
-    src/chokanji/pmc.c     \
-    src/vobject/vobj.c     \
-    src/desktop/desktop.c  \
-    src/desktop/workbench.c \
-    src/desktop/tracker.c  \
-    src/desktop/about.c    \
-    src/desktop/global_menu.c \
-    src/apps/vobj_manager.c \
-    src/apps/tad_browser.c \
-    src/apps/paint.c \
-    src/apps/gterm.c       \
-    src/apps/t_editor.c    \
-    src/apps/audio_player.c \
-    src/media/orchestra.c   \
-    src/media/orchestra_stage.c \
-    src/media/orchestra_arrange.c \
-    src/media/orchestra_piano.c \
-    src/media/orchestra_score.c \
-    src/media/orchestra_mix.c \
-    src/media/orchestra_insert.c \
-    src/media/orchestra_about.c \
-    src/media/orchestra_session.c \
-    src/media/orchestra_smf.c \
-    src/media/gst_rt.c     \
-    src/media/lukhash_score.c \
-    src/apps/chat.c        \
-    src/apps/chat_xml.c    \
-    src/settings/control_panel.c \
-    src/settings/language.c \
-    src/settings/appearance.c \
-    src/settings/desktop.c \
-    src/settings/display.c \
-    src/settings/input.c \
-    src/settings/sound.c \
-    src/settings/network.c \
-    src/settings/media.c \
-    src/settings/security.c \
-    src/settings/system.c  \
-    src/settings/terminal.c \
+    src/desktop/graphics/dp_core.c \
+    src/desktop/graphics/dp_accel.c \
+    src/desktop/graphics/dp_cal.c \
+    src/desktop/graphics/icons_bundle.c \
+    src/desktop/font/troncode.c    \
+    src/desktop/font/jis_fonts.c   \
+    src/desktop/font/tibetan_fonts.c \
+    src/desktop/window/wnd.c       \
+    src/desktop/window/app_menu.c  \
+    src/desktop/window/event.c     \
+    src/desktop/window/dnd.c       \
+    src/apps/chokanji/pmc.c     \
+    src/apps/cabinet/vobj.c     \
+    src/apps/workbench/desktop.c  \
+    src/apps/workbench/workbench.c \
+    src/apps/workbench/tracker.c  \
+    src/apps/workbench/about.c    \
+    src/apps/workbench/global_menu.c \
+    src/apps/cabinet/vobj_manager.c \
+    src/apps/browser/tad_browser.c \
+    src/media/paint/paint.c \
+    src/apps/terminal/gterm.c       \
+    src/apps/editor/t_editor.c    \
+    src/media/cassette/audio_player.c \
+    src/media/orchestra/orchestra.c   \
+    src/media/orchestra/orchestra_stage.c \
+    src/media/orchestra/orchestra_arrange.c \
+    src/media/orchestra/orchestra_piano.c \
+    src/media/orchestra/orchestra_score.c \
+    src/media/orchestra/orchestra_mix.c \
+    src/media/orchestra/orchestra_insert.c \
+    src/media/orchestra/orchestra_about.c \
+    src/media/orchestra/orchestra_session.c \
+    src/media/orchestra/orchestra_smf.c \
+    src/media/sdk/gst_rt.c     \
+    src/media/orchestra/lukhash_score.c \
+    src/apps/chat/chat.c        \
+    src/apps/chat/chat_xml.c    \
+    src/desktop/settings/control_panel.c \
+    src/desktop/settings/language.c \
+    src/desktop/settings/appearance.c \
+    src/desktop/settings/desktop.c \
+    src/desktop/settings/display.c \
+    src/desktop/settings/input.c \
+    src/desktop/settings/sound.c \
+    src/desktop/settings/network.c \
+    src/desktop/settings/media.c \
+    src/desktop/settings/security.c \
+    src/desktop/settings/system.c  \
+    src/desktop/settings/terminal.c \
     $(IME_SRCS)            \
     src/fs/blk_mem.c       \
     src/fs/vol.c           \
     src/fs/file.c          \
     src/fs/fs_stdio.c      \
-    src/clu/vfs.c          \
+    src/apps/clu/vfs.c          \
     $(CLU_APPS_SRCS)       \
-    src/clu/clu.c
+    src/apps/clu/clu.c
 
-BAREMETAL_STARTUP  = src/drivers/bcm283x/cpu/startup_arm.c
-BAREMETAL_LD       = src/drivers/bcm283x/cpu/link.ld
+BAREMETAL_STARTUP  = src/drivers/broadcom/startup_arm.c
+BAREMETAL_LD       = src/drivers/broadcom/link.ld
 # src/kernel/libaeabi.c is named here and not folded into COMMON_NO_SDL_SRCS: it
 # answers the conversion libcalls only a 32-bit register file asks for, so the
 # AArch64 lane -- which converts a 64-bit integer in one instruction -- must not
@@ -641,56 +657,56 @@ BAREMETAL_LD       = src/drivers/bcm283x/cpu/link.ld
 # against it.  `make test-arm-aeabi` grades it against the host FPU.
 # Full B-System applications suite for Pi 400 & raspi4b bare-metal (Cortex-A72 / AArch64)
 ARM64_APPS_SRCS = \
-    src/chokanji/cab.c         \
-    src/chokanji/microscript.c \
-    src/chokanji/clock.c       \
-    src/chokanji/kconv.c       \
-    src/chokanji/xfconv.c      \
-    src/chokanji/bpk_core.c    \
-    src/chokanji/unpack.c      \
-    src/chokanji/launchers.c   \
-    src/apps/clarity.c         \
-    src/apps/clarity_layout.c  \
-    src/apps/clarity_render.c  \
-    src/apps/clarity_export.c  \
-    src/apps/pdf_reader.c      \
-    src/apps/review.c          \
-    src/apps/b_drivesetup.c    \
+    src/apps/chokanji/cab.c         \
+    src/languages/microscript/microscript.c \
+    src/apps/chokanji/clock.c       \
+    src/apps/chokanji/kconv.c       \
+    src/apps/chokanji/xfconv.c      \
+    src/apps/chokanji/bpk_core.c    \
+    src/apps/chokanji/unpack.c      \
+    src/apps/chokanji/launchers.c   \
+    src/apps/clarity/clarity.c         \
+    src/apps/clarity/clarity_layout.c  \
+    src/apps/clarity/clarity_render.c  \
+    src/apps/clarity/clarity_export.c  \
+    src/apps/browser/pdf_reader.c      \
+    src/apps/review/review.c          \
+    src/apps/volumes/b_drivesetup.c    \
     src/fs/blk_file.c          \
     src/fs/blk_qcow2.c         \
     src/fs/blk_part.c          \
-    src/graphics/image_decode.c \
-    src/demo/mars.c            \
-    src/hmi/hmi_core.c         \
-    src/hmi/hmi_switch.c       \
-    src/hmi/hmi_selector.c     \
-    src/hmi/hmi_volume.c       \
-    src/hmi/hmi_meter.c        \
-    src/hmi/hmi_controller.c   \
-    src/hmi/hmi_panel.c        \
+    src/desktop/graphics/image_decode.c \
+    src/media/sdk/mars.c       \
+    src/desktop/industrial/hmi/hmi_core.c         \
+    src/desktop/industrial/hmi/hmi_switch.c       \
+    src/desktop/industrial/hmi/hmi_selector.c     \
+    src/desktop/industrial/hmi/hmi_volume.c       \
+    src/desktop/industrial/hmi/hmi_meter.c        \
+    src/desktop/industrial/hmi/hmi_controller.c   \
+    src/desktop/industrial/hmi/hmi_panel.c        \
     src/emulators/msx/msx_app.c \
     $(MSX_SRCS)                \
-    src/clu/lang.c             \
-    src/clu/term.c             \
-    src/clu/tty.c              \
-    src/clu/sc/files.c         \
-    src/clu/sc/input.c         \
-    src/clu/sc/menus.c         \
-    src/clu/sc/sc.c            \
-    src/clu/tv/tv.c            \
-    src/clu/be/native.c        \
-    src/drivers/ps2/ps2_vu0_kernel.c \
+    src/apps/clu/lang.c             \
+    src/apps/clu/term.c             \
+    src/apps/clu/tty.c              \
+    src/apps/clu/sc/files.c         \
+    src/apps/clu/sc/input.c         \
+    src/apps/clu/sc/menus.c         \
+    src/apps/clu/sc/sc.c            \
+    src/apps/clu/tv/tv.c            \
+    src/apps/clu/be/native.c        \
+    src/drivers/playstation2/ps2_vu0_kernel.c \
     $(TINYGL_SRCS)             \
-    src/gl/gl_dispatch.c       \
-    src/gl/gl_backend_choice.c \
-    src/gl/egl_surface.c       \
-    src/gl/backend_tinygl.c    \
-    src/gl/backend_v3d.c       \
-    src/gl/backend_virgl.c     \
-    src/apps/glgears.c         \
-    src/apps/xmb.c             \
-    src/apps/xmb_wave.c        \
-    src/demo/lilcu64_demo.c    \
+    src/desktop/graphics/gles/gl_dispatch.c       \
+    src/desktop/graphics/gles/gl_backend_choice.c \
+    src/desktop/graphics/gles/egl_surface.c       \
+    src/desktop/graphics/gles/backend_tinygl.c    \
+    src/desktop/graphics/v3d/backend_v3d.c       \
+    src/desktop/graphics/virgl/backend_virgl.c     \
+    src/media/sdk/glgears.c         \
+    src/media/xmb/xmb.c             \
+    src/media/xmb/xmb_wave.c        \
+    src/media/sdk/lilcu64_demo.c \
     $(QUAKE_SRCS)
 
 ARM32_BAREMETAL_SRCS = src/cores/core_init.c src/cores/core_yoko.c $(TKERNEL_SAKAMURA_SRCS) $(ARCH_BCM_SRCS) $(BAREMETAL_STARTUP) $(COMMON_NO_SDL_SRCS) $(LILCU64_ENGINE_SRCS) src/kernel/libaeabi.c
@@ -743,13 +759,13 @@ DEFAULT_TARGET = ./.build/btron
 
 TKERNEL_INC = -D_RPI_BCM283x_ -DTYPE_RPI=2 \
               -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast \
-              -Iinclude -Iinclude/arch/bcm283x -Isrc/kernel -Isrc/cores
+              -Iinclude -Isrc/drivers/broadcom -Isrc/kernel -Isrc/cores
 
 all: posix qemu kernel sakamura foma uefi pc98
 
-# ── Tree structure invariants (see scripts/check_structure.sh) ──────────────
+# ── Tree structure invariants (see scripts/test_structure.sh) ──────────────
 check-structure:
-	@sh scripts/check_structure.sh
+	@sh scripts/test_structure.sh
 
 # Emit one source path per line for a *_SRCS variable, for the check above.
 list-%:
@@ -787,33 +803,33 @@ FS_SRCS  = src/fs/blk_mem.c src/fs/blk_file.c src/fs/blk_qcow2.c src/fs/blk_part
 FS_OBJS  = $(FS_SRCS:.c=.host.o)
 
 # -MMD is not optional here.  Host objects are linked straight from .o files, so
-# without a header dependency an edit to e.g. src/clu/vfs.h or
-# src/clu/sc/sokhatsky.h rebuilds only the .c files a target happens to name, and
+# without a header dependency an edit to e.g. src/apps/clu/vfs.h or
+# src/apps/clu/sc/sokhatsky.h rebuilds only the .c files a target happens to name, and
 # the link mixes objects that disagree on struct layout -- sc then reads a File's
 # is_dir from where size used to be and draws an empty pane that looks like an
 # empty directory.
 %.host.o: %.c
 	$(CC) $(CFLAGS) -DBTRON_TARGET=0 -MMD -MP -c $< -o $@
 
-src/clu/clu.host.o: src/clu/clu.c
+src/apps/clu/clu.host.o: src/apps/clu/clu.c
 	$(CC) $(CFLAGS) -DBTRON_TARGET=0 -MMD -MP -c $< -o $@
 
-# Header dependencies recorded by the -MMD flags above: editing src/clu/vfs.h or
-# src/clu/sc/sokhatsky.h must rebuild every object that included it, or a link
+# Header dependencies recorded by the -MMD flags above: editing src/apps/clu/vfs.h or
+# src/apps/clu/sc/sokhatsky.h must rebuild every object that included it, or a link
 # mixes objects that disagree on struct layout.
 -include $(shell find src verify -name '*.host.d' -o -name '*.posix.d' -o -name '*.test.d' -o -name '*.tgl.d' 2>/dev/null)
 
 # ── mkbtronfs — host image builder ────────────────────────────────────
-mkbtronfs: src/tools/mkbtronfs.c $(FS_OBJS)
+mkbtronfs: tools/mkbtronfs.c $(FS_OBJS)
 	$(CC) $(CFLAGS) -Isrc $^ -o mkbtronfs
 	@echo "[FS] mkbtronfs built."
 
 # Host album encoder. Not linked into btron. Writes SYS/*.orch and SYS/*.mid.
-album_encode: src/tools/album_encode.c src/demo/lilcu64_score.c \
-		src/demo/lilcu64_wa.c src/demo/lilcu64_insert.c \
-		src/media/orchestra_session.c src/media/orchestra_smf.c \
-		src/media/gst_rt.c src/media/lukhash_score.c
-	$(CC) $(CFLAGS) -Werror -Isrc/demo $^ -lm -o album_encode
+album_encode: tools/album_encode.c src/media/sdk/lilcu64_score.c \
+		src/media/sdk/lilcu64_wa.c src/media/sdk/lilcu64_insert.c \
+		src/media/orchestra/orchestra_session.c src/media/orchestra/orchestra_smf.c \
+		src/media/sdk/gst_rt.c src/media/orchestra/lukhash_score.c
+	$(CC) $(CFLAGS) -Werror -Isrc/media/sdk $^ -lm -o album_encode
 	@echo "[ALBUM] album_encode built."
 
 # The manifest's payloads are prerequisites and not merely its input: with only the manifest and
@@ -828,13 +844,13 @@ album_encode: src/tools/album_encode.c src/demo/lilcu64_score.c \
 # payload (so every entry that names a parent drawer, like a cartridge in /SYS/msx, dropped out)
 # and it stopped at the first space (so `Dynamite Go! Go! - Demo (2021) (Rutubo Gameworks).ROM` was never a file make
 # knew about).  One reader of a manifest is the tool that builds from it.
-btron_sys.vol: mkbtronfs src/tools/manifest.txt
-	./mkbtronfs src/tools/manifest.txt -o btron_sys.vol --deps btron_sys.vol.d
+btron_sys.vol: mkbtronfs tools/manifest.txt
+	./mkbtronfs tools/manifest.txt -o btron_sys.vol --deps btron_sys.vol.d
 	@echo "[FS] btron_sys.vol written."
 	@xxd btron_sys.vol | head -2
 
-btron_anders.vol: mkbtronfs src/tools/manifest_anders.txt
-	./mkbtronfs src/tools/manifest_anders.txt -o btron_anders.vol -l ANDERS --deps btron_anders.vol.d
+btron_anders.vol: mkbtronfs tools/manifest_anders.txt
+	./mkbtronfs tools/manifest_anders.txt -o btron_anders.vol -l ANDERS --deps btron_anders.vol.d
 	@echo "[FS] btron_anders.vol written."
 
 # Written by the recipe above, so the first build after a clean has no payload dependencies and
@@ -845,7 +861,7 @@ btron_anders.vol: mkbtronfs src/tools/manifest_anders.txt
 
 # ── FS unit tests ──────────────────────────────────────────────────────
 TEST_FS_BIN = ./.build/test_fs
-$(TEST_FS_BIN): verify/tests/test_fs.c $(FS_OBJS) src/clu/clu.host.o $(CLU_APPS_HOST_OBJS)
+$(TEST_FS_BIN): verify/tests/test_fs.c $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS)
 	$(CC) $(CFLAGS) -Isrc $^ -o $@
 
 test-fs: $(TEST_FS_BIN) btron_sys.vol
@@ -854,7 +870,7 @@ test-fs: $(TEST_FS_BIN) btron_sys.vol
 
 # ── SPS (Secure PostScript & Forth VM) unit tests ──────────────────────
 TEST_SPS_BIN = ./.build/test_sps
-$(TEST_SPS_BIN): verify/tests/test_sps.c src/clu/ps_vm.posix.o src/clu/sps.posix.o src/font/schrift.posix.o src/apps/pdf_reader.posix.o src/apps/review.posix.o src/graphics/dp_core.posix.o
+$(TEST_SPS_BIN): verify/tests/test_sps.c src/apps/clu/ps_vm.posix.o src/apps/clu/sps.posix.o src/desktop/font/schrift.posix.o src/apps/browser/pdf_reader.posix.o src/apps/review/review.posix.o src/desktop/graphics/dp_core.posix.o
 	@mkdir -p .build
 	$(CC) $(CFLAGS) $^ -o $@ -lm
 
@@ -863,21 +879,21 @@ test-sps: $(TEST_SPS_BIN)
 
 # ── ANS Forth-2012 Core Subset, FCode & 16-Bit Profile Targets ────────
 FORTH_BIN = ./.build/forth
-$(FORTH_BIN): src/clu/forth.c src/clu/forth_core.c src/clu/forth_devtree.c
+$(FORTH_BIN): src/languages/forth/forth.c src/languages/forth/forth_core.c src/languages/forth/forth_devtree.c
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) -DFORTH_STANDALONE=1 $^ -o $@
 
 forth: $(FORTH_BIN)
 
 FORTH16_BIN = ./.build/btron-forth16
-$(FORTH16_BIN): src/clu/forth16.c src/clu/forth_core.c src/clu/forth_devtree.c
+$(FORTH16_BIN): src/languages/forth/forth16.c src/languages/forth/forth_core.c src/languages/forth/forth_devtree.c
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) -DFORTH_16BIT=1 $^ -o $@
 
 forth-16: $(FORTH16_BIN)
 
 TEST_CLU_FORTH_BIN = ./.build/test_clu_forth
-$(TEST_CLU_FORTH_BIN): verify/tests/test_clu_forth.c src/clu/forth_core.c src/clu/forth_devtree.c
+$(TEST_CLU_FORTH_BIN): verify/tests/test_clu_forth.c src/languages/forth/forth_core.c src/languages/forth/forth_devtree.c
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) $^ -o $@
 
@@ -885,7 +901,7 @@ test-clu-forth: $(TEST_CLU_FORTH_BIN)
 	./$(TEST_CLU_FORTH_BIN)
 
 TEST_FORTH16_BIN = ./.build/test_forth16
-$(TEST_FORTH16_BIN): verify/tests/test_forth16.c src/clu/forth_core.c src/clu/forth_devtree.c
+$(TEST_FORTH16_BIN): verify/tests/test_forth16.c src/languages/forth/forth_core.c src/languages/forth/forth_devtree.c
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) -DFORTH_16BIT=1 $^ -o $@
 
@@ -893,7 +909,7 @@ test-forth16: $(TEST_FORTH16_BIN)
 	./$(TEST_FORTH16_BIN)
 
 TEST_FORTH_PERF_BIN = ./.build/test_forth_perf
-$(TEST_FORTH_PERF_BIN): verify/tests/test_forth_perf.c src/clu/forth_core.c src/clu/forth_devtree.c
+$(TEST_FORTH_PERF_BIN): verify/tests/test_forth_perf.c src/languages/forth/forth_core.c src/languages/forth/forth_devtree.c
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) $^ -o $@
 
@@ -912,7 +928,7 @@ test-tfw-forth: $(TEST_TFW_FORTH_BIN)
 	./$(TEST_TFW_FORTH_BIN)
 
 TEST_MARS_CAPTURE_BIN = ./.build/test_mars_capture
-$(TEST_MARS_CAPTURE_BIN): verify/tests/test_mars_capture.c src/clu/forth_core.c src/clu/forth_devtree.c
+$(TEST_MARS_CAPTURE_BIN): verify/tests/test_mars_capture.c src/languages/forth/forth_core.c src/languages/forth/forth_devtree.c
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) $^ -o $@ -lz
 
@@ -932,7 +948,7 @@ CHOKANJI_GOLDEN   ?= $(if $(wildcard hda.golden),hda.golden,hda.qcow2)
 CHOKANJI_RW_IMAGE  = ./.build/hda.rw.qcow2
 
 TEST_CHOKANJI_BIN = ./.build/test_chokanji
-$(TEST_CHOKANJI_BIN): verify/tests/test_chokanji.c $(FS_OBJS) src/clu/clu.host.o $(CLU_APPS_HOST_OBJS)
+$(TEST_CHOKANJI_BIN): verify/tests/test_chokanji.c $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS)
 	$(CC) $(CFLAGS) -Isrc $^ -o $@
 
 test-chokanji: $(TEST_CHOKANJI_BIN)
@@ -945,7 +961,7 @@ test-chokanji: $(TEST_CHOKANJI_BIN)
 
 # ── Cho-Kanji Tier 1 & PMC NASA-Standard Apps verification ────────────
 TEST_CHOKANJI_APPS_BIN = ./.build/test_chokanji_apps
-$(TEST_CHOKANJI_APPS_BIN): verify/tests/test_chokanji_apps.c src/chokanji/pmc.posix.o src/chokanji/cab.posix.o src/chokanji/microscript.posix.o src/chokanji/clock.posix.o src/chokanji/kconv.posix.o src/chokanji/xfconv.posix.o src/chokanji/bpk_core.posix.o src/chokanji/unpack.posix.o src/window/wnd.posix.o src/graphics/dp_core.posix.o src/graphics/dp_sdl.posix.o src/font/troncode.posix.o src/font/jis_fonts.posix.o src/font/tibetan_fonts.posix.o src/font/font_mgr.posix.o src/window/event.posix.o src/window/app_menu.posix.o src/vobject/vobj.posix.o src/fs/vol.posix.o src/fs/file.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o
+$(TEST_CHOKANJI_APPS_BIN): verify/tests/test_chokanji_apps.c src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/apps/chokanji/cab.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/clock.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/desktop/window/wnd.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/graphics/dp_sdl.posix.o src/desktop/font/troncode.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/font_mgr.posix.o src/desktop/window/event.posix.o src/desktop/window/app_menu.posix.o src/apps/cabinet/vobj.posix.o src/fs/vol.posix.o src/fs/file.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o
 	$(CC) $(CFLAGS) -Isrc -Iinclude $^ -o $@ $(LDFLAGS) $(SDL_LIBS)
 
 test-chokanji-apps: $(TEST_CHOKANJI_APPS_BIN)
@@ -953,29 +969,29 @@ test-chokanji-apps: $(TEST_CHOKANJI_APPS_BIN)
 	@echo "[CHOKANJI APPS] All Tier 1 applications & PMC tests passed."
 
 # ── CLU / Termios / TV / SC ───────────────────────────────────────────
-CLU_CORE_SRCS = src/clu/lang.c src/clu/term.c src/clu/tty.c src/clu/vfs.c
+CLU_CORE_SRCS = src/apps/clu/lang.c src/apps/clu/term.c src/apps/clu/tty.c src/apps/clu/vfs.c
 CLU_CORE_OBJS = $(CLU_CORE_SRCS:.c=.host.o)
 
-SC_SRCS = src/clu/sc/files.c src/clu/sc/input.c src/clu/sc/menus.c
+SC_SRCS = src/apps/clu/sc/files.c src/apps/clu/sc/input.c src/apps/clu/sc/menus.c
 SC_OBJS = $(SC_SRCS:.c=.host.o)
 
 # sc.c is a library everywhere; only the standalone bin/sc binary links its main().
-src/clu/sc/sc.standalone.o: src/clu/sc/sc.c
+src/apps/clu/sc/sc.standalone.o: src/apps/clu/sc/sc.c
 	$(CC) $(CFLAGS) -DBTRON_TARGET=0 -DSC_STANDALONE -MMD -MP -c $< -o $@
 
-src/clu/tv/tv.host.o: src/clu/tv/tv.c
+src/apps/clu/tv/tv.host.o: src/apps/clu/tv/tv.c
 	$(CC) $(CFLAGS) -DBTRON_TARGET=0 -MMD -MP -c $< -o $@
 
-bin/tv: src/clu/tv/tv.c $(CLU_CORE_OBJS) $(FS_OBJS)
+bin/tv: src/apps/clu/tv/tv.c $(CLU_CORE_OBJS) $(FS_OBJS)
 	@mkdir -p bin
 	$(CC) $(CFLAGS) -DTV_STANDALONE -Isrc -Iinclude $^ -o $@
 
-bin/sc: $(SC_OBJS) src/clu/sc/sc.standalone.o src/clu/tv/tv.host.o $(CLU_CORE_OBJS) $(CLU_APPS_HOST_OBJS) src/clu/clu.host.o $(FS_OBJS)
+bin/sc: $(SC_OBJS) src/apps/clu/sc/sc.standalone.o src/apps/clu/tv/tv.host.o $(CLU_CORE_OBJS) $(CLU_APPS_HOST_OBJS) src/apps/clu/clu.host.o $(FS_OBJS)
 	@mkdir -p bin
 	$(CC) $(CFLAGS) -Isrc -Iinclude $^ -o $@
 
 TEST_TERMIOS_BIN = ./.build/test_termios
-$(TEST_TERMIOS_BIN): verify/tests/test_termios_clu.c $(CLU_CORE_OBJS) src/clu/sc/files.host.o src/clu/sc/input.host.o src/clu/sc/menus.host.o src/clu/sc/sc.host.o src/clu/tv/tv.host.o $(CLU_APPS_HOST_OBJS) src/clu/clu.host.o $(FS_OBJS)
+$(TEST_TERMIOS_BIN): verify/tests/test_termios_clu.c $(CLU_CORE_OBJS) src/apps/clu/sc/files.host.o src/apps/clu/sc/input.host.o src/apps/clu/sc/menus.host.o src/apps/clu/sc/sc.host.o src/apps/clu/tv/tv.host.o $(CLU_APPS_HOST_OBJS) src/apps/clu/clu.host.o $(FS_OBJS)
 	@mkdir -p .build
 	$(CC) $(CFLAGS) -Isrc -Iinclude $^ -o $@
 
@@ -988,7 +1004,7 @@ test-termios: $(TEST_TERMIOS_BIN) btron_sys.vol btron_anders.vol
 
 # ── Clarity DTP Frame & Control tests ────────────────────────────────
 TEST_CLARITY_BIN = ./.build/test_clarity_frames
-$(TEST_CLARITY_BIN): verify/tests/test_clarity_frames.c src/graphics/image_decode.posix.o src/window/dnd.posix.o src/apps/clarity.posix.o src/apps/clarity_layout.posix.o src/apps/clarity_render.posix.o src/apps/clarity_export.posix.o src/window/wnd.posix.o src/window/app_menu.posix.o src/window/event.posix.o src/graphics/dp_core.posix.o src/graphics/icons_bundle.posix.o src/font/troncode.posix.o src/font/jis_fonts.posix.o src/font/tibetan_fonts.posix.o src/font/font_mgr.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/vobject/vobj.posix.o src/desktop/desktop.posix.o src/desktop/workbench.posix.o src/desktop/tracker.posix.o src/desktop/about.posix.o src/desktop/global_menu.posix.o src/apps/vobj_manager.posix.o src/apps/tad_browser.posix.o src/apps/gterm.posix.o src/apps/t_editor.posix.o src/apps/audio_player.posix.o src/apps/b_drivesetup.posix.o src/media/orchestra.posix.o src/media/orchestra_stage.posix.o src/media/orchestra_arrange.posix.o src/media/orchestra_piano.posix.o src/media/orchestra_score.posix.o src/media/orchestra_mix.posix.o src/media/orchestra_insert.posix.o src/media/orchestra_about.posix.o src/media/orchestra_session.posix.o src/media/orchestra_smf.posix.o src/media/gst_rt.posix.o src/demo/lilcu64_wa.posix.o src/demo/lilcu64_score.posix.o src/demo/lilcu64_synth.posix.o src/demo/lilcu64_insert.posix.o src/apps/chat.posix.o src/apps/chat_xml.posix.o src/settings/language.posix.o src/settings/control_panel.posix.o src/settings/appearance.posix.o src/settings/desktop.posix.o src/settings/display.posix.o src/settings/input.posix.o src/settings/sound.posix.o src/settings/network.posix.o src/settings/media.posix.o src/settings/security.posix.o src/settings/system.posix.o src/settings/terminal.posix.o src/hmi/hmi_core.posix.o src/hmi/hmi_switch.posix.o src/hmi/hmi_selector.posix.o src/hmi/hmi_volume.posix.o src/hmi/hmi_meter.posix.o src/hmi/hmi_controller.posix.o src/hmi/hmi_panel.posix.o src/tip/mozc_kkc.posix.o src/tip/tip_ife.posix.o src/tip/tip_task.posix.o src/tip/tip_vobj.posix.o src/tip/wylie.posix.o src/tip/tibetan_dict.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o src/fs/vol.posix.o src/fs/file.posix.o $(CLU_APPS_POSIX_OBJS) src/clu/clu.posix.o
+$(TEST_CLARITY_BIN): verify/tests/test_clarity_frames.c src/desktop/window/pmc.posix.o src/media/orchestra/lukhash_score.posix.o src/apps/review/review.posix.o src/apps/chokanji/launchers.posix.o src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/desktop/graphics/image_decode.posix.o src/desktop/window/dnd.posix.o src/apps/clarity/clarity.posix.o src/apps/clarity/clarity_layout.posix.o src/apps/clarity/clarity_render.posix.o src/apps/clarity/clarity_export.posix.o src/desktop/window/wnd.posix.o src/desktop/window/app_menu.posix.o src/desktop/window/event.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/graphics/icons_bundle.posix.o src/desktop/font/troncode.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/font_mgr.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/apps/cabinet/vobj.posix.o src/apps/workbench/desktop.posix.o src/apps/workbench/workbench.posix.o src/apps/workbench/tracker.posix.o src/apps/workbench/about.posix.o src/apps/workbench/global_menu.posix.o src/apps/cabinet/vobj_manager.posix.o src/apps/browser/tad_browser.posix.o src/apps/terminal/gterm.posix.o src/apps/editor/t_editor.posix.o src/media/cassette/audio_player.posix.o src/apps/volumes/b_drivesetup.posix.o src/media/orchestra/orchestra.posix.o src/media/orchestra/orchestra_stage.posix.o src/media/orchestra/orchestra_arrange.posix.o src/media/orchestra/orchestra_piano.posix.o src/media/orchestra/orchestra_score.posix.o src/media/orchestra/orchestra_mix.posix.o src/media/orchestra/orchestra_insert.posix.o src/media/orchestra/orchestra_about.posix.o src/media/orchestra/orchestra_session.posix.o src/media/orchestra/orchestra_smf.posix.o src/media/sdk/gst_rt.posix.o src/media/sdk/lilcu64_wa.posix.o src/media/sdk/lilcu64_score.posix.o src/media/sdk/lilcu64_synth.posix.o src/media/sdk/lilcu64_insert.posix.o src/apps/chat/chat.posix.o src/apps/chat/chat_xml.posix.o src/desktop/settings/language.posix.o src/desktop/settings/control_panel.posix.o src/desktop/settings/appearance.posix.o src/desktop/settings/desktop.posix.o src/desktop/settings/display.posix.o src/desktop/settings/input.posix.o src/desktop/settings/sound.posix.o src/desktop/settings/network.posix.o src/desktop/settings/media.posix.o src/desktop/settings/security.posix.o src/desktop/settings/system.posix.o src/desktop/settings/terminal.posix.o src/desktop/industrial/hmi/hmi_core.posix.o src/desktop/industrial/hmi/hmi_switch.posix.o src/desktop/industrial/hmi/hmi_selector.posix.o src/desktop/industrial/hmi/hmi_volume.posix.o src/desktop/industrial/hmi/hmi_meter.posix.o src/desktop/industrial/hmi/hmi_controller.posix.o src/desktop/industrial/hmi/hmi_panel.posix.o src/desktop/tip/japanese/mozc_kkc.posix.o src/desktop/tip/tip_ife.posix.o src/desktop/tip/tip_task.posix.o src/desktop/tip/tip_vobj.posix.o src/desktop/tip/tibetan/wylie.posix.o src/desktop/tip/tibetan/tibetan_dict.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o src/fs/vol.posix.o src/fs/file.posix.o $(CLU_APPS_POSIX_OBJS) src/apps/clu/clu.posix.o
 	$(CC) $(CFLAGS) -Isrc $^ -o $@ $(LDFLAGS) $(SDL_LIBS)
 
 test-clarity: $(TEST_CLARITY_BIN)
@@ -997,7 +1013,7 @@ test-clarity: $(TEST_CLARITY_BIN)
 
 # ── Clarity Hypermedia & DND tests ──────────────────────────────────
 TEST_CLARITY_HYPERMEDIA_BIN = ./.build/test_clarity_hypermedia
-$(TEST_CLARITY_HYPERMEDIA_BIN): verify/tests/test_clarity_hypermedia.c src/graphics/image_decode.posix.o src/window/dnd.posix.o src/apps/clarity.posix.o src/apps/clarity_layout.posix.o src/apps/clarity_render.posix.o src/apps/clarity_export.posix.o src/window/wnd.posix.o src/window/app_menu.posix.o src/window/event.posix.o src/graphics/dp_core.posix.o src/graphics/icons_bundle.posix.o src/font/troncode.posix.o src/font/jis_fonts.posix.o src/font/tibetan_fonts.posix.o src/font/font_mgr.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/vobject/vobj.posix.o src/desktop/desktop.posix.o src/desktop/workbench.posix.o src/desktop/tracker.posix.o src/desktop/about.posix.o src/desktop/global_menu.posix.o src/apps/vobj_manager.posix.o src/apps/tad_browser.posix.o src/apps/gterm.posix.o src/apps/t_editor.posix.o src/apps/audio_player.posix.o src/apps/b_drivesetup.posix.o src/media/orchestra.posix.o src/media/orchestra_stage.posix.o src/media/orchestra_arrange.posix.o src/media/orchestra_piano.posix.o src/media/orchestra_score.posix.o src/media/orchestra_mix.posix.o src/media/orchestra_insert.posix.o src/media/orchestra_about.posix.o src/media/orchestra_session.posix.o src/media/orchestra_smf.posix.o src/media/gst_rt.posix.o src/demo/lilcu64_wa.posix.o src/demo/lilcu64_score.posix.o src/demo/lilcu64_synth.posix.o src/demo/lilcu64_insert.posix.o src/apps/chat.posix.o src/apps/chat_xml.posix.o src/settings/language.posix.o src/settings/control_panel.posix.o src/settings/appearance.posix.o src/settings/desktop.posix.o src/settings/display.posix.o src/settings/input.posix.o src/settings/sound.posix.o src/settings/network.posix.o src/settings/media.posix.o src/settings/security.posix.o src/settings/system.posix.o src/settings/terminal.posix.o src/hmi/hmi_core.posix.o src/hmi/hmi_switch.posix.o src/hmi/hmi_selector.posix.o src/hmi/hmi_volume.posix.o src/hmi/hmi_meter.posix.o src/hmi/hmi_controller.posix.o src/hmi/hmi_panel.posix.o src/tip/mozc_kkc.posix.o src/tip/tip_ife.posix.o src/tip/tip_task.posix.o src/tip/tip_vobj.posix.o src/tip/wylie.posix.o src/tip/tibetan_dict.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o src/fs/vol.posix.o src/fs/file.posix.o $(CLU_APPS_POSIX_OBJS) src/clu/clu.posix.o
+$(TEST_CLARITY_HYPERMEDIA_BIN): verify/tests/test_clarity_hypermedia.c src/desktop/window/pmc.posix.o src/media/orchestra/lukhash_score.posix.o src/apps/review/review.posix.o src/apps/chokanji/launchers.posix.o src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/desktop/graphics/image_decode.posix.o src/desktop/window/dnd.posix.o src/apps/clarity/clarity.posix.o src/apps/clarity/clarity_layout.posix.o src/apps/clarity/clarity_render.posix.o src/apps/clarity/clarity_export.posix.o src/desktop/window/wnd.posix.o src/desktop/window/app_menu.posix.o src/desktop/window/event.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/graphics/icons_bundle.posix.o src/desktop/font/troncode.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/font_mgr.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/apps/cabinet/vobj.posix.o src/apps/workbench/desktop.posix.o src/apps/workbench/workbench.posix.o src/apps/workbench/tracker.posix.o src/apps/workbench/about.posix.o src/apps/workbench/global_menu.posix.o src/apps/cabinet/vobj_manager.posix.o src/apps/browser/tad_browser.posix.o src/apps/terminal/gterm.posix.o src/apps/editor/t_editor.posix.o src/media/cassette/audio_player.posix.o src/apps/volumes/b_drivesetup.posix.o src/media/orchestra/orchestra.posix.o src/media/orchestra/orchestra_stage.posix.o src/media/orchestra/orchestra_arrange.posix.o src/media/orchestra/orchestra_piano.posix.o src/media/orchestra/orchestra_score.posix.o src/media/orchestra/orchestra_mix.posix.o src/media/orchestra/orchestra_insert.posix.o src/media/orchestra/orchestra_about.posix.o src/media/orchestra/orchestra_session.posix.o src/media/orchestra/orchestra_smf.posix.o src/media/sdk/gst_rt.posix.o src/media/sdk/lilcu64_wa.posix.o src/media/sdk/lilcu64_score.posix.o src/media/sdk/lilcu64_synth.posix.o src/media/sdk/lilcu64_insert.posix.o src/apps/chat/chat.posix.o src/apps/chat/chat_xml.posix.o src/desktop/settings/language.posix.o src/desktop/settings/control_panel.posix.o src/desktop/settings/appearance.posix.o src/desktop/settings/desktop.posix.o src/desktop/settings/display.posix.o src/desktop/settings/input.posix.o src/desktop/settings/sound.posix.o src/desktop/settings/network.posix.o src/desktop/settings/media.posix.o src/desktop/settings/security.posix.o src/desktop/settings/system.posix.o src/desktop/settings/terminal.posix.o src/desktop/industrial/hmi/hmi_core.posix.o src/desktop/industrial/hmi/hmi_switch.posix.o src/desktop/industrial/hmi/hmi_selector.posix.o src/desktop/industrial/hmi/hmi_volume.posix.o src/desktop/industrial/hmi/hmi_meter.posix.o src/desktop/industrial/hmi/hmi_controller.posix.o src/desktop/industrial/hmi/hmi_panel.posix.o src/desktop/tip/japanese/mozc_kkc.posix.o src/desktop/tip/tip_ife.posix.o src/desktop/tip/tip_task.posix.o src/desktop/tip/tip_vobj.posix.o src/desktop/tip/tibetan/wylie.posix.o src/desktop/tip/tibetan/tibetan_dict.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o src/fs/vol.posix.o src/fs/file.posix.o $(CLU_APPS_POSIX_OBJS) src/apps/clu/clu.posix.o
 	$(CC) $(CFLAGS) -Iinclude -Isrc $^ -o $@ $(LDFLAGS) $(SDL_LIBS)
 
 test-clarity-hypermedia: $(TEST_CLARITY_HYPERMEDIA_BIN)
@@ -1040,7 +1056,7 @@ src/cores/%.tkernel.o: src/cores/%.c
 src/kernel/%.tkernel.o: src/kernel/%.c
 	$(CC) $(CFLAGS) $(TKERNEL_INC) $(SDL_CFLAGS) -DBTRON_TARGET=2 -c $< -o $@
 
-src/drivers/bcm283x/cpu/%.tkernel.o: src/drivers/bcm283x/cpu/%.c
+src/drivers/broadcom/%.tkernel.o: src/drivers/broadcom/%.c
 	$(CC) $(CFLAGS) $(TKERNEL_INC) $(SDL_CFLAGS) -DBTRON_TARGET=2 -c $< -o $@
 
 %.tkernel.o: %.c
@@ -1061,7 +1077,7 @@ src/cores/%.sakamura.o: src/cores/%.c
 src/kernel/%.sakamura.o: src/kernel/%.c
 	$(CC) $(CFLAGS) $(TKERNEL_INC) $(SDL_CFLAGS) -DBTRON_TARGET=3 -c $< -o $@
 
-src/drivers/bcm283x/cpu/%.sakamura.o: src/drivers/bcm283x/cpu/%.c
+src/drivers/broadcom/%.sakamura.o: src/drivers/broadcom/%.c
 	$(CC) $(CFLAGS) $(TKERNEL_INC) $(SDL_CFLAGS) -DBTRON_TARGET=3 -c $< -o $@
 
 %.sakamura.o: %.c
@@ -1087,7 +1103,7 @@ src/cores/%.foma.o: src/cores/%.c
 src/kernel/%.foma.o: src/kernel/%.c
 	$(CC) $(CFLAGS) $(TKERNEL_INC) $(SDL_CFLAGS) -DBTRON_TARGET=10 -DBTRON_FOMA_TARGET -c $< -o $@
 
-src/drivers/bcm283x/cpu/%.foma.o: src/drivers/bcm283x/cpu/%.c
+src/drivers/broadcom/%.foma.o: src/drivers/broadcom/%.c
 	$(CC) $(CFLAGS) $(TKERNEL_INC) $(SDL_CFLAGS) -DBTRON_TARGET=10 -DBTRON_FOMA_TARGET -c $< -o $@
 
 %.foma.o: %.c
@@ -1120,7 +1136,7 @@ UEFI_LD     = src/drivers/uefi/uefi_qemu.ld
 UEFI_CFLAGS = -O2 -Wall -Wextra -std=c99 -mno-sse -mno-mmx -mno-sse2 \
               -Wno-unused-parameter -Wno-unused-function -Wno-unused-variable -Wno-constant-conversion \
               -DBTRON_TARGET=4 -DBTRON_UEFI_TARGET -DBTRON_SMP -DBTRON_GL_BACKEND_TINYGL \
-              -Iinclude -Iinclude/gl -Iinclude/drivers -Isrc/kernel -Isrc/cores -Isrc/gl -Isrc/gl/tinygl
+              $(COMMON_INCLUDES)
 
 %.uefi.o: %.c
 	$(X86_CC) $(UEFI_CFLAGS) -c $< -o $@
@@ -1167,7 +1183,7 @@ test-uefi: $(UEFI_TARGET)
 # ═══════════════════════════════════════════════════════════════════
 # NEC PC-98 Kernel Desktop (Honoring Awe Morris — zedBSD Pioneer)
 # ═══════════════════════════════════════════════════════════════════
-PC98_CFLAGS = -O2 -Wall -Wextra -std=c99 -mno-sse -mno-mmx -mno-sse2 -DBTRON_TARGET=5 -DBTRON_PC98_TARGET -Iinclude -Iinclude/gl -Iinclude/drivers -Isrc/kernel
+PC98_CFLAGS = -O2 -Wall -Wextra -std=c99 -mno-sse -mno-mmx -mno-sse2 -DBTRON_TARGET=5 -DBTRON_PC98_TARGET $(COMMON_INCLUDES)
 
 %.pc98.o: %.c
 	$(X86_CC) $(PC98_CFLAGS) -c $< -o $@
@@ -1216,7 +1232,7 @@ test-pc98: $(PC98_TARGET)
 # ═══════════════════════════════════════════════════════════════════
 M68K_TARGET     = ./.build/btron-m68k.elf
 M68K_LD_SCRIPT  = src/drivers/m68k/m68k_q800.ld
-M68K_CFLAGS     = -O2 -Wall -Wextra -std=c99 -mcpu=68040 -ffreestanding -nostdlib -DBTRON_TARGET=7 -DBTRON_M68K_TARGET -Iinclude -Iinclude/drivers -Isrc/kernel -Isrc/cores
+M68K_CFLAGS     = -O2 -Wall -Wextra -std=c99 -mcpu=68040 -ffreestanding -nostdlib -DBTRON_TARGET=7 -DBTRON_M68K_TARGET $(COMMON_INCLUDES)
 M68K_STARTUP    = src/cores/core_m68k.c
 M68K_SRCS       = $(M68K_STARTUP)          \
                   src/cores/core_init.c   \
@@ -1274,7 +1290,7 @@ AUTO_GUI       ?= 1
 # is what scrolls the prompt away while it is being typed into.
 HIDTRACE       ?= 0
 # Which rasteriser a GL window on this image gets by default.  The port links both software
-# ones -- src/gl/tinygl/ and src/gl/backend_virgl.c are in the source list -- so tinygl and
+# ones -- src/desktop/graphics/tinygl/ and src/desktop/graphics/virgl/backend_virgl.c are in the source list -- so tinygl and
 # virgl are a choice, not a capability, and it is worth choosing because the two are not the
 # same size: backend_virgl.c keeps one float per pixel for depth, which at 768x500 is 1.5 MB
 # to allocate and 384k software-float stores to fill, against TinyGL's 16-bit z of half that.
@@ -1282,7 +1298,7 @@ HIDTRACE       ?= 0
 #
 # The third value is the Graphics Synthesizer: it makes the build's default the backend the
 # Display applet's "OpenGL PS2" row offers, so an A/B run against TinyGL needs a make flag and
-# no clicking.  Until src/gl/backend_eegs.c exists (row 5 of the plan of record in
+# no clicking.  Until src/desktop/graphics/eegs/backend_eegs.c exists (row 5 of the plan of record in
 # doc/txt/PS2.txt) that request is answered by the linked software rasterizer with a console line
 # saying so, which is why this is a default and not a capability either -- the settings row can
 # still outrank it, and a built image reports what actually drew its frames.
@@ -1295,11 +1311,11 @@ $(error PS2_GL=$(PS2_GL) is not one of tinygl, virgl, eegs)
 endif
 PS2_TARGET     = btron-ps2.elf
 PS2_ISO        = btron-ps2.iso
-PS2_LD_SCRIPT  = src/drivers/ps2/ps2.ld
+PS2_LD_SCRIPT  = src/drivers/playstation2/ps2.ld
 PS2_CFLAGS     = -O2 -Wall -Wextra -std=c99 -ffreestanding -nostdlib \
                  -DBTRON_TARGET=8 -DBTRON_PS2_TARGET -DBTRON_AUTO_GUI=$(AUTO_GUI) \
                  -DBTRON_HID_TRACE=$(HIDTRACE) -DBTRON_GL_BACKEND_TINYGL \
-                 -Iinclude -Iinclude/gl -Iinclude/drivers -Isrc/kernel -Isrc/cores -Isrc/drivers/ps2 -Isrc/quake/include
+                 $(COMMON_INCLUDES)
 ifeq ($(PS2_GL),virgl)
 PS2_CFLAGS    += -DBTRON_GL_PREFER_VIRGL
 endif
@@ -1326,7 +1342,7 @@ PS2_CFLAGS    += -DBTRON_PS2_FP_COUNT=$(PS2_FP_COUNT)
 PS2_IDENT       ?= 0
 PS2_CFLAGS    += -DBTRON_PS2_GS_IDENT=$(PS2_IDENT)
 # PS2_PW=1 is LANE 22 (task #165): the per-app paint worker.  It compiles the policy in
-# src/drivers/ps2/ps2_paint_worker.c and the seam that uses it in src/cores/core_ps2.c, so a pass can
+# src/drivers/playstation2/ps2_paint_worker.c and the seam that uses it in src/cores/core_ps2.c, so a pass can
 # run one window's paint callback once -- priced by what it cost last time, admitted only while the
 # frame's remaining slice can afford it, and forced through when the price would starve the app.
 # The claim is not parallelism: the Emotion EE has one main core, `sta_tsk()` is synchronous and
@@ -1342,7 +1358,7 @@ ifeq (,$(filter $(PS2_PW),0 1))
 $(error PS2_PW=$(PS2_PW) is not 0 or 1)
 endif
 PS2_CFLAGS    += -DBTRON_PS2_PAINT_WORKER=$(PS2_PW)
-PS2_PW_SRCS     = $(if $(filter 1,$(PS2_PW)),src/drivers/ps2/ps2_paint_worker.c,)
+PS2_PW_SRCS     = $(if $(filter 1,$(PS2_PW)),src/drivers/playstation2/ps2_paint_worker.c,)
 PS2_STARTUP    = src/cores/core_ps2.c
 # The termios-scope applications gterm hosts: Sokhatsky Commander and Terminal
 # Vision.  They sit in COMMON_SRCS, so the hosted targets have always had them and
@@ -1350,19 +1366,19 @@ PS2_STARTUP    = src/cores/core_ps2.c
 # the definition that wins, returns -1, and leaves the terminal window in its shell
 # forever.  Named here rather than folded into COMMON_NO_SDL_SRCS because the other
 # bare-metal targets have not been measured against it.
-CLU_TERMIO_SRCS = src/clu/lang.c           \
-                  src/clu/term.c           \
-                  src/clu/tty.c            \
-                  src/clu/sc/files.c       \
-                  src/clu/sc/input.c       \
-                  src/clu/sc/menus.c       \
-                  src/clu/sc/sc.c          \
-                  src/clu/tv/tv.c          \
-                  src/clu/be/native.c
+CLU_TERMIO_SRCS = src/apps/clu/lang.c           \
+                  src/apps/clu/term.c           \
+                  src/apps/clu/tty.c            \
+                  src/apps/clu/sc/files.c       \
+                  src/apps/clu/sc/input.c       \
+                  src/apps/clu/sc/menus.c       \
+                  src/apps/clu/sc/sc.c          \
+                  src/apps/clu/tv/tv.c          \
+                  src/apps/clu/be/native.c
 # PS2_NV parks the nvidia decoder island (NV_SRCS, named just above BE_DASM_SRCS) out of this
 # link: `nm` over every `*.ps2.o` reads zero undefined references into those 27 units, because
 # the only caller of their entry point -- `case ARCH_NVIDIA: decodeNV(...)` in
-# src/clu/be/dasm/dasm.c -- is not in any PS2 source list at all.  It is therefore 3,414,308 B
+# src/apps/clu/be/dasm/dasm.c -- is not in any PS2 source list at all.  It is therefore 3,414,308 B
 # of unreachable statics, not a feature this image loses; the host and POSIX lanes still get it
 # through the `+=` that puts it back.  The dial and its stamp are here for the same reason as
 # PS2_QUAKE's: an un-park is the control, and a stale object is the failure mode.
@@ -1378,24 +1394,24 @@ CLU_TERMIO_SRCS += $(if $(filter 1,$(PS2_NV)),$(BE_DASM_SRCS),$(filter-out $(NV_
 # (2026-10-09, see the [BENCH] echo row); ps2.ld now refuses the link instead.
 # The launcher reaches its apps through weak open_*_window() externs, so an app that
 # is not linked here is a menu row that does nothing rather than a link error.
-PS2_GL_SRCS    = src/gl/gl_dispatch.c     \
-                 src/gl/gl_backend_choice.c \
-                 src/gl/egl_surface.c     \
-                 src/gl/backend_tinygl.c  \
-                 src/gl/backend_virgl.c   \
-                 src/gl/backend_eegs.c    \
-                 src/gl/eegs_present.c    \
-                 src/gl/gscube_nexus.c    \
-                 src/drivers/ps2/ps2_vu1_geom.c \
-                 src/apps/xmb.c           \
-                 src/apps/xmb_wave.c      \
-                 src/apps/glgears.c       \
+PS2_GL_SRCS    = src/desktop/graphics/gles/gl_dispatch.c     \
+                 src/desktop/graphics/gles/gl_backend_choice.c \
+                 src/desktop/graphics/gles/egl_surface.c     \
+                 src/desktop/graphics/gles/backend_tinygl.c  \
+                 src/desktop/graphics/virgl/backend_virgl.c   \
+                 src/desktop/graphics/eegs/backend_eegs.c    \
+                 src/desktop/graphics/eegs/eegs_present.c    \
+                 src/desktop/graphics/eegs/gscube_nexus.c    \
+                 src/drivers/playstation2/ps2_vu1_geom.c \
+                 src/media/xmb/xmb.c           \
+                 src/media/xmb/xmb_wave.c      \
+                 src/media/sdk/glgears.c       \
                  $(DEMO_SRCS)             \
                  $(PS2_QUAKE_SRCS)
 # B-MSX rides in the image when PS2_MSX=1: the tronMSX core reads no float, no host
 # clock and no libc beyond what src/kernel/libstr.c provides, and its two pieces of
 # media -- C-BIOS and the cartridge catalogue -- are bodies of the /SYS volume the
-# image already carries (src/tools/manifest.txt, the `cbios` and `msx` drawers).  So
+# image already carries (tools/manifest.txt, the `cbios` and `msx` drawers).  So
 # the XMB Games band lists what the machine holds and Cross opens it, with no file
 # system below the program at all.
 #
@@ -1417,7 +1433,7 @@ PS2_GL_SRCS    = src/gl/gl_dispatch.c     \
 # And tronMSX still asks the host folder for a C-BIOS the volume holds, so the Games
 # band would ship a window saying it cannot find its own BIOS (doc/txt/PS2.txt M17 and
 # the PS2_MSX row of chapter 21).  With the dial at 0 the
-# five B-MSX gate rows print SKIP by name, and src/apps/xmb.c's weak open_msx_window*()
+# five B-MSX gate rows print SKIP by name, and src/media/xmb/xmb.c's weak open_msx_window*()
 # stubs mean a Games row is a menu row that does nothing rather than a link error.  The
 # stamp exists because a source-list change is not a recompile: make compares file
 # mtimes, so without it yesterday's [MSX] rows link into today's parked image -- and two
@@ -1463,7 +1479,7 @@ PS2_MSX_SRCS    = $(if $(filter 1,$(PS2_MSX)),$(MSX_SRCS) src/emulators/msx/msx_
 # Parking is safe here in a way B-MSX's park was not quite: the twenty-two units take no call
 # from anywhere else in the image.  Measured with `nm` over every `*.ps2.o`: 437 symbols
 # defined among them, zero of them named as an undefined reference by any other unit.  The one
-# name the desktop does ask for -- `open_quake_window()` -- is answered by src/clu/clu.c's weak
+# name the desktop does ask for -- `open_quake_window()` -- is answered by src/apps/clu/clu.c's weak
 # stub, which the strong definition in quake_app.c has been overriding all along; the four
 # consumers (desktop.c, global_menu.c, tracker.c, xmb.c) already null-test it, and core_ps2.c's
 # `quake` console command does not, so at PS2_QUAKE=0 it runs the stub and then prints
@@ -1498,21 +1514,21 @@ $(info [PS2] PS2_NV is now $(PS2_NV) (was $(if $(PS2_NV_PREV),$(PS2_NV_PREV),uns
 endif
 PS2_SRCS       = $(PS2_STARTUP)           \
                  src/cores/core_init.c    \
-                 src/drivers/ps2/ps2_gs.c \
-                 src/drivers/ps2/ps2_gif_ring.c \
-                 src/drivers/ps2/ps2_gs_pack.c \
-                 src/drivers/ps2/ps2_gs_vram.c \
-                 src/drivers/ps2/ps2_gs_env.c \
-                 src/drivers/ps2/ps2_gs_poster.c \
-                 src/drivers/ps2/ps2_gs_rec.c \
-                 src/drivers/ps2/ps2_gs_tex.c \
-                 src/drivers/ps2/ps2_gs_read.c \
-                 src/drivers/ps2/ps2_builtins.c \
-                 src/drivers/ps2/ps2_sio.c \
-                 src/drivers/ps2/ps2_pad.c \
-                 src/drivers/ps2/ps2_iopram.c \
-                 src/drivers/ps2/ps2_irq.c \
-                 src/drivers/ps2/ps2_usb.c \
+                 src/drivers/playstation2/ps2_gs.c \
+                 src/drivers/playstation2/ps2_gif_ring.c \
+                 src/drivers/playstation2/ps2_gs_pack.c \
+                 src/drivers/playstation2/ps2_gs_vram.c \
+                 src/drivers/playstation2/ps2_gs_env.c \
+                 src/drivers/playstation2/ps2_gs_poster.c \
+                 src/drivers/playstation2/ps2_gs_rec.c \
+                 src/drivers/playstation2/ps2_gs_tex.c \
+                 src/drivers/playstation2/ps2_gs_read.c \
+                 src/drivers/playstation2/ps2_builtins.c \
+                 src/drivers/playstation2/ps2_sio.c \
+                 src/drivers/playstation2/ps2_pad.c \
+                 src/drivers/playstation2/ps2_iopram.c \
+                 src/drivers/playstation2/ps2_irq.c \
+                 src/drivers/playstation2/ps2_usb.c \
                  $(CLU_TERMIO_SRCS)       \
                  $(PS2_MSX_SRCS)          \
                  $(PS2_PW_SRCS)           \
@@ -1521,21 +1537,21 @@ PS2_SRCS       = $(PS2_STARTUP)           \
                  src/kernel/libstr.c      \
                  src/kernel/libint64.c    \
                  $(COMMON_NO_SDL_SRCS)
-PS2_OBJS       = src/drivers/ps2/boot_ps2.ps2.o         \
-                 src/drivers/ps2/ps2_gs_reg.ps2.o      \
+PS2_OBJS       = src/drivers/playstation2/boot_ps2.ps2.o         \
+                 src/drivers/playstation2/ps2_gs_reg.ps2.o      \
                  $(PS2_SYS_VOL_OBJ)                    \
                  $(PS2_SRCS:.c=.ps2.o)
 
 # The /SYS volume rides inside the image's .data (doc/txt/PS2.txt, chapter 20): the bytes are
-# btron_sys.vol, which the host tool mkbtronfs writes from src/tools/manifest.txt, and the object is
+# btron_sys.vol, which the host tool mkbtronfs writes from tools/manifest.txt, and the object is
 # the one .incbin of them.  It is a prerequisite of nothing here -- the volume's own rule now waits
 # on the manifest's payloads -- so a document edit rebuilds the volume, which rebuilds this object,
 # which relinks the image, and no step of that is a human remembering to run the tool first.
 # `-I.` is what makes the .incbin path mean the file at the top of the checkout rather than a file
 # next to the .s, because make runs from the repository root and the assembler resolves that path
 # the way it resolves an include.
-PS2_SYS_VOL_OBJ     = src/drivers/ps2/ps2_sys_vol.ps2.o
-PS2_SYS_VOL_SOURCE  = src/drivers/ps2/ps2_sys_vol.s
+PS2_SYS_VOL_OBJ     = src/drivers/playstation2/ps2_sys_vol.ps2.o
+PS2_SYS_VOL_SOURCE  = src/drivers/playstation2/ps2_sys_vol.s
 # And the prerequisite is NOT a read-only input, which is the part learned the hard way on
 # 2026-10-14: three host suites mount the real btron_sys.vol read/write -- test_b_drivesetup.c
 # mounts it as /SYS at :158 and then writes its scratch `sys_boot_%d.cfg` into it at :959,
@@ -1549,7 +1565,7 @@ PS2_SYS_VOL_SOURCE  = src/drivers/ps2/ps2_sys_vol.s
 # the working file is not that, replace it.  The repair happens before the compile line, so the
 # object always ends up newer than the volume and a clean tree still says "nothing to do".
 $(PS2_SYS_VOL_OBJ): $(PS2_SYS_VOL_SOURCE) btron_sys.vol
-	@./mkbtronfs src/tools/manifest.txt -o .build/ps2-vol-fresh.vol >/dev/null 2>&1; \
+	@./mkbtronfs tools/manifest.txt -o .build/ps2-vol-fresh.vol >/dev/null 2>&1; \
 	 if ! cmp -s .build/ps2-vol-fresh.vol btron_sys.vol; then \
 	   echo "[PS2] btron_sys.vol is not the manifest ($$(cmp -l .build/ps2-vol-fresh.vol btron_sys.vol | wc -l | tr -d ' ') bytes): a host FS suite wrote into it, so the image relinks from a fresh build"; \
 	   cp .build/ps2-vol-fresh.vol btron_sys.vol; \
@@ -1577,12 +1593,12 @@ $(PS2_SYS_VOL_OBJ): $(PS2_SYS_VOL_SOURCE) btron_sys.vol
 # reason this port originally moved off it.)  The one thing that does need a 64-bit
 # instruction is the GS, which latches a privileged register on a single sd and
 # takes two writes if a mips2 build splits the store in half; that access lives in
-# src/drivers/ps2/ps2_gs_reg.s, whose three 32-bit arguments mean exactly the same
+# src/drivers/playstation2/ps2_gs_reg.s, whose three 32-bit arguments mean exactly the same
 # thing under either ISA, so it cannot be corrupted by a mixed link.  The other
 # thing a 32-bit-GPR MIPS cannot do is convert a double to or from a 64-bit integer
 # -- the FPU speaks 32-bit GPRs here, and so does the Emotion Engine's -- so clang
 # emits the O32 libcall names __floatdidf/__fixdfdi at the float-heavy files, and
-# src/drivers/ps2/ps2_builtins.c defines them for the -nostdlib link.
+# src/drivers/playstation2/ps2_builtins.c defines them for the -nostdlib link.
 
 %.ps2.o: %.s
 	$(PS2_CC) -c $< -o $@
@@ -1590,7 +1606,7 @@ $(PS2_SYS_VOL_OBJ): $(PS2_SYS_VOL_SOURCE) btron_sys.vol
 %.ps2.o: %.c
 	$(PS2_CC) $(PS2_CFLAGS) -MMD -MP -c $< -o $@
 
-# src/media/gst_rt.c crashes LLVM 22.1.8 in MachineFunction's ShrinkWrap pass, on
+# src/media/sdk/gst_rt.c crashes LLVM 22.1.8 in MachineFunction's ShrinkWrap pass, on
 # `Shrink Wrapping analysis' against @clock_block: the same file at commit 544425f, with the
 # flags at commit 544425f, dies identically, so this is the toolchain and not the lane.
 # Reproduce with `make ps2`, or by compiling that revision's copy with PS2_CFLAGS.
@@ -1603,14 +1619,14 @@ $(PS2_SYS_VOL_OBJ): $(PS2_SYS_VOL_SOURCE) btron_sys.vol
 # instead of trusting this comment.
 # Scoped to the one object on purpose: PS2_CFLAGS is what every [BENCH] row was measured
 # under, and widening it here would silently re-baseline the numbers the bench reports.
-src/media/gst_rt.ps2.o: PS2_CFLAGS += -mllvm -enable-shrink-wrap=false
+src/media/sdk/gst_rt.ps2.o: PS2_CFLAGS += -mllvm -enable-shrink-wrap=false
 
 # `PS2_GL=` changes the flags three translation units compile under, and make does not see a
 # flag change: their objects stay newer than their sources and get linked into the image built
 # for the other value, which is worse than a build failure because the `[GL]` row then describes
 # a pipeline nobody asked for and the [XMBT] timings describe it too.  So the value itself is
 # what gets tracked: it is written into a stamp file and, when the two disagree, the objects
-# that read it are removed before anything is linked.  The same law scripts/ps2_smooth.sh
+# that read it are removed before anything is linked.  The same law scripts/test_ps2_smooth.sh
 # applies to PS2_FP_COUNT, here so a bare `make ps2 PS2_GL=eegs` is covered by it too -- and it
 # has to be a content comparison rather than a stamp target with a recipe, because a target with
 # no prerequisites is never considered out of date and would sit there holding the old value.
@@ -1618,7 +1634,7 @@ PS2_GL_STAMP  = .build/ps2-gl.stamp
 PS2_GL_PREV  := $(shell cat $(PS2_GL_STAMP) 2>/dev/null)
 ifneq ($(PS2_GL_PREV),$(PS2_GL))
 $(shell mkdir -p ./.build && echo '$(PS2_GL)' >$(PS2_GL_STAMP) && \
-        rm -f src/gl/gl_backend_choice.ps2.o src/gl/gl_dispatch.ps2.o src/gl/egl_surface.ps2.o)
+        rm -f src/desktop/graphics/gles/gl_backend_choice.ps2.o src/desktop/graphics/gles/gl_dispatch.ps2.o src/desktop/graphics/gles/egl_surface.ps2.o)
 $(info [PS2] PS2_GL is now $(PS2_GL) (was $(if $(PS2_GL_PREV),$(PS2_GL_PREV),unset)) -- the objects that read it will rebuild)
 endif
 
@@ -1649,7 +1665,7 @@ PS2_PW_PREV := $(shell cat $(PS2_PW_STAMP) 2>/dev/null)
 ifneq ($(PS2_PW_PREV),$(PS2_PW))
 $(shell mkdir -p ./.build && echo '$(PS2_PW)' >$(PS2_PW_STAMP) && \
         rm -f src/cores/core_ps2.ps2.o src/cores/core_ps2.pbench.o \
-              src/drivers/ps2/ps2_paint_worker.ps2.o)
+              src/drivers/playstation2/ps2_paint_worker.ps2.o)
 $(info [PS2] PS2_PW is now $(PS2_PW) (was $(if $(PS2_PW_PREV),$(PS2_PW_PREV),unset)) -- the paint worker's units will rebuild)
 endif
 
@@ -1675,18 +1691,18 @@ src/kernel/libstr.ps2.o: PS2_CFLAGS += -DBTRON_LIBSTR_NO_HEAP=1
 
 # PS2 measurement build: the present/pointer bench lives only in core_ps2.c, so one
 # object is rebuilt with the define and the shipped btron-ps2.elf keeps its own
-# flags -- the artifact measured is not the artifact flashed.  scripts/ps2_bench.sh
+# flags -- the artifact measured is not the artifact flashed.  scripts/test_ps2_bench.sh
 # runs it under PCSX2 -nogui, so the table needs no window and no hand.
 PS2_BENCH_OBJ  = src/cores/core_ps2.pbench.o
 PS2_BENCH_OBJS = $(PS2_BENCH_OBJ) $(filter-out src/cores/core_ps2.ps2.o,$(PS2_OBJS))
 PS2_BENCH_TARGET = btron-ps2-bench.elf
-# BENCH_APP=1 scripts/ps2_bench.sh additionally opens xmb.c and counts the frames the
+# BENCH_APP=1 scripts/test_ps2_bench.sh additionally opens xmb.c and counts the frames the
 # task shim gives it.  Off by default: the app it opens does not reach its own exit yet
 # (see the phase's note in core_ps2.c), so the phase would end the run at its timeout
 # rather than at its sentinel.
 BENCH_APP      ?= 0
 # Frames the app phase asks for before it injects its own Escape.  The default keeps
-# the table's resolution; scripts/ps2_smooth.sh lowers it so a run ends at its
+# the table's resolution; scripts/test_ps2_smooth.sh lowers it so a run ends at its
 # sentinel instead of at a harness timeout -- 60 frames of this app is 24 minutes.
 BENCH_APP_FRAMES ?= 60
 # Frames the launcher-by-key CYCLE phase asks for, which is the phase that ends the run at its own
@@ -1756,10 +1772,10 @@ endif
 
 # The three objects in the image that may hold COP1 instructions.  -msoft-float is an
 # argument-passing law (the note at PS2_CC), and none of these breaks any part of it: every
-# entry point in src/drivers/ps2/ps2_builtins.c takes and returns an integer register holding
+# entry point in src/drivers/playstation2/ps2_builtins.c takes and returns an integer register holding
 # IEEE-754 bits, and the only float-shaped things in that file are inside __asm__ strings;
-# the two functions in src/gl/tinygl/vertex_stage.c take a `GLVertex *` and return nothing,
-# so the floats they compute never leave the unit; and src/apps/xmb_wave.c takes the effect
+# the two functions in src/desktop/graphics/tinygl/vertex_stage.c take a `GLVertex *` and return nothing,
+# so the floats they compute never leave the unit; and src/media/xmb/xmb_wave.c takes the effect
 # clock as bits in an integer, takes the window's size as two integers, returns nothing, and
 # hands the sheet out through memory the reader loads as a float -- its two wide-trig calls
 # are bits in and bits out as well.  All three still need the flag off to assemble at all --
@@ -1791,9 +1807,9 @@ endif
 # first arrangement.  An unknown `-mllvm` argument fails the compile, so a toolchain that
 # drops the option stops the build instead of quietly re-opening the hole.
 PS2_FP ?= hw
-PS2_FP_OBJ     = src/drivers/ps2/ps2_builtins.ps2.o
-PS2_KERNEL_OBJ = src/gl/tinygl/vertex_stage.ps2.o
-PS2_WAVE_OBJ   = src/apps/xmb_wave.ps2.o
+PS2_FP_OBJ     = src/drivers/playstation2/ps2_builtins.ps2.o
+PS2_KERNEL_OBJ = src/desktop/graphics/tinygl/vertex_stage.ps2.o
+PS2_WAVE_OBJ   = src/media/xmb/xmb_wave.ps2.o
 PS2_FP_OBJS    = $(PS2_FP_OBJ) $(PS2_KERNEL_OBJ) $(PS2_WAVE_OBJ)
 PS2_FP_CSR_COST = -mllvm -regalloc-csr-first-time-cost=1000000000
 # The flag is per object, and make does not see a flag change: switching PS2_FP leaves the
@@ -1822,7 +1838,7 @@ endif
 # left xmb.ps2.o newer than its source.  Same content-comparison stamp as the other dials, same
 # object list as the disease, and note again that `$(shell ...)` runs while *parsing* -- a
 # `make -n PS2_FP_COUNT=1` purges these too.
-PS2_FPC_OBJS = src/drivers/ps2/ps2_builtins.ps2.o src/apps/xmb.ps2.o \
+PS2_FPC_OBJS = src/drivers/playstation2/ps2_builtins.ps2.o src/media/xmb/xmb.ps2.o \
                src/cores/core_ps2.ps2.o src/cores/core_ps2.pbench.o
 PS2_FPC_STAMP = .build/ps2-fpc.stamp
 PS2_FPC_PREV := $(shell cat $(PS2_FPC_STAMP) 2>/dev/null)
@@ -1837,7 +1853,7 @@ endif
 # turned on for.  An image where eegs_present counted and core_ps2 did not print is an instrument
 # nobody reads; one where xmb printed `g=` against a stream nothing hashed is a column that means
 # nothing.  Same content-comparison stamp, same note that `$(shell ...)` runs while *parsing*.
-PS2_IDENT_OBJS = src/gl/eegs_present.ps2.o src/apps/xmb.ps2.o \
+PS2_IDENT_OBJS = src/desktop/graphics/eegs/eegs_present.ps2.o src/media/xmb/xmb.ps2.o \
                  src/cores/core_ps2.ps2.o src/cores/core_ps2.pbench.o
 PS2_IDENT_STAMP = .build/ps2-ident.stamp
 PS2_IDENT_PREV := $(shell cat $(PS2_IDENT_STAMP) 2>/dev/null)
@@ -1893,7 +1909,7 @@ $(PS2_TARGET): $(PS2_OBJS) $(PS2_LD_SCRIPT)
 # suite writes scratch into the working btron_sys.vol -- that is exactly why the
 # contamination guard at $(PS2_SYS_VOL_OBJ) exists -- and the disc must carry what
 # the manifest says it carries, not whatever the last test left in the tree.
-$(PS2_ISO): $(PS2_TARGET) mkbtronfs src/tools/manifest.txt src/tools/manifest_anders.txt assets/quake/pak/pak0.pak $(wildcard assets/quake/drone1m*.dem)
+$(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt assets/quake/pak/pak0.pak $(wildcard assets/quake/drone1m*.dem)
 	@echo "=========================================================="
 	@echo " Packaging Bootable PS2 Disc ISO: $@"
 	@echo "=========================================================="
@@ -1901,8 +1917,8 @@ $(PS2_ISO): $(PS2_TARGET) mkbtronfs src/tools/manifest.txt src/tools/manifest_an
 	@mkdir -p build/ps2_iso/QUAKE
 	@printf "BOOT2 = cdrom0:\\\\BTRON.ELF;1\r\nVER = 1.00\r\nVMODE = NTSC\r\n" > build/ps2_iso/SYSTEM.CNF
 	@cp $(PS2_TARGET) build/ps2_iso/BTRON.ELF
-	@./mkbtronfs src/tools/manifest.txt        -o build/ps2_iso/SYS.VOL
-	@./mkbtronfs src/tools/manifest_anders.txt -o build/ps2_iso/ANDERS.VOL -l ANDERS
+	@./mkbtronfs tools/manifest.txt        -o build/ps2_iso/SYS.VOL
+	@./mkbtronfs tools/manifest_anders.txt -o build/ps2_iso/ANDERS.VOL -l ANDERS
 	@cp assets/quake/pak/pak0.pak build/ps2_iso/QUAKE/PAK0.PAK
 	@for f in assets/quake/drone1m*.dem; do n=$$(basename "$$f" | tr '[:lower:]' '[:upper:]'); \
 	    cp "$$f" "build/ps2_iso/QUAKE/$$n"; done
@@ -1984,7 +2000,7 @@ run-ps2: $(PS2_TARGET) ps2-cfg
 	    exit 1; \
 	fi
 
-# include/gl/math.h's large-argument trig fold, read as a shape law rather than as a
+# include/rt/math.h's large-argument trig fold, read as a shape law rather than as a
 # value: past 4*pi a float angle must be folded with multiplies and no software double
 # division, and not handed to the double series (whose thirteen __divdf3 are the reason
 # the guard exists).  Needs the image's own flags -- and the image itself is no help,
@@ -1993,7 +2009,7 @@ run-ps2: $(PS2_TARGET) ps2-cfg
 # PASSes, when the probe has not been built.
 PS2_FARFOLD_OBJ = ./.build/ps2_farfold_probe.o
 
-$(PS2_FARFOLD_OBJ): verify/tests/ps2_farfold_probe.c include/gl/math.h
+$(PS2_FARFOLD_OBJ): verify/tests/ps2_farfold_probe.c include/rt/math.h
 	@mkdir -p ./.build
 	$(PS2_CC) $(PS2_CFLAGS) -c $< -o $@
 
@@ -2002,7 +2018,7 @@ test-ps2: $(PS2_TARGET) $(PS2_ISO) $(PS2_FARFOLD_OBJ)
 
 # The PS2 image is built -msoft-float (the R5900 FPU has no double-precision
 # instructions), so every floating-point operation in it runs through
-# src/drivers/ps2/ps2_builtins.c -- a file no PS2-independent test can reach,
+# src/drivers/playstation2/ps2_builtins.c -- a file no PS2-independent test can reach,
 # because the compiler calls it by names that only exist at link time.  This
 # compiles that same source on the host and throws each of its 32 symbols at the
 # host FPU, comparing bit patterns: the only way to know the port's arithmetic is
@@ -2017,7 +2033,7 @@ test-ps2-softfloat: $(TEST_PSFLOAT_BIN)
 	@echo "=========================================================="
 	@./$(TEST_PSFLOAT_BIN)
 
-$(TEST_PSFLOAT_BIN): $(TEST_PSFLOAT_OBJS) src/drivers/ps2/ps2_builtins.c
+$(TEST_PSFLOAT_BIN): $(TEST_PSFLOAT_OBJS) src/drivers/playstation2/ps2_builtins.c
 	@mkdir -p ./.build
 	$(CC) $(TEST_PSFLOAT_OBJS) -o $@ $(LDFLAGS) -lm
 
@@ -2057,7 +2073,7 @@ test-ps2-gs-pack: $(TEST_GSPACK_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GSPACK_BIN)
 
-$(TEST_GSPACK_BIN): $(TEST_GSPACK_OBJS) src/drivers/ps2/ps2_gs_pack.c src/drivers/ps2/ps2_gs_pack.h
+$(TEST_GSPACK_BIN): $(TEST_GSPACK_OBJS) src/drivers/playstation2/ps2_gs_pack.c src/drivers/playstation2/ps2_gs_pack.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSPACK_OBJS) -o $@ $(LDFLAGS)
 
@@ -2075,7 +2091,7 @@ test-ps2-gs-env: $(TEST_GSENV_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GSENV_BIN)
 
-$(TEST_GSENV_BIN): $(TEST_GSENV_OBJS) src/drivers/ps2/ps2_gs_env.c src/drivers/ps2/ps2_gs_vram.c
+$(TEST_GSENV_BIN): $(TEST_GSENV_OBJS) src/drivers/playstation2/ps2_gs_env.c src/drivers/playstation2/ps2_gs_vram.c
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSENV_OBJS) -o $@ $(LDFLAGS)
 
@@ -2095,7 +2111,7 @@ test-ps2-gs-rec: $(TEST_GSREC_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GSREC_BIN)
 
-$(TEST_GSREC_BIN): $(TEST_GSREC_OBJS) src/drivers/ps2/ps2_gs_rec.c src/drivers/ps2/ps2_gs_pack.c src/drivers/ps2/ps2_gs_rec.h src/drivers/ps2/ps2_gs_pack.h verify/tests/gs_group_view.h
+$(TEST_GSREC_BIN): $(TEST_GSREC_OBJS) src/drivers/playstation2/ps2_gs_rec.c src/drivers/playstation2/ps2_gs_pack.c src/drivers/playstation2/ps2_gs_rec.h src/drivers/playstation2/ps2_gs_pack.h verify/tests/gs_group_view.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSREC_OBJS) -o $@ $(LDFLAGS)
 
@@ -2109,7 +2125,7 @@ test-ps2-vu1-geom: $(TEST_VU1GEOM_BIN)
 	@echo "=========================================================="
 	@./$(TEST_VU1GEOM_BIN)
 
-$(TEST_VU1GEOM_BIN): $(TEST_VU1GEOM_OBJS) src/drivers/ps2/ps2_vu1_geom.c src/drivers/ps2/ps2_vu1_geom.h
+$(TEST_VU1GEOM_BIN): $(TEST_VU1GEOM_OBJS) src/drivers/playstation2/ps2_vu1_geom.c src/drivers/playstation2/ps2_vu1_geom.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_VU1GEOM_OBJS) -o $@ $(LDFLAGS)
 
@@ -2123,7 +2139,7 @@ test-ps2-vu0-kernel: $(TEST_VU0KERNEL_BIN)
 	@echo "=========================================================="
 	@./$(TEST_VU0KERNEL_BIN)
 
-$(TEST_VU0KERNEL_BIN): $(TEST_VU0KERNEL_OBJS) src/drivers/ps2/ps2_vu0_kernel.c src/drivers/ps2/ps2_vu0_kernel.h
+$(TEST_VU0KERNEL_BIN): $(TEST_VU0KERNEL_OBJS) src/drivers/playstation2/ps2_vu0_kernel.c src/drivers/playstation2/ps2_vu0_kernel.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_VU0KERNEL_OBJS) -o $@ $(LDFLAGS)
 
@@ -2137,7 +2153,7 @@ test-gscube-nexus: $(TEST_GSCUBE_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GSCUBE_BIN)
 
-$(TEST_GSCUBE_BIN): $(TEST_GSCUBE_OBJS) src/gl/gscube_nexus.c src/gl/gscube_nexus.h
+$(TEST_GSCUBE_BIN): $(TEST_GSCUBE_OBJS) src/desktop/graphics/eegs/gscube_nexus.c src/desktop/graphics/eegs/gscube_nexus.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSCUBE_OBJS) -o $@ $(LDFLAGS)
 
@@ -2149,13 +2165,13 @@ test-ps2-opengl-routing: $(TEST_PS2ROUTING_BIN)
 	@echo "=========================================================="
 	@./$(TEST_PS2ROUTING_BIN)
 
-$(TEST_PS2ROUTING_BIN): verify/tests/test_ps2_opengl_routing.c $(FS_OBJS) src/clu/clu.host.o $(CLU_APPS_HOST_OBJS) \
-                        src/gl/backend_eegs.c src/drivers/ps2/ps2_gs_rec.c src/drivers/ps2/ps2_gs_tex.c \
-                        src/drivers/ps2/ps2_vu1_geom.c src/drivers/ps2/ps2_vu0_kernel.c \
-                        src/gl/gscube_nexus.c src/drivers/ps2/ps2_gs_env.c src/drivers/ps2/ps2_gs_vram.c \
-                        src/drivers/ps2/ps2_gif_ring.c
+$(TEST_PS2ROUTING_BIN): verify/tests/test_ps2_opengl_routing.c $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS) \
+                        src/desktop/graphics/eegs/backend_eegs.c src/drivers/playstation2/ps2_gs_rec.c src/drivers/playstation2/ps2_gs_tex.c \
+                        src/drivers/playstation2/ps2_vu1_geom.c src/drivers/playstation2/ps2_vu0_kernel.c \
+                        src/desktop/graphics/eegs/gscube_nexus.c src/drivers/playstation2/ps2_gs_env.c src/drivers/playstation2/ps2_gs_vram.c \
+                        src/drivers/playstation2/ps2_gif_ring.c
 	@mkdir -p ./.build
-	$(CC) $(CFLAGS) -Isrc verify/tests/test_ps2_opengl_routing.c $(FS_OBJS) src/clu/clu.host.o $(CLU_APPS_HOST_OBJS) src/gl/backend_eegs.c src/drivers/ps2/ps2_gs_rec.c src/drivers/ps2/ps2_gs_tex.c -o $@ $(LDFLAGS) -lm
+	$(CC) $(CFLAGS) -Isrc verify/tests/test_ps2_opengl_routing.c $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS) src/desktop/graphics/eegs/backend_eegs.c src/drivers/playstation2/ps2_gs_rec.c src/drivers/playstation2/ps2_gs_tex.c -o $@ $(LDFLAGS) -lm
 
 
 # LANE 9b: the flat-colour SPRITE batch, the poster half of row 9.  Same #include idiom as the three
@@ -2182,9 +2198,9 @@ test-ps2-gs-poster: $(TEST_GSPOSTER_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GSPOSTER_BIN)
 
-$(TEST_GSPOSTER_BIN): $(TEST_GSPOSTER_OBJS) src/drivers/ps2/ps2_gs_poster.c \
-                      src/drivers/ps2/ps2_gs_poster.h \
-                      src/drivers/ps2/ps2_gs_pack.c src/drivers/ps2/ps2_gs_pack.h
+$(TEST_GSPOSTER_BIN): $(TEST_GSPOSTER_OBJS) src/drivers/playstation2/ps2_gs_poster.c \
+                      src/drivers/playstation2/ps2_gs_poster.h \
+                      src/drivers/playstation2/ps2_gs_pack.c src/drivers/playstation2/ps2_gs_pack.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSPOSTER_OBJS) -o $@ $(LDFLAGS)
 
@@ -2205,10 +2221,10 @@ test-ps2-gs-tex: $(TEST_GSTEX_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GSTEX_BIN)
 
-$(TEST_GSTEX_BIN): $(TEST_GSTEX_OBJS) src/drivers/ps2/ps2_gs_tex.c \
-                   src/drivers/ps2/ps2_gs_pack.c src/drivers/ps2/ps2_gs_vram.c \
-                   src/drivers/ps2/ps2_gs_tex.h src/drivers/ps2/ps2_gs_pack.h \
-                   src/drivers/ps2/ps2_gs_vram.h
+$(TEST_GSTEX_BIN): $(TEST_GSTEX_OBJS) src/drivers/playstation2/ps2_gs_tex.c \
+                   src/drivers/playstation2/ps2_gs_pack.c src/drivers/playstation2/ps2_gs_vram.c \
+                   src/drivers/playstation2/ps2_gs_tex.h src/drivers/playstation2/ps2_gs_pack.h \
+                   src/drivers/playstation2/ps2_gs_vram.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSTEX_OBJS) -o $@ $(LDFLAGS)
 
@@ -2238,10 +2254,10 @@ test-ps2-gs-read: $(TEST_GSREAD_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GSREAD_BIN)
 
-$(TEST_GSREAD_BIN): $(TEST_GSREAD_OBJS) src/drivers/ps2/ps2_gs_read.c \
-                    src/drivers/ps2/ps2_gs_pack.c src/drivers/ps2/ps2_gs_vram.c \
-                    src/drivers/ps2/ps2_gs_read.h src/drivers/ps2/ps2_gs_pack.h \
-                    src/drivers/ps2/ps2_gs_vram.h
+$(TEST_GSREAD_BIN): $(TEST_GSREAD_OBJS) src/drivers/playstation2/ps2_gs_read.c \
+                    src/drivers/playstation2/ps2_gs_pack.c src/drivers/playstation2/ps2_gs_vram.c \
+                    src/drivers/playstation2/ps2_gs_read.h src/drivers/playstation2/ps2_gs_pack.h \
+                    src/drivers/playstation2/ps2_gs_vram.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSREAD_OBJS) -o $@ $(LDFLAGS)
 
@@ -2278,7 +2294,7 @@ $(TEST_PTRSTROKE_BIN): $(TEST_PTRSTROKE_OBJS) src/cores/ps2_ptr_stroke.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_PTRSTROKE_OBJS) -o $@ $(LDFLAGS)
 
-$(TEST_PTRACCUM_OBJ): verify/tests/test_ps2_ptr_accum.c src/graphics/dp_accel.c include/btron/dp_accel.h
+$(TEST_PTRACCUM_OBJ): verify/tests/test_ps2_ptr_accum.c src/desktop/graphics/dp_accel.c include/btron/dp_accel.h
 	$(CC) $(CFLAGS) -DBTRON_PS2_TARGET -MMD -MP -c $< -o $@
 
 $(TEST_PTRACCUM_BIN): $(TEST_PTRACCUM_OBJ)
@@ -2332,9 +2348,9 @@ test-eegs-raster: $(TEST_EEGSR_BIN)
 	@echo "=========================================================="
 	@./$(TEST_EEGSR_BIN)
 
-$(TEST_EEGSR_BIN): $(TEST_EEGSR_OBJS) src/gl/backend_eegs.c src/gl/backend_eegs.h \
-                   src/drivers/ps2/ps2_gs_rec.c src/drivers/ps2/ps2_gs_pack.c \
-                   src/drivers/ps2/ps2_gs_rec.h src/drivers/ps2/ps2_gs_pack.h \
+$(TEST_EEGSR_BIN): $(TEST_EEGSR_OBJS) src/desktop/graphics/eegs/backend_eegs.c src/desktop/graphics/eegs/backend_eegs.h \
+                   src/drivers/playstation2/ps2_gs_rec.c src/drivers/playstation2/ps2_gs_pack.c \
+                   src/drivers/playstation2/ps2_gs_rec.h src/drivers/playstation2/ps2_gs_pack.h \
                    verify/tests/gs_group_view.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_EEGSR_OBJS) -o $@ $(LDFLAGS)
@@ -2357,8 +2373,8 @@ $(TEST_EEGSR_BIN): $(TEST_EEGSR_OBJS) src/gl/backend_eegs.c src/gl/backend_eegs.
 # failures that are no longer in the tree.  Delete the object, do not re-touch the source.
 # backend_virgl.c is here as it is in the other GL suites: the GL_BACKEND_VIRGL case in gl_init is
 # unconditional in the shipped image too.
-TEST_GRIDMAP_SRCS = verify/tests/test_grid_map.c src/gl/gl_dispatch.c src/gl/backend_tinygl.c \
-                    src/gl/backend_virgl.c $(TINYGL_SRCS) src/apps/xmb_wave.c
+TEST_GRIDMAP_SRCS = verify/tests/test_grid_map.c src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/backend_tinygl.c \
+                    src/desktop/graphics/virgl/backend_virgl.c $(TINYGL_SRCS) src/media/xmb/xmb_wave.c
 TEST_GRIDMAP_OBJS = $(TEST_GRIDMAP_SRCS:.c=.gm.o)
 TEST_GRIDMAP_BIN  = ./.build/test_grid_map
 
@@ -2371,7 +2387,7 @@ test-grid-map: $(TEST_GRIDMAP_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GRIDMAP_BIN)
 
-$(TEST_GRIDMAP_BIN): $(TEST_GRIDMAP_OBJS) src/gl/grid_map.h src/gl/tinygl/vertex_stage.c
+$(TEST_GRIDMAP_BIN): $(TEST_GRIDMAP_OBJS) src/desktop/graphics/gles/grid_map.h src/desktop/graphics/tinygl/vertex_stage.c
 	@mkdir -p ./.build
 	$(CC) $(TEST_GRIDMAP_OBJS) -o $@ $(LDFLAGS) -lm
 
@@ -2392,12 +2408,12 @@ test-eegs-present: $(TEST_EEGSP_BIN)
 	@echo "=========================================================="
 	@./$(TEST_EEGSP_BIN)
 
-$(TEST_EEGSP_BIN): $(TEST_EEGSP_OBJS) src/gl/eegs_present.c src/gl/eegs_present.h \
-                   src/gl/backend_eegs.c src/gl/backend_eegs.h \
-                   src/drivers/ps2/ps2_gs_rec.c src/drivers/ps2/ps2_gs_pack.c \
-                   src/drivers/ps2/ps2_gs_env.c src/drivers/ps2/ps2_gs_vram.c \
-                   src/drivers/ps2/ps2_gif_ring.c src/drivers/ps2/ps2_gif_ring.h \
-                   src/drivers/ps2/ps2_gs.h verify/tests/gs_group_view.h
+$(TEST_EEGSP_BIN): $(TEST_EEGSP_OBJS) src/desktop/graphics/eegs/eegs_present.c src/desktop/graphics/eegs/eegs_present.h \
+                   src/desktop/graphics/eegs/backend_eegs.c src/desktop/graphics/eegs/backend_eegs.h \
+                   src/drivers/playstation2/ps2_gs_rec.c src/drivers/playstation2/ps2_gs_pack.c \
+                   src/drivers/playstation2/ps2_gs_env.c src/drivers/playstation2/ps2_gs_vram.c \
+                   src/drivers/playstation2/ps2_gif_ring.c src/drivers/playstation2/ps2_gif_ring.h \
+                   src/drivers/playstation2/ps2_gs.h verify/tests/gs_group_view.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_EEGSP_OBJS) -o $@ $(LDFLAGS)
 
@@ -2408,7 +2424,7 @@ $(TEST_EEGSP_BIN): $(TEST_EEGSP_OBJS) src/gl/eegs_present.c src/gl/eegs_present.
 # that is held busy forever -- which is not a state any image row can conjure.  The capacity here is
 # the suite's own 8 (overridden in the test source) so the refusal path and the index wrap are
 # reachable; the shipped 512 and its relation to the stage's group table is compile-time law in
-# src/gl/eegs_present.c, and the ordering a refusal would corrupt is asserted through the real
+# src/desktop/graphics/eegs/eegs_present.c, and the ordering a refusal would corrupt is asserted through the real
 # staging unit, just above.
 TEST_GIFRING_SRCS = verify/tests/test_ps2_gif_ring.c
 TEST_GIFRING_OBJS = $(TEST_GIFRING_SRCS:.c=.test.o)
@@ -2420,8 +2436,8 @@ test-ps2-gif-ring: $(TEST_GIFRING_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GIFRING_BIN)
 
-$(TEST_GIFRING_BIN): $(TEST_GIFRING_OBJS) src/drivers/ps2/ps2_gif_ring.c \
-                     src/drivers/ps2/ps2_gif_ring.h
+$(TEST_GIFRING_BIN): $(TEST_GIFRING_OBJS) src/drivers/playstation2/ps2_gif_ring.c \
+                     src/drivers/playstation2/ps2_gif_ring.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GIFRING_OBJS) -o $@ $(LDFLAGS)
 
@@ -2442,15 +2458,15 @@ test-ps2-paintw: $(TEST_PAINTW_BIN)
 	@echo "=========================================================="
 	@./$(TEST_PAINTW_BIN)
 
-$(TEST_PAINTW_BIN): $(TEST_PAINTW_OBJS) src/drivers/ps2/ps2_paint_worker.c \
-                    src/drivers/ps2/ps2_paint_worker.h
+$(TEST_PAINTW_BIN): $(TEST_PAINTW_OBJS) src/drivers/playstation2/ps2_paint_worker.c \
+                    src/drivers/playstation2/ps2_paint_worker.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_PAINTW_OBJS) -o $@ $(LDFLAGS)
 
 # The Makefile's `PS2_GL=` dial, measured against the rule it is supposed to drive.  The dial is
 # three -D flags and the rule is a preprocessor branch, so one binary compiled with one value of
 # it cannot see the other values -- which is exactly how a flag that names nothing at all looks
-# from the inside.  This suite links src/gl/gl_backend_choice.c four times, each port TU carrying
+# from the inside.  This suite links src/desktop/graphics/gles/gl_backend_choice.c four times, each port TU carrying
 # the flags spelled as PS2_CFLAGS spells them, and compares all four answers.
 TEST_GLBLANE_SRCS = verify/tests/test_gl_backend_choice.c
 TEST_GLBLANE_BIN  = ./.build/test_gl_backend_choice
@@ -2468,21 +2484,21 @@ test-gl-backend-choice: $(TEST_GLBLANE_BIN)
 	@echo "=========================================================="
 	@./$(TEST_GLBLANE_BIN)
 
-verify/tests/gl_backend_choice_plain_port.blc.o: verify/tests/gl_backend_choice_plain_port.c src/gl/gl_backend_choice.c src/gl/gl_backend_choice.h
+verify/tests/gl_backend_choice_plain_port.blc.o: verify/tests/gl_backend_choice_plain_port.c src/desktop/graphics/gles/gl_backend_choice.c src/desktop/graphics/gles/gl_backend_choice.h
 	@mkdir -p ./.build
 	$(CC) $(GLBLANE_CFLAGS) -MMD -MP -c $< -o $@
 
-verify/tests/gl_backend_choice_virgl_port.blc.o: verify/tests/gl_backend_choice_virgl_port.c src/gl/gl_backend_choice.c src/gl/gl_backend_choice.h
+verify/tests/gl_backend_choice_virgl_port.blc.o: verify/tests/gl_backend_choice_virgl_port.c src/desktop/graphics/gles/gl_backend_choice.c src/desktop/graphics/gles/gl_backend_choice.h
 	@mkdir -p ./.build
 	$(CC) $(GLBLANE_CFLAGS) -DBTRON_GL_PREFER_VIRGL -MMD -MP -c $< -o $@
 
-verify/tests/gl_backend_choice_eegs_port.blc.o: verify/tests/gl_backend_choice_eegs_port.c src/gl/gl_backend_choice.c src/gl/gl_backend_choice.h
+verify/tests/gl_backend_choice_eegs_port.blc.o: verify/tests/gl_backend_choice_eegs_port.c src/desktop/graphics/gles/gl_backend_choice.c src/desktop/graphics/gles/gl_backend_choice.h
 	@mkdir -p ./.build
 	$(CC) $(GLBLANE_CFLAGS) -DBTRON_GL_PREFER_EEGS -MMD -MP -c $< -o $@
 
-# No -DBTRON_GL_BACKEND_TINYGL: the arm every target that does not list src/gl/tinygl/ compiles
+# No -DBTRON_GL_BACKEND_TINYGL: the arm every target that does not list src/desktop/graphics/tinygl/ compiles
 # under, and the one the dial must leave alone.
-verify/tests/gl_backend_choice_nostgl_port.blc.o: verify/tests/gl_backend_choice_nostgl_port.c src/gl/gl_backend_choice.c src/gl/gl_backend_choice.h
+verify/tests/gl_backend_choice_nostgl_port.blc.o: verify/tests/gl_backend_choice_nostgl_port.c src/desktop/graphics/gles/gl_backend_choice.c src/desktop/graphics/gles/gl_backend_choice.h
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
@@ -2494,7 +2510,7 @@ $(TEST_GLBLANE_BIN): $(TEST_GLBLANE_SRCS:.c=.blc.o) \
 	@mkdir -p ./.build
 	$(CC) $^ -o $@ $(LDFLAGS)
 
-# include/gl/math.h is the freestanding math for every bare-metal target, and its
+# include/rt/math.h is the freestanding math for every bare-metal target, and its
 # no-x87 half is what the PS2 and the Malta MIPS actually execute: sqrtf/sinf/cosf/
 # floorf as single-precision series, because the Emotion Engine runs single-precision
 # on COP1 in ~20 cycles and double-precision not at all.  A wrong constant factor in
@@ -2510,14 +2526,14 @@ TEST_GLMATH_BIN = ./.build/test_gl_math_float
 # instruction and the run measures the machine it is standing on.  -fno-builtin-<name>
 # is per-name: extend it in lockstep when the header gains a float-native function.
 GLMATH_PORTFLAGS = -O1 -std=c11 -Wall -Wextra -ffreestanding \
-                   -U__x86_64__ -U__i386__ -Iinclude -Iinclude/gl \
+                   -U__x86_64__ -U__i386__ -Iinclude -Iinclude/rt -Iinclude/graphics \
                    -fno-builtin-sqrt -fno-builtin-sqrtf -fno-builtin-sin -fno-builtin-sinf \
                    -fno-builtin-cos -fno-builtin-cosf -fno-builtin-fabs -fno-builtin-fabsf \
                    -fno-builtin-floor -fno-builtin-floorf -fno-builtin-exp -fno-builtin-expf \
                    -fno-builtin-pow -fno-builtin-powf -fno-builtin-atan -fno-builtin-atanf \
                    -fno-builtin-atan2 -fno-builtin-atan2f -fno-builtin-fmod -fno-builtin-fmodf
 
-verify/tests/gl_math_float_port.test.o: verify/tests/gl_math_float_port.c include/gl/math.h
+verify/tests/gl_math_float_port.test.o: verify/tests/gl_math_float_port.c include/rt/math.h
 	$(CC) $(GLMATH_PORTFLAGS) -MMD -MP -c $< -o $@
 
 test-gl-math: $(TEST_GLMATH_BIN)
@@ -2537,20 +2553,20 @@ $(TEST_GLMATH_BIN): verify/tests/test_gl_math_float.test.o verify/tests/gl_math_
 # The GS reads CT32 memory as R,G,B,A and a BTRON COLOR is 0xAARRGGBB, so every canvas word
 # the PS2 scans out has its R and B fields exchanged (include/btron/types.h), and TinyGL's
 # whole PIXEL domain is declared in that order too because its pbuf *is* the canvas
-# (src/gl/tinygl/zbuffer.h).  Both are compile-time decisions with no visible symptom until
+# (src/desktop/graphics/tinygl/zbuffer.h).  Both are compile-time decisions with no visible symptom until
 # a colour is on a screen, and the macro that decides them appears in exactly three files --
 # so this gate builds the same scene twice, once per domain, normalises each canvas word
 # back through BTRON_PIXEL_FB(), and requires the two dumps to be byte-identical.  A store
 # site that never converted itself, or a read of a canvas word that bypassed the macros,
 # shows up as one differing word at a known offset; the program's own raw-word assertions
 # then say which half of the flip failed.  See verify/tests/test_fb_order.c.
-TEST_FBORDER_SRCS = verify/tests/test_fb_order.c src/graphics/dp_core.c \
-                    src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c \
-                    src/gl/gl_dispatch.c src/gl/backend_virgl.c \
-                    src/gl/gl_backend_choice.c \
-                    src/gl/backend_eegs.c \
-                    src/drivers/ps2/ps2_gs_rec.c src/drivers/ps2/ps2_gs_pack.c \
-                    src/drivers/ps2/ps2_gs_tex.c src/drivers/ps2/ps2_gs_vram.c \
+TEST_FBORDER_SRCS = verify/tests/test_fb_order.c src/desktop/graphics/dp_core.c \
+                    src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c \
+                    src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/virgl/backend_virgl.c \
+                    src/desktop/graphics/gles/gl_backend_choice.c \
+                    src/desktop/graphics/eegs/backend_eegs.c \
+                    src/drivers/playstation2/ps2_gs_rec.c src/drivers/playstation2/ps2_gs_pack.c \
+                    src/drivers/playstation2/ps2_gs_tex.c src/drivers/playstation2/ps2_gs_vram.c \
                     $(TINYGL_SRCS)
 TEST_FBORDER_COBJS = $(TEST_FBORDER_SRCS:.c=.fbo.o)
 TEST_FBORDER_POBJS = $(TEST_FBORDER_SRCS:.c=.fbp.o)
@@ -2561,8 +2577,8 @@ TEST_FBORDER_PBIN  = ./.build/test_fb_order_canvas
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
 # The only difference between the two builds.  Two files read BTRON_PS2_TARGET besides
-# src/cores/core_init.c (which is not linked here): src/gl/tinygl/clip.c's GS raster stage and
-# src/gl/tinygl/texture.c's 5b plane publish, and therefore the five units they call -- the
+# src/cores/core_init.c (which is not linked here): src/desktop/graphics/tinygl/clip.c's GS raster stage and
+# src/desktop/graphics/tinygl/texture.c's 5b plane publish, and therefore the five units they call -- the
 # recorder, the packer, the registry and the VRAM arithmetic it plans against -- which is why they
 # are in the list above for *both* builds.  The two binaries have to differ in one macro and
 # nothing else, or a PASS would only say that two different links agree.
@@ -2606,7 +2622,7 @@ MIPS_TARGET     = ./.build/btron-mips.elf
 MIPS_LD_SCRIPT  = src/drivers/mips/mips_qemu.ld
 MIPS_CFLAGS     = -O2 -Wall -Wextra -std=c99 -ffreestanding -nostdlib \
                   -DBTRON_TARGET=9 -DBTRON_MIPS_TARGET \
-                  -Iinclude -Iinclude/drivers -Isrc/kernel -Isrc/cores -Isrc/drivers/mips
+                  -Isrc/drivers/mips $(COMMON_INCLUDES)
 MIPS_STARTUP    = src/cores/core_mips.c
 MIPS_SRCS       = $(MIPS_STARTUP)             \
                   src/drivers/mips/mips_uart.c \
@@ -2703,7 +2719,7 @@ $(ARM64_TARGET): $(ARM64_OBJS) $(BAREMETAL_LD)
 PI400_IMG      = btron-pi400.img
 PI400_IMG_SIZE = 128
 PI400_FW_DIR   = third_party/pi400
-PI400_CFG_DIR  = src/drivers/bcm283x/pi400
+PI400_CFG_DIR  = src/drivers/broadcom/pi400
 
 LLVM_OBJCOPY  ?= $(shell for p in \
     /opt/homebrew/opt/llvm/bin/llvm-objcopy \
@@ -2729,7 +2745,7 @@ pi400: $(PI400_IMG)
 # trap) and GICD_IGROUPR (Group 1) — both impossible from Non-secure EL1.
 PI400_ARMSTUB_BIN = .build/pi400/armstub8.bin
 
-$(PI400_ARMSTUB_BIN): src/drivers/bcm283x/cpu/armstub8.S
+$(PI400_ARMSTUB_BIN): src/drivers/broadcom/armstub8.S
 	@mkdir -p .build/pi400
 	$(ARM64_CC) -c $< -o .build/pi400/armstub8.o
 	$(ARM64_CC) -Wl,-Ttext=0x0 -Wl,--image-base=0x0 -Wl,--build-id=none .build/pi400/armstub8.o -o .build/pi400/armstub8.elf
@@ -2788,7 +2804,7 @@ $(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol
 	cp .build/pi400/armstub8.bin        $$MOUNT_PT/armstub8.bin; \
 	cp btron_sys.vol                    $$MOUNT_PT/btron_sys.vol; \
 	if [ -f btron_anders.vol ]; then cp btron_anders.vol $$MOUNT_PT/btron_anders.vol; fi; \
-	python3 scripts/mk_pi400_payload.py .build/pi400/btron_payload.bin; \
+	python3 scripts/tool_mk_pi400_payload.py .build/pi400/btron_payload.bin; \
 	cp .build/pi400/btron_payload.bin   $$MOUNT_PT/btron_payload.bin; \
 	if [ -f assets/quake/pak/pak0.pak ]; then cp assets/quake/pak/pak0.pak $$MOUNT_PT/pak0.pak; fi; \
 	echo "[PI400] SD image contents:"; \
@@ -2969,9 +2985,9 @@ debug-gdb: $(ARM32_TARGET)
 # ═══════════════════════════════════════════════════════════════════
 # Mozc Kana-Kanji Conversion & TIP Unit Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_MOZC_SRCS = verify/tests/test_mozc.c src/tip/mozc_kkc.c src/tip/tip_ife.c src/tip/wylie.c src/tip/tibetan_dict.c \
-                 src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c src/tip/tip_vobj.c src/window/wnd.c \
-                 src/graphics/dp_core.c src/chokanji/pmc.c
+TEST_MOZC_SRCS = verify/tests/test_mozc.c src/desktop/tip/japanese/mozc_kkc.c src/desktop/tip/tip_ife.c src/desktop/tip/tibetan/wylie.c src/desktop/tip/tibetan/tibetan_dict.c \
+                 src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c src/desktop/tip/tip_vobj.c src/desktop/window/wnd.c \
+                 src/desktop/graphics/dp_core.c src/apps/chokanji/pmc.c
 TEST_MOZC_OBJS = $(TEST_MOZC_SRCS:.c=.test.o)
 TEST_MOZC_BIN  = ./.build/test_mozc
 
@@ -2990,9 +3006,9 @@ $(TEST_MOZC_BIN): $(TEST_MOZC_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # Editor UI & Internal Functions Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_EDITOR_SRCS = verify/tests/test_editor_ui.c src/apps/t_editor.c src/window/app_menu.c src/tip/mozc_kkc.c src/tip/tip_ife.c src/tip/wylie.c src/tip/tibetan_dict.c \
-                   src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c src/tip/tip_vobj.c src/window/wnd.c \
-                   src/graphics/dp_core.c src/chokanji/pmc.c src/fs/blk_mem.c src/fs/blk_file.c src/fs/vol.c src/fs/file.c
+TEST_EDITOR_SRCS = verify/tests/test_editor_ui.c src/apps/editor/t_editor.c src/desktop/window/app_menu.c src/desktop/tip/japanese/mozc_kkc.c src/desktop/tip/tip_ife.c src/desktop/tip/tibetan/wylie.c src/desktop/tip/tibetan/tibetan_dict.c \
+                   src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c src/desktop/tip/tip_vobj.c src/desktop/window/wnd.c \
+                   src/desktop/graphics/dp_core.c src/apps/chokanji/pmc.c src/fs/blk_mem.c src/fs/blk_file.c src/fs/vol.c src/fs/file.c
 TEST_EDITOR_OBJS = $(TEST_EDITOR_SRCS:.c=.test.o)
 TEST_EDITOR_BIN  = ./.build/test_editor
 
@@ -3008,10 +3024,10 @@ $(TEST_EDITOR_BIN): $(TEST_EDITOR_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # TRON HMI Standard Library Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_HMI_SRCS = verify/tests/test_hmi.c src/hmi/hmi_core.c src/hmi/hmi_switch.c \
-                src/hmi/hmi_selector.c src/hmi/hmi_volume.c src/hmi/hmi_meter.c \
-                src/hmi/hmi_controller.c src/hmi/hmi_panel.c src/graphics/dp_core.c \
-                src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c src/window/wnd.c src/chokanji/pmc.c
+TEST_HMI_SRCS = verify/tests/test_hmi.c src/desktop/industrial/hmi/hmi_core.c src/desktop/industrial/hmi/hmi_switch.c \
+                src/desktop/industrial/hmi/hmi_selector.c src/desktop/industrial/hmi/hmi_volume.c src/desktop/industrial/hmi/hmi_meter.c \
+                src/desktop/industrial/hmi/hmi_controller.c src/desktop/industrial/hmi/hmi_panel.c src/desktop/graphics/dp_core.c \
+                src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c src/desktop/window/wnd.c src/apps/chokanji/pmc.c
 TEST_HMI_OBJS = $(TEST_HMI_SRCS:.c=.test.o)
 TEST_HMI_BIN  = ./.build/test_hmi
 
@@ -3030,10 +3046,10 @@ $(TEST_HMI_BIN): $(TEST_HMI_OBJS)
 PYTHON ?= $(shell for py in python3 python3.14 python3.13 python3.12 python3.11 python3.10; do if command -v $$py >/dev/null 2>&1; then echo "$$py"; break; fi; done)
 
 TAD_HTML2TAD := $(shell \
-  if [ -n "$(PYTHON)" ]; then echo "$(PYTHON) scripts/html2tad.py"; \
+  if [ -n "$(PYTHON)" ]; then echo "$(PYTHON) scripts/tool_html2tad.py"; \
   elif command -v elixir >/dev/null 2>&1; then echo "elixir scripts/html2tad.exs"; fi)
 TAD_BOOK2TAD := $(shell \
-  if [ -n "$(PYTHON)" ]; then echo "$(PYTHON) scripts/book2tad.py"; \
+  if [ -n "$(PYTHON)" ]; then echo "$(PYTHON) scripts/tool_book2tad.py"; \
   elif command -v elixir >/dev/null 2>&1; then echo "elixir scripts/book2tad.exs"; fi)
 
 tad_bin:
@@ -3051,10 +3067,10 @@ book2tad:
 # ═══════════════════════════════════════════════════════════════════
 # Native TAD Document Browser & Cabinet Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_TAD_SRCS = verify/tests/test_tad_browser.c src/apps/tad_browser.c src/apps/vobj_manager.c src/window/dnd.c src/window/app_menu.c \
-                src/settings/appearance.c src/graphics/icons_bundle.c \
-                src/tip/mozc_kkc.c src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c src/tip/tip_vobj.c \
-                src/window/wnd.c src/graphics/dp_core.c src/chokanji/pmc.c
+TEST_TAD_SRCS = verify/tests/test_tad_browser.c src/apps/browser/tad_browser.c src/apps/cabinet/vobj_manager.c src/desktop/window/dnd.c src/desktop/window/app_menu.c \
+                src/desktop/settings/appearance.c src/desktop/graphics/icons_bundle.c \
+                src/desktop/tip/japanese/mozc_kkc.c src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c src/desktop/tip/tip_vobj.c \
+                src/desktop/window/wnd.c src/desktop/graphics/dp_core.c src/apps/chokanji/pmc.c
 TEST_TAD_OBJS = $(TEST_TAD_SRCS:.c=.test.o)
 TEST_TAD_BIN  = ./.build/test_tad_browser
 
@@ -3070,9 +3086,9 @@ $(TEST_TAD_BIN): $(TEST_TAD_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # BeOS Chat & TRON IPC Pub/Sub Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_CHAT_SRCS = verify/tests/test_chat.c src/apps/chat.c src/apps/chat_xml.c \
-                 src/tip/mozc_kkc.c src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c \
-                 src/window/wnd.c src/graphics/dp_core.c src/chokanji/pmc.c
+TEST_CHAT_SRCS = verify/tests/test_chat.c src/apps/chat/chat.c src/apps/chat/chat_xml.c \
+                 src/desktop/tip/japanese/mozc_kkc.c src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c \
+                 src/desktop/window/wnd.c src/desktop/graphics/dp_core.c src/apps/chokanji/pmc.c
 TEST_CHAT_OBJS = $(TEST_CHAT_SRCS:.c=.test.o)
 TEST_CHAT_BIN  = ./.build/test_chat
 
@@ -3088,10 +3104,10 @@ $(TEST_CHAT_BIN): $(TEST_CHAT_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # BTRON Deskbar Tracker & Task Manager Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_TRACKER_SRCS = verify/tests/test_tracker.c src/desktop/tracker.c src/desktop/desktop.c src/settings/appearance.c \
-                    src/vobject/vobj.c src/desktop/about.c src/window/wnd.c src/chokanji/pmc.c \
-                    src/window/app_menu.c \
-                    src/graphics/dp_core.c src/graphics/icons_bundle.c src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c
+TEST_TRACKER_SRCS = verify/tests/test_tracker.c src/apps/workbench/tracker.c src/apps/workbench/desktop.c src/desktop/settings/appearance.c \
+                    src/apps/cabinet/vobj.c src/apps/workbench/about.c src/desktop/window/wnd.c src/apps/chokanji/pmc.c \
+                    src/desktop/window/app_menu.c \
+                    src/desktop/graphics/dp_core.c src/desktop/graphics/icons_bundle.c src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c
 TEST_TRACKER_OBJS = $(TEST_TRACKER_SRCS:.c=.test.o)
 TEST_TRACKER_BIN  = ./.build/test_tracker
 
@@ -3108,10 +3124,10 @@ $(TEST_TRACKER_BIN): $(TEST_TRACKER_OBJS)
 # Desktop Banded-Present Losslessness (the PS2 present's contract, headless)
 # ═══════════════════════════════════════════════════════════════════
 TEST_CLIP_SRCS = verify/tests/test_desktop_clip.c verify/tests/test_desktop_clip_count_port.c \
-                 src/desktop/tracker.c src/desktop/desktop.c src/settings/appearance.c \
-                 src/vobject/vobj.c src/desktop/about.c src/window/wnd.c src/chokanji/pmc.c \
-                 src/window/app_menu.c src/desktop/global_menu.c src/desktop/workbench.c \
-                 src/graphics/dp_core.c src/graphics/icons_bundle.c src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c
+                 src/apps/workbench/tracker.c src/apps/workbench/desktop.c src/desktop/settings/appearance.c \
+                 src/apps/cabinet/vobj.c src/apps/workbench/about.c src/desktop/window/wnd.c src/apps/chokanji/pmc.c \
+                 src/desktop/window/app_menu.c src/apps/workbench/global_menu.c src/apps/workbench/workbench.c \
+                 src/desktop/graphics/dp_core.c src/desktop/graphics/icons_bundle.c src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c
 TEST_CLIP_OBJS = $(TEST_CLIP_SRCS:.c=.clip.o)
 TEST_CLIP_BIN  = ./.build/test_desktop_clip
 # LANE 12i rung (ii)'s COUNT half: renaming the tracker renderer makes every call
@@ -3120,11 +3136,11 @@ TEST_CLIP_BIN  = ./.build/test_desktop_clip
 # without this flag).  The plain build reports SKIP for those two rows.  The
 # rename TUs live in their OWN `.clip.o' namespace because these sources are
 # shared with the other suites through `.test.o': a renamed
-# src/desktop/global_menu.test.o would leak `counted_tracker_render_menu' into
+# src/apps/workbench/global_menu.test.o would leak `counted_tracker_render_menu' into
 # test_global_menu's link, which has no wrapper to resolve it.
 verify/tests/test_desktop_clip.clip.o:             CFLAGS += -Dtracker_render_menu=counted_tracker_render_menu
-src/desktop/global_menu.clip.o:                    CFLAGS += -Dtracker_render_menu=counted_tracker_render_menu
-src/desktop/workbench.clip.o:                      CFLAGS += -Dtracker_render_menu=counted_tracker_render_menu
+src/apps/workbench/global_menu.clip.o:             CFLAGS += -Dtracker_render_menu=counted_tracker_render_menu
+src/apps/workbench/workbench.clip.o:               CFLAGS += -Dtracker_render_menu=counted_tracker_render_menu
 verify/tests/test_desktop_clip_count_port.clip.o:  CFLAGS += -Utracker_render_menu
 
 %.clip.o: %.c
@@ -3164,31 +3180,31 @@ verify:
 
 TEST_SETTINGS_BIN = ./.build/test_settings
 TEST_SETTINGS_SRCS = verify/tests/test_language_settings.c \
-                     src/settings/language.c \
-                     src/settings/control_panel.c \
-                     src/settings/appearance.c \
-                     src/settings/desktop.c \
-                     src/settings/display.c \
-                     src/settings/input.c \
-                     src/settings/sound.c \
-                     src/settings/network.c \
-                     src/settings/media.c \
-                     src/settings/security.c \
-                     src/settings/system.c \
-                     src/settings/terminal.c \
-                     src/tip/tip_ife.c \
-                     src/tip/mozc_kkc.c \
-                     src/tip/wylie.c \
-                     src/tip/tibetan_dict.c \
-                     src/font/troncode.c \
-                     src/font/jis_fonts.c \
-                     src/font/tibetan_fonts.c \
-                     src/window/wnd.c \
-                     src/chokanji/pmc.c \
-                     src/window/app_menu.c \
-                     src/graphics/dp_core.c \
-                     src/graphics/icons_bundle.c \
-                     src/tip/tip_vobj.c
+                     src/desktop/settings/language.c \
+                     src/desktop/settings/control_panel.c \
+                     src/desktop/settings/appearance.c \
+                     src/desktop/settings/desktop.c \
+                     src/desktop/settings/display.c \
+                     src/desktop/settings/input.c \
+                     src/desktop/settings/sound.c \
+                     src/desktop/settings/network.c \
+                     src/desktop/settings/media.c \
+                     src/desktop/settings/security.c \
+                     src/desktop/settings/system.c \
+                     src/desktop/settings/terminal.c \
+                     src/desktop/tip/tip_ife.c \
+                     src/desktop/tip/japanese/mozc_kkc.c \
+                     src/desktop/tip/tibetan/wylie.c \
+                     src/desktop/tip/tibetan/tibetan_dict.c \
+                     src/desktop/font/troncode.c \
+                     src/desktop/font/jis_fonts.c \
+                     src/desktop/font/tibetan_fonts.c \
+                     src/desktop/window/wnd.c \
+                     src/apps/chokanji/pmc.c \
+                     src/desktop/window/app_menu.c \
+                     src/desktop/graphics/dp_core.c \
+                     src/desktop/graphics/icons_bundle.c \
+                     src/desktop/tip/tip_vobj.c
 
 TEST_SETTINGS_OBJS = $(TEST_SETTINGS_SRCS:.c=.test.o)
 
@@ -3204,11 +3220,11 @@ test-settings: $(TEST_SETTINGS_BIN)
 # ═══════════════════════════════════════════════════════════════════
 # BTRON Global System Menu (Chokanji & Haiku) Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_GMENU_SRCS = verify/tests/test_global_menu.c src/desktop/global_menu.c src/desktop/tracker.c \
-                  src/window/app_menu.c src/graphics/icons_bundle.c \
-                  src/desktop/about.c src/window/wnd.c src/chokanji/pmc.c src/graphics/dp_core.c src/font/troncode.c \
-                  src/font/jis_fonts.c src/font/tibetan_fonts.c src/tip/tip_ife.c src/tip/mozc_kkc.c \
-                  src/tip/wylie.c src/tip/tibetan_dict.c src/tip/tip_vobj.c
+TEST_GMENU_SRCS = verify/tests/test_global_menu.c src/apps/workbench/global_menu.c src/apps/workbench/tracker.c \
+                  src/desktop/window/app_menu.c src/desktop/graphics/icons_bundle.c \
+                  src/apps/workbench/about.c src/desktop/window/wnd.c src/apps/chokanji/pmc.c src/desktop/graphics/dp_core.c src/desktop/font/troncode.c \
+                  src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c src/desktop/tip/tip_ife.c src/desktop/tip/japanese/mozc_kkc.c \
+                  src/desktop/tip/tibetan/wylie.c src/desktop/tip/tibetan/tibetan_dict.c src/desktop/tip/tip_vobj.c
 TEST_GMENU_OBJS = $(TEST_GMENU_SRCS:.c=.test.o)
 TEST_GMENU_BIN  = ./.build/test_global_menu
 
@@ -3224,11 +3240,11 @@ $(TEST_GMENU_BIN): $(TEST_GMENU_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # XMB (XrossMediaBar) OpenGL Render Verification — pixels, not promises
 # ═══════════════════════════════════════════════════════════════════
-TEST_XMB_SRCS = verify/tests/test_xmb_render.c src/apps/xmb.c src/apps/xmb_wave.c \
-                src/gl/gl_dispatch.c src/gl/egl_surface.c src/gl/backend_virgl.c \
-                src/gl/gl_backend_choice.c \
-                src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c \
-                src/clu/vfs.c src/fs/blk_mem.c src/fs/blk_file.c \
+TEST_XMB_SRCS = verify/tests/test_xmb_render.c src/media/xmb/xmb.c src/media/xmb/xmb_wave.c \
+                src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/egl_surface.c src/desktop/graphics/virgl/backend_virgl.c \
+                src/desktop/graphics/gles/gl_backend_choice.c \
+                src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c \
+                src/apps/clu/vfs.c src/fs/blk_mem.c src/fs/blk_file.c \
                 src/fs/vol.c src/fs/file.c
 TEST_XMB_OBJS = $(TEST_XMB_SRCS:.c=.test.o)
 TEST_XMB_BIN  = ./.build/test_xmb_render
@@ -3246,19 +3262,19 @@ $(TEST_XMB_BIN): $(TEST_XMB_OBJS)
 # The same test, against the rasterizer the PS2 actually ships.  This one exists
 # because the two backends disagree in a way no amount of reading reveals: the
 # virgl path is real GL, so it honours the RGBA the bar uploads and the alpha it
-# blends with, while src/gl/tinygl/ truncates any texture that is not exactly
+# blends with, while src/desktop/graphics/tinygl/ truncates any texture that is not exactly
 # 256x256 and drops texture alpha on the floor.  Every icon, glyph and fade in
 # the XMB goes through both of those, so a gate that only ever ran virgl could
 # not see the corruption the console shows -- which is what this harness is for.
 # backend_virgl.c is linked here as well, and not for its code: gl_dispatch's
 # GL_BACKEND_VIRGL case is unconditional in the shipped image too, so this is the
 # closer of the two, not the tidier one.
-TEST_XMB_TGL_SRCS = verify/tests/test_xmb_render.c src/apps/xmb.c src/apps/xmb_wave.c \
-                    src/gl/gl_dispatch.c src/gl/egl_surface.c \
-                    src/gl/gl_backend_choice.c \
-                    src/gl/backend_tinygl.c $(TINYGL_SRCS) src/gl/backend_virgl.c \
-                    src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c \
-                    src/clu/vfs.c src/fs/blk_mem.c src/fs/blk_file.c \
+TEST_XMB_TGL_SRCS = verify/tests/test_xmb_render.c src/media/xmb/xmb.c src/media/xmb/xmb_wave.c \
+                    src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/egl_surface.c \
+                    src/desktop/graphics/gles/gl_backend_choice.c \
+                    src/desktop/graphics/gles/backend_tinygl.c $(TINYGL_SRCS) src/desktop/graphics/virgl/backend_virgl.c \
+                    src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c \
+                    src/apps/clu/vfs.c src/fs/blk_mem.c src/fs/blk_file.c \
                     src/fs/vol.c src/fs/file.c
 TEST_XMB_TGL_OBJS = $(TEST_XMB_TGL_SRCS:.c=.tgl.o)
 TEST_XMB_TGL_BIN  = ./.build/test_xmb_render_tgl
@@ -3285,7 +3301,7 @@ $(TEST_XMB_TGL_BIN): $(TEST_XMB_TGL_OBJS)
 # pinned it, and for why `lilcu then xmb` made it disappear.
 # A private object suffix, because this is the only suite that includes tinygl/zgl.h.
 TEST_GLCI_SRCS = verify/tests/test_gl_context_isolation.c \
-                 src/gl/gl_dispatch.c src/gl/backend_tinygl.c src/gl/backend_virgl.c \
+                 src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/backend_tinygl.c src/desktop/graphics/virgl/backend_virgl.c \
                  $(TINYGL_SRCS)
 TEST_GLCI_OBJS = $(TEST_GLCI_SRCS:.c=.ci.o)
 TEST_GLCI_BIN  = ./.build/test_gl_context_isolation
@@ -3308,32 +3324,32 @@ $(TEST_GLCI_BIN): $(TEST_GLCI_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # The glyphs' signed-distance arithmetic now lives in verify/tests/gen_xmb_atlas.c
 # (it moved out of the bar, where it measured 132 ms a cell -- 2.8 s of the load --
-# and src/apps/xmb_atlas.h is what that program prints.  Nothing builds the sheet
+# and src/media/xmb/xmb_atlas.h is what that program prints.  Nothing builds the sheet
 # implicitly: it is committed like the other embedded assets, so test-xmb-atlas is
 # what stops it going stale against the geometry.
 GEN_XMB_ATLAS_OBJS = verify/tests/gen_xmb_atlas.test.o
 GEN_XMB_ATLAS_BIN  = ./.build/gen_xmb_atlas
 
 xmb-atlas: $(GEN_XMB_ATLAS_BIN)
-	@$(GEN_XMB_ATLAS_BIN) > src/apps/xmb_atlas.h.tmp || { rm -f src/apps/xmb_atlas.h.tmp; exit 1; }
-	@mv src/apps/xmb_atlas.h.tmp src/apps/xmb_atlas.h
-	@echo "wrote src/apps/xmb_atlas.h ($$(wc -c < src/apps/xmb_atlas.h) bytes)"
+	@$(GEN_XMB_ATLAS_BIN) > src/media/xmb/xmb_atlas.h.tmp || { rm -f src/media/xmb/xmb_atlas.h.tmp; exit 1; }
+	@mv src/media/xmb/xmb_atlas.h.tmp src/media/xmb/xmb_atlas.h
+	@echo "wrote src/media/xmb/xmb_atlas.h ($$(wc -c < src/media/xmb/xmb_atlas.h) bytes)"
 
 test-xmb-atlas: $(GEN_XMB_ATLAS_BIN)
 	@mkdir -p ./.build
 	@$(GEN_XMB_ATLAS_BIN) > ./.build/xmb_atlas.h.new || { rm -f ./.build/xmb_atlas.h.new; exit 1; }
-	@if cmp -s ./.build/xmb_atlas.h.new src/apps/xmb_atlas.h; then \
-	    echo "[PASS] src/apps/xmb_atlas.h is still the sheet this geometry prints"; \
+	@if cmp -s ./.build/xmb_atlas.h.new src/media/xmb/xmb_atlas.h; then \
+	    echo "[PASS] src/media/xmb/xmb_atlas.h is still the sheet this geometry prints"; \
 	 else \
-	    echo "[FAIL] src/apps/xmb_atlas.h has drifted from verify/tests/gen_xmb_atlas.c -- run make xmb-atlas"; \
+	    echo "[FAIL] src/media/xmb/xmb_atlas.h has drifted from verify/tests/gen_xmb_atlas.c -- run make xmb-atlas"; \
 	    rm -f ./.build/xmb_atlas.h.new; exit 1; fi
 	@rm -f ./.build/xmb_atlas.h.new
 
 # ═══════════════════════════════════════════════════════════════════
 # Common Application Menu Subsystem Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_APP_MENU_SRCS = verify/tests/test_app_menu.c src/window/app_menu.c src/window/wnd.c src/chokanji/pmc.c \
-                     src/graphics/dp_core.c src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c
+TEST_APP_MENU_SRCS = verify/tests/test_app_menu.c src/desktop/window/app_menu.c src/desktop/window/wnd.c src/apps/chokanji/pmc.c \
+                     src/desktop/graphics/dp_core.c src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c
 TEST_APP_MENU_OBJS = $(TEST_APP_MENU_SRCS:.c=.test.o)
 TEST_APP_MENU_BIN  = ./.build/test_app_menu
 
@@ -3350,18 +3366,18 @@ $(TEST_APP_MENU_BIN): $(TEST_APP_MENU_OBJS)
 # Review PDF & Marginalia Application Test Suite
 # ═══════════════════════════════════════════════════════════════════
 TEST_REVIEW_SRCS = verify/tests/test_review_ui.c \
-                   src/apps/review.c \
-                   src/apps/pdf_reader.c \
-                   src/font/schrift.c \
-                   src/window/wnd.c \
-                   src/window/app_menu.c \
-                   src/window/event.c \
-                   src/graphics/dp_core.c \
-                   src/font/troncode.c \
-                   src/font/jis_fonts.c \
-                   src/font/tibetan_fonts.c \
-                   src/font/font_mgr.c \
-                   src/chokanji/pmc.c
+                   src/apps/review/review.c \
+                   src/apps/browser/pdf_reader.c \
+                   src/desktop/font/schrift.c \
+                   src/desktop/window/wnd.c \
+                   src/desktop/window/app_menu.c \
+                   src/desktop/window/event.c \
+                   src/desktop/graphics/dp_core.c \
+                   src/desktop/font/troncode.c \
+                   src/desktop/font/jis_fonts.c \
+                   src/desktop/font/tibetan_fonts.c \
+                   src/desktop/font/font_mgr.c \
+                   src/apps/chokanji/pmc.c
 TEST_REVIEW_OBJS = $(TEST_REVIEW_SRCS:.c=.test.o)
 TEST_REVIEW_BIN  = ./.build/test_review
 
@@ -3379,8 +3395,8 @@ $(TEST_REVIEW_BIN): $(TEST_REVIEW_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 TEST_MOUSE_SRCS = verify/tests/test_mouse_drivers.c \
                   src/drivers/uefi/ps2_mouse.c \
-                  src/drivers/pc98/input/pc98_mouse.c \
-                  src/drivers/pc98/input/pc98_kbd.c
+                  src/drivers/pc98/pc98_mouse.c \
+                  src/drivers/pc98/pc98_kbd.c
 TEST_MOUSE_OBJS = $(TEST_MOUSE_SRCS:.c=.test.o)
 TEST_MOUSE_BIN  = ./.build/test_mouse
 
@@ -3397,8 +3413,8 @@ $(TEST_MOUSE_BIN): $(TEST_MOUSE_OBJS)
 # B-System DriveSetup Test Suite
 # ═══════════════════════════════════════════════════════════════════
 TEST_DRIVESETUP_SRCS = verify/tests/test_b_drivesetup.c \
-                       src/window/app_menu.c \
-                       src/apps/b_drivesetup.c
+                       src/desktop/window/app_menu.c \
+                       src/apps/volumes/b_drivesetup.c
 TEST_DRIVESETUP_OBJS = $(TEST_DRIVESETUP_SRCS:.c=.test.o)
 TEST_DRIVESETUP_BIN  = ./.build/test_b_drivesetup
 
@@ -3408,8 +3424,8 @@ test-drivesetup: $(TEST_DRIVESETUP_BIN)
 	@echo "=========================================================="
 	@./$(TEST_DRIVESETUP_BIN)
 
-$(TEST_DRIVESETUP_BIN): $(TEST_DRIVESETUP_OBJS) $(FS_OBJS) src/clu/clu.host.o $(CLU_APPS_HOST_OBJS)
-	$(CC) $(TEST_DRIVESETUP_OBJS) $(FS_OBJS) src/clu/clu.host.o $(CLU_APPS_HOST_OBJS) -o $@ $(LDFLAGS) -lm
+$(TEST_DRIVESETUP_BIN): $(TEST_DRIVESETUP_OBJS) $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS)
+	$(CC) $(TEST_DRIVESETUP_OBJS) $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS) -o $@ $(LDFLAGS) -lm
 
 # ═══════════════════════════════════════════════════════════════════
 # HD64180 — Hitachi HD64180 CPU exerciser (Hitachi HC-90/95)
@@ -3695,7 +3711,7 @@ test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test
 # Ski Bootloader & Multi-Arch Boot Driver Test Suite
 # ═══════════════════════════════════════════════════════════════════
 TEST_SKI_SRCS = verify/tests/test_ski.c src/cores/core_smp.c \
-                src/drivers/pc98/boot/boot_pc98.c src/drivers/bcm283x/boot/boot_arm_stub.c
+                src/drivers/pc98/boot_pc98.c src/drivers/broadcom/boot_arm_stub.c
 TEST_SKI_OBJS = $(TEST_SKI_SRCS:.c=.test.o)
 TEST_SKI_BIN  = ./.build/test_ski
 
@@ -3712,7 +3728,7 @@ $(TEST_SKI_BIN): $(TEST_SKI_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # Kernel TIP Extended Wylie (EWTS) Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_WYLIE_SRCS = verify/tests/test_wylie.c src/tip/wylie.c
+TEST_WYLIE_SRCS = verify/tests/test_wylie.c src/desktop/tip/tibetan/wylie.c
 TEST_WYLIE_OBJS = $(TEST_WYLIE_SRCS:.c=.test.o)
 TEST_WYLIE_BIN  = ./.build/test_wylie
 
@@ -3728,24 +3744,24 @@ $(TEST_WYLIE_BIN): $(TEST_WYLIE_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # Quake Verification & Glitches Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_QUAKEC_SRCS = verify/tests/test_quakec_interpreter.c src/quake/core/pr_exec.c \
-                   src/quake/sys/fs_btron.c src/quake/core/cmd.c src/quake/core/cvar.c \
-                   src/quake/core/mem.c src/quake/core/mathlib.c \
-                   src/quake/core/sv_phys.c src/quake/core/world.c
+TEST_QUAKEC_SRCS = verify/tests/test_quakec_interpreter.c src/media/quake/core/pr_exec.c \
+                   src/media/quake/sys/fs_btron.c src/media/quake/core/cmd.c src/media/quake/core/cvar.c \
+                   src/media/quake/core/mem.c src/media/quake/core/mathlib.c \
+                   src/media/quake/core/sv_phys.c src/media/quake/core/world.c
 TEST_QUAKEC_OBJS = $(TEST_QUAKEC_SRCS:.c=.test.o)
 TEST_QUAKEC_BIN  = ./.build/test_quakec
 
-TEST_QUAKE_ENT_SRCS = verify/tests/test_quake_entities_glitches.c src/quake/core/pr_exec.c \
-                      src/quake/sys/fs_btron.c src/quake/core/cmd.c src/quake/core/cvar.c \
-                      src/quake/core/mem.c src/quake/core/mathlib.c \
-                      src/quake/core/sv_phys.c src/quake/core/world.c
+TEST_QUAKE_ENT_SRCS = verify/tests/test_quake_entities_glitches.c src/media/quake/core/pr_exec.c \
+                      src/media/quake/sys/fs_btron.c src/media/quake/core/cmd.c src/media/quake/core/cvar.c \
+                      src/media/quake/core/mem.c src/media/quake/core/mathlib.c \
+                      src/media/quake/core/sv_phys.c src/media/quake/core/world.c
 TEST_QUAKE_ENT_OBJS = $(TEST_QUAKE_ENT_SRCS:.c=.test.o)
 TEST_QUAKE_ENT_BIN  = ./.build/test_quake_entities
 
-TEST_QUAKE_CTRL_SRCS = verify/tests/test_quake_controls.c src/quake/sys/in_btron.c \
-                       src/quake/core/sv_phys.c src/quake/core/sv_main.c src/quake/core/cmd.c \
-                       src/quake/core/cvar.c src/quake/core/mathlib.c src/quake/core/mem.c \
-                       src/quake/sys/fs_btron.c src/quake/core/world.c
+TEST_QUAKE_CTRL_SRCS = verify/tests/test_quake_controls.c src/media/quake/sys/in_btron.c \
+                       src/media/quake/core/sv_phys.c src/media/quake/core/sv_main.c src/media/quake/core/cmd.c \
+                       src/media/quake/core/cvar.c src/media/quake/core/mathlib.c src/media/quake/core/mem.c \
+                       src/media/quake/sys/fs_btron.c src/media/quake/core/world.c
 TEST_QUAKE_CTRL_OBJS = $(TEST_QUAKE_CTRL_SRCS:.c=.test.o)
 TEST_QUAKE_CTRL_BIN  = ./.build/test_quake_controls
 
@@ -3761,12 +3777,12 @@ $(TEST_QUAKE_CTRL_BIN): $(TEST_QUAKE_CTRL_OBJS)
 	@mkdir -p ./.build
 	$(CC) $(TEST_QUAKE_CTRL_OBJS) -o $@ $(LDFLAGS) -lm
 
-TEST_QUAKE_REPLAY_SRCS = verify/tests/test_quake_replay.c src/quake/core/cl_demo.c \
-                         src/quake/core/cmd.c src/quake/core/cvar.c src/quake/core/mem.c \
-                         src/quake/core/mathlib.c src/quake/core/world.c src/quake/core/pr_exec.c \
-                         src/quake/core/sv_phys.c src/quake/core/sv_main.c \
-                         src/quake/sys/sys_btron.c src/quake/sys/fs_btron.c \
-                         src/quake/app/quake_ui.c
+TEST_QUAKE_REPLAY_SRCS = verify/tests/test_quake_replay.c src/media/quake/core/cl_demo.c \
+                         src/media/quake/core/cmd.c src/media/quake/core/cvar.c src/media/quake/core/mem.c \
+                         src/media/quake/core/mathlib.c src/media/quake/core/world.c src/media/quake/core/pr_exec.c \
+                         src/media/quake/core/sv_phys.c src/media/quake/core/sv_main.c \
+                         src/media/quake/sys/sys_btron.c src/media/quake/sys/fs_btron.c \
+                         src/media/quake/app/quake_ui.c
 TEST_QUAKE_REPLAY_OBJS = $(TEST_QUAKE_REPLAY_SRCS:.c=.test.o)
 TEST_QUAKE_REPLAY_BIN  = ./.build/test_quake_replay
 
@@ -3780,12 +3796,12 @@ test-replay: $(TEST_QUAKE_REPLAY_BIN)
 	@echo "=========================================================="
 	@./$(TEST_QUAKE_REPLAY_BIN)
 
-TEST_QUAKE_HULL_SRCS = verify/tests/test_quake_hull.c src/quake/core/cl_demo.c \
-                       src/quake/core/cmd.c src/quake/core/cvar.c src/quake/core/mem.c \
-                       src/quake/core/mathlib.c src/quake/core/world.c src/quake/core/pr_exec.c \
-                       src/quake/core/sv_phys.c src/quake/core/sv_main.c \
-                       src/quake/sys/sys_btron.c src/quake/sys/fs_btron.c \
-                       src/quake/app/quake_ui.c
+TEST_QUAKE_HULL_SRCS = verify/tests/test_quake_hull.c src/media/quake/core/cl_demo.c \
+                       src/media/quake/core/cmd.c src/media/quake/core/cvar.c src/media/quake/core/mem.c \
+                       src/media/quake/core/mathlib.c src/media/quake/core/world.c src/media/quake/core/pr_exec.c \
+                       src/media/quake/core/sv_phys.c src/media/quake/core/sv_main.c \
+                       src/media/quake/sys/sys_btron.c src/media/quake/sys/fs_btron.c \
+                       src/media/quake/app/quake_ui.c
 TEST_QUAKE_HULL_OBJS = $(TEST_QUAKE_HULL_SRCS:.c=.test.o)
 TEST_QUAKE_HULL_BIN  = ./.build/test_quake_hull
 
@@ -3797,12 +3813,12 @@ test-hull: $(TEST_QUAKE_HULL_BIN)
 	@./$(TEST_QUAKE_HULL_BIN)
 
 TEST_QUAKE_VIEW_SRCS = verify/tests/test_quake_visibility.c \
-                       src/quake/core/cl_demo.c \
-                       src/quake/core/cmd.c src/quake/core/cvar.c src/quake/core/mem.c \
-                       src/quake/core/mathlib.c src/quake/core/world.c src/quake/core/pr_exec.c \
-                       src/quake/core/sv_phys.c src/quake/core/sv_main.c \
-                       src/quake/sys/sys_btron.c src/quake/sys/fs_btron.c \
-                       src/quake/app/quake_ui.c
+                       src/media/quake/core/cl_demo.c \
+                       src/media/quake/core/cmd.c src/media/quake/core/cvar.c src/media/quake/core/mem.c \
+                       src/media/quake/core/mathlib.c src/media/quake/core/world.c src/media/quake/core/pr_exec.c \
+                       src/media/quake/core/sv_phys.c src/media/quake/core/sv_main.c \
+                       src/media/quake/sys/sys_btron.c src/media/quake/sys/fs_btron.c \
+                       src/media/quake/app/quake_ui.c
 TEST_QUAKE_VIEW_OBJS = $(TEST_QUAKE_VIEW_SRCS:.c=.test.o)
 TEST_QUAKE_VIEW_BIN  = ./.build/test_quake_visibility
 
@@ -3814,12 +3830,12 @@ test-view: $(TEST_QUAKE_VIEW_BIN)
 	@./$(TEST_QUAKE_VIEW_BIN)
 
 TEST_QUAKE_SECRET_SRCS = verify/tests/test_quake_secret.c \
-                         src/quake/core/cl_demo.c \
-                         src/quake/core/cmd.c src/quake/core/cvar.c src/quake/core/mem.c \
-                         src/quake/core/mathlib.c src/quake/core/world.c src/quake/core/pr_exec.c \
-                         src/quake/core/sv_phys.c src/quake/core/sv_main.c \
-                         src/quake/sys/sys_btron.c src/quake/sys/fs_btron.c \
-                         src/quake/app/quake_ui.c
+                         src/media/quake/core/cl_demo.c \
+                         src/media/quake/core/cmd.c src/media/quake/core/cvar.c src/media/quake/core/mem.c \
+                         src/media/quake/core/mathlib.c src/media/quake/core/world.c src/media/quake/core/pr_exec.c \
+                         src/media/quake/core/sv_phys.c src/media/quake/core/sv_main.c \
+                         src/media/quake/sys/sys_btron.c src/media/quake/sys/fs_btron.c \
+                         src/media/quake/app/quake_ui.c
 TEST_QUAKE_SECRET_OBJS = $(TEST_QUAKE_SECRET_SRCS:.c=.test.o)
 TEST_QUAKE_SECRET_BIN  = ./.build/test_quake_secret
 
@@ -3831,16 +3847,16 @@ test-secret: $(TEST_QUAKE_SECRET_BIN)
 	@./$(TEST_QUAKE_SECRET_BIN)
 
 TEST_QUAKE_RENDER_SRCS = verify/tests/test_quake_render.c \
-                         src/quake/core/cl_demo.c \
-                         src/quake/core/cmd.c src/quake/core/cvar.c src/quake/core/mem.c \
-                         src/quake/core/mathlib.c src/quake/core/world.c src/quake/core/pr_exec.c \
-                         src/quake/core/sv_phys.c src/quake/core/sv_main.c \
-                         src/quake/render/r_brush.c src/quake/render/r_light.c \
-                         src/quake/render/r_surf.c src/quake/render/r_alias.c \
-                         src/quake/render/texture.c \
-                         src/quake/sys/sys_btron.c src/quake/sys/fs_btron.c \
-                         src/quake/app/quake_ui.c \
-                         src/gl/gl_dispatch.c src/gl/gl_backend_choice.c src/gl/backend_virgl.c
+                         src/media/quake/core/cl_demo.c \
+                         src/media/quake/core/cmd.c src/media/quake/core/cvar.c src/media/quake/core/mem.c \
+                         src/media/quake/core/mathlib.c src/media/quake/core/world.c src/media/quake/core/pr_exec.c \
+                         src/media/quake/core/sv_phys.c src/media/quake/core/sv_main.c \
+                         src/media/quake/render/r_brush.c src/media/quake/render/r_light.c \
+                         src/media/quake/render/r_surf.c src/media/quake/render/r_alias.c \
+                         src/media/quake/render/texture.c \
+                         src/media/quake/sys/sys_btron.c src/media/quake/sys/fs_btron.c \
+                         src/media/quake/app/quake_ui.c \
+                         src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/gl_backend_choice.c src/desktop/graphics/virgl/backend_virgl.c
 TEST_QUAKE_RENDER_OBJS = $(TEST_QUAKE_RENDER_SRCS:.c=.test.o)
 TEST_QUAKE_RENDER_BIN  = ./.build/test_quake_render
 
@@ -3852,12 +3868,12 @@ test-render: $(TEST_QUAKE_RENDER_BIN)
 	@./$(TEST_QUAKE_RENDER_BIN)
 
 TEST_QUAKE_DRONE_SRCS = verify/tests/test_quake_drone.c \
-                        src/quake/core/cl_demo.c \
-                        src/quake/core/cmd.c src/quake/core/cvar.c src/quake/core/mem.c \
-                        src/quake/core/mathlib.c src/quake/core/world.c src/quake/core/pr_exec.c \
-                        src/quake/core/sv_phys.c src/quake/core/sv_main.c \
-                        src/quake/sys/sys_btron.c src/quake/sys/fs_btron.c \
-                        src/quake/app/quake_ui.c
+                        src/media/quake/core/cl_demo.c \
+                        src/media/quake/core/cmd.c src/media/quake/core/cvar.c src/media/quake/core/mem.c \
+                        src/media/quake/core/mathlib.c src/media/quake/core/world.c src/media/quake/core/pr_exec.c \
+                        src/media/quake/core/sv_phys.c src/media/quake/core/sv_main.c \
+                        src/media/quake/sys/sys_btron.c src/media/quake/sys/fs_btron.c \
+                        src/media/quake/app/quake_ui.c
 TEST_QUAKE_DRONE_OBJS = $(TEST_QUAKE_DRONE_SRCS:.c=.test.o)
 TEST_QUAKE_DRONE_BIN  = ./.build/test_quake_drone
 
@@ -3922,100 +3938,100 @@ clean:
 # Automated Headless Window Screenshot Capture Pipeline
 # ===================================================================
 CAPTURE_SCREENS_BIN = ./.build/capture_screens
-CAPTURE_SCREENS_SRCS = src/tools/capture_screens.c \
+CAPTURE_SCREENS_SRCS = tools/capture_screens.c \
                        src/emulators/msx/msx_app.c \
                        $(MSX_SRCS) \
-                       src/window/dnd.c \
-                       src/graphics/image_decode.c \
-                       src/chokanji/pmc.c \
-                       src/desktop/desktop.c \
-                       src/settings/language.c \
-                       src/settings/control_panel.c \
-                       src/settings/appearance.c \
-                       src/settings/desktop.c \
-                       src/settings/display.c \
-                       src/settings/input.c \
-                       src/settings/sound.c \
-                       src/settings/network.c \
-                       src/settings/media.c \
-                       src/settings/security.c \
-                       src/settings/system.c \
-                       src/settings/terminal.c \
-                       src/desktop/global_menu.c \
-                       src/desktop/about.c \
-                       src/desktop/tracker.c \
-                       src/apps/vobj_manager.c \
-                       src/apps/t_editor.c \
-                       src/apps/tad_browser.c \
-                       src/apps/paint.c \
-                       src/apps/gterm.c \
-                       src/apps/audio_player.c \
-                       src/media/orchestra.c \
-                       src/media/orchestra_stage.c \
-                       src/media/orchestra_arrange.c \
-                       src/media/orchestra_piano.c \
-                       src/media/orchestra_score.c \
-                       src/media/orchestra_mix.c \
-                       src/media/orchestra_insert.c \
-                       src/media/orchestra_about.c \
-                       src/media/orchestra_session.c \
-                       src/media/orchestra_smf.c \
-                       src/media/gst_rt.c \
-                       src/media/lukhash_score.c \
-                       src/apps/chat.c \
-                       src/apps/chat_xml.c \
-                       src/tip/tip_ife.c \
-                       src/tip/mozc_kkc.c \
-                       src/tip/wylie.c \
-                       src/tip/tibetan_dict.c \
-                       src/font/troncode.c \
-                       src/font/jis_fonts.c \
-                       src/font/tibetan_fonts.c \
-                       src/window/wnd.c \
-                       src/window/app_menu.c \
-                       src/graphics/dp_core.c \
-                       src/graphics/icons_bundle.c \
+                       src/desktop/window/dnd.c \
+                       src/desktop/graphics/image_decode.c \
+                       src/apps/chokanji/pmc.c \
+                       src/apps/workbench/desktop.c \
+                       src/desktop/settings/language.c \
+                       src/desktop/settings/control_panel.c \
+                       src/desktop/settings/appearance.c \
+                       src/desktop/settings/desktop.c \
+                       src/desktop/settings/display.c \
+                       src/desktop/settings/input.c \
+                       src/desktop/settings/sound.c \
+                       src/desktop/settings/network.c \
+                       src/desktop/settings/media.c \
+                       src/desktop/settings/security.c \
+                       src/desktop/settings/system.c \
+                       src/desktop/settings/terminal.c \
+                       src/apps/workbench/global_menu.c \
+                       src/apps/workbench/about.c \
+                       src/apps/workbench/tracker.c \
+                       src/apps/cabinet/vobj_manager.c \
+                       src/apps/editor/t_editor.c \
+                       src/apps/browser/tad_browser.c \
+                       src/media/paint/paint.c \
+                       src/apps/terminal/gterm.c \
+                       src/media/cassette/audio_player.c \
+                       src/media/orchestra/orchestra.c \
+                       src/media/orchestra/orchestra_stage.c \
+                       src/media/orchestra/orchestra_arrange.c \
+                       src/media/orchestra/orchestra_piano.c \
+                       src/media/orchestra/orchestra_score.c \
+                       src/media/orchestra/orchestra_mix.c \
+                       src/media/orchestra/orchestra_insert.c \
+                       src/media/orchestra/orchestra_about.c \
+                       src/media/orchestra/orchestra_session.c \
+                       src/media/orchestra/orchestra_smf.c \
+                       src/media/sdk/gst_rt.c \
+                       src/media/orchestra/lukhash_score.c \
+                       src/apps/chat/chat.c \
+                       src/apps/chat/chat_xml.c \
+                       src/desktop/tip/tip_ife.c \
+                       src/desktop/tip/japanese/mozc_kkc.c \
+                       src/desktop/tip/tibetan/wylie.c \
+                       src/desktop/tip/tibetan/tibetan_dict.c \
+                       src/desktop/font/troncode.c \
+                       src/desktop/font/jis_fonts.c \
+                       src/desktop/font/tibetan_fonts.c \
+                       src/desktop/window/wnd.c \
+                       src/desktop/window/app_menu.c \
+                       src/desktop/graphics/dp_core.c \
+                       src/desktop/graphics/icons_bundle.c \
                        src/fs/blk_mem.c \
                        src/fs/blk_file.c \
                        src/fs/blk_qcow2.c \
                        src/fs/blk_part.c \
                        src/fs/vol.c \
                        src/fs/file.c \
-                       src/clu/lang.c \
-                       src/clu/term.c \
-                       src/clu/tty.c \
-                       src/clu/vfs.c \
-                       src/clu/sc/files.c \
-                       src/clu/sc/input.c \
-                       src/clu/sc/menus.c \
-                       src/clu/sc/sc.c \
-                       src/clu/tv/tv.c \
-                       src/clu/be/native.c \
+                       src/apps/clu/lang.c \
+                       src/apps/clu/term.c \
+                       src/apps/clu/tty.c \
+                       src/apps/clu/vfs.c \
+                       src/apps/clu/sc/files.c \
+                       src/apps/clu/sc/input.c \
+                       src/apps/clu/sc/menus.c \
+                       src/apps/clu/sc/sc.c \
+                       src/apps/clu/tv/tv.c \
+                       src/apps/clu/be/native.c \
                        $(BE_DASM_SRCS) \
                        $(CLU_APPS_SRCS) \
-                       src/clu/clu.c \
-                       src/apps/b_drivesetup.c \
-                       src/apps/clarity.c \
-                       src/apps/clarity_layout.c \
-                       src/apps/clarity_render.c \
-                       src/apps/clarity_export.c \
-                       src/apps/pdf_reader.c \
-                       src/apps/review.c \
-                       src/font/schrift.c \
-                       src/font/font_mgr.c \
-                       src/gl/gl_dispatch.c \
-                       src/gl/gl_backend_choice.c \
-                       src/gl/egl_surface.c \
-                       src/gl/backend_virgl.c \
-                       src/apps/xmb.c \
-                       src/apps/xmb_wave.c \
-                       src/demo/lilcu64_wa.c \
-                       src/demo/lilcu64_score.c \
-                       src/demo/lilcu64_synth.c \
-                       src/demo/lilcu64_insert.c \
-                       src/demo/lilcu64_demo.c \
-                       src/demo/mars.c \
-                       src/drivers/ps2/ps2_vu0_kernel.c
+                       src/apps/clu/clu.c \
+                       src/apps/volumes/b_drivesetup.c \
+                       src/apps/clarity/clarity.c \
+                       src/apps/clarity/clarity_layout.c \
+                       src/apps/clarity/clarity_render.c \
+                       src/apps/clarity/clarity_export.c \
+                       src/apps/browser/pdf_reader.c \
+                       src/apps/review/review.c \
+                       src/desktop/font/schrift.c \
+                       src/desktop/font/font_mgr.c \
+                       src/desktop/graphics/gles/gl_dispatch.c \
+                       src/desktop/graphics/gles/gl_backend_choice.c \
+                       src/desktop/graphics/gles/egl_surface.c \
+                       src/desktop/graphics/virgl/backend_virgl.c \
+                       src/media/xmb/xmb.c \
+                       src/media/xmb/xmb_wave.c \
+                       src/media/sdk/lilcu64_wa.c \
+                       src/media/sdk/lilcu64_score.c \
+                       src/media/sdk/lilcu64_synth.c \
+                       src/media/sdk/lilcu64_insert.c \
+                       src/media/sdk/lilcu64_demo.c \
+                       src/media/sdk/mars.c \
+                       src/drivers/playstation2/ps2_vu0_kernel.c
 
 CAPTURE_SCREENS_OBJS = $(CAPTURE_SCREENS_SRCS:.c=.test.o)
 
@@ -4025,8 +4041,8 @@ $(CAPTURE_SCREENS_BIN): $(CAPTURE_SCREENS_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # µBTRON-FOMA Mobile UI Toolkit Test Suite
 # ═══════════════════════════════════════════════════════════════════
-TEST_FOMA_SRCS = verify/tests/test_foma_ui.c src/desktop/desktop_mobile.c \
-                 src/graphics/dp_core.c src/font/troncode.c src/font/jis_fonts.c src/font/tibetan_fonts.c
+TEST_FOMA_SRCS = verify/tests/test_foma_ui.c src/apps/workbench/desktop_mobile.c \
+                 src/desktop/graphics/dp_core.c src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c
 TEST_FOMA_OBJS = $(TEST_FOMA_SRCS:.c=.test.o)
 TEST_FOMA_BIN  = ./.build/test_foma_ui
 
@@ -4044,8 +4060,8 @@ screenshots: $(CAPTURE_SCREENS_BIN)
 	@echo " Generating Isolated Window Screenshots from C99 Source..."
 	@echo "=========================================================="
 	@./$(CAPTURE_SCREENS_BIN)
-	@python3 scripts/raw_to_png.py
-	@python3 scripts/populate_doc_screens.py
+	@python3 scripts/screen_raw_to_png.py
+	@python3 scripts/screen_populate_doc.py
 
 sreenshots: screenshots
 
@@ -4053,30 +4069,30 @@ sreenshots: screenshots
 # µBTRON-FOMA Automated Screen Capture & Documentation
 # ═══════════════════════════════════════════════════════════════════
 CAPTURE_FOMA_BIN  = ./.build/capture_foma
-CAPTURE_FOMA_SRCS = src/tools/capture_foma.c \
-                    src/desktop/desktop_mobile.c \
-                    src/desktop/workbench_mobile.c \
-                    src/window/wnd.c \
-                    src/chokanji/pmc.c \
-                    src/window/app_menu.c \
-                    src/apps/gterm.c \
-                    src/apps/t_editor.c \
-                    src/settings/terminal.c \
-                    src/tip/tip_ife.c \
-                    src/tip/mozc_kkc.c \
-                    src/tip/wylie.c \
-                    src/tip/tibetan_dict.c \
-                    src/graphics/dp_core.c \
-                    src/graphics/icons_bundle.c \
-                    src/font/troncode.c \
-                    src/font/jis_fonts.c \
-                    src/font/tibetan_fonts.c \
+CAPTURE_FOMA_SRCS = tools/capture_foma.c \
+                    src/apps/workbench/desktop_mobile.c \
+                    src/apps/workbench/workbench_mobile.c \
+                    src/desktop/window/wnd.c \
+                    src/apps/chokanji/pmc.c \
+                    src/desktop/window/app_menu.c \
+                    src/apps/terminal/gterm.c \
+                    src/apps/editor/t_editor.c \
+                    src/desktop/settings/terminal.c \
+                    src/desktop/tip/tip_ife.c \
+                    src/desktop/tip/japanese/mozc_kkc.c \
+                    src/desktop/tip/tibetan/wylie.c \
+                    src/desktop/tip/tibetan/tibetan_dict.c \
+                    src/desktop/graphics/dp_core.c \
+                    src/desktop/graphics/icons_bundle.c \
+                    src/desktop/font/troncode.c \
+                    src/desktop/font/jis_fonts.c \
+                    src/desktop/font/tibetan_fonts.c \
                     src/fs/blk_mem.c \
                     src/fs/blk_file.c \
                     src/fs/vol.c \
                     src/fs/file.c \
                     $(CLU_APPS_SRCS) \
-                    src/clu/clu.c
+                    src/apps/clu/clu.c
 
 CAPTURE_FOMA_OBJS = $(CAPTURE_FOMA_SRCS:.c=.test.o)
 
@@ -4088,20 +4104,20 @@ foma-screens: $(CAPTURE_FOMA_BIN)
 	@echo " Generating Isolated µBTRON-FOMA Mobile Screenshots..."
 	@echo "=========================================================="
 	@./$(CAPTURE_FOMA_BIN)
-	@python3 scripts/update_foma_screens.py
+	@python3 scripts/screen_update_foma.py
 
 # ═══════════════════════════════════════════════════════════════════
 # SegUI (Segmentation UI) Automated Screen Capture - 480x272 panel
 # ═══════════════════════════════════════════════════════════════════
 CAPTURE_SEGUI_BIN  = ./.build/capture_segui
-CAPTURE_SEGUI_SRCS = src/tools/capture_segui.c \
-                     src/segui/segui.c \
-                     src/segui/segui_demo.c \
-                     src/segui/segui_phone.c \
-                     src/graphics/dp_core.c \
-                     src/font/troncode.c \
-                     src/font/jis_fonts.c \
-                     src/font/tibetan_fonts.c
+CAPTURE_SEGUI_SRCS = tools/capture_segui.c \
+                     src/desktop/industrial/segui/segui.c \
+                     src/desktop/industrial/segui/segui_demo.c \
+                     src/desktop/industrial/segui/segui_phone.c \
+                     src/desktop/graphics/dp_core.c \
+                     src/desktop/font/troncode.c \
+                     src/desktop/font/jis_fonts.c \
+                     src/desktop/font/tibetan_fonts.c
 
 CAPTURE_SEGUI_OBJS = $(CAPTURE_SEGUI_SRCS:.c=.test.o)
 
@@ -4113,38 +4129,38 @@ segui-screens: $(CAPTURE_SEGUI_BIN)
 	@echo " Generating SegUI 480x272 Screen Set..."
 	@echo "=========================================================="
 	@./$(CAPTURE_SEGUI_BIN)
-	@python3 scripts/update_segui_screens.py
+	@python3 scripts/screen_update_segui.py
 
 # ===================================================================
 # Quake Automated Screenshot Pipeline — 21:9 (672×288) ARGB frames
 # ===================================================================
 CAPTURE_QUAKE_BIN  = ./.build/capture_quake
 CAPTURE_QUAKE_SRCS = verify/scratch/capture_quake.c \
-                     src/quake/core/mathlib.c \
-                     src/quake/core/mem.c \
-                     src/quake/core/cvar.c \
-                     src/quake/core/cmd.c \
-                     src/quake/core/wad.c \
-                     src/quake/core/world.c \
-                     src/quake/core/pr_exec.c \
-                     src/quake/core/sv_phys.c \
-                     src/quake/core/sv_main.c \
-                     src/quake/sys/sys_btron.c \
-                     src/quake/sys/in_btron.c \
-                     src/quake/sys/fs_btron.c \
-                     src/quake/render/r_btron_gl.c \
-                     src/quake/render/r_brush.c \
-                     src/quake/render/r_light.c \
-                     src/quake/render/r_surf.c \
-                     src/quake/render/r_alias.c \
-                     src/quake/render/r_part.c \
-                     src/quake/render/texture.c \
-                     src/quake/core/cl_demo.c \
-                     src/quake/app/quake_ui.c \
-                     src/gl/gl_dispatch.c \
-                     src/gl/gl_backend_choice.c \
-                     src/gl/egl_surface.c \
-                     src/gl/backend_virgl.c
+                     src/media/quake/core/mathlib.c \
+                     src/media/quake/core/mem.c \
+                     src/media/quake/core/cvar.c \
+                     src/media/quake/core/cmd.c \
+                     src/media/quake/core/wad.c \
+                     src/media/quake/core/world.c \
+                     src/media/quake/core/pr_exec.c \
+                     src/media/quake/core/sv_phys.c \
+                     src/media/quake/core/sv_main.c \
+                     src/media/quake/sys/sys_btron.c \
+                     src/media/quake/sys/in_btron.c \
+                     src/media/quake/sys/fs_btron.c \
+                     src/media/quake/render/r_btron_gl.c \
+                     src/media/quake/render/r_brush.c \
+                     src/media/quake/render/r_light.c \
+                     src/media/quake/render/r_surf.c \
+                     src/media/quake/render/r_alias.c \
+                     src/media/quake/render/r_part.c \
+                     src/media/quake/render/texture.c \
+                     src/media/quake/core/cl_demo.c \
+                     src/media/quake/app/quake_ui.c \
+                     src/desktop/graphics/gles/gl_dispatch.c \
+                     src/desktop/graphics/gles/gl_backend_choice.c \
+                     src/desktop/graphics/gles/egl_surface.c \
+                     src/desktop/graphics/virgl/backend_virgl.c
 
 CAPTURE_QUAKE_OBJS = $(CAPTURE_QUAKE_SRCS:.c=.test.o)
 
@@ -4158,5 +4174,5 @@ quake-screens: $(CAPTURE_QUAKE_BIN)
 	@echo "=========================================================="
 	@mkdir -p /tmp/btron_raw_screens
 	@./$(CAPTURE_QUAKE_BIN)
-	@python3 scripts/raw_to_png.py
-	@python3 scripts/update_quake_screens.py
+	@python3 scripts/screen_raw_to_png.py
+	@python3 scripts/screen_update_quake.py

@@ -14,7 +14,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include "../../src/emulators/msx/msx_int.h"
 #include "../../src/emulators/msx/hd64180.h"
 

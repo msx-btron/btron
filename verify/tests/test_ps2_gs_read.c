@@ -32,9 +32,9 @@
  * file-static on purpose, and the packer and the VRAM page arithmetic have to come with it for the
  * same reason the gs_rec, gs_tex and gs_poster gates bring them in -- one translation unit is what
  * this suite measures and what links into btron-ps2.elf. */
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_vram.c"
-#include "../../src/drivers/ps2/ps2_gs_read.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_vram.c"
+#include "../../src/drivers/playstation2/ps2_gs_read.c"
 
 /* The formats by number, spelled here instead of including ps2_gs.h: those four values ARE
  * ps2_gs.h's GS_PSM_* and the low three bits are all gs_read_bpp() reads. */

@@ -11,4 +11,4 @@
 #define gl_backend_selected         eegs_selected
 #define gl_backend_select           eegs_select
 
-#include "../../src/gl/gl_backend_choice.c"
+#include "../../src/desktop/graphics/gles/gl_backend_choice.c"

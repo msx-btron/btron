@@ -15,9 +15,9 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_vram.c"
-#include "../../src/gl/gscube_nexus.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_vram.c"
+#include "../../src/desktop/graphics/eegs/gscube_nexus.c"
 
 static int s_checks, s_failures;
 

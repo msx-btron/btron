@@ -15,12 +15,12 @@
 #include <assert.h>
 
 /* Include public FS headers */
-#include <btron/fs/block.h>
-#include <btron/fs/vol_api.h>
-#include <btron/fs/volume.h>
-#include <btron/fs/header.h>
-#include <btron/fs/record.h>
-#include <btron/fs/fs_internal.h>
+#include <fs/block.h>
+#include <fs/vol_api.h>
+#include <fs/volume.h>
+#include <fs/header.h>
+#include <fs/record.h>
+#include <fs/fs_internal.h>
 #include <btron/file.h>
 #include <btron/tad.h>
 

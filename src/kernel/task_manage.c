@@ -27,7 +27,7 @@
 #include "wait.h"
 #include "check.h"
 #include "cpu_task.h"
-#include <tm/tmonitor.h>
+#include <kernel/tmonitor.h>
 
 
 /*

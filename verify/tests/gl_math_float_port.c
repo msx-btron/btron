@@ -1,7 +1,7 @@
 /*
  * gl_math_float_port.c - the shim's float-native half, compiled as its own TU.
  *
- * include/gl/math.h is the freestanding math for every bare-metal target in this tree,
+ * include/rt/math.h is the freestanding math for every bare-metal target in this tree,
  * and the PS2 is one of them: the Emotion Engine executes single-precision on COP1 in
  * around twenty cycles and executes double-precision not at all, so a float function
  * written as `(float)double_series(x)` costs the image a software double operation for
@@ -26,7 +26,7 @@
  */
 
 #define BTRON_UEFI_TARGET 1
-#include "../../include/gl/math.h"
+#include "../../include/rt/math.h"
 
 float p_sqrtf(float x)  { return sqrtf(x); }
 float p_sinf(float x)   { return sinf(x); }

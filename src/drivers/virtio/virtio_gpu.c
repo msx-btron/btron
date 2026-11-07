@@ -4,8 +4,8 @@
  * Supports both virtio-gpu-pci and virtio-vga modes with 2D hardware commands.
  */
 
-#include <drivers/virtio_gpu.h>
-#include <drivers/vesa.h>
+#include <drivers/virtio/virtio_gpu.h>
+#include <drivers/vesa/vesa.h>
 #include <libstr.h>
 
 extern void uart_puts_raw(const char *str);

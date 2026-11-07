@@ -16,8 +16,8 @@
 #include <btron/tip.h>
 #include <btron/apps.h>
 #include <btron/file.h>
-#include <btron/fs/block.h>
-#include <btron/fs/vol_api.h>
+#include <fs/block.h>
+#include <fs/vol_api.h>
 
 /* Mock SDL keysyms for testing */
 #define SDLK_BACKSPACE   8

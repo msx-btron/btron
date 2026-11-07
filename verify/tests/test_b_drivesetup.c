@@ -26,10 +26,10 @@
 #include <btron/wnd.h>
 #include <btron/dp.h>
 #include <btron/event.h>
-#include <btron/fs/volume.h>
-#include <btron/fs/block.h>
-#include <btron/fs/vol_api.h>
-#include "../../src/apps/b_drivesetup.h"
+#include <fs/volume.h>
+#include <fs/block.h>
+#include <fs/vol_api.h>
+#include "../../src/apps/volumes/b_drivesetup.h"
 
 /* clu.c's launcher table takes the address of every app the shell can open.  An
  * opener that is not linked reads NULL there on ELF, which is what lets one table
@@ -82,7 +82,7 @@ void* Icalloc(size_t nmemb, size_t sz) { return calloc(nmemb, sz); }
 void  Ifree(void *ptr) { free(ptr); }
 
 #include <btron/file.h>
-#include "../../src/clu/clu.h"
+#include "../../src/apps/clu/clu.h"
 
 extern Volume *g_sys_vol;
 extern Volume *g_anders_vol;

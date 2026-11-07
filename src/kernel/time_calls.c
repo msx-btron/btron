@@ -25,7 +25,7 @@
 #include "wait.h"
 #include "check.h"
 #include "tkdev_timer.h"
-#include <sys/rominfo.h>
+#include <kernel/rominfo.h>
 
 /*
  * Set system clock

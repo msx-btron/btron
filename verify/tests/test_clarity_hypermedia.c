@@ -15,7 +15,7 @@
 #include <btron/vobj.h>
 #include <btron/dnd.h>
 #include <btron/image_decode.h>
-#include "../../src/apps/clarity_doc.h"
+#include "../../src/apps/clarity/clarity_doc.h"
 
 /* Helpers */
 static int g_tests_passed = 0;

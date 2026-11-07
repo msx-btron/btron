@@ -40,10 +40,10 @@
 #include <btron/fast_blit.h>
 #include <btron/arm64_mem.h>
 #include <libstr.h>
-#include <dwc2.h>
-#include <pcie.h>
-#include <xhci.h>
-#include <arch/bcm283x/v3d.h>
+#include <drivers/broadcom/dwc2.h>
+#include <drivers/broadcom/pcie.h>
+#include <drivers/broadcom/xhci.h>
+#include <drivers/broadcom/v3d.h>
 
 extern void orchestra_ui_tick(void);
 extern void cassette_service(void);
@@ -216,15 +216,15 @@ extern WND* open_glgears_window(void);
 extern WND* open_lilcu64_demo_window(void);
 extern WND* open_msx_window(void);
 extern WND* open_drivesetup_window(void);
-#include <btron/fs/block.h>
-#include <btron/fs/vol_api.h>
-#include <btron/fs/fs_internal.h>
+#include <fs/block.h>
+#include <fs/vol_api.h>
+#include <fs/fs_internal.h>
 #include <btron/tty.h>
-#include "../clu/clu.h"
+#include "../apps/clu/clu.h"
 
 extern Volume *g_sys_vol;
 extern Volume *g_anders_vol;
-#include <arch/bcm283x/bcm2711_dma.h>
+#include <drivers/broadcom/bcm2711_dma.h>
 #include <btron/global_menu.h>
 #include <btron/tracker.h>
 extern int mailbox_set_virtual_offset(uint32_t x, uint32_t y);

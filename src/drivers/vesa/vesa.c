@@ -3,7 +3,7 @@
  * High-performance graphical engine for BTRON3 Workstation GUI on QEMU / Baremetal x86_64.
  */
 
-#include <drivers/vesa.h>
+#include <drivers/vesa/vesa.h>
 #include <libstr.h>
 
 extern void uart_puts_raw(const char *str);

@@ -229,7 +229,7 @@ compositor's own path.  `draw_us` is still 4.4x over its 16.7 ms gate and the th
 still FAIL theirs; those are the pre-existing budgets and they are recorded rather than moved.
 
 *One thing found outside the increment's own files.*  `make all` was at five of seven targets, and not
-because of this port: `include/gl/math.h`'s two bit-twiddling helpers, `btron_dexp()` and
+because of this port: `include/graphics/math.h`'s two bit-twiddling helpers, `btron_dexp()` and
 `btron_ldexp()`, sat inside the *no-x87* half of the freestanding branch while the `btron_log()` and
 `btron_exp()` that call them sit below the architecture split -- so every x86 bare-metal target, UEFI
 and PC-98 both built `--target=i686-none-elf`, died three TUs deep on `call to undeclared function
@@ -316,7 +316,7 @@ instructions on control C1, 0 on the shipping image.
 
 *The lighting branch stays behind a call, because it is double-precision.*  The 21 `.d` instructions
 are `gl_V3_Norm_Fast()` inlined at `vertex.c:187` -- the `normalize_enabled` arm of the transform --
-reaching `sqrt`'s double series in `include/gl/math.h`.  The census proves that arm does not run on
+reaching `sqrt`'s double series in `include/graphics/math.h`.  The census proves that arm does not run on
 this app (`D=0` in every stage of the eegs frame), and the gate does not care what runs: a row that
 forbids an instruction forbids it in the image.  So the kernel calls a `V3*`-taking wrapper that
 stays in the `-msoft-float` TU, which keeps the doubles where they are today at the measured 536
@@ -953,7 +953,7 @@ geo3d.c:(.text+0xca4): undefined reference to '__divdi3'` -- five shown plus "mo
 undefined references follow" -- because this image is `-msoft-float` with no libgcc, which
 is chapter 5's law, not a new one.  (3) A third, smaller one was found on the way and IS
 fixed here: `slots.c` prints its 0x2E/0x2F debug port with `fputc()`, and
-`include/gl/stdio.h` stubs `printf/fprintf/vfprintf` for the freestanding targets but not
+`include/graphics/stdio.h` stubs `printf/fprintf/vfprintf` for the freestanding targets but not
 `fputc`, so the compile died before the link ever ran.  One line joins the existing
 family.  The first two are left alone deliberately: where an emulator's ROM buffers live
 on a 32 MiB bare-metal machine, and whether Geo3D's per-vertex maths should be 32-bit or
@@ -987,7 +987,7 @@ on a buildable image.
 **The guardrail, re-checked.**  `git status --short -- src Makefile doc scripts verify
 include` shows the code half of this lane as `src/cores/core_ps2.c`,
 `src/cores/ps2_ptr_stroke.h`, `verify/tests/test_ps2_ptr_stroke.c`,
-`src/tools/manifest.txt` and one line of `include/gl/stdio.h`; the rest is prose
+`src/tools/manifest.txt` and one line of `include/graphics/stdio.h`; the rest is prose
 (`doc/txt/PS2.txt`, this log, `doc/md/EVENTING.md`) and the retirement of `doc/md/PS2.md`
 and `doc/md/PS2-ROADMAP.md`.  Pointer-gain code (`src/graphics/dp_accel.c`,
 `src/settings/input.c`, the RISC-OS curve) is untouched, so the arm64 / Pi 400 pointer
@@ -2329,7 +2329,7 @@ of 5,756 us within 1%, so the counters do not bend the stage they measure.
 **Why the cell went wrong, and what paid it.**  12g was priced from 12c's census, which counted
 doubles in a frame that included the lattice build; since then the large-argument rung
 (`xb_sinf_far_u32`/`xb_cosf_far_u32`, bits in / bits out) and row 8's COP1 lattice landed, and
-the steady-path reduction stopped touching include/gl/math.h's double series entirely.  The
+the steady-path reduction stopped touching include/graphics/math.h's double series entirely.  The
 cell's own re-read warned that 3,225 us was now "a LARGER share of the stage" -- the measurement
 says it is none of the steady stage: the ~2.3x was already paid, and no math.h rung is left
 here.  The residual is a one-time ~3.2 ms boot cost on frame 1, which belongs to no per-frame

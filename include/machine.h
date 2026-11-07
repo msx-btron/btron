@@ -5,39 +5,58 @@
  *    Copyright 2011 by Ken Sakamura.
  *    This software is distributed under the latest version of T-License 2.x.
  *----------------------------------------------------------------------
- *
- *    Released by T-Engine Forum(http://www.t-engine.org/) at 2011/05/17.
- *    Modified by TRON Forum(http://www.tron.org/) at 2015/06/01.
- *
- *----------------------------------------------------------------------
  */
 
 /*
  *	@(#)machine.h
  *
  *	Machine type definition
- *
- *	Describes differences between platforms, such as hardware
- *	and OS. Where the source code must be differentiated
- *	according to platform, macros and other definitions given
- *	here should be used.
- *
- *	Where possible, classifications should be based on general
- *	attributes rather than the machine type. Thus, the endian,
- *	for instance, should be described as BIGENDIAN rather than
- *	using a classification based on the machine type.
- *
- *	* Machine type definition is not used solely by the machine
- *	C language source file, so non-macro definitions are not
- *	permitted.
  */
 
 #ifndef __MACHINE_H__
 #define __MACHINE_H__
 
-/* ===== System dependencies definitions ================================ */
+#ifndef __SYS_MACHINE_DEPEND_H__
+#define __SYS_MACHINE_DEPEND_H__
 
-#include <sys/machine_common.h>
+/*
+ * CPU_xxxx		CPU type
+ * ALLOW_MISALIGN	1 if access to misalignment data is allowed
+ * BIGENDIAN		1 if big endian
+ * VIRTUAL_ADDRESS	1 if virtual memory
+ * ALLOCA_NOSPT		1 if alloca() is not supported
+ */
+
+#ifndef _RPI_BCM283x_
+#define _RPI_BCM283x_		1
+#endif
+
+#if (TYPE_RPI == 1)				/*** BCM2835 ***/
+#define CPU_ARM1176			1
+#define CPU_ARMv6			1
+#define CPU_BCM2835			1
+#elif (TYPE_RPI == 2)			/*** BCM2836 ***/
+#define CPU_CORTEX_A7		1
+#define CPU_ARMv7			1
+#define CPU_BCM2836			1
+#elif (TYPE_RPI == 3)			/*** BCM2837 ***/
+#define CPU_CORTEX_A53		1
+#define CPU_ARMv7			1
+#define CPU_BCM2837			1
+#endif
+
+#define CPU_ARM				1
+#define RPI_BCM283x			1
+#define ALLOW_MISALIGN		0
+#define BIGENDIAN			0
+#define VIRTUAL_ADDRESS		1
+#define ALLOCA_NOSPT		0
+
+#ifndef _Csym
+#define _Csym				0
+#endif
+
+#endif /* __SYS_MACHINE_DEPEND_H__ */
 
 /* ===== Common definitions ============================================= */
 
@@ -55,14 +74,6 @@
 #endif
 #endif
 
-/*
- * C symbol format
- *	_Csym = 0	do not append _
- *	_Csym = 1	append _
- *
- *	* In the UNIX System V Release 4 C compiler,
- *	   _ is not appended to symbols.
- */
 #if _Csym == 0
 #define Csym(sym)	sym
 #else

@@ -14,7 +14,7 @@
 
 #if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
 
-#include <btron/fs/block.h>
+#include <fs/block.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -141,7 +141,7 @@ void blk_file_close(BlkDev *dev)
 
 #else
 /* Bare-metal builds don't need the file backend */
-#include <btron/fs/block.h>
+#include <fs/block.h>
 BlkDev *blk_file_create(const char *path, int create_new, UW nblocks) { (void)path; (void)create_new; (void)nblocks; return NULL; }
 void blk_file_close(BlkDev *dev) { (void)dev; }
 #endif /* __STDC_HOSTED__ */

@@ -16,8 +16,8 @@
  * BTRON_HOSTED is 1 on a hosted target, 0 otherwise, for the cases that
  * genuinely need POSIX (unistd.h, dirent.h, sockets).
  *
- * The one deliberate exception: include/gl/{stdio,stdlib,string}.h hijack those
- * system header names (via -Iinclude/gl on UEFI and PC-98) for third-party
+ * The one deliberate exception: include/rt/{stdio,stdlib,string}.h hijack those
+ * system header names (via -Iinclude/rt on UEFI and PC-98) for third-party
  * sources — TinyGL, Quake, stb — that include <string.h> by its real name and
  * cannot be edited to include this header instead.
  */
@@ -78,7 +78,7 @@ extern int atoi(const char *);
 
 /*
  * Byte-stream file access: fopen/fread/fwrite/fclose are declared in
- * include/gl/stdio.h, the header this branch pulls in just above, because that
+ * include/rt/stdio.h, the header this branch pulls in just above, because that
  * is the one <stdio.h> every freestanding lane resolves to.  src/fs/fs_stdio.c
  * answers them from the Record-Stream engine in src/fs/file.c.
  *

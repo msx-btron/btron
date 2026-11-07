@@ -25,7 +25,7 @@
 
 /* The builder's own source, not a link against it: it is the file under test and has no
  * reason to be compiled twice. */
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
 
 static int s_checks, s_failures;
 

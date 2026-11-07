@@ -9,7 +9,7 @@
 
 #if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
 
-#include <btron/fs/block.h>
+#include <fs/block.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -394,7 +394,7 @@ int blk_qcow2_create_file(const char *path, uint64_t disk_size)
 }
 
 #else
-#include <btron/fs/block.h>
+#include <fs/block.h>
 #include <stdint.h>
 #include <stddef.h>
 

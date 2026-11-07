@@ -5,7 +5,7 @@
 CC ?= gcc
 SDL_CFLAGS ?= $(shell sdl2-config --cflags 2>/dev/null || echo "-I/usr/include/SDL2")
 SDL_LIBS ?= $(shell sdl2-config --libs 2>/dev/null || echo "-lSDL2")
-CFLAGS ?= -O2 -Wall -Wextra -std=c99 -I../include -I../include/drivers -I../src/kernel -D_GNU_SOURCE $(SDL_CFLAGS)
+CFLAGS ?= -O2 -Wall -Wextra -std=c99 -I../include -I../include/rt -I../include/graphics -I../include/drivers -I../src/kernel -I../src/desktop -I../src/desktop/graphics -I../src/desktop/window -I../src/desktop/font -I../src/apps/cabinet -I../src/desktop/industrial -I../src/apps/chokanji -D_GNU_SOURCE $(SDL_CFLAGS)
 # Required libs live in VERIFY_LIBS (:=), NOT in the overridable LDFLAGS: an
 # inherited environment LDFLAGS (e.g. Homebrew's keg-only curl hint) otherwise
 # replaces the `?=` default and silently drops -lSDL2, breaking the link.
@@ -39,23 +39,23 @@ VERIFY_SRCS = btron_verify.c \
               ../src/kernel/dev_mgr.c \
               ../src/kernel/sys_mgmt.c \
               ../src/kernel/tcpip.c \
-              ../src/window/event.c \
-              ../src/graphics/dp_core.c \
-              ../src/window/wnd.c \
-              ../src/chokanji/pmc.c \
-              ../src/vobject/vobj.c \
-              ../src/vobject/omgr.c \
-              ../src/hmi/hmi_core.c \
-              ../src/hmi/hmi_switch.c \
-              ../src/hmi/hmi_selector.c \
-              ../src/hmi/hmi_volume.c \
-              ../src/hmi/hmi_meter.c \
-              ../src/hmi/hmi_controller.c \
-              ../src/hmi/hmi_panel.c \
-              ../src/font/troncode.c \
-              ../src/font/jis_fonts.c \
-              ../src/font/tibetan_fonts.c \
-              ../src/font/font_mgr.c \
+              ../src/desktop/window/event.c \
+              ../src/desktop/graphics/dp_core.c \
+              ../src/desktop/window/wnd.c \
+              ../src/apps/chokanji/pmc.c \
+              ../src/apps/cabinet/vobj.c \
+              ../src/apps/cabinet/omgr.c \
+              ../src/desktop/industrial/hmi/hmi_core.c \
+              ../src/desktop/industrial/hmi/hmi_switch.c \
+              ../src/desktop/industrial/hmi/hmi_selector.c \
+              ../src/desktop/industrial/hmi/hmi_volume.c \
+              ../src/desktop/industrial/hmi/hmi_meter.c \
+              ../src/desktop/industrial/hmi/hmi_controller.c \
+              ../src/desktop/industrial/hmi/hmi_panel.c \
+              ../src/desktop/font/troncode.c \
+              ../src/desktop/font/jis_fonts.c \
+              ../src/desktop/font/tibetan_fonts.c \
+              ../src/desktop/font/font_mgr.c \
               ../src/fs/blk_mem.c \
               ../src/fs/blk_file.c \
               ../src/fs/blk_qcow2.c \
@@ -81,4 +81,4 @@ run: $(VERIFY_BIN)
 
 clean:
 	rm -f $(VERIFY_BIN) $(VERIFY_OBJS)
-	rm -f *.o suite/*.o report/*.o ../src/font/*.o ../src/kernel/*.o ../src/vobject/*.o ../src/window/*.o ../src/graphics/*.o ../src/hmi/*.o ../src/fs/*.o ../src/cores/*.o
+	rm -f *.o suite/*.o report/*.o ../src/desktop/font/*.o ../src/kernel/*.o ../src/apps/cabinet/*.o ../src/desktop/window/*.o ../src/desktop/graphics/*.o ../src/desktop/industrial/hmi/*.o ../src/fs/*.o ../src/cores/*.o

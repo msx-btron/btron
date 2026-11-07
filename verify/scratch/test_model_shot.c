@@ -4,15 +4,15 @@
 #include <math.h>
 
 #include "../../include/btron/types.h"
-#include "../../src/quake/include/quakedef.h"
-#include "../../src/quake/include/world.h"
-#include "../../src/quake/include/render.h"
-#include "../../src/quake/include/r_alias.h"
-#include "../../src/quake/include/r_brush.h"
-#include "../../src/quake/include/quake_ui.h"
-#include "../../src/quake/include/fs_btron.h"
-#include "../../src/quake/include/texture.h"
-#include "../../src/gl/gl_dispatch.h"
+#include "../../src/media/quake/include/quakedef.h"
+#include "../../src/media/quake/include/world.h"
+#include "../../src/media/quake/include/render.h"
+#include "../../src/media/quake/include/r_alias.h"
+#include "../../src/media/quake/include/r_brush.h"
+#include "../../src/media/quake/include/quake_ui.h"
+#include "../../src/media/quake/include/fs_btron.h"
+#include "../../src/media/quake/include/texture.h"
+#include "../../src/desktop/graphics/gles/gl_dispatch.h"
 
 refdef_t r_refdef;
 int in_forward = 0, in_back = 0, in_left = 0, in_right = 0;

@@ -5,7 +5,7 @@
 
 #include <btron/itron.h>
 #include <btron/apps.h>
-#include <device/virtio.h>
+#include <drivers/virtio/virtio.h>
 #include <libstr.h>
 #if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
 #include <stdio.h>

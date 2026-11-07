@@ -420,9 +420,9 @@ typedef uint64_t fid64_t;     /* (AG &lt;&lt; 16) | start */</code></pre>
       The following example illustrates mounting the user workspace volume <code>/ANDERS</code>, opening a document, and streaming its TAD payload:
     </p>
 
-    <pre><code>#include &lt;btron/fs/vol_api.h&gt;
+    <pre><code>#include &lt;fs/vol_api.h&gt;
 #include &lt;btron/file.h&gt;
-#include &lt;btron/fs/fs_types.h&gt;
+#include &lt;fs/fs_types.h&gt;
 
 void inspect_user_document(void) {
     /* 1. Open backing storage file for user volume */

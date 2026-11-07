@@ -28,8 +28,8 @@
 #include <time.h>
 #endif
 
-#include <btron/fs/vol_api.h>
-#include <btron/fs/volume.h>
+#include <fs/vol_api.h>
+#include <fs/volume.h>
 
 /* ── Endian helpers ─────────────────────────────────────────────── */
 static inline UH rd_u16_be(const unsigned char *p) {

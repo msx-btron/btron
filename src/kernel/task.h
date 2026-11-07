@@ -31,8 +31,8 @@ typedef struct mutex_control_block	MTXCB;
 typedef struct task_control_block	TCB;
 #endif
 
-#include <sys/queue.h>
-#include <sys/str_align.h>
+#include <kernel/queue.h>
+#include <kernel/str_align.h>
 #include "timer.h"
 #include "winfo.h"
 

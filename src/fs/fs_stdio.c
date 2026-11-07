@@ -74,9 +74,9 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <btron/file.h>
-#include <btron/fs/fs_internal.h>
-#include <btron/fs/fs_types.h>
-#include <btron/fs/vol_api.h>
+#include <fs/fs_internal.h>
+#include <fs/fs_types.h>
+#include <fs/vol_api.h>
 
 #define FS_STDIO_SLOTS   8               /* simultaneously open FILEs */
 #define FS_STDIO_CHUNK   8192u           /* staged bytes per written record */

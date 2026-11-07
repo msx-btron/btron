@@ -43,11 +43,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include <GL/gl.h>
+#include <graphics/gl.h>
 
 #include "gl_dispatch.h"
-#include "../../src/gl/backend_tinygl.h"
-#include "../../src/gl/tinygl/zgl.h"
+#include "../../src/desktop/graphics/gles/backend_tinygl.h"
+#include "../../src/desktop/graphics/tinygl/zgl.h"
 
 /* The two host seams every GL suite stubs.  uart_puts_raw() is captured rather than dropped
  * because the backend now announces the two events this suite is about, and an announcement that

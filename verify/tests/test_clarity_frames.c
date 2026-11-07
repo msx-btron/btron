@@ -9,7 +9,7 @@
 #include <string.h>
 #include <assert.h>
 
-#include "apps/clarity_doc.h"
+#include "clarity_doc.h"
 #include <btron/dp.h>
 #include <btron/wnd.h>
 #include <btron/event.h>

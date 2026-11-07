@@ -11,7 +11,7 @@
  *    triggering Joypad stage restart (REPLAY) as specified in game manual.
  */
 
-#include <emulators/tronmsx.h>
+#include <btron/tronmsx.h>
 #include "../../src/emulators/msx/v9938.h"
 #include "../../src/emulators/msx/msx_kbd.h"
 #include "../../src/emulators/msx/msx_int.h"
@@ -63,6 +63,7 @@ int main(void)
     memset(&cfg, 0, sizeof(cfg));
     cfg.machine = BMSX_MACHINE_MSXTR_CBIOS;
     cfg.frame_hz = 60;
+    msx_set_bios_mode(BMSX_BIOS_CBIOS);
     rc = msx_init(&cfg);
     if (rc != MSX_OK) {
         fprintf(stderr, "[FAIL] msx_init failed: %d\n", rc);

@@ -7,7 +7,7 @@
 #ifndef _BTRON_EMULATOR_MSX_ERR_H_
 #define _BTRON_EMULATOR_MSX_ERR_H_
 
-#include <emulators/tronmsx.h>   /* the code enumeration lives in the public header */
+#include <btron/tronmsx.h>   /* the code enumeration lives in the public header */
 
 #define MSX_ERR_COUNT 13
 

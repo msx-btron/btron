@@ -460,7 +460,7 @@ fi
 # tests.  The image is built -msoft-float, which is what keeps the doubles off the FPU;
 # three files are deliberately built -mhard-float so their single-precision arithmetic can
 # execute on COP1 (measured 20 cycles/op against 160 for the bit engine): the runtime
-# src/drivers/ps2/ps2_builtins.c, whose libcalls are the FPU's own, and the geometry
+# src/drivers/playstation2/ps2_builtins.c, whose libcalls are the FPU's own, and the geometry
 # kernel src/gl/tinygl/vertex_stage.c (plan row 7), which is reached only by pointer so
 # no float crosses its boundary and the ABI law is unbroken.  Since row 8 the third is
 # src/apps/xmb_wave.c, the launcher's waving surface (plan row 8): its clock arrives as
@@ -514,7 +514,7 @@ FP_PAT='(^|[[:space:]])(ldc1|sdc1|lwc1|swc1|(add|sub|mul|div|sqrt|abs|neg|mov|cv
 # and a fifth must not be able to forget to update one of them.  The whitelist row needs
 # them as `-name` patterns (a basename, matched against every path find walks), so that
 # form is derived here rather than written out a second time.
-FP_OBJECTS='src/drivers/ps2/ps2_builtins.ps2.o src/gl/tinygl/vertex_stage.ps2.o src/apps/xmb_wave.ps2.o'
+FP_OBJECTS='src/drivers/playstation2/ps2_builtins.ps2.o src/gl/tinygl/vertex_stage.ps2.o src/apps/xmb_wave.ps2.o'
 FP_FIND_EXCLUDES=''
 for _fp_obj in $FP_OBJECTS; do FP_FIND_EXCLUDES="$FP_FIND_EXCLUDES ! -name $(basename $_fp_obj)"; done
 unset _fp_obj
@@ -598,7 +598,7 @@ if [ -n "$OBJDUMP64" ]; then
     # substitution is a per-object flag, and a flag that silently does not reach its file is
     # the failure these rows exist to see.
     assert_check "ps2_builtins.ps2.o really emits COP1 arithmetic (the hardware path is compiled in)" \
-        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/drivers/ps2/ps2_builtins.ps2.o | grep -cE '[[:space:]](add|sub|mul|div)\.s[[:space:]]') -ge 4 ]"
+        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/drivers/playstation2/ps2_builtins.ps2.o | grep -cE '[[:space:]](add|sub|mul|div)\.s[[:space:]]') -ge 4 ]"
     # The kernel's own two halves: the arithmetic is inline on COP1, ...
     assert_check "vertex_stage.ps2.o emits COP1 mul.s/add.s arithmetic (PS2_FP=hw reached the file)" \
         "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/gl/tinygl/vertex_stage.ps2.o | grep -cE '[[:space:]](mul|add)\.s[[:space:]]') -ge 40 ]"
@@ -665,7 +665,7 @@ SOFTFLOAT_CHECK="missing=0;"
 for _s in $SOFTFLOAT_LIBCALLS; do
     SOFTFLOAT_CHECK="$SOFTFLOAT_CHECK grep -qE ' $_s\$' <<<\"\$PS2_SYMBOLS\" || missing=1;"
 done
-assert_check "All 32 soft-float libcalls are defined (src/drivers/ps2/ps2_builtins.c)" \
+assert_check "All 32 soft-float libcalls are defined (src/drivers/playstation2/ps2_builtins.c)" \
     "$SOFTFLOAT_CHECK [ \$missing -eq 0 ]"
 
 # The same runtime read as a cost rather than as a correctness question.  Past 4*pi the
@@ -714,7 +714,7 @@ assert_check "Symbol 'ps2_gs_set_framebuffer' exists (the kernel installs the co
 # law is about ROLES, not about byte counts: exactly one object of that size may be the canvas
 # the bus master reads, it has to be the compositor's own backbuffer, and any other object of
 # that size has to be named here as what it is.  The one that is allowed is `s_cached_bg`
-# (src/desktop/desktop.c): the compositor's cached background, never installed on the GIF,
+# (src/apps/workbench/desktop.c): the compositor's cached background, never installed on the GIF,
 # whose whole purpose is that a background restore is a copy instead of a re-render of the
 # gradient.  Its cost is stated in the row's own text so it is a counted 1,920,000 bytes of
 # .bss and not a saving nobody tallied -- chapter 4's budget carries the total.  An UNNAMED
@@ -822,7 +822,7 @@ if [ -f btron_sys.vol ]; then
     # the control; and after the Makefile rule for ps2_sys_vol.ps2.o began repairing the payload
     # before assembling it, the same sequence ends with this row green at 0 bytes.
     FRESH_VOL=.build/ps2-vol-fresh.vol
-    if ./mkbtronfs src/tools/manifest.txt -o "$FRESH_VOL" >/dev/null 2>&1; then
+    if ./mkbtronfs tools/manifest.txt -o "$FRESH_VOL" >/dev/null 2>&1; then
         FRESH_DIFF=$(cmp -l "$FRESH_VOL" btron_sys.vol 2>/dev/null | wc -l | tr -d ' ')
         assert_check "...and what the image carries is the manifest itself, not the working file (${FRESH_DIFF:-0} bytes separate btron_sys.vol from a fresh build; the host FS suites mount it read/write)" \
             "dd if=$ELF bs=1024 skip=$((VOL_FILE_OFF / 1024)) count=$((VOL_BYTES / 1024)) 2>/dev/null | cmp -s - $FRESH_VOL"
@@ -886,7 +886,7 @@ assert_check "the row list comes from the mounted volume, not a host folder (msx
 assert_check "a cartridge reaches the core through the one byte-exact reader (msx_load calls vfs_child_path, vfs_read_blob and msx_load_rom)" \
     "[ \$(function_code msx_load | grep -c 'jal.*<vfs_child_path>') -ge 1 ] && [ \$(function_code msx_load | grep -c 'jal.*<vfs_read_blob>') -ge 1 ] && [ \$(function_code msx_load | grep -c 'jal.*<msx_load_rom>') -ge 1 ]"
 
-# Where C-BIOS lives is one #define (MSX_BIOS_DEFAULT_DIR in include/emulators/tronmsx.h), and this
+# Where C-BIOS lives is one #define (MSX_BIOS_DEFAULT_DIR in include/btron/tronmsx.h), and this
 # is the row that catches it being pinned back to a checkout path: the core used to initialise
 # s_bios_dir to third_party/openMSX/Contrib/cbios, which made that default unreachable -- a
 # bare-metal machine has no such folder, so bios_load() failed and the window said "C-BIOS が読み込めません"
@@ -982,8 +982,8 @@ if [ -f "$ISO" ]; then
             "LC_ALL=C grep -qc 'BOOT2.=.cdrom0:.BTRON.ELF;1' $ISO_ROOT/SYSTEM.CNF && [ \$(LC_ALL=C grep -cac \$'\r' $ISO_ROOT/SYSTEM.CNF) -eq 3 ]"
         assert_check "the packaging wrote no image bytes: BTRON.ELF on the disc is the tree's btron-ps2.elf, byte for byte" \
             "cmp -s $ISO_ROOT/BTRON.ELF $ELF"
-        if ./mkbtronfs src/tools/manifest.txt -o .build/ps2-readback-sys.vol >/dev/null 2>&1 && \
-           ./mkbtronfs src/tools/manifest_anders.txt -o .build/ps2-readback-anders.vol -l ANDERS >/dev/null 2>&1; then
+        if ./mkbtronfs tools/manifest.txt -o .build/ps2-readback-sys.vol >/dev/null 2>&1 && \
+           ./mkbtronfs tools/manifest_anders.txt -o .build/ps2-readback-anders.vol -l ANDERS >/dev/null 2>&1; then
             assert_check "SYS.VOL on the disc is the manifest itself (1,048,576 B, not the working file an FS suite may have written into)" \
                 "[ \$(wc -c < $ISO_ROOT/SYS.VOL | tr -d ' ') -eq 1048576 ] && cmp -s $ISO_ROOT/SYS.VOL .build/ps2-readback-sys.vol"
             assert_check "ANDERS.VOL on the disc is the manifest too, labelled ANDERS, and 1,048,576 B" \

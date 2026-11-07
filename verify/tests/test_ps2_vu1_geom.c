@@ -12,10 +12,10 @@
 #include <string.h>
 #include <math.h>
 
-#include "../../src/drivers/ps2/ps2_vu1_geom.h"
-#include "../../src/drivers/ps2/ps2_vu1_geom.c"
-#include "../../src/drivers/ps2/ps2_gs_pack.c"
-#include "../../src/drivers/ps2/ps2_gs_rec.h"
+#include "../../src/drivers/playstation2/ps2_vu1_geom.h"
+#include "../../src/drivers/playstation2/ps2_vu1_geom.c"
+#include "../../src/drivers/playstation2/ps2_gs_pack.c"
+#include "../../src/drivers/playstation2/ps2_gs_rec.h"
 #include "gs_group_view.h"
 
 static int s_checks, s_failures;

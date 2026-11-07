@@ -25,15 +25,15 @@
 #include <time.h>
 #endif
 
-#include <btron/fs/block.h>
-#include <btron/fs/fs_types.h>
-#include <btron/fs/vol_api.h>
+#include <fs/block.h>
+#include <fs/fs_types.h>
+#include <fs/vol_api.h>
 #include <btron/file.h>
 #include <btron/error.h>
 #include <btron/tad.h>
-#include <btron/fs/fs_internal.h>
-#include <btron/fs/header.h>
-#include <btron/fs/record.h>
+#include <fs/fs_internal.h>
+#include <fs/header.h>
+#include <fs/record.h>
 
 /* ── Global open-file / open-record tables ──────────────────────── */
 OpenFile g_open_files[MAX_OPEN_FILES];
@@ -68,7 +68,7 @@ static UW hdr_row_capacity(UW bsize, int brightv)
  * header (src/fs/vol.c) and a file's create/close stamps here cannot disagree with each other --
  * they used to each call time(NULL), which made a volume formatted across a tick boundary carry two
  * different dates, and made the same sources produce different bytes on every run.  A pinned stamp
- * is what the host tool uses: btron_fs_set_stamp(), declared in include/btron/fs/vol_api.h, exists
+ * is what the host tool uses: btron_fs_set_stamp(), declared in include/fs/vol_api.h, exists
  * because a shipped volume has to be a function of its contents rather than of the clock. */
 static UW s_stamp_pinned;
 

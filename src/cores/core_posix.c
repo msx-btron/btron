@@ -30,7 +30,7 @@
 
 #include <btron/itron.h>
 #include <btron/dp.h>          /* the btron_render_perf_us() prototype: this core installs that clock */
-#include <device/virtio.h>
+#include <drivers/virtio/virtio.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -38,8 +38,8 @@
 #include <unistd.h>
 #include <sys/time.h>
 #include <time.h>
-#include <btron/fs/vol_api.h>
-#include <btron/fs/block.h>
+#include <fs/vol_api.h>
+#include <fs/block.h>
 
 #define MAX_TASKS 64
 #define MAX_SEMS  64

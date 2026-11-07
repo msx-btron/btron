@@ -20,4 +20,4 @@
 #define gl_backend_selected         plain_selected
 #define gl_backend_select           plain_select
 
-#include "../../src/gl/gl_backend_choice.c"
+#include "../../src/desktop/graphics/gles/gl_backend_choice.c"

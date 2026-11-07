@@ -1,5 +1,5 @@
 /*
- * test_gl_math_float.c - are the float-native series in include/gl/math.h right, and
+ * test_gl_math_float.c - are the float-native series in include/graphics/math.h right, and
  *                        are they the thing being measured?
  *
  * Why this exists at all: the PS2 has no display during development and no libm at link

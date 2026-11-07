@@ -26,15 +26,15 @@ static double now_s(void) {
 
 #include "../../include/btron/event.h"
 #include "../../include/btron/wnd.h"
-#include "../../src/quake/include/quakedef.h"
-#include "../../src/quake/include/server.h"
-#include "../../src/quake/include/world.h"
-#include "../../src/quake/include/progs.h"
-#include "../../src/quake/include/render.h"
-#include "../../src/quake/include/mathlib.h"
-#include "../../src/quake/include/fs_btron.h"
-#include "../../src/quake/include/cl_demo.h"
-#include "../../src/quake/include/quake_ui.h"
+#include "../../src/media/quake/include/quakedef.h"
+#include "../../src/media/quake/include/server.h"
+#include "../../src/media/quake/include/world.h"
+#include "../../src/media/quake/include/progs.h"
+#include "../../src/media/quake/include/render.h"
+#include "../../src/media/quake/include/mathlib.h"
+#include "../../src/media/quake/include/fs_btron.h"
+#include "../../src/media/quake/include/cl_demo.h"
+#include "../../src/media/quake/include/quake_ui.h"
 
 refdef_t   r_refdef;
 int        g_fired_count = 0;

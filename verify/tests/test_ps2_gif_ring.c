@@ -45,8 +45,8 @@
  * ring's whole-descriptor state must be distinguishable from its empty state, and this is the
  * shape that says so. */
 #define PS2_GIF_RING_CAP 8u
-#include "../../src/drivers/ps2/ps2_gif_ring.h"
-#include "../../src/drivers/ps2/ps2_gif_ring.c"
+#include "../../src/drivers/playstation2/ps2_gif_ring.h"
+#include "../../src/drivers/playstation2/ps2_gif_ring.c"
 
 static int s_checks, s_failures;
 

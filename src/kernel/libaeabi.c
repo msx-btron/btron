@@ -245,6 +245,28 @@ long long __aeabi_d2lz(double d)
     return ae_i64_of_trunc(sign, mag, cls);
 }
 
+unsigned long long __aeabi_d2ulz(double d)
+{
+    union { double d; uint64_t u; } bits;
+    uint32_t sign = 0u;
+    uint64_t mag = 0u;
+    int cls;
+    bits.d = d;
+    cls = ae_trunc_bits(bits.u, AE_F64_MB, AE_F64_SW, AE_F64_BIAS, &sign, &mag);
+    return (unsigned long long)ae_u64_of_trunc(sign, mag, cls);
+}
+
+long long __aeabi_f2lz(float f)
+{
+    union { uint32_t u; float f; } bits;
+    uint32_t sign = 0u;
+    uint64_t mag = 0u;
+    int cls;
+    bits.f = f;
+    cls = ae_trunc_bits((uint64_t)bits.u, AE_F32_MB, AE_F32_SW, AE_F32_BIAS, &sign, &mag);
+    return ae_i64_of_trunc(sign, mag, cls);
+}
+
 unsigned long long __aeabi_f2ulz(float f)
 {
     union { uint32_t u; float f; } bits;
