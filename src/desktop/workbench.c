@@ -58,9 +58,7 @@ void workbench_process_event(GDEV *screen, const EVT *ev) {
         if (tracker_is_menu_open()) {
             tracker_handle_mouse_move(ev->pos.x, ev->pos.y);
         }
-        if (wnd_mgr_is_interacting() || ev->button != 0) {
-            wnd_mgr_handle_event(ev);
-        }
+        wnd_mgr_handle_event(ev);
 
     } else if (ev->type == EV_KEY_DOWN) {
         if (global_menu_handle_key(ev->key, ev->data)) {
@@ -69,6 +67,9 @@ void workbench_process_event(GDEV *screen, const EVT *ev) {
         if (tracker_handle_key(ev->key)) {
             return;
         }
+        wnd_mgr_handle_event(ev);
+
+    } else if (ev->type == EV_KEY_UP) {
         wnd_mgr_handle_event(ev);
     }
 }

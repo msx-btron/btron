@@ -909,6 +909,65 @@ void blit_backbuffer_to_fb(volatile uint32_t *gpu_fb) {
 
 static volatile uint32_t *s_active_gpu_fb = NULL;
 static uint32_t s_last_paint_duration_us = 0;
+static uint32_t s_uart_key_time_us = 0;
+static UW       s_uart_held_key = 0;
+
+static void poll_uart_input(uint32_t now) {
+    if (uart_has_char()) {
+        int c = uart_getc();
+        if (c == 0x1B) {
+            int wait_tries = 2000;
+            while (!uart_has_char() && --wait_tries > 0) {
+                __asm__ volatile("nop");
+            }
+            if (uart_has_char() && uart_getc() == '[') {
+                wait_tries = 2000;
+                while (!uart_has_char() && --wait_tries > 0) {
+                    __asm__ volatile("nop");
+                }
+                if (uart_has_char()) {
+                    int dir = uart_getc();
+                    if (dir == 'A') s_mouse_y = (s_mouse_y > 16) ? s_mouse_y - 16 : 10;
+                    else if (dir == 'B') s_mouse_y = (s_mouse_y < BTRON_SCREEN_H - 20) ? s_mouse_y + 16 : BTRON_SCREEN_H - 20;
+                    else if (dir == 'C') s_mouse_x = (s_mouse_x < BTRON_SCREEN_W - 20) ? s_mouse_x + 16 : BTRON_SCREEN_W - 20;
+                    else if (dir == 'D') s_mouse_x = (s_mouse_x > 16) ? s_mouse_x - 16 : 10;
+                    set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
+                    EVT mev;
+                    mev.type   = EV_MOUSE_MOVE;
+                    mev.pos.x  = s_mouse_x;
+                    mev.pos.y  = s_mouse_y;
+                    mev.button = 0;
+                    mev.data   = 0;
+                    snd_evt(&mev);
+                }
+            } else {
+                if (s_uart_held_key != 0 && s_uart_held_key != 0x1B) {
+                    EVT uev; uev.type = EV_KEY_UP; uev.key = s_uart_held_key; uev.data = 0;
+                    uev.pos.x = s_mouse_x; uev.pos.y = s_mouse_y; uev.button = 0; snd_evt(&uev);
+                }
+                s_uart_held_key = 0x1B;
+                s_uart_key_time_us = now;
+                EVT ev; ev.type = EV_KEY_DOWN; ev.key = 0x1B; ev.pos.x = s_mouse_x; ev.pos.y = s_mouse_y; ev.button = 0; ev.data = 0; snd_evt(&ev);
+            }
+        } else {
+            if (c == '\r') c = '\n';
+            UW k = (UW)(uint8_t)c;
+            if (s_uart_held_key != 0 && s_uart_held_key != k) {
+                EVT uev; uev.type = EV_KEY_UP; uev.key = s_uart_held_key; uev.data = 0;
+                uev.pos.x = s_mouse_x; uev.pos.y = s_mouse_y; uev.button = 0; snd_evt(&uev);
+            }
+            s_uart_held_key = k;
+            s_uart_key_time_us = now;
+            EVT ev; ev.type = EV_KEY_DOWN; ev.key = k; ev.pos.x = s_mouse_x; ev.pos.y = s_mouse_y; ev.button = 0; ev.data = 0; snd_evt(&ev);
+        }
+    }
+
+    if (s_uart_held_key != 0 && (now - s_uart_key_time_us) >= 150000u) {
+        EVT ev; ev.type = EV_KEY_UP; ev.key = s_uart_held_key; ev.data = 0;
+        ev.pos.x = s_mouse_x; ev.pos.y = s_mouse_y; ev.button = 0; snd_evt(&ev);
+        s_uart_held_key = 0;
+    }
+}
 
 void btron_cooperative_input_pump(void) {
     if (!s_gui_active) return;
@@ -920,6 +979,13 @@ void btron_cooperative_input_pump(void) {
         input_plane_task(NULL, now);
     } else {
         usb_poll_devices(NULL);
+    }
+    poll_uart_input(now);
+
+    /* Drain and dispatch events immediately for zero-lag response */
+    EVT ev;
+    while (get_evt(&ev, 0) == E_OK) {
+        workbench_process_event(NULL, &ev);
     }
 }
 
@@ -991,55 +1057,7 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
         }
 
         /* 2. Poll PL011 UART for interactive keys & arrows */
-        if (uart_has_char()) {
-            int c = uart_getc();
-            if (c == 0x1B) {
-                int wait_tries = 2000;
-                while (!uart_has_char() && --wait_tries > 0) {
-                    __asm__ volatile("nop");
-                }
-                if (uart_has_char() && uart_getc() == '[') {
-                    wait_tries = 2000;
-                    while (!uart_has_char() && --wait_tries > 0) {
-                        __asm__ volatile("nop");
-                    }
-                    if (uart_has_char()) {
-                        int dir = uart_getc();
-                        if (dir == 'A') s_mouse_y = (s_mouse_y > 16) ? s_mouse_y - 16 : 10;
-                        else if (dir == 'B') s_mouse_y = (s_mouse_y < BTRON_SCREEN_H - 20) ? s_mouse_y + 16 : BTRON_SCREEN_H - 20;
-                        else if (dir == 'C') s_mouse_x = (s_mouse_x < BTRON_SCREEN_W - 20) ? s_mouse_x + 16 : BTRON_SCREEN_W - 20;
-                        else if (dir == 'D') s_mouse_x = (s_mouse_x > 16) ? s_mouse_x - 16 : 10;
-                        set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
-                        EVT mev;
-                        mev.type   = EV_MOUSE_MOVE;
-                        mev.pos.x  = s_mouse_x;
-                        mev.pos.y  = s_mouse_y;
-                        mev.button = 0;
-                        mev.data   = 0;
-                        snd_evt(&mev);
-                    }
-                } else {
-                    ev.type   = EV_KEY_DOWN;
-                    ev.key    = 0x1B;
-                    ev.pos.x  = s_mouse_x;
-                    ev.pos.y  = s_mouse_y;
-                    ev.button = 0;
-                    ev.data   = 0;
-                    snd_evt(&ev);
-                    pending_redraw = 1;
-                }
-            } else {
-                if (c == '\r') c = '\n';
-                ev.type   = EV_KEY_DOWN;
-                ev.key    = (UW)(uint8_t)c;
-                ev.pos.x  = s_mouse_x;
-                ev.pos.y  = s_mouse_y;
-                ev.button = 0;
-                ev.data   = 0;
-                snd_evt(&ev);
-                pending_redraw = 1;
-            }
-        }
+        poll_uart_input(now);
 
         /* 3. Dispatch queued BTRON events */
         while (get_evt(&ev, 0) == E_OK) {
@@ -1733,12 +1751,51 @@ static inline int32_t mouse_accelerate_subpixel_raw(int32_t raw, int32_t *subpix
  * context only — never in the ISR.
  * ───────────────────────────────────────────────────────────────── */
 
-/* One decoded keyboard report -> KEY_DOWN/KEY_UP events + repeat arming. */
+static uint8_t s_prev_kbd_keys[6] = {0};
+
+/* 6-Key Rollover (6KRO) decoded keyboard report -> KEY_DOWN/KEY_UP events + repeat arming. */
 static void kbd_report_to_events(const usb_kbd_report_t *rep, uint32_t now_us) {
-    uint8_t scancode = rep->keys[0];
-    if (scancode != 0) {
-        if (scancode != g_prev_kbd_scancode) {
-            uint32_t k = dwc2_usb_to_btron_key(scancode, rep->modifiers);
+    if (!rep) return;
+
+    /* 1. Detect released keys: present in s_prev_kbd_keys but missing from rep->keys */
+    for (int i = 0; i < 6; i++) {
+        uint8_t old_k = s_prev_kbd_keys[i];
+        if (old_k == 0) continue;
+        bool still_down = false;
+        for (int j = 0; j < 6; j++) {
+            if (rep->keys[j] == old_k) {
+                still_down = true;
+                break;
+            }
+        }
+        if (!still_down) {
+            uint32_t k = dwc2_usb_to_btron_key(old_k, 0);
+            if (k != 0) {
+                EVT ev;
+                ev.type   = EV_KEY_UP;
+                ev.key    = k;
+                ev.data   = 0;
+                ev.pos.x  = s_mouse_x;
+                ev.pos.y  = s_mouse_y;
+                ev.button = 0;
+                snd_evt(&ev);
+            }
+        }
+    }
+
+    /* 2. Detect newly pressed keys: present in rep->keys but missing from s_prev_kbd_keys */
+    for (int i = 0; i < 6; i++) {
+        uint8_t new_k = rep->keys[i];
+        if (new_k == 0) continue;
+        bool was_down = false;
+        for (int j = 0; j < 6; j++) {
+            if (s_prev_kbd_keys[j] == new_k) {
+                was_down = true;
+                break;
+            }
+        }
+        if (!was_down) {
+            uint32_t k = dwc2_usb_to_btron_key(new_k, rep->modifiers);
             if (k != 0) {
                 uint16_t bmod = usb_to_btron_modifiers(rep->modifiers);
                 EVT ev;
@@ -1751,32 +1808,37 @@ static void kbd_report_to_events(const usb_kbd_report_t *rep, uint32_t now_us) {
                 snd_evt(&ev);
                 s_async_rt_stats.key_enqueue_us = now_us;
 
-                /* Arm hardware-like responsive key repeat */
-                s_held_kbd_scancode = scancode;
+                /* Arm hardware-like responsive key repeat for latest pressed key */
+                s_held_kbd_scancode = new_k;
                 s_held_kbd_modifiers = rep->modifiers;
                 s_key_press_time_us = now_us;
                 s_key_last_repeat_us = now_us;
             }
         }
-    } else {
-        if (g_prev_kbd_scancode != 0) {
-            uint32_t k = dwc2_usb_to_btron_key(g_prev_kbd_scancode, 0);
-            if (k != 0) {
-                EVT ev;
-                ev.type   = EV_KEY_UP;
-                ev.key    = k;
-                ev.data   = 0;
-                ev.pos.x  = s_mouse_x;
-                ev.pos.y  = s_mouse_y;
-                ev.button = 0;
-                snd_evt(&ev);
+    }
+
+    /* 3. Disarm or retarget key repeat if held key is no longer pressed */
+    if (s_held_kbd_scancode != 0) {
+        bool held_found = false;
+        for (int i = 0; i < 6; i++) {
+            if (rep->keys[i] == s_held_kbd_scancode) {
+                held_found = true;
+                break;
             }
-            /* Disarm key repeat */
-            s_held_kbd_scancode = 0;
-            s_held_kbd_modifiers = 0;
+        }
+        if (!held_found) {
+            s_held_kbd_scancode = rep->keys[0];
+            s_held_kbd_modifiers = rep->modifiers;
+            s_key_press_time_us = now_us;
+            s_key_last_repeat_us = now_us;
         }
     }
-    g_prev_kbd_scancode = scancode;
+
+    /* 4. Update previous keys snapshot */
+    for (int i = 0; i < 6; i++) {
+        s_prev_kbd_keys[i] = rep->keys[i];
+    }
+    g_prev_kbd_scancode = rep->keys[0];
 }
 
 /* Key auto-repeat timer for the currently held key. */
@@ -1829,13 +1891,13 @@ static void mouse_motion_apply(int32_t rdx, int32_t rdy) {
     s_mouse_y = (H)ny;
     set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
 
-    if (pos_changed) {
+    if (pos_changed || move_x != 0 || move_y != 0) {
         EVT ev;
         ev.type   = EV_MOUSE_MOVE;
         ev.pos.x  = s_mouse_x;
         ev.pos.y  = s_mouse_y;
         ev.button = (g_prev_mouse_btns & 1u) ? 1 : ((g_prev_mouse_btns & 2u) ? 2 : ((g_prev_mouse_btns & 4u) ? 3 : 0));
-        ev.data   = 0;
+        ev.data   = (VW)(((uint32_t)(uint16_t)(int16_t)move_x) | ((uint32_t)(uint16_t)(int16_t)move_y << 16));
         snd_evt(&ev);
     }
 }

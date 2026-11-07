@@ -59,6 +59,9 @@ int v3d_emit_primitive_batch(int prim_type, int shader_type, const v3d_vertex_t 
 /* Set hardware tile clip / viewport */
 int v3d_set_viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
 
+/* Set dynamic render target buffer (VC4 framebuffer or window surface) */
+int v3d_set_render_target(void *pixel_buf);
+
 /* Upload texture to V3D VRAM */
 int v3d_upload_texture(uint32_t tex_id, const void *pixels, uint32_t width, uint32_t height);
 

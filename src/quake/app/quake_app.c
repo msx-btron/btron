@@ -66,7 +66,6 @@ static void quake_task_fn(VW exinf) {
      */
     while (!s_shutdown_req) {
         if (s_quake_wnd) {
-            SV_ServerFrame(1.0f / 60.0f); /* advance physics 1 tick */
             inval_wnd(s_quake_wnd);
         }
         dly_tsk(16);  /* ~60 FPS */
@@ -102,7 +101,6 @@ static void quake_paint(WND *wnd, GDEV *dev) {
         R_Resize(dev->width, dev->height);
     }
 
-#if defined(BTRON_PS2_TARGET)
     static SYSTIME s_quake_last_paint = 0;
     SYSTIME qnow = 0;
     get_tim(&qnow);
@@ -115,22 +113,6 @@ static void quake_paint(WND *wnd, GDEV *dev) {
     }
     s_quake_last_paint = qnow;
     SV_ServerFrame(qdt);
-#else
-    if (s_quake_tskid == 0) {
-        static SYSTIME s_quake_last_paint = 0;
-        SYSTIME qnow = 0;
-        get_tim(&qnow);
-        float qdt = 1.0f / 60.0f;
-        if (s_quake_last_paint > 0 && qnow > s_quake_last_paint) {
-            uint32_t diff_ms = (uint32_t)(qnow - s_quake_last_paint);
-            qdt = (float)(int)diff_ms / 1000.0f;
-            if (qdt > 0.1f) qdt = 0.1f;
-            if (qdt < 0.001f) qdt = 0.001f;
-        }
-        s_quake_last_paint = qnow;
-        SV_ServerFrame(qdt);
-    }
-#endif
 
     R_BeginFrame();
     R_RenderView();

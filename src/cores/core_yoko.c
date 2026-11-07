@@ -251,39 +251,70 @@ static int usb_poll_devices(GDEV *screen) {
     (void)screen;
     int activity = 0;
 
-    /* 1. Poll USB HID Keyboard from DWC2 */
+    /* 1. Poll USB HID Keyboard from DWC2 (6-Key Rollover) */
+    static uint8_t s_prev_yoko_keys[6] = {0};
     usb_kbd_report_t kbd_rep;
     if (dwc2_poll_keyboard(&kbd_rep) > 0) {
-        uint8_t scancode = kbd_rep.keys[0];
         uint16_t bmod = usb_to_btron_modifiers(kbd_rep.modifiers);
-        if (scancode != 0) {
-            uint32_t k = dwc2_usb_to_btron_key(scancode, kbd_rep.modifiers);
-            if (k != 0) {
-                EVT ev;
-                ev.type   = EV_KEY_DOWN;
-                ev.key    = k;
-                ev.data   = (VW)(uintptr_t)bmod;
-                ev.pos.x  = s_mouse_x;
-                ev.pos.y  = s_mouse_y;
-                ev.button = 0;
-                snd_evt(&ev);
-                activity = 1;
+
+        /* Detect released keys */
+        for (int i = 0; i < 6; i++) {
+            uint8_t old_k = s_prev_yoko_keys[i];
+            if (old_k == 0) continue;
+            bool still_down = false;
+            for (int j = 0; j < 6; j++) {
+                if (kbd_rep.keys[j] == old_k) {
+                    still_down = true;
+                    break;
+                }
             }
-        } else if (g_prev_kbd_scancode != 0) {
-            uint32_t k = dwc2_usb_to_btron_key(g_prev_kbd_scancode, 0);
-            if (k != 0) {
-                EVT ev;
-                ev.type   = EV_KEY_UP;
-                ev.key    = k;
-                ev.data   = 0;
-                ev.pos.x  = s_mouse_x;
-                ev.pos.y  = s_mouse_y;
-                ev.button = 0;
-                snd_evt(&ev);
-                activity = 1;
+            if (!still_down) {
+                uint32_t k = dwc2_usb_to_btron_key(old_k, 0);
+                if (k != 0) {
+                    EVT ev;
+                    ev.type   = EV_KEY_UP;
+                    ev.key    = k;
+                    ev.data   = 0;
+                    ev.pos.x  = s_mouse_x;
+                    ev.pos.y  = s_mouse_y;
+                    ev.button = 0;
+                    snd_evt(&ev);
+                    activity = 1;
+                }
             }
         }
-        g_prev_kbd_scancode = scancode;
+
+        /* Detect newly pressed keys */
+        for (int i = 0; i < 6; i++) {
+            uint8_t new_k = kbd_rep.keys[i];
+            if (new_k == 0) continue;
+            bool was_down = false;
+            for (int j = 0; j < 6; j++) {
+                if (s_prev_yoko_keys[j] == new_k) {
+                    was_down = true;
+                    break;
+                }
+            }
+            if (!was_down) {
+                uint32_t k = dwc2_usb_to_btron_key(new_k, kbd_rep.modifiers);
+                if (k != 0) {
+                    EVT ev;
+                    ev.type   = EV_KEY_DOWN;
+                    ev.key    = k;
+                    ev.data   = (VW)(uintptr_t)bmod;
+                    ev.pos.x  = s_mouse_x;
+                    ev.pos.y  = s_mouse_y;
+                    ev.button = 0;
+                    snd_evt(&ev);
+                    activity = 1;
+                }
+            }
+        }
+
+        for (int i = 0; i < 6; i++) {
+            s_prev_yoko_keys[i] = kbd_rep.keys[i];
+        }
+        g_prev_kbd_scancode = kbd_rep.keys[0];
     }
 
     /* 2. Poll USB HID Mouse from DWC2 */

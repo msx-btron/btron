@@ -15,6 +15,7 @@ extern gl_ops_t g_v3d_ops;
 
 void v3d_backend_init(int width, int height, void *pixel_buf);
 void v3d_backend_resize(int width, int height, void *pixel_buf);
+void v3d_backend_make_current(int width, int height, void *pixel_buf);
 
 #endif /* BTRON_GL_BACKEND_V3D_H */
 

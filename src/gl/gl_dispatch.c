@@ -30,6 +30,9 @@ __attribute__((weak)) void v3d_backend_init(int width, int height, void *pixel_b
 __attribute__((weak)) void v3d_backend_resize(int width, int height, void *pixel_buf) {
     (void)width; (void)height; (void)pixel_buf;
 }
+__attribute__((weak)) void v3d_backend_make_current(int width, int height, void *pixel_buf) {
+    (void)width; (void)height; (void)pixel_buf;
+}
 #endif
 
 GL_BACKEND gl_active_backend(void) {

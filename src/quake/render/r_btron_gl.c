@@ -473,16 +473,16 @@ void R_RenderView(void) {
         int hp  = (g_prvm.num_edicts >= 2) ? (int)EF(&g_prvm.edicts[1], F_HEALTH)      : 100;
         int amm = (g_prvm.num_edicts >= 2) ? (int)EF(&g_prvm.edicts[1], F_CURRENTAMMO) : 25;
 
-        tkl_snprintf(hbuf, sizeof(hbuf), "ARMOR: 0");
+        snprintf(hbuf, sizeof(hbuf), "ARMOR: 0");
         Draw_String(16, s_vid_height - 28, hbuf);
 
-        tkl_snprintf(hbuf, sizeof(hbuf), "HEALTH: %d", hp > 0 ? hp : 0);
+        snprintf(hbuf, sizeof(hbuf), "HEALTH: %d", hp > 0 ? hp : 0);
         Draw_String(105, s_vid_height - 28, hbuf);
 
-        tkl_snprintf(hbuf, sizeof(hbuf), "AMMO: %d", amm > 0 ? amm : 0);
+        snprintf(hbuf, sizeof(hbuf), "AMMO: %d", amm > 0 ? amm : 0);
         Draw_String(215, s_vid_height - 28, hbuf);
 
-        tkl_snprintf(hbuf, sizeof(hbuf), "WEAPON: %s", Player_WeaponName());
+        snprintf(hbuf, sizeof(hbuf), "WEAPON: %s", Player_WeaponName());
         Draw_String(310, s_vid_height - 28, hbuf);
 
         if (s_vid_width >= 540) {
@@ -515,7 +515,7 @@ void R_RenderView(void) {
     {
         char wm[64];
         const char *bname = gl_backend_name(gl_active_backend());
-        tkl_snprintf(wm, sizeof(wm), "QUAKE BTRON 3D (OpenGL ES / %s)", bname ? bname : "GL");
+        snprintf(wm, sizeof(wm), "QUAKE BTRON 3D (OpenGL ES / %s)", bname ? bname : "GL");
         Draw_String(12, 12, wm);
     }
     Draw_Fill(s_vid_width - 180, 8, 82, 18, g_menu_active ? 0x8C2020 : 0x2A2420);

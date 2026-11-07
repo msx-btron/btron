@@ -23,6 +23,14 @@
 #define V3D_CL_BIN_SIZE         (64 * 1024)    /* 64 KB binning command list */
 #define V3D_CL_RENDER_SIZE      (64 * 1024)    /* 64 KB rendering command list */
 #define V3D_VERTEX_BUF_SIZE     (64 * 1024)    /* 64 KB vertex streaming buffer */
+#define V3D_MAX_TEXTURES        64
+#define V3D_TEX_CACHE_SIZE      (256 * 1024)   /* 256 KB texture scratch pool */
+
+typedef struct {
+    uint32_t width;
+    uint32_t height;
+    uint32_t phys_addr;
+} v3d_tex_entry_t;
 
 typedef struct {
     uint32_t flags;
@@ -46,8 +54,17 @@ static uint8_t s_v3d_cl_render[V3D_CL_RENDER_SIZE]
 static uint8_t s_v3d_vertex_buf[V3D_VERTEX_BUF_SIZE]
     __attribute__((section(".btron.nocache"), aligned(64)));
 
+static uint8_t s_v3d_tex_pool[V3D_TEX_CACHE_SIZE]
+    __attribute__((section(".btron.nocache"), aligned(64)));
+
 static v3d_shader_record_t s_v3d_shader_records[V3D_SHADER_COUNT]
     __attribute__((section(".btron.nocache"), aligned(64)));
+
+static v3d_tex_entry_t s_v3d_textures[V3D_MAX_TEXTURES];
+static size_t   s_v3d_tex_pool_offset = 0;
+
+extern uint32_t *g_pi_fb_ptr;
+static uint32_t s_render_target_phys = 0x3C100000u;
 
 static uint32_t s_vp_x = 0;
 static uint32_t s_vp_y = 0;
@@ -116,7 +133,7 @@ int v3d_clear(uint32_t color, uint32_t width, uint32_t height) {
     uint8_t *rnd_p = s_v3d_cl_render;
     *rnd_p++ = V3D42_TILE_RENDERING_MODE_CFG;
     /* Tile Rendering Mode Configuration Payload */
-    *(uint32_t *)rnd_p = 0x3C100000u; rnd_p += 4; /* GPU Framebuffer VRAM */
+    *(uint32_t *)rnd_p = s_render_target_phys; rnd_p += 4; /* Dynamic Render Target (GPU FB / Window Surface) */
     *(uint16_t *)rnd_p = (uint16_t)width; rnd_p += 2;
     *(uint16_t *)rnd_p = (uint16_t)height; rnd_p += 2;
     *rnd_p++ = 0x04; /* RGBA8888 */
@@ -179,11 +196,39 @@ int v3d_set_viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
     return 0;
 }
 
+int v3d_set_render_target(void *pixel_buf) {
+    if (pixel_buf) {
+        s_render_target_phys = (uint32_t)(uintptr_t)pixel_buf & 0x3FFFFFFF;
+    } else if (g_pi_fb_ptr) {
+        s_render_target_phys = (uint32_t)(uintptr_t)g_pi_fb_ptr & 0x3FFFFFFF;
+    } else {
+        s_render_target_phys = 0x3C100000u;
+    }
+    return 0;
+}
+
 int v3d_upload_texture(uint32_t tex_id, const void *pixels, uint32_t width, uint32_t height) {
-    (void)pixels;
+    if (tex_id >= V3D_MAX_TEXTURES) {
+        tex_id = 0;
+    }
     s_active_tex_id = tex_id;
     s_active_tex_w = width;
     s_active_tex_h = height;
+
+    if (pixels && width > 0 && height > 0) {
+        size_t bytes = (size_t)width * height * 4;
+        if (s_v3d_tex_pool_offset + bytes > V3D_TEX_CACHE_SIZE) {
+            s_v3d_tex_pool_offset = 0;
+        }
+        if (bytes <= V3D_TEX_CACHE_SIZE) {
+            uint8_t *dst = &s_v3d_tex_pool[s_v3d_tex_pool_offset];
+            tkl_memcpy(dst, pixels, bytes);
+            s_v3d_textures[tex_id].phys_addr = (uint32_t)(uintptr_t)dst;
+            s_v3d_textures[tex_id].width = width;
+            s_v3d_textures[tex_id].height = height;
+            s_v3d_tex_pool_offset = (s_v3d_tex_pool_offset + bytes + 63) & ~63;
+        }
+    }
     return 0;
 }
 
@@ -251,7 +296,11 @@ int v3d_emit_primitive_batch(int prim_type, int shader_type, const v3d_vertex_t 
     v3d_shader_record_t *rec = &s_v3d_shader_records[shader_type];
     rec->flags = 0;
     rec->fs_code_addr = v3d_qpu_get_shader_phys((v3d_shader_type_t)shader_type);
-    rec->uniforms_addr = 0;
+    if (shader_type == V3D_SHADER_TEXTURE_MODULATE && s_active_tex_id < V3D_MAX_TEXTURES) {
+        rec->uniforms_addr = s_v3d_textures[s_active_tex_id].phys_addr;
+    } else {
+        rec->uniforms_addr = 0;
+    }
     rec->attr_array_addr = (uint32_t)(uintptr_t)&s_v3d_vertex_buf[vert_offset];
     rec->attr_size = (uint32_t)sizeof(v3d_vertex_t);
     rec->attr_stride = (uint32_t)sizeof(v3d_vertex_t);
@@ -296,7 +345,7 @@ int v3d_flush(void) {
     /* Build Thread 0 (Rendering) Control List */
     uint8_t *rnd_p = s_v3d_cl_render;
     *rnd_p++ = V3D42_TILE_RENDERING_MODE_CFG;
-    *(uint32_t *)rnd_p = 0x3C100000u; rnd_p += 4; /* GPU Framebuffer VRAM */
+    *(uint32_t *)rnd_p = s_render_target_phys; rnd_p += 4; /* Dynamic Render Target (GPU FB / Window Surface) */
     *(uint16_t *)rnd_p = (uint16_t)s_vp_w; rnd_p += 2;
     *(uint16_t *)rnd_p = (uint16_t)s_vp_h; rnd_p += 2;
     *rnd_p++ = 0x04; /* RGBA8888 */

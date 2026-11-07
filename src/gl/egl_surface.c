@@ -10,6 +10,7 @@
 #include "backend_virgl.h"
 #if defined(BTRON_GL_BACKEND_TINYGL)
 #include "backend_tinygl.h"
+#include "backend_v3d.h"
 #endif
 #if defined(BTRON_PS2_TARGET)
 #include "backend_eegs.h"
@@ -232,6 +233,12 @@ void egl_make_current(EGL_SURFACE *surf) {
     surf->width  = surf->wnd->dev->width;
     surf->height = surf->wnd->dev->height;
 #if defined(BTRON_GL_BACKEND_TINYGL)
+    if (gl_active_backend() == GL_BACKEND_V3D) {
+        v3d_backend_make_current(surf->width, surf->height, surf->pixels);
+        tinygl_backend_make_current_ctx(&surf->gl_ctx, surf->width, surf->height,
+                                        surf->pixels);
+        return;
+    }
     if (gl_tinygl_pipeline()) {
 #if defined(BTRON_PS2_TARGET)
         if (surf->wnd && surf->wnd->gl_layer) {

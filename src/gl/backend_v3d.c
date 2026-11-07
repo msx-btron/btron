@@ -40,6 +40,7 @@
 static inline int v3d_is_available(void) { return 0; }
 static inline int v3d_clear(uint32_t c, uint32_t w, uint32_t h) { (void)c; (void)w; (void)h; return 0; }
 static inline int v3d_set_viewport(uint32_t x, uint32_t y, uint32_t w, uint32_t h) { (void)x; (void)y; (void)w; (void)h; return 0; }
+static inline int v3d_set_render_target(void *p) { (void)p; return 0; }
 static inline int v3d_upload_texture(uint32_t id, const void *p, uint32_t w, uint32_t h) { (void)id; (void)p; (void)w; (void)h; return 0; }
 static inline int v3d_flush(void) { return 0; }
 typedef struct {
@@ -703,7 +704,10 @@ static void v3d_gl_viewport(GLint x, GLint y, GLsizei w, GLsizei h) {
     }
 }
 
+static GLuint s_cur_tex_id = 0;
+
 static void v3d_gl_bind_texture(GLenum target, GLuint texture) {
+    s_cur_tex_id = texture;
 #if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
     if (v3d_is_available()) {
         v3d_upload_texture(texture, NULL, 0, 0);
@@ -719,7 +723,7 @@ static void v3d_gl_tex_image_2d(GLenum target, GLint level, GLint components,
                                 GLenum format, GLenum type, const void *pixels) {
 #if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
     if (v3d_is_available()) {
-        v3d_upload_texture(0, pixels, (uint32_t)width, (uint32_t)height);
+        v3d_upload_texture(s_cur_tex_id, pixels, (uint32_t)width, (uint32_t)height);
     }
 #endif
     if (g_tinygl_ops.gl_tex_image_2d) {
@@ -804,6 +808,13 @@ void v3d_backend_init(int width, int height, void *pixel_buf) {
     g_v3d_ops.gl_tex_image_2d = v3d_gl_tex_image_2d;
     g_v3d_ops.swap_buffers    = v3d_gl_swap_buffers;
 
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+    if (v3d_is_available()) {
+        v3d_set_viewport(0, 0, (uint32_t)width, (uint32_t)height);
+        v3d_set_render_target(pixel_buf);
+    }
+#endif
+
     uart_puts_raw("[GL] v3d: VideoCore VI hardware acceleration pipeline ready\n");
 }
 
@@ -813,5 +824,27 @@ void v3d_backend_resize(int width, int height, void *pixel_buf) {
     s_v3d_pixel_buf = pixel_buf;
     s_vp_w = width;
     s_vp_h = height;
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+    if (v3d_is_available()) {
+        v3d_set_viewport((uint32_t)s_vp_x, (uint32_t)s_vp_y, (uint32_t)width, (uint32_t)height);
+        v3d_set_render_target(pixel_buf);
+    }
+#endif
     tinygl_backend_resize(width, height, pixel_buf);
+}
+
+void v3d_backend_make_current(int width, int height, void *pixel_buf) {
+    s_v3d_w = width;
+    s_v3d_h = height;
+    s_v3d_pixel_buf = pixel_buf;
+    s_vp_x = 0;
+    s_vp_y = 0;
+    s_vp_w = width;
+    s_vp_h = height;
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+    if (v3d_is_available()) {
+        v3d_set_viewport(0, 0, (uint32_t)width, (uint32_t)height);
+        v3d_set_render_target(pixel_buf);
+    }
+#endif
 }

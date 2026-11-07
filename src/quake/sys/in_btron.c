@@ -59,17 +59,29 @@ void IN_Btron_HandleEvent(WND *wnd, const EVT *evt) {
         break;
 
     case EV_MOUSE_MOVE:
-        if (!s_mouse_init) {
-            s_last_mx = evt->pos.x;
-            s_last_my = evt->pos.y;
-            s_mouse_init = 1;
-            break;
-        }
         {
-            float dx = (float)(evt->pos.x - s_last_mx);
-            float dy = (float)(evt->pos.y - s_last_my);
-            s_last_mx = evt->pos.x;
-            s_last_my = evt->pos.y;
+            float dx = 0.0f, dy = 0.0f;
+            if (evt->data != 0) {
+                uintptr_t d = (uintptr_t)evt->data;
+                int16_t rdx = (int16_t)(d & 0xFFFF);
+                int16_t rdy = (int16_t)((d >> 16) & 0xFFFF);
+                dx = (float)rdx;
+                dy = (float)rdy;
+                s_last_mx = evt->pos.x;
+                s_last_my = evt->pos.y;
+                s_mouse_init = 1;
+            } else {
+                if (!s_mouse_init) {
+                    s_last_mx = evt->pos.x;
+                    s_last_my = evt->pos.y;
+                    s_mouse_init = 1;
+                    break;
+                }
+                dx = (float)(evt->pos.x - s_last_mx);
+                dy = (float)(evt->pos.y - s_last_my);
+                s_last_mx = evt->pos.x;
+                s_last_my = evt->pos.y;
+            }
 
             if (!g_menu_active && !g_console_active) {
                 if (dx > 80.0f)  dx = 80.0f;
