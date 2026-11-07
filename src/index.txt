@@ -1,0 +1,78 @@
+├── kernel/{t-kernel,clean-room}
+├── cores/{pc98,eufi,ps2,smp,posix,pi4}
+├── fs/{bfsv1,bfsv2,chokanji}
+├── drivers/{pc98,eufi,ps2}
+├── desktop/{tip,vobject,window,font,graphics}
+├── apps/{be,sc,tv,sh}
+├── media/{daw,sdr}
+├── emulators/{msx,bx8}
+└── languages/{forth,ms,cc}
+
+├── kernel/
+├── cores/
+├── fs/
+├── drivers/
+│   ├── bcm283x/
+│   ├── m68k/
+│   ├── mips/
+│   ├── pc98/
+│   ├── ps2/
+│   ├── uefi/
+│   ├── vesa/
+│   └── virtio/
+├── apps/
+│   ├── chat/
+│   ├── cabinet/
+│   ├── clarity/
+│   ├── browser/
+│   ├── review/
+│   ├── editor/
+│   ├── workbench/
+│   ├── volumes/
+│   ├── clock/
+│   ├── preferences/
+│   ├── terminal/
+│   ├── chokanji/
+│   └── clu/
+│       ├── be/
+│       ├── sc/
+│       ├── sh/
+│       └── tv/
+├── media/
+│   ├── cassette/
+│   ├── paint/
+│   ├── orchestra/
+│   ├── msx/
+│   ├── xmb/
+│   ├── sdk/
+│   └── quake/
+├── emulators/
+│   ├── amiga/
+│   ├── bx8/
+│   ├── msx/
+│   └── sega/
+├── tools/
+├── languages/
+│   ├── forth/
+│   ├── microscript/
+│   └── sh/
+└── desktop/
+    ├── font/
+    ├── graphics/
+    │   ├── eegs/
+    │   ├── virgl/
+    │   ├── v3d/
+    │   ├── gles/
+    │   └── tinygl/
+    ├── industrial/
+    │   ├── segui/
+    │   └── hmi/
+    ├── settings/
+    ├── tip/
+    │   ├── tibetan/
+    │   ├── japanese/
+    │   ├── mandarin/
+    │   ├── sanskrit/
+    │   └── ukrainian/
+    ├── vobject/
+    └── window/

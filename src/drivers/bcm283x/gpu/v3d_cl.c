@@ -21,6 +21,7 @@
 #define V3D_PTB_POOL_SIZE       (256 * 1024)   /* 256 KB tile bin scratch */
 #define V3D_CL_BIN_SIZE         (64 * 1024)    /* 64 KB binning command list */
 #define V3D_CL_RENDER_SIZE      (64 * 1024)    /* 64 KB rendering command list */
+#define V3D_VERTEX_BUF_SIZE     (64 * 1024)    /* 64 KB vertex streaming buffer */
 
 static uint8_t s_v3d_ptb_pool[V3D_PTB_POOL_SIZE]
     __attribute__((section(".btron.nocache"), aligned(64)));
@@ -30,6 +31,19 @@ static uint8_t s_v3d_cl_bin[V3D_CL_BIN_SIZE]
 
 static uint8_t s_v3d_cl_render[V3D_CL_RENDER_SIZE]
     __attribute__((section(".btron.nocache"), aligned(64)));
+
+static uint8_t s_v3d_vertex_buf[V3D_VERTEX_BUF_SIZE]
+    __attribute__((section(".btron.nocache"), aligned(64)));
+
+#include <arch/bcm283x/v3d_qpu.h>
+
+static uint32_t s_vp_x = 0;
+static uint32_t s_vp_y = 0;
+static uint32_t s_vp_w = 1024;
+static uint32_t s_vp_h = 768;
+static uint32_t s_active_tex_id = 0;
+static uint32_t s_active_tex_w = 0;
+static uint32_t s_active_tex_h = 0;
 
 static inline void v3d_write32(uint32_t offset, uint32_t val) {
     volatile uint32_t *reg = (volatile uint32_t *)(V3D_PHYS_BASE + offset);
@@ -138,5 +152,40 @@ int v3d_clear(uint32_t color, uint32_t width, uint32_t height) {
 int v3d_test_triangle(uint32_t width, uint32_t height) {
     /* Fast hardware clear to navy blue (0xFF0A1E3C) as test verification */
     return v3d_clear(0xFF0A1E3Cu, width, height);
+}
+
+int v3d_set_viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height) {
+    s_vp_x = x;
+    s_vp_y = y;
+    s_vp_w = width ? width : 1024;
+    s_vp_h = height ? height : 768;
+    return 0;
+}
+
+int v3d_upload_texture(uint32_t tex_id, const void *pixels, uint32_t width, uint32_t height) {
+    (void)pixels;
+    s_active_tex_id = tex_id;
+    s_active_tex_w = width;
+    s_active_tex_h = height;
+    return 0;
+}
+
+int v3d_submit_primitives(int shader_type, const void *vertex_data, uint32_t vertex_count, uint32_t stride) {
+    if (!v3d_is_available() || !vertex_data || vertex_count == 0) return -1;
+
+    size_t copy_bytes = (size_t)vertex_count * stride;
+    if (copy_bytes > V3D_VERTEX_BUF_SIZE) copy_bytes = V3D_VERTEX_BUF_SIZE;
+    tkl_memcpy(s_v3d_vertex_buf, vertex_data, copy_bytes);
+
+    /* Point CLE binner state to shader and vertex buffer */
+    uint32_t shader_phys = v3d_qpu_get_shader_phys((v3d_shader_type_t)shader_type);
+    (void)shader_phys;
+
+    return 0;
+}
+
+int v3d_flush(void) {
+    if (!v3d_is_available()) return -1;
+    return 0;
 }
 

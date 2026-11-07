@@ -57,6 +57,57 @@ static void v3d_gl_clear(GLbitfield mask) {
     }
 }
 
+static void v3d_gl_viewport(GLint x, GLint y, GLsizei w, GLsizei h) {
+    s_v3d_w = w;
+    s_v3d_h = h;
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+    if (v3d_is_available()) {
+        v3d_set_viewport((uint32_t)x, (uint32_t)y, (uint32_t)w, (uint32_t)h);
+    }
+#else
+    (void)x; (void)y;
+#endif
+    if (g_tinygl_ops.gl_viewport) {
+        g_tinygl_ops.gl_viewport(x, y, w, h);
+    }
+}
+
+static void v3d_gl_bind_texture(GLenum target, GLuint texture) {
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+    if (v3d_is_available()) {
+        v3d_upload_texture(texture, NULL, 0, 0);
+    }
+#endif
+    if (g_tinygl_ops.gl_bind_texture) {
+        g_tinygl_ops.gl_bind_texture(target, texture);
+    }
+}
+
+static void v3d_gl_tex_image_2d(GLenum target, GLint level, GLint components,
+                                GLsizei width, GLsizei height, GLint border,
+                                GLenum format, GLenum type, const void *pixels) {
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+    if (v3d_is_available()) {
+        v3d_upload_texture(0, pixels, (uint32_t)width, (uint32_t)height);
+    }
+#endif
+    if (g_tinygl_ops.gl_tex_image_2d) {
+        g_tinygl_ops.gl_tex_image_2d(target, level, components, width, height,
+                                    border, format, type, pixels);
+    }
+}
+
+static void v3d_gl_swap_buffers(void) {
+#if defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+    if (v3d_is_available()) {
+        v3d_flush();
+    }
+#endif
+    if (g_tinygl_ops.swap_buffers) {
+        g_tinygl_ops.swap_buffers();
+    }
+}
+
 gl_ops_t g_v3d_ops;
 
 void v3d_backend_init(int width, int height, void *pixel_buf) {
@@ -70,8 +121,12 @@ void v3d_backend_init(int width, int height, void *pixel_buf) {
     g_v3d_ops = g_tinygl_ops;
 
     /* Override with hardware accelerated operations */
-    g_v3d_ops.gl_clear_color = v3d_gl_clear_color;
-    g_v3d_ops.gl_clear       = v3d_gl_clear;
+    g_v3d_ops.gl_clear_color  = v3d_gl_clear_color;
+    g_v3d_ops.gl_clear        = v3d_gl_clear;
+    g_v3d_ops.gl_viewport     = v3d_gl_viewport;
+    g_v3d_ops.gl_bind_texture = v3d_gl_bind_texture;
+    g_v3d_ops.gl_tex_image_2d = v3d_gl_tex_image_2d;
+    g_v3d_ops.swap_buffers    = v3d_gl_swap_buffers;
 
     uart_puts_raw("[GL] v3d: VideoCore VI hardware acceleration pipeline ready\n");
 }

@@ -509,7 +509,8 @@ ARCH_BCM64_SRCS = $(ARCH_BCM_SRCS) \
                   src/drivers/bcm283x/usb/xhci.c \
                   src/drivers/bcm283x/dma/bcm2711_dma.c \
                   src/drivers/bcm283x/gpu/v3d_init.c \
-                  src/drivers/bcm283x/gpu/v3d_cl.c
+                  src/drivers/bcm283x/gpu/v3d_cl.c \
+                  src/drivers/bcm283x/gpu/v3d_qpu.c
 
 TKERNEL_SAKAMURA_SRCS = \
     src/kernel/task.c         \

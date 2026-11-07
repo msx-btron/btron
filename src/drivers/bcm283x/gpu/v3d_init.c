@@ -13,6 +13,7 @@
 
 #include <arch/bcm283x/v3d_regs.h>
 #include <arch/bcm283x/v3d.h>
+#include <arch/bcm283x/v3d_qpu.h>
 #include <btron/arm64_mem.h>
 #include <btron/libc_shim.h>
 
@@ -151,6 +152,8 @@ int v3d_init(void) {
         v3d_write32(V3D_SLCACTL, 0x04u);
         v3d_write32(V3D_CLE_CT0CS, V3D_CLE_CTnCS_RESET);
         v3d_write32(V3D_CLE_CT1CS, V3D_CLE_CTnCS_RESET);
+
+        v3d_qpu_init();
 
         uart_puts_raw("[V3D] VideoCore VI (V3D 4.2) hardware active!\n");
         return 0;

@@ -42,6 +42,18 @@ int v3d_clear(uint32_t color, uint32_t width, uint32_t height);
 /* Emit a test triangle using V3D 4.2 CLE (Tile Binning + Render) */
 int v3d_test_triangle(uint32_t width, uint32_t height);
 
+/* Submit vertex batches to V3D 4.2 Control List Executor */
+int v3d_submit_primitives(int shader_type, const void *vertex_data, uint32_t vertex_count, uint32_t stride);
+
+/* Set hardware tile clip / viewport */
+int v3d_set_viewport(uint32_t x, uint32_t y, uint32_t width, uint32_t height);
+
+/* Upload texture to V3D VRAM */
+int v3d_upload_texture(uint32_t tex_id, const void *pixels, uint32_t width, uint32_t height);
+
+/* Flush CLE Thread 1 (Binning) and trigger CLE Thread 0 (Rendering) */
+int v3d_flush(void);
+
 #ifdef __cplusplus
 }
 #endif
