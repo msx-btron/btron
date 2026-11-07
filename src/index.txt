@@ -1,5 +1,5 @@
-BTRON/
-├── tools/
+tools/
+src/
 ├── kernel/
 ├── cores/
 ├── fs/
