@@ -14,6 +14,7 @@
 
 #include <drivers/broadcom/bcm2711_hdmi_audio.h>
 #include <drivers/broadcom/bcm2711_dma.h>
+#include <drivers/broadcom/usb_audio_uac1.h>
 #include <drivers/virtio/virtio.h>
 #include <btron/arm64_mem.h>
 
@@ -288,25 +289,58 @@ uint32_t bcm2711_hdmi_audio_get_queued_bytes(void) {
     return s_hdmi_state.in_flight_bytes;
 }
 
-/* ── Canonical B-Audio virtio_sound_* Strong Implementations for AArch64 ── */
+/* ── Canonical B-Audio virtio_sound_* Dynamic Arbiter for AArch64 ── */
 #if defined(__aarch64__) && !defined(BTRON_HOSTED)
+
+enum {
+    B_AUDIO_BACKEND_NONE = 0,
+    B_AUDIO_BACKEND_HDMI,
+    B_AUDIO_BACKEND_USB
+};
+static int s_active_backend = B_AUDIO_BACKEND_NONE;
+
 int virtio_sound_open(uint32_t sample_rate, uint8_t channels) {
-    return bcm2711_hdmi_audio_open(sample_rate, channels);
+    /* Auto-detect: Priority 1 = Physical HDMI; Priority 2 = USB Audio Class 1.0 (UAC1) */
+    if (bcm2711_hdmi_audio_is_sink_present()) {
+        s_active_backend = B_AUDIO_BACKEND_HDMI;
+        return bcm2711_hdmi_audio_open(sample_rate, channels);
+    } else if (usb_audio_uac1_is_present()) {
+        s_active_backend = B_AUDIO_BACKEND_USB;
+        return usb_audio_uac1_open(sample_rate, channels);
+    } else {
+        /* Default fallback: attempt HDMI */
+        s_active_backend = B_AUDIO_BACKEND_HDMI;
+        return bcm2711_hdmi_audio_open(sample_rate, channels);
+    }
 }
 
 int virtio_sound_write(const int16_t *samples, size_t frames) {
+    if (s_active_backend == B_AUDIO_BACKEND_USB) {
+        return usb_audio_uac1_write(samples, frames);
+    }
     return bcm2711_hdmi_audio_write(samples, frames);
 }
 
 void virtio_sound_close(void) {
-    bcm2711_hdmi_audio_close();
+    if (s_active_backend == B_AUDIO_BACKEND_USB) {
+        usb_audio_uac1_close();
+    } else {
+        bcm2711_hdmi_audio_close();
+    }
+    s_active_backend = B_AUDIO_BACKEND_NONE;
 }
 
 bool virtio_sound_is_ready(void) {
+    if (s_active_backend == B_AUDIO_BACKEND_USB) {
+        return usb_audio_uac1_is_ready();
+    }
     return bcm2711_hdmi_audio_is_ready();
 }
 
 uint32_t virtio_sound_get_queued_bytes(void) {
+    if (s_active_backend == B_AUDIO_BACKEND_USB) {
+        return usb_audio_uac1_get_queued_bytes();
+    }
     return bcm2711_hdmi_audio_get_queued_bytes();
 }
 #endif

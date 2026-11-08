@@ -8,6 +8,7 @@
  */
 
 #include <drivers/broadcom/xhci.h>
+#include <drivers/broadcom/usb_audio_uac1.h>
 #include <btron/arm64_mem.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -105,6 +106,7 @@ static volatile xhci_trb_t * const        s_event_ring = (volatile xhci_trb_t *)
 #define DEV_CTX_BASE(slot)   ((volatile uint32_t *)(XHCI_DMA_BASE + 0x4000 + ((slot) - 1) * 0x800))
 #define EP0_RING_BASE(slot)  ((volatile xhci_trb_t *)(XHCI_DMA_BASE + 0x8000 + ((slot) - 1) * 0x1000))
 #define EP1_RING_BASE(slot)  ((volatile xhci_trb_t *)(XHCI_DMA_BASE + 0x10000 + ((slot) - 1) * 0x1000))
+#define AUDIO_RING_BASE(slot) ((volatile xhci_trb_t *)(XHCI_DMA_BASE + 0x20000 + ((slot) - 1) * 0x1000))
 
 #define DMA_SCRATCH_BUF      ((volatile uint8_t *)(XHCI_DMA_BASE + 0x18000)) /* 4KB scratch buffer */
 
@@ -135,6 +137,10 @@ static uint32_t   s_ep0_enqueue_idx[XHCI_MAX_SLOTS + 1] = {0};
 static uint32_t   s_ep0_cycle[XHCI_MAX_SLOTS + 1]       = {1, 1, 1, 1, 1, 1, 1, 1, 1};
 static uint32_t   s_ep1_enqueue_idx[XHCI_MAX_SLOTS + 1] = {0};
 static uint32_t   s_ep1_cycle[XHCI_MAX_SLOTS + 1]       = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+static uint32_t   s_audio_enqueue_idx[XHCI_MAX_SLOTS + 1] = {0};
+static uint32_t   s_audio_cycle[XHCI_MAX_SLOTS + 1]       = {1, 1, 1, 1, 1, 1, 1, 1, 1};
+static uint32_t   s_audio_dci[XHCI_MAX_SLOTS + 1]         = {0};
+static int        s_audio_slot_id                         = 0;
 
 static int s_kbd_slot_id   = 0;
 static uint32_t s_kbd_mps   = 8;
@@ -244,6 +250,12 @@ static volatile uint8_t *xhci_ep1_event_buffer(uint32_t slot_id, uint64_t event_
 
 static void xhci_handle_transfer_event(uint32_t ev_slot, uint32_t ev_epid, uint32_t ev_code,
                                        uint32_t ev_status, uint64_t ev_param) {
+    if (s_audio_slot_id != 0 && ev_slot == (uint32_t)s_audio_slot_id) {
+        extern void usb_audio_uac1_on_transfer_complete(void);
+        usb_audio_uac1_on_transfer_complete();
+        return;
+    }
+
     if (ev_slot == (uint32_t)s_kbd_slot_id && ev_epid == 3) {
         volatile uint8_t *kbuf = xhci_ep1_event_buffer(ev_slot, ev_param);
         if (!kbuf) return; /* Never recycle an ambiguous DMA buffer. */
@@ -685,6 +697,94 @@ static void xhci_queue_ep1_transfer(uint32_t slot_id, uintptr_t buf_addr, uint32
     xhci_ring_doorbell(slot_id, 3);
 }
 
+int xhci_control_transfer(uint32_t slot_id, uint8_t bmRequestType, uint8_t bRequest,
+                           uint16_t wValue, uint16_t wIndex, uint16_t wLength, void *data_buf) {
+    return xhci_ep0_control_transfer(slot_id, bmRequestType, bRequest, wValue, wIndex, wLength, data_buf);
+}
+
+int xhci_configure_audio_endpoint(uint32_t slot_id, uint8_t ep_addr, uint32_t max_packet_size, uint32_t interval) {
+    if (slot_id == 0 || slot_id > XHCI_MAX_SLOTS) return -1;
+    uint32_t ep_num = ep_addr & 0x0Fu;
+    uint32_t is_in = (ep_addr & 0x80u) ? 1u : 0u;
+    uint32_t dci = (ep_num * 2u) + is_in;
+    if (dci == 0 || dci > 31) return -1;
+
+    s_audio_dci[slot_id] = dci;
+    s_audio_slot_id = slot_id;
+    s_audio_enqueue_idx[slot_id] = 0;
+    s_audio_cycle[slot_id] = 1;
+
+    for (int i = 0; i < 2048 / 4; i++) {
+        s_input_ctx[i] = 0;
+    }
+
+    s_input_ctx[0] = 0;                        /* Drop flags */
+    s_input_ctx[1] = (1u << 0) | (1u << dci);  /* Add flags: Slot + EP DCI */
+
+    volatile uint32_t *dev_ctx = DEV_CTX_BASE(slot_id);
+    for (int i = 0; i < 8; i++) {
+        s_input_ctx[8 + i] = dev_ctx[i];
+    }
+    uint32_t cur_entries = (s_input_ctx[8] >> 27) & 0x1Fu;
+    if (cur_entries < dci) {
+        s_input_ctx[8] = (s_input_ctx[8] & ~(0x1Fu << 27)) | (dci << 27);
+    }
+
+    uint32_t ep_ctx_idx = (dci + 1) * 8;
+    volatile xhci_trb_t *audio_ring = AUDIO_RING_BASE(slot_id);
+
+    for (int t = 0; t < XHCI_RING_SIZE; t++) {
+        audio_ring[t].param = 0;
+        audio_ring[t].status = 0;
+        audio_ring[t].control = 0;
+    }
+
+    uint32_t ep_interval = (interval > 0) ? interval : 3;
+    uint32_t ep_type = is_in ? 5u : 1u; /* 1 = Isoch OUT, 5 = Isoch IN */
+    s_input_ctx[ep_ctx_idx + 0] = (ep_interval & 0xFFu) << 16;
+    s_input_ctx[ep_ctx_idx + 1] = (0u << 1 /* CErr=0 */) | (ep_type << 3) | ((max_packet_size & 0xFFFFu) << 16);
+    s_input_ctx[ep_ctx_idx + 2] = (uint32_t)(uintptr_t)audio_ring | 1u /* DCS=1 */;
+    s_input_ctx[ep_ctx_idx + 3] = (uint32_t)((uint64_t)(uintptr_t)audio_ring >> 32);
+    uint32_t payload = (max_packet_size > 0) ? max_packet_size : 192;
+    s_input_ctx[ep_ctx_idx + 4] = (payload & 0xFFFFu) | ((payload & 0xFFFFu) << 16);
+    dsb();
+
+    return xhci_cmd_submit((uint64_t)(uintptr_t)s_input_ctx, 0, XHCI_TRB_CONFIG_EP, slot_id, NULL);
+}
+
+int xhci_queue_audio_isoch_transfer(uint32_t slot_id, uint8_t ep_addr, uintptr_t buf_phys, uint32_t length) {
+    (void)ep_addr;
+    if (slot_id == 0 || slot_id > XHCI_MAX_SLOTS) return -1;
+    uint32_t dci = s_audio_dci[slot_id];
+    if (dci == 0) return -1;
+
+    volatile xhci_trb_t *ring = AUDIO_RING_BASE(slot_id);
+    uint32_t idx = s_audio_enqueue_idx[slot_id];
+    uint32_t cycle = s_audio_cycle[slot_id];
+
+    ring[idx].param = (uint64_t)buf_phys;
+    ring[idx].status = length;
+    /* XHCI_TRB_ISOCH = 10, SIA (bit 31) = Start Isoch ASAP, IOC (bit 5) */
+    ring[idx].control = (XHCI_TRB_ISOCH << 10) | (1u << 31 /* SIA */) | (1u << 5 /* IOC */) | cycle;
+    dsb();
+
+    idx++;
+    if (idx >= (XHCI_RING_SIZE - 1)) {
+        ring[idx].param = (uint64_t)(uintptr_t)ring;
+        ring[idx].status = 0;
+        ring[idx].control = (XHCI_TRB_LINK << 10) | (1u << 1 /* TC */) | cycle;
+        dsb();
+        idx = 0;
+        cycle ^= 1;
+    }
+
+    s_audio_enqueue_idx[slot_id] = idx;
+    s_audio_cycle[slot_id] = cycle;
+
+    xhci_ring_doorbell(slot_id, dci);
+    return 0;
+}
+
 /* ─────────────────────────────────────────────────────────────────
  * xHCI Controller Reset & Initialization
  * ───────────────────────────────────────────────────────────────── */
@@ -749,6 +849,13 @@ int xhci_init(uintptr_t mmio_base) {
 
     s_kbd_slot_id = 0;
     s_kbd_mps = 8;
+    s_audio_slot_id = 0;
+    for (int i = 0; i <= XHCI_MAX_SLOTS; i++) {
+        s_audio_enqueue_idx[i] = 0;
+        s_audio_cycle[i] = 1;
+        s_audio_dci[i] = 0;
+    }
+    usb_audio_uac1_init();
     for (int i = 0; i < XHCI_MAX_MICE; i++) {
         s_mice[i].slot_id = 0;
         s_mice[i].mps = 0;
@@ -1164,6 +1271,11 @@ int xhci_init(uintptr_t mmio_base) {
                     uint32_t ep1_interval = 6; /* default 8ms */
                     bool is_keyboard = false;
                     bool is_mouse = false;
+                    bool is_audio = false;
+                    uint8_t audio_if_num = 0;
+                    uint8_t audio_ep_addr = 0;
+                    uint32_t audio_ep_mps = 0;
+                    uint32_t audio_ep_interval = 1;
 
                     if (ddesc.idVendor == 0x04D9 /* Holtek Pi 400 Keyboard */) {
                         is_keyboard = true;
@@ -1171,32 +1283,51 @@ int xhci_init(uintptr_t mmio_base) {
                         ep1_mps = 8;
                         ep1_interval = 6;
                     } else {
-                        /* For external USB devices (e.g. Logitech mouse, Raspberry mouse):
+                        /* For external USB devices (e.g. Logitech mouse, USB DAC):
                          * Read 9-byte Configuration Header first to inspect true wTotalLength */
                         uint8_t cfg_hdr[9] = {0};
                         ret = xhci_ep0_control_transfer(dev_slot, 0x80, USB_REQ_GET_DESCRIPTOR, (USB_DT_CONFIGURATION << 8), 0, 9, cfg_hdr);
                         uint32_t tot_len = (ret == 0 && cfg_hdr[0] >= 9) ? ((uint32_t)cfg_hdr[2] | ((uint32_t)cfg_hdr[3] << 8)) : 0;
-                        if (tot_len > 128) tot_len = 128;
+                        if (tot_len > 256) tot_len = 256;
 
-                        uint8_t cfg_buf[128] = {0};
+                        uint8_t cfg_buf[256] = {0};
                         if (tot_len > 0) {
                             ret = xhci_ep0_control_transfer(dev_slot, 0x80, USB_REQ_GET_DESCRIPTOR, (USB_DT_CONFIGURATION << 8), 0, tot_len, cfg_buf);
                         }
 
                         uint8_t cur_if_proto = 0;
+                        uint8_t cur_if_class = 0;
+                        uint8_t cur_if_subclass = 0;
                         for (uint32_t off = 0; off + 2 <= tot_len; ) {
                             uint8_t len = cfg_buf[off];
                             uint8_t type = cfg_buf[off + 1];
                             if (len < 2 || off + len > tot_len) break;
 
                             if (type == USB_DT_INTERFACE && len >= 9) {
+                                uint8_t if_num = cfg_buf[off + 2];
+                                cur_if_class = cfg_buf[off + 5];
+                                cur_if_subclass = cfg_buf[off + 6];
                                 cur_if_proto = cfg_buf[off + 7]; /* 1=Keyboard, 2=Mouse */
-                                if (cur_if_proto == 1) is_keyboard = true;
-                                if (cur_if_proto == 2) is_mouse = true;
+                                if (cur_if_class == 0x03 /* HID */) {
+                                    if (cur_if_proto == 1) is_keyboard = true;
+                                    if (cur_if_proto == 2) is_mouse = true;
+                                } else if (cur_if_class == USB_CLASS_AUDIO &&
+                                           cur_if_subclass == USB_SUBCLASS_AUDIOSTREAMING) {
+                                    is_audio = true;
+                                    audio_if_num = if_num;
+                                }
                             } else if (type == USB_DT_ENDPOINT && len >= 7) {
                                 uint8_t ep_addr = cfg_buf[off + 2];
-                                if (ep_addr & 0x80) { /* IN endpoint */
-                                    uint32_t mps = cfg_buf[off + 4] | ((uint32_t)cfg_buf[off + 5] << 8);
+                                uint8_t ep_attr = cfg_buf[off + 3];
+                                uint32_t mps = cfg_buf[off + 4] | ((uint32_t)cfg_buf[off + 5] << 8);
+                                uint8_t interval = cfg_buf[off + 6];
+
+                                if (is_audio && !(ep_addr & 0x80) && ((ep_attr & 0x03) == 0x01)) {
+                                    /* Isochronous OUT endpoint */
+                                    audio_ep_addr = ep_addr;
+                                    audio_ep_mps = mps;
+                                    audio_ep_interval = interval;
+                                } else if (ep_addr & 0x80) { /* IN endpoint */
                                     if (mps < 4 || mps > 64) mps = 8;
 
                                     if (cur_if_proto == 2) {
@@ -1209,7 +1340,7 @@ int xhci_init(uintptr_t mmio_base) {
                                         proto = 1;
                                         ep1_mps = 8;
                                         ep1_interval = 4; /* 2 ms (500 Hz) polling */
-                                    } else if (!is_keyboard && !is_mouse) {
+                                    } else if (!is_keyboard && !is_mouse && !is_audio) {
                                         ep1_mps = mps;
                                         ep1_interval = 3; /* Default to 1 ms polling */
                                     }
@@ -1218,7 +1349,7 @@ int xhci_init(uintptr_t mmio_base) {
                             off += len;
                         }
 
-                        if (!is_keyboard && !is_mouse) {
+                        if (!is_keyboard && !is_mouse && !is_audio) {
                             if (dev_speed == 2 && !s_kbd_slot_id) {
                                 is_keyboard = true;
                                 proto = 1;
@@ -1241,54 +1372,73 @@ int xhci_init(uintptr_t mmio_base) {
                     fb_log(" proto=");
                     fb_log_dec(proto);
                     fb_log(" mps=");
-                    fb_log_dec(ep1_mps);
+                    fb_log_dec(is_audio ? audio_ep_mps : ep1_mps);
                     fb_log(" int=");
-                    fb_log_dec(ep1_interval);
+                    fb_log_dec(is_audio ? audio_ep_interval : ep1_interval);
 
                     /* Set Configuration 1 */
                     xhci_ep0_control_transfer(dev_slot, 0x00, USB_REQ_SET_CONFIGURATION, 1, 0, 0, NULL);
                     delay_us(10000); /* 10ms settle time after SET_CONFIGURATION */
 
-                    /* Configure EP1 Interrupt IN */
-                    ret = xhci_configure_hid_endpoint(dev_slot, dev_speed, ep1_interval, ep1_mps);
-                    if (ret != 0) {
-                        fb_log(" CONFIG_EP ret=");
-                        fb_log_dec((uint32_t)ret);
-                        fb_log("\n");
-                        continue;
-                    }
+                    if (is_audio) {
+                        /* Select Alternate Setting 1 for AudioStreaming interface */
+                        xhci_ep0_control_transfer(dev_slot, 0x01, USB_REQ_SET_INTERFACE, 1, audio_if_num, 0, NULL);
+                        delay_us(5000);
 
-                    /* Bind Driver based on USB HID Interface Protocol / Device ID */
-                    if (is_keyboard || proto == 1) {
-                        s_kbd_slot_id = dev_slot;
-                        s_kbd_mps = ep1_mps;
-                        fb_log(" -> keyboard\n");
-                    } else if (is_mouse || proto == 2) {
-                        if (s_num_mice < XHCI_MAX_MICE) {
-                            s_mice[s_num_mice].slot_id = dev_slot;
-                            s_mice[s_num_mice].mps = ep1_mps;
-                            for (int b = 0; b < XHCI_MOUSE_TRB_DEPTH; b++) {
-                                s_mice[s_num_mice].buf[b] = MOUSE_BUF(s_num_mice, b);
-                                for (uint32_t j = 0; j < 64; j++) s_mice[s_num_mice].buf[b][j] = 0;
-                            }
-                            /* Standard mice (PixArt 0x093A) lock to mode 1 (Standard Boot Protocol).
-                             * Logitech mice (VID 0x046D) and other HID mice start in mode 0 auto-detect. */
-                            if (ddesc.idVendor == 0x046D) {
-                                s_mice[s_num_mice].proto_mode = 0;
-                            } else if (ddesc.idVendor == 0x093A) {
-                                s_mice[s_num_mice].proto_mode = 1;
-                            } else {
-                                s_mice[s_num_mice].proto_mode = 0;
-                            }
-                            fb_log(" -> mouse ");
-                            fb_log_dec(s_num_mice + 1);
+                        ret = xhci_configure_audio_endpoint(dev_slot, audio_ep_addr,
+                                                            audio_ep_mps ? audio_ep_mps : 192,
+                                                            audio_ep_interval ? audio_ep_interval : 3);
+                        if (ret != 0) {
+                            fb_log(" CONFIG_AUDIO_EP ret=");
+                            fb_log_dec((uint32_t)ret);
                             fb_log("\n");
-                            s_num_mice++;
-                        } else {
-                            fb_log(" -> mouse, table full\n");
+                            continue;
                         }
+
+                        usb_audio_uac1_attach(dev_slot, audio_ep_addr, audio_ep_mps);
+                        fb_log(" -> USB Audio DAC (UAC1)\n");
                     } else {
-                        fb_log(" -> not bound\n");
+                        /* Configure EP1 Interrupt IN */
+                        ret = xhci_configure_hid_endpoint(dev_slot, dev_speed, ep1_interval, ep1_mps);
+                        if (ret != 0) {
+                            fb_log(" CONFIG_EP ret=");
+                            fb_log_dec((uint32_t)ret);
+                            fb_log("\n");
+                            continue;
+                        }
+
+                        /* Bind Driver based on USB HID Interface Protocol / Device ID */
+                        if (is_keyboard || proto == 1) {
+                            s_kbd_slot_id = dev_slot;
+                            s_kbd_mps = ep1_mps;
+                            fb_log(" -> keyboard\n");
+                        } else if (is_mouse || proto == 2) {
+                            if (s_num_mice < XHCI_MAX_MICE) {
+                                s_mice[s_num_mice].slot_id = dev_slot;
+                                s_mice[s_num_mice].mps = ep1_mps;
+                                for (int b = 0; b < XHCI_MOUSE_TRB_DEPTH; b++) {
+                                    s_mice[s_num_mice].buf[b] = MOUSE_BUF(s_num_mice, b);
+                                    for (uint32_t j = 0; j < 64; j++) s_mice[s_num_mice].buf[b][j] = 0;
+                                }
+                                /* Standard mice (PixArt 0x093A) lock to mode 1 (Standard Boot Protocol).
+                                 * Logitech mice (VID 0x046D) and other HID mice start in mode 0 auto-detect. */
+                                if (ddesc.idVendor == 0x046D) {
+                                    s_mice[s_num_mice].proto_mode = 0;
+                                } else if (ddesc.idVendor == 0x093A) {
+                                    s_mice[s_num_mice].proto_mode = 1;
+                                } else {
+                                    s_mice[s_num_mice].proto_mode = 0;
+                                }
+                                fb_log(" -> mouse ");
+                                fb_log_dec(s_num_mice + 1);
+                                fb_log("\n");
+                                s_num_mice++;
+                            } else {
+                                fb_log(" -> mouse, table full\n");
+                            }
+                        } else {
+                            fb_log(" -> not bound\n");
+                        }
                     }
                 }
             }
@@ -1422,7 +1572,7 @@ uint32_t xhci_kbd_bound(void) {
 }
 
 bool xhci_has_devices(void) {
-    return (s_kbd_slot_id != 0 || s_num_mice > 0);
+    return (s_kbd_slot_id != 0 || s_num_mice > 0 || s_audio_slot_id != 0);
 }
 
 #endif /* AArch64 */

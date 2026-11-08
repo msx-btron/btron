@@ -28,6 +28,10 @@ void uart_hex32(uint32_t val) { (void)val; }
 int  bcm2711_dma_start_cyclic(int channel, uintptr_t cb_phys) { (void)channel; (void)cb_phys; return 0; }
 void bcm2711_dma_stop(int channel) { (void)channel; }
 uint32_t bcm2711_dma_get_cb(int channel) { (void)channel; return 0; }
+int  xhci_queue_audio_isoch_transfer(uint32_t slot_id, uint8_t ep_addr, uintptr_t buf_phys, uint32_t length) {
+    (void)slot_id; (void)ep_addr; (void)buf_phys; (void)length;
+    return 0;
+}
 
 static int s_tests_run = 0;
 static int s_tests_passed = 0;

@@ -32,6 +32,8 @@
 #define XHCI_STS_PCD            (1u << 4)  /* Port Change Detect */
 #define XHCI_STS_CNR            (1u << 11) /* Controller Not Ready */
 
+#define XHCI_MAX_SLOTS          8
+
 /* PORTSC bits */
 #define XHCI_PORT_CCS           (1u << 0)  /* Current Connect Status */
 #define XHCI_PORT_PED           (1u << 1)  /* Port Enabled/Disabled */
@@ -56,6 +58,7 @@
 #define XHCI_TRB_LINK           6
 #define XHCI_TRB_ENABLE_SLOT    9
 #define XHCI_TRB_DISABLE_SLOT   10
+#define XHCI_TRB_ISOCH          10
 #define XHCI_TRB_ADDRESS_DEV    11
 #define XHCI_TRB_CONFIG_EP      12
 #define XHCI_TRB_EVAL_CTX       13
@@ -221,5 +224,11 @@ uint32_t xhci_mouse_dropped(void);
 uint32_t xhci_mouse_count(void);
 uint32_t xhci_kbd_bound(void);
 bool xhci_has_devices(void);
+
+/* Audio / Isochronous Transfers */
+int  xhci_control_transfer(uint32_t slot_id, uint8_t bmRequestType, uint8_t bRequest,
+                           uint16_t wValue, uint16_t wIndex, uint16_t wLength, void *data_buf);
+int  xhci_configure_audio_endpoint(uint32_t slot_id, uint8_t ep_addr, uint32_t max_packet_size, uint32_t interval);
+int  xhci_queue_audio_isoch_transfer(uint32_t slot_id, uint8_t ep_addr, uintptr_t buf_phys, uint32_t length);
 
 #endif /* BTRON_ARCH_BCM283X_XHCI_H */
