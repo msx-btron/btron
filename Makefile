@@ -524,6 +524,7 @@ ARCH_BCM64_SRCS = $(ARCH_BCM_SRCS) \
                   src/drivers/broadcom/pcie_bcm2711.c \
                   src/drivers/broadcom/xhci.c \
                   src/drivers/broadcom/bcm2711_dma.c \
+                  src/drivers/broadcom/bcm2711_hdmi_audio.c \
                   src/drivers/broadcom/v3d_init.c \
                   src/drivers/broadcom/v3d_cl.c \
                   src/drivers/broadcom/v3d_qpu.c
@@ -2057,6 +2058,20 @@ test-arm-aeabi: $(TEST_ARMAEABI_BIN)
 $(TEST_ARMAEABI_BIN): $(TEST_ARMAEABI_OBJS) src/kernel/libaeabi.c
 	@mkdir -p ./.build
 	$(CC) $(TEST_ARMAEABI_OBJS) -o $@ $(LDFLAGS) -lm
+
+TEST_HDMI_AUDIO_SRCS = verify/tests/test_hdmi_audio.c src/drivers/broadcom/bcm2711_hdmi_audio.c
+TEST_HDMI_AUDIO_OBJS = $(TEST_HDMI_AUDIO_SRCS:.c=.test.o)
+TEST_HDMI_AUDIO_BIN  = ./.build/test_hdmi_audio
+
+test-hdmi-audio: $(TEST_HDMI_AUDIO_BIN)
+	@echo "=========================================================="
+	@echo " Running BCM2711 HDMI Audio ACR, InfoFrame & Latency Tests..."
+	@echo "=========================================================="
+	@./$(TEST_HDMI_AUDIO_BIN)
+
+$(TEST_HDMI_AUDIO_BIN): $(TEST_HDMI_AUDIO_OBJS)
+	@mkdir -p ./.build
+	$(CC) $(TEST_HDMI_AUDIO_OBJS) -o $@ $(LDFLAGS) -lm
 
 # Increment 2 of the EE/GS plan of record (doc/txt/PS2.txt): the packet builder.  A GS field
 # one bit off cannot be seen -- it draws a triangle somewhere the screen is not -- so the
@@ -3699,7 +3714,7 @@ test-tbios: $(TEST_TBIOS_DIFF_BIN) $(TEST_TBIOS_CORE_BIN) $(TEST_TBIOS_VIDEO_BIN
 	@./$(TEST_TBIOS_DISK_BIN)
 	@./$(TEST_BMSX_CFG_BIN)
 
-test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context
+test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context
 	@echo "=========================================================="
 	@echo " ALL B-SYSTEM TEST SUITES PASSED (100% SUCCESS)!"
 	@echo "=========================================================="

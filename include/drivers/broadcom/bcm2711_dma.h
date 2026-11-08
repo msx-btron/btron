@@ -86,4 +86,9 @@ int  bcm2711_dma_blit_linear_async(int channel,
                                    uintptr_t src_addr,
                                    uint32_t total_bytes);
 
+/* Continuous cyclic DMA transfers for audio FIFO pacing */
+int      bcm2711_dma_start_cyclic(int channel, uintptr_t cb_phys);
+void     bcm2711_dma_stop(int channel);
+uint32_t bcm2711_dma_get_cb(int channel);
+
 #endif /* _BCM2711_DMA_H_ */

@@ -2523,7 +2523,13 @@ void btron_main(void) {
         dwc2_init();
     }
 
-    /* 5. Initialize B-System Workbench Desktop Subsystem & V3D 4.2 */
+    /* 5. Initialize B-Audio HDMI Subsystem on BCM2711 */
+    if (g_mmio_base == 0xFE000000UL) {
+        extern int bcm2711_hdmi_audio_init(void);
+        bcm2711_hdmi_audio_init();
+    }
+
+    /* 6. Initialize B-System Workbench Desktop Subsystem & V3D 4.2 */
     init_baremetal_desktop((uint32_t *)s_desktop_backbuffer, BTRON_SCREEN_W, BTRON_SCREEN_H);
     v3d_init();
 
