@@ -15,6 +15,9 @@
 #include <drivers/broadcom/bcm2711_hdmi_audio.h>
 #include <drivers/broadcom/bcm2711_dma.h>
 #include <drivers/broadcom/usb_audio_uac1.h>
+#if defined(BTRON_HAVE_BLUETOOTH)
+#include <drivers/bluetooth/b_bt_audio.h>
+#endif
 #include <drivers/virtio/virtio.h>
 #include <btron/arm64_mem.h>
 
@@ -295,18 +298,24 @@ uint32_t bcm2711_hdmi_audio_get_queued_bytes(void) {
 enum {
     B_AUDIO_BACKEND_NONE = 0,
     B_AUDIO_BACKEND_HDMI,
-    B_AUDIO_BACKEND_USB
+    B_AUDIO_BACKEND_USB,
+    B_AUDIO_BACKEND_BT
 };
 static int s_active_backend = B_AUDIO_BACKEND_NONE;
 
 int virtio_sound_open(uint32_t sample_rate, uint8_t channels) {
-    /* Auto-detect: Priority 1 = Physical HDMI; Priority 2 = USB Audio Class 1.0 (UAC1) */
+    /* Auto-detect: Priority 1 = Physical HDMI; Priority 2 = USB Audio Class 1.0 (UAC1); Priority 3 = B-BT Wireless */
     if (bcm2711_hdmi_audio_is_sink_present()) {
         s_active_backend = B_AUDIO_BACKEND_HDMI;
         return bcm2711_hdmi_audio_open(sample_rate, channels);
     } else if (usb_audio_uac1_is_present()) {
         s_active_backend = B_AUDIO_BACKEND_USB;
         return usb_audio_uac1_open(sample_rate, channels);
+#if defined(BTRON_HAVE_BLUETOOTH)
+    } else if (b_bt_audio_is_present()) {
+        s_active_backend = B_AUDIO_BACKEND_BT;
+        return b_bt_audio_open(sample_rate, channels);
+#endif
     } else {
         /* Default fallback: attempt HDMI */
         s_active_backend = B_AUDIO_BACKEND_HDMI;
@@ -317,6 +326,10 @@ int virtio_sound_open(uint32_t sample_rate, uint8_t channels) {
 int virtio_sound_write(const int16_t *samples, size_t frames) {
     if (s_active_backend == B_AUDIO_BACKEND_USB) {
         return usb_audio_uac1_write(samples, frames);
+#if defined(BTRON_HAVE_BLUETOOTH)
+    } else if (s_active_backend == B_AUDIO_BACKEND_BT) {
+        return b_bt_audio_write(samples, frames);
+#endif
     }
     return bcm2711_hdmi_audio_write(samples, frames);
 }
@@ -324,6 +337,10 @@ int virtio_sound_write(const int16_t *samples, size_t frames) {
 void virtio_sound_close(void) {
     if (s_active_backend == B_AUDIO_BACKEND_USB) {
         usb_audio_uac1_close();
+#if defined(BTRON_HAVE_BLUETOOTH)
+    } else if (s_active_backend == B_AUDIO_BACKEND_BT) {
+        b_bt_audio_close();
+#endif
     } else {
         bcm2711_hdmi_audio_close();
     }
@@ -333,6 +350,10 @@ void virtio_sound_close(void) {
 bool virtio_sound_is_ready(void) {
     if (s_active_backend == B_AUDIO_BACKEND_USB) {
         return usb_audio_uac1_is_ready();
+#if defined(BTRON_HAVE_BLUETOOTH)
+    } else if (s_active_backend == B_AUDIO_BACKEND_BT) {
+        return b_bt_audio_is_ready();
+#endif
     }
     return bcm2711_hdmi_audio_is_ready();
 }
@@ -340,6 +361,10 @@ bool virtio_sound_is_ready(void) {
 uint32_t virtio_sound_get_queued_bytes(void) {
     if (s_active_backend == B_AUDIO_BACKEND_USB) {
         return usb_audio_uac1_get_queued_bytes();
+#if defined(BTRON_HAVE_BLUETOOTH)
+    } else if (s_active_backend == B_AUDIO_BACKEND_BT) {
+        return b_bt_audio_get_queued_bytes();
+#endif
     }
     return bcm2711_hdmi_audio_get_queued_bytes();
 }
