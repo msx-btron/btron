@@ -129,7 +129,7 @@ uint32_t ps2_gif_reap(void)
         (void)ps2_gif_drain();
         if (s_gif_n == 0u && !s_gif_in_flight) break;
         while (ps2_gif_hw_busy())
-            ;
+            __asm__ volatile("nop" : : : "memory");
         s_gif_in_flight = 0u;
     }
 

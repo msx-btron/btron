@@ -134,6 +134,14 @@ __attribute__((weak)) WND *open_glgears_window(void) { return NULL; }
 __attribute__((weak)) WND *open_lilcu64_demo_window(void) { return NULL; }
 __attribute__((weak)) WND *open_msx_window(void) { return NULL; }
 __attribute__((weak)) WND *open_mars_window(void) { return NULL; }
+__attribute__((weak)) WND *open_vobj_manager_window(void) { return NULL; }
+__attribute__((weak)) WND *open_t_editor_window(void) { return NULL; }
+__attribute__((weak)) WND *open_gterm_window(void) { return NULL; }
+__attribute__((weak)) WND *open_audio_player_window(void) { return NULL; }
+__attribute__((weak)) WND *launch_beos_chat(void) { return NULL; }
+__attribute__((weak)) WND *open_control_panel_window(void) { return NULL; }
+__attribute__((weak)) WND *open_drivesetup_window(void) { return NULL; }
+__attribute__((weak)) WND *open_paint_window(void) { return NULL; }
 __attribute__((weak)) void clu_cmd_mars(const char *args, ShellOutputFn out, void *ud)
 {
     (void)args; (void)out; (void)ud;
@@ -180,21 +188,53 @@ static WND *open_quake_app_wnd(void) {
 }
 
 static const CluApp s_clu_apps[] = {
-    { "xmb",     "Cross Media Bar (XMB)",                    open_xmb_window },
-    { "glgears", "GLGears (OpenGL ES 1.1 / TinyGL)",         open_glgears_window },
-    { "gears",   "GLGears (OpenGL ES 1.1 / TinyGL)",         open_glgears_window },
-    { "lilcu",   "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
-    { "lilcu64", "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
-    { "msx",     "B-MSX Game System (MSX Cartridge Player)", open_msx_window },
-    { "mars",    "MARS 1993 Voxel Landscape (NASA JPL C99)", open_mars_window },
-    { "quake",   "Quake 3D (OpenGL ES 1.1 / TinyGL)",        open_quake_app_wnd },
+    { "xmb",        "Cross Media Bar (XMB)",                    open_xmb_window },
+    { "glgears",    "GLGears (OpenGL ES 1.1 / TinyGL)",         open_glgears_window },
+    { "gears",      "GLGears (OpenGL ES 1.1 / TinyGL)",         open_glgears_window },
+    { "lilcu",      "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
+    { "lilcu64",    "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
+    { "msx",        "B-MSX Game System (MSX Cartridge Player)", open_msx_window },
+    { "mars",       "MARS 1993 Voxel Landscape (NASA JPL C99)", open_mars_window },
+    { "quake",      "Quake 3D (OpenGL ES 1.1 / TinyGL)",        open_quake_app_wnd },
+    { "cabinet",    "Real Body & Virtual Object Cabinet",       open_vobj_manager_window },
+    { "vobj",       "Real Body & Virtual Object Cabinet",       open_vobj_manager_window },
+    { "editor",     "Multi-Line Text & TAD Editor",             open_t_editor_window },
+    { "terminal",   "B-System Terminal Console",                open_gterm_window },
+    { "gterm",      "B-System Terminal Console",                open_gterm_window },
+    { "term",       "B-System Terminal Console",                open_gterm_window },
+    { "sound",      "Audio Player / Cassette Deck",             open_audio_player_window },
+    { "audio",      "Audio Player / Cassette Deck",             open_audio_player_window },
+    { "player",     "Audio Player / Cassette Deck",             open_audio_player_window },
+    { "cassette",   "Audio Player / Cassette Deck",             open_audio_player_window },
+    { "chat",       "Interactive Dialogue / Blabber Chat",      launch_beos_chat },
+    { "settings",   "Control Panel & System Settings",          open_control_panel_window },
+    { "panel",      "Control Panel & System Settings",          open_control_panel_window },
+    { "drivesetup", "Disk & Volume Partition Setup",            open_drivesetup_window },
+    { "paint",      "Paint Drawing Tool",                       open_paint_window },
 };
+
+void clu_list_apps(ShellOutputFn out, void *ud)
+{
+    if (!out) return;
+    out("Available B-System Applications:", COLOR_CYAN, ud);
+    for (unsigned i = 0; i < sizeof(s_clu_apps) / sizeof(s_clu_apps[0]); i++) {
+        const CluApp *a = &s_clu_apps[i];
+        char line[160];
+        snprintf(line, sizeof(line), "  %-12s - %s", a->verb, a->title);
+        out(line, COLOR_LTGRAY, ud);
+    }
+}
 
 BOOL clu_launch_app(const char *verb, ShellOutputFn out, void *ud)
 {
     if (!verb || !verb[0]) return FALSE;
 
     const char *v = verb;
+    while (*v == ' ') v++;
+    if (strncmp(v, "open ", 5) == 0) {
+        v += 5;
+        while (*v == ' ') v++;
+    }
     if (strncmp(v, "./", 2) == 0) v += 2;
     if (strncmp(v, "bin/", 4) == 0) v += 4;
     if (strncmp(v, "/SYS/", 5) == 0) v += 5;

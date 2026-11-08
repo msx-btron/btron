@@ -14,7 +14,6 @@
 
 /* EE wall clock helpers, implemented in boot_ps2.s */
 extern uint32_t ps2_count_read(void);
-extern void ps2_delay_cycles(uint32_t count);
 
 /* This driver's waits are in the microsecond the INPUT plane measures at boot
  * (src/drivers/ps2/ps2_irq.h).  The 147 it used to carry was the core clock's datasheet
@@ -37,7 +36,7 @@ static int iopram_count_running(void)
 static void iopram_wait_us(uint32_t us)
 {
     if (!iopram_count_running()) {
-        ps2_delay_cycles(us * 300u);
+        for (volatile uint32_t i = 0; i < us * 50u; i++) { __asm__ volatile("nop"); }
         return;
     }
     uint32_t start = ps2_count_read();
@@ -187,3 +186,19 @@ int ps2_iopram_shadow_intact(void)
 /* Byte offset inside the claimed block of the first guard word that came back
  * wrong, or ~0 if the block never lied. */
 uint32_t ps2_iopram_clobbered_at(void) { return s_clobbered_at; }
+
+extern void ps2_kprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+
+void ps2_iopram_log(const ps2_iopram_t *r)
+{
+    if (!r) return;
+    ps2_kprintf("[SBUS] iop-ram@0x%08x decode=%u vector@0x80=0x%08x granules=%u\n",
+                (unsigned int)PS2_IOP_KSEG1, (unsigned int)r->readable,
+                (unsigned int)r->first_read, (unsigned int)r->granules);
+#if BTRON_HID_TRACE
+    ps2_kprintf("[SBUS] shadow %u B @0x%06x: canary 0x%08x->0x%08x write=%u settle=%u\n",
+                (unsigned int)PS2_IOP_SHADOW_SIZE, (unsigned int)r->off,
+                (unsigned int)r->canary, (unsigned int)r->after_settle,
+                (unsigned int)r->write_ok, (unsigned int)r->survived);
+#endif
+}

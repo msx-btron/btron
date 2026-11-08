@@ -32,6 +32,15 @@ typedef uint32_t COLOR;
 
 typedef void (*ShellOutputFn)(const char *line, COLOR col, void *user_data);
 
+typedef void (*btron_gui_launcher_fn)(void *ctx);
+void btron_register_gui_launcher(btron_gui_launcher_fn fn, void *ctx);
+void btron_request_gui(void);
+void btron_core_reboot(void);
+
+struct WND;
+void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_data, struct WND *wnd);
+void btron_shell_exec(const char *cmd_line, ShellOutputFn out_fn, void *user_data);
+
 void btron_core_banner(void);
 void btron_core_init(void);
 void btron_core_mem_log(void);

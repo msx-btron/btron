@@ -143,7 +143,7 @@ void ps2_gs_gif_send(const void *packet, uint32_t qwc)
 
     /* Wait for transfer to complete (STR bit clears when done) */
     while (ps2_gif_hw_busy())
-        ;
+        __asm__ volatile("nop" : : : "memory");
 
     ps2_gif_note_sync(ps2_gif_hw_us() - t0);
 
@@ -978,6 +978,9 @@ void ps2_gs_text_flush(void)
  * deliberately left closed by ps2_gs_init()'s PutIMR(0xFF00): the flag is still raised, and this
  * poll is the only reader, which is what makes the count below trustworthy without an interrupt
  * path this port does not have. */
+extern void ps2_pad_poll(void);
+extern void ps2_usb_poll(void);
+
 static int ps2_gs_vsync_wait_obs(void)
 {
     int i;
@@ -985,6 +988,11 @@ static int ps2_gs_vsync_wait_obs(void)
     GS_REG_POKE(GS_CSR_OFFSET, (1ULL << 3));      /* clear it, so what arrives next is a new frame */
     for (i = 0; i < 200000; i++) {
         if (GS_REG_PEEK(GS_CSR_OFFSET) & (1ULL << 3)) return 1;
+        if ((i & 0x1FF) == 0) {
+            ps2_pad_poll();
+            ps2_usb_poll();
+        }
+        __asm__ volatile("nop" : : : "memory");
     }
     return 0;                                      /* the bound ran out: no frame boundary was seen */
 }

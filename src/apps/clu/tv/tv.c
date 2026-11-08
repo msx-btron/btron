@@ -24,11 +24,16 @@ enum {
     STYLE_FIND_FIELD
 };
 
-static TvContext g_default_tv = {
-    .insert_mode = 1,
-    .wrap_mode = LANG_WRAP_WORD
-};
-static TvContext *g_tv = &g_default_tv;
+static TvContext *g_default_tv = NULL;
+static TvContext *g_tv = NULL;
+
+static void tv_ensure_context(void)
+{
+    if (!g_default_tv) {
+        g_default_tv = tv_context_create();
+    }
+    if (!g_tv) g_tv = g_default_tv;
+}
 
 #define g_lines       (g_tv->lines)
 #define g_line_count  (g_tv->line_count)
@@ -61,19 +66,21 @@ TvContext *tv_context_create(void)
 
 void tv_context_destroy(TvContext *tv)
 {
-    if (tv && tv != &g_default_tv) {
-        if (g_tv == tv) g_tv = &g_default_tv;
+    if (tv && tv != g_default_tv) {
+        if (g_tv == tv) g_tv = g_default_tv;
         free(tv);
     }
 }
 
 void tv_set_context(TvContext *tv)
 {
-    g_tv = tv ? tv : &g_default_tv;
+    tv_ensure_context();
+    g_tv = tv ? tv : g_default_tv;
 }
 
 TvContext *tv_get_context(void)
 {
+    tv_ensure_context();
     return g_tv;
 }
 
@@ -989,6 +996,7 @@ static void tv_draw_exit_dialog(int sel)
 
 int tv_session_init(const char *filepath, int view_only, int rows, int cols)
 {
+    tv_ensure_context();
     if (vfs_init() < 0) return -1;
     if (rows > 0 && cols > 0) {
         term_set_size(rows, cols);
@@ -1473,6 +1481,7 @@ int tv_session_step(int k)
 
 int tv_run(const char *filepath, int view_only)
 {
+    tv_ensure_context();
     if (term_open() != 0) return -1;
     if (tv_session_init(filepath, view_only, 0, 0) != 0) {
         term_close();

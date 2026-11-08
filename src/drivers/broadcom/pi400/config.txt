@@ -22,11 +22,6 @@ framebuffer_depth=32
 framebuffer_swap=0
 fake_vsync_isr=1
 
-# HDMI Audio & Signaling (CEA-861 with Audio Packets, unmask audio PLLs)
-hdmi_drive=2
-hdmi_force_hotplug=1
-dtparam=audio=on
-
 # Performance Clocks & Governors (BCM2711 @ 1.8 GHz Cortex-A72 & 500 MHz V3D 4.2)
 arm_boost=1
 arm_freq=1800

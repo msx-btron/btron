@@ -337,6 +337,38 @@ static void gterm_report_app_refused(ShellOutputFn out_fn, void *user_data,
     out_fn(why, COLOR_YELLOW, user_data);
 }
 
+static btron_gui_launcher_fn s_gui_launcher = NULL;
+static void *s_gui_launcher_ctx = NULL;
+
+void btron_register_gui_launcher(btron_gui_launcher_fn fn, void *ctx) {
+    s_gui_launcher = fn;
+    s_gui_launcher_ctx = ctx;
+}
+
+void btron_request_gui(void) {
+    if (s_gui_launcher) {
+        s_gui_launcher(s_gui_launcher_ctx);
+    }
+}
+
+__attribute__((weak)) void btron_core_reboot(void) {
+    while (1) {
+#if defined(__aarch64__) || defined(__arm__)
+        __asm__ volatile("wfe");
+#elif defined(__x86_64__) || defined(__i386__)
+        __asm__ volatile("hlt");
+#elif defined(__mips__)
+        __asm__ volatile("nop");
+#else
+        ;
+#endif
+    }
+}
+
+void btron_shell_exec(const char *cmd_line, ShellOutputFn out_fn, void *user_data) {
+    shell_execute_cmd(cmd_line, out_fn, user_data, NULL);
+}
+
 void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_data, WND *wnd) {
     if (!out_fn || !cmd_line) return;
 
@@ -571,7 +603,27 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
     /* The application verbs -- xmb, glgears/gears, lilcu/lilcu64.  One call owns
      * the list and reports whether the app is in this image, so adding a fourth
      * verb is a row in clu.c's table and a line of help, not another branch here. */
-    if (clu_launch_app(cmd, out_fn, user_data)) return;
+    if (clu_launch_app(cmd, out_fn, user_data)) {
+        if (!wnd) btron_request_gui();
+        return;
+    }
+
+    if (strcmp(cmd, "open") == 0) {
+        if (arg[0] != '\0') {
+            if (clu_launch_app(arg, out_fn, user_data)) {
+                if (!wnd) btron_request_gui();
+                return;
+            }
+        } else {
+            out_fn("open: missing application name. Type 'apps' for list.", COLOR_YELLOW, user_data);
+            return;
+        }
+    }
+
+    if (strcmp(cmd, "apps") == 0) {
+        clu_list_apps(out_fn, user_data);
+        return;
+    }
 
     if (strcmp(cmd, "help") == 0 || strcmp(cmd, "?") == 0) {
         out_fn("B-System Cho-Kanji Shell Commands:", COLOR_GREEN, user_data);
@@ -758,10 +810,19 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
     } else if (strcmp(cmd, "echo") == 0) {
         out_fn(arg, COLOR_LTGRAY, user_data);
     } else if (strcmp(cmd, "desktop") == 0 || strcmp(cmd, "startx") == 0 || strcmp(cmd, "gui") == 0) {
-        out_fn("B-System BTRON3 Graphical Window Compositor & Desktop: Active", COLOR_GREEN, user_data);
-        out_fn("  Resolution : 1024x768 (32-bpp Linear Framebuffer)", COLOR_CYAN, user_data);
-        out_fn("  Subsystems : HFDS Cabinet, GTerm Terminal, Editor, Mozc IME", COLOR_LTGRAY, user_data);
-        out_fn("  SMP Engine : 4 Cores Live & Scheduled", COLOR_YELLOW, user_data);
+        if (!wnd) {
+            btron_request_gui();
+        } else {
+            out_fn("B-System BTRON3 Graphical Window Compositor & Desktop: Active", COLOR_GREEN, user_data);
+            out_fn("  Resolution : 1024x768 / 800x600 (Linear Framebuffer)", COLOR_CYAN, user_data);
+            out_fn("  Subsystems : HFDS Cabinet, GTerm Terminal, Editor, Mozc IME", COLOR_LTGRAY, user_data);
+            out_fn("  SMP Engine : Live & Scheduled", COLOR_YELLOW, user_data);
+        }
+        return;
+    } else if (strcmp(cmd, "reboot") == 0 || strcmp(cmd, "halt") == 0) {
+        out_fn("B-System kernel halting processor...", COLOR_YELLOW, user_data);
+        btron_core_reboot();
+        return;
     } else if (strcmp(cmd, "ps") == 0) {
         char sline[256];
         int  rowcount = 0;
@@ -777,7 +838,7 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
          * host schedules it.  And the desktop UI loop is not a row: painting happens on that
          * loop, not on a cre_tsk task, so saying so underneath the table beats inventing a
          * task for it. */
-        out_fn("PID   TASK            STAT    ENTRY", COLOR_CYAN, user_data);
+        out_fn("PID   TASK            STAT    ENTRY       PRI", COLOR_CYAN, user_data);
         out_fn("----------------------------------------------------------", COLOR_DKGRAY, user_data);
         for (int i = 0; i < 16; i++) {
             W rc = btron_task_row_text(i, sline, sizeof(sline));

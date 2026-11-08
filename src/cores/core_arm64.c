@@ -519,60 +519,26 @@ static void pi4_shell_out(const char *text, COLOR col, void *user_data)
     uart_puts("\n");
 }
 
+static void pi4_gui_launcher_callback(void *ctx)
+{
+    uint32_t *gpu_fb = (uint32_t *)ctx;
+    if (!s_gui_active && gpu_fb) {
+        launch_pi4_desktop_session(gpu_fb);
+    }
+}
+
 static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
 {
-    if (tkl_strcmp(cmd, "help") == 0) {
-        fb_log("Commands:\n");
-        fb_log("  startx / desktop / gui  - Launch B-System Workbench GUI\n");
-        fb_log("  exit / console          - Return to Stage 1 console\n");
-        fb_log("  ls, df, stat, cat <f>   - B-System CLU Filesystem (mounted /SYS)\n");
-        fb_log("  sc, tv, be              - CLU Apps (Sokhatsky Commander, TV, Binary Editor)\n");
-        fb_log("  mars, quake, msx        - 3D & Gaming Apps (MARS 1993, Quake, MSX Player)\n");
-        fb_log("  xmb, glgears, lilcu64   - 3D Demos & Media (XMB, GLGears, Lil Cu 64)\n");
-        fb_log("  drivesetup, forth, sps  - Disk Manager, Forth, DPS Publisher\n");
-        fb_log("  ps                      - InterCore Task Census (running processes)\n");
-        fb_log("  gpu / v3d               - VideoCore VI (V3D 4.2) 3D hardware status\n");
-        fb_log("  open <app>              - Open specific Workbench application\n");
-        fb_log("  mem, ver, ptrcal, clear - Diagnostics & utilities\n");
-        fb_log("  reboot                  - Halt processor\n");
+    btron_register_gui_launcher(pi4_gui_launcher_callback, gpu_fb);
 
-    } else if (tkl_strcmp(cmd, "startx") == 0 ||
-               tkl_strcmp(cmd, "desktop") == 0 ||
-               tkl_strcmp(cmd, "gui") == 0) {
-        if (!s_gui_active) {
-            launch_pi4_desktop_session(gpu_fb);
-        } else {
-            fb_log("[CON] Workbench already active.\n");
-        }
-
-    } else if (tkl_strcmp(cmd, "exit") == 0 ||
-               tkl_strcmp(cmd, "console") == 0 ||
-               tkl_strcmp(cmd, "quit") == 0) {
+    if (tkl_strcmp(cmd, "exit") == 0 ||
+        tkl_strcmp(cmd, "console") == 0 ||
+        tkl_strcmp(cmd, "quit") == 0) {
         if (s_gui_active) {
             s_gui_active = 0;
         } else {
             fb_log("[CON] Already at Stage 1 console.\n");
         }
-
-    } else if (tkl_strcmp(cmd, "ps") == 0) {
-        char row_buf[80];
-        fb_log("PID  TASK            STAT   ENTRY      PRI\n");
-        uart_puts("PID  TASK            STAT   ENTRY      PRI\n");
-        int count = 0;
-        for (int i = 0; i < 16; i++) {
-            int ret = btron_task_row_text(i, row_buf, sizeof(row_buf));
-            if (ret <= 0) break;
-            fb_log(row_buf);
-            fb_log("\n");
-            uart_puts(row_buf);
-            uart_puts("\n");
-            count++;
-        }
-        if (count == 0) {
-            fb_log("  (no active InterCore worker tasks)\n");
-            uart_puts("  (no active InterCore worker tasks)\n");
-        }
-
     } else if (tkl_strcmp(cmd, "gpu") == 0 || tkl_strcmp(cmd, "v3d") == 0) {
         const v3d_info_t *info = v3d_get_info();
         if (info && info->hardware_present) {
@@ -586,181 +552,17 @@ static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
             fb_log("[V3D] VideoCore VI (V3D 4.2): Hardware core not present\n");
             fb_log("      Pipeline: TinyGL CPU software rasterizer active\n");
         }
-
     } else if (tkl_strcmp(cmd, "ptrcal") == 0) {
         (void)pi4_ptr_cal();
-
-    } else if (tkl_strcmp(cmd, "mem") == 0) {
-        fb_log("[MEM] BCM2711 Pi 400 — 4 GB RAM\n");
-        fb_log("[MEM]   0x00000000-0xFCFFFFFF  RAM (usable)\n");
-        fb_log("[MEM]   0xFD000000-0xFFFFFFFF  MMIO / PCIe\n");
-        fb_log("[MEM]   Kernel heap: 0x02000000-0x38000000\n");
-        fb_log("[MEM]   Preloaded volumes: /SYS @ 0x03000000, /ANDERS @ 0x03200000\n");
-        fb_log("[MEM]   Non-cacheable DMA window: 0x01C00000-0x01E00000\n");
-
-    } else if (tkl_strcmp(cmd, "ver") == 0) {
-        fb_log("B-System/BTRON3 3.20  aarch64-bcm2711\n");
-        fb_log("T-Kernel 2.0  Takanori Yokoyama  Pi 400\n");
-        fb_log("Built: " __DATE__ " " __TIME__ "\n");
-
     } else if (tkl_strcmp(cmd, "clear") == 0) {
-        /* Blank the GPU VRAM to dark */
         if (s_fb_log_fb) {
             for (int i = 0; i < BTRON_SCREEN_W * BTRON_SCREEN_H; i++)
                 ((uint32_t *)s_fb_log_fb)[i] = 0xFF080C14u;
             s_fb_log_col = 0;
             s_fb_log_row = 0;
         }
-
-    } else if (tkl_strcmp(cmd, "ls") == 0 || tkl_strncmp(cmd, "ls ", 3) == 0 ||
-               tkl_strcmp(cmd, "dir") == 0 || tkl_strncmp(cmd, "dir ", 4) == 0) {
-        const char *arg = (tkl_strncmp(cmd, "ls", 2) == 0) ? (cmd + 2) : (cmd + 3);
-        while (*arg == ' ') arg++;
-        clu_ls(arg, pi4_shell_out, NULL);
-
-    } else if (tkl_strcmp(cmd, "df") == 0 || tkl_strncmp(cmd, "df ", 3) == 0) {
-        const char *arg = cmd + 2;
-        while (*arg == ' ') arg++;
-        clu_df(arg, pi4_shell_out, NULL);
-
-    } else if (tkl_strncmp(cmd, "stat ", 5) == 0) {
-        clu_stat(cmd + 5, pi4_shell_out, NULL);
-
-    } else if (tkl_strncmp(cmd, "tp ", 3) == 0) {
-        clu_tp(cmd + 3, pi4_shell_out, NULL);
-
-    } else if (tkl_strncmp(cmd, "cat ", 4) == 0) {
-        clu_tp(cmd + 4, pi4_shell_out, NULL);
-
-    } else if (tkl_strcmp(cmd, "sync") == 0) {
-        clu_sync_cmd("", pi4_shell_out, NULL);
-
-    } else if (tkl_strcmp(cmd, "forth") == 0 || tkl_strncmp(cmd, "forth ", 6) == 0) {
-        const char *arg = (tkl_strcmp(cmd, "forth") == 0) ? "" : (cmd + 6);
-        clu_forth(arg, pi4_shell_out, NULL);
-
-    } else if (tkl_strcmp(cmd, "sps") == 0 || tkl_strncmp(cmd, "sps ", 4) == 0) {
-        const char *arg = (tkl_strcmp(cmd, "sps") == 0) ? "" : (cmd + 4);
-        clu_sps(arg, pi4_shell_out, NULL);
-
-    } else if (tkl_strcmp(cmd, "sc") == 0 || tkl_strncmp(cmd, "sc ", 3) == 0) {
-        const char *arg = (tkl_strcmp(cmd, "sc") == 0) ? "" : (cmd + 3);
-        clu_sc(arg, pi4_shell_out, NULL);
-
-    } else if (tkl_strcmp(cmd, "tv") == 0 || tkl_strncmp(cmd, "tv ", 3) == 0) {
-        const char *arg = (tkl_strcmp(cmd, "tv") == 0) ? "" : (cmd + 3);
-        clu_tv(arg, pi4_shell_out, NULL);
-
-    } else if (tkl_strcmp(cmd, "be") == 0 || tkl_strncmp(cmd, "be ", 3) == 0) {
-        const char *arg = (tkl_strcmp(cmd, "be") == 0) ? "" : (cmd + 3);
-        clu_be(arg, pi4_shell_out, NULL);
-
-    } else if (tkl_strcmp(cmd, "mars") == 0 || tkl_strncmp(cmd, "mars ", 5) == 0) {
-        open_mars_window();
-        fb_log("[CON] Opened MARS 1993 Voxel Landscape window.\n");
-        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
-
-    } else if (tkl_strcmp(cmd, "quake") == 0 || tkl_strncmp(cmd, "quake ", 6) == 0) {
-        open_quake_window(120, 60, 480, 360);
-        fb_log("[CON] Opened Quake 3D window.\n");
-        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
-
-    } else if (tkl_strcmp(cmd, "xmb") == 0) {
-        open_xmb_window();
-        fb_log("[CON] Opened XMB window.\n");
-        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
-
-    } else if (tkl_strcmp(cmd, "glgears") == 0 || tkl_strcmp(cmd, "gears") == 0) {
-        open_glgears_window();
-        fb_log("[CON] Opened GLGears window.\n");
-        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
-
-    } else if (tkl_strcmp(cmd, "lilcu") == 0 || tkl_strcmp(cmd, "lilcu64") == 0) {
-        open_lilcu64_demo_window();
-        fb_log("[CON] Opened Lil Cu 64 Demoscene window.\n");
-        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
-
-    } else if (tkl_strcmp(cmd, "msx") == 0) {
-        open_msx_window();
-        fb_log("[CON] Opened MSX Cartridge Player window.\n");
-        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
-
-    } else if (tkl_strcmp(cmd, "drivesetup") == 0) {
-        open_drivesetup_window();
-        fb_log("[CON] Opened DriveSetup window.\n");
-        if (!s_gui_active) launch_pi4_desktop_session(gpu_fb);
-
-    } else if (tkl_strncmp(cmd, "open ", 5) == 0) {
-        const char *app = cmd + 5;
-        int opened = 0;
-        if (tkl_strcmp(app, "cabinet") == 0 || tkl_strcmp(app, "vobj") == 0) {
-            open_vobj_manager_window();
-            fb_log("[CON] Opened Cabinet.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "editor") == 0) {
-            open_t_editor_window();
-            fb_log("[CON] Opened Editor.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "terminal") == 0 || tkl_strcmp(app, "gterm") == 0) {
-            open_gterm_window();
-            fb_log("[CON] Opened Terminal.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "chat") == 0) {
-            launch_beos_chat();
-            fb_log("[CON] Opened Chat.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "settings") == 0 || tkl_strcmp(app, "panel") == 0) {
-            open_control_panel_window();
-            fb_log("[CON] Opened Settings.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "mars") == 0) {
-            open_mars_window();
-            fb_log("[CON] Opened MARS 1993 Voxel Landscape.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "quake") == 0) {
-            open_quake_window(120, 60, 480, 360);
-            fb_log("[CON] Opened Quake 3D.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "xmb") == 0) {
-            open_xmb_window();
-            fb_log("[CON] Opened XMB.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "glgears") == 0 || tkl_strcmp(app, "gears") == 0) {
-            open_glgears_window();
-            fb_log("[CON] Opened GLGears.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "lilcu") == 0 || tkl_strcmp(app, "lilcu64") == 0) {
-            open_lilcu64_demo_window();
-            fb_log("[CON] Opened Lil Cu 64 Demoscene.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "msx") == 0) {
-            open_msx_window();
-            fb_log("[CON] Opened MSX Cartridge Player.\n");
-            opened = 1;
-        } else if (tkl_strcmp(app, "drivesetup") == 0) {
-            open_drivesetup_window();
-            fb_log("[CON] Opened DriveSetup.\n");
-            opened = 1;
-        } else {
-            fb_log("[CON] Unknown app. Try: cabinet editor terminal chat settings mars quake xmb glgears lilcu64 msx drivesetup\n");
-        }
-        if (opened && !s_gui_active) {
-            launch_pi4_desktop_session(gpu_fb);
-        }
-
-    } else if (tkl_strcmp(cmd, "reboot") == 0) {
-        fb_log("[CON] Halting processor.\n");
-        while (1) __asm__ volatile("wfe");
-
-    } else if (clu_launch_app(cmd, pi4_shell_out, NULL)) {
-        if (!s_gui_active) {
-            launch_pi4_desktop_session(gpu_fb);
-        }
-
-    } else if (cmd[0] != '\0') {
-        fb_log("[CON] Unknown command: ");
-        fb_log(cmd);
-        fb_log("\n[CON] Type 'help' for commands.\n");
+    } else {
+        shell_execute_cmd(cmd, pi4_shell_out, NULL, NULL);
     }
 }
 
@@ -1577,11 +1379,43 @@ ER get_tim(SYSTIME *p_time) {
 W btron_list_tasks(BTRON_TSK_ROW *out, W max) {
     W n = 0;
     if (!out || max <= 0) return 0;
+
+    /* PID 1: Real-time Input Worker Plane */
+    if (n < max) {
+        out[n].tskid = 1;
+        out[n].name  = "pi4_input";
+        out[n].pri   = 1;
+        out[n].entry = (FP)(void *)input_plane_task;
+        out[n].state = BTRON_TSK_RUN;
+        n++;
+    }
+
+    /* PID 2: Desktop Presentation Plane */
+    if (n < max) {
+        out[n].tskid = 2;
+        out[n].name  = "pi4_desktop";
+        out[n].pri   = 5;
+        out[n].entry = (FP)(void *)launch_pi4_desktop_session;
+        out[n].state = s_gui_active ? BTRON_TSK_RUN : BTRON_TSK_SLEEP;
+        n++;
+    }
+
+    /* PID 3: Serial Console Shell Dispatcher */
+    if (n < max) {
+        out[n].tskid = 3;
+        out[n].name  = "pi4_shell";
+        out[n].pri   = 4;
+        out[n].entry = (FP)(void *)poll_uart_input;
+        out[n].state = s_gui_active ? BTRON_TSK_SLEEP : BTRON_TSK_RUN;
+        n++;
+    }
+
+    /* Dynamic Application Worker Tasks (PIDs 4+) */
     for (int i = 0; i < MAX_ARM64_TASKS && n < max; i++) {
         const ARM64_TASK *t = &s_arm64_tasks[i];
         if (!t->active) continue;
-        out[n].tskid = (ID)(i + 1);
-        out[n].name  = t->config.name ? t->config.name : "(unnamed)";
+        out[n].tskid = (ID)(n + 1);
+        out[n].name  = t->config.name ? t->config.name : "(worker)";
         out[n].pri   = t->config.itskpri;
         out[n].entry = t->config.task;
         if (!t->started) {

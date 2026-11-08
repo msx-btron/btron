@@ -349,6 +349,7 @@ void ps2_usb_log_mouse_raw(uint32_t reports, uint32_t b3b0);
  * one or two means the ring is keeping up and whatever the pointer does next is
  * the mapping's doing.  Four scalars, as above. */
 void ps2_usb_log_ring(uint32_t dev, uint32_t got, uint32_t burst, uint32_t frame);
+int  ps2_usb_log_host(void);
 
 /* Which call of the enumeration a [TX] row came from.  The address stage needs
  * two probes because nothing about a SET_ADDRESS that failed is visible in the

@@ -432,9 +432,9 @@ if [ -n "$OBJDUMP64" ]; then
     assert_check "...and takes both of the layer's facts from the window manager, not from a copy of them" \
         "[ $PAINT_LAYER -ge 1 ] && [ $PAINT_COVER -ge 1 ]"
 
-    UP1="$(printf '%s\n' "$PAINT_ASM" | grep -E 'jal.*<ps2_gs_upload>'  | head -1 | grep -oE '^ *[0-9a-f]+' | tr -d ' ' || true)"
+    UP1="$(printf '%s\n' "$PAINT_ASM" | grep -E 'jal.*<ps2_(gs_upload|upload_canvas)>'  | head -1 | grep -oE '^ *[0-9a-f]+' | tr -d ' ' || true)"
     SEND="$(printf '%s\n' "$PAINT_ASM" | grep -E 'jal.*<eegs_present_send>' | head -1 | grep -oE '^ *[0-9a-f]+' | tr -d ' ' || true)"
-    UP2="$(printf '%s\n' "$PAINT_ASM" | grep -E 'jal.*<ps2_gs_upload>'  | tail -1 | grep -oE '^ *[0-9a-f]+' | tr -d ' ' || true)"
+    UP2="$(printf '%s\n' "$PAINT_ASM" | grep -E 'jal.*<ps2_(gs_upload|upload_cover_in_layer)>'  | tail -1 | grep -oE '^ *[0-9a-f]+' | tr -d ' ' || true)"
     assert_check "The bus order is canvas, stream, cover: the upload's call site precedes the send's, and the cover re-upload follows it" \
         "[ -n \"$UP1\" ] && [ -n \"$SEND\" ] && [ -n \"$UP2\" ] && [ $((0x$UP1)) -lt $((0x$SEND)) ] && [ $((0x$SEND)) -lt $((0x$UP2)) ]"
 
@@ -461,7 +461,7 @@ fi
 # three files are deliberately built -mhard-float so their single-precision arithmetic can
 # execute on COP1 (measured 20 cycles/op against 160 for the bit engine): the runtime
 # src/drivers/playstation2/ps2_builtins.c, whose libcalls are the FPU's own, and the geometry
-# kernel src/gl/tinygl/vertex_stage.c (plan row 7), which is reached only by pointer so
+# kernel src/desktop/graphics/tinygl/vertex_stage.c (plan row 7), which is reached only by pointer so
 # no float crosses its boundary and the ABI law is unbroken.  Since row 8 the third is
 # src/apps/xmb_wave.c, the launcher's waving surface (plan row 8): its clock arrives as
 # IEEE-754 bits in an integer and its sheet leaves through memory, so it earns the flag
@@ -514,7 +514,7 @@ FP_PAT='(^|[[:space:]])(ldc1|sdc1|lwc1|swc1|(add|sub|mul|div|sqrt|abs|neg|mov|cv
 # and a fifth must not be able to forget to update one of them.  The whitelist row needs
 # them as `-name` patterns (a basename, matched against every path find walks), so that
 # form is derived here rather than written out a second time.
-FP_OBJECTS='src/drivers/playstation2/ps2_builtins.ps2.o src/gl/tinygl/vertex_stage.ps2.o src/apps/xmb_wave.ps2.o'
+FP_OBJECTS='src/drivers/playstation2/ps2_builtins.ps2.o src/desktop/graphics/tinygl/vertex_stage.ps2.o src/media/xmb/xmb_wave.ps2.o'
 FP_FIND_EXCLUDES=''
 for _fp_obj in $FP_OBJECTS; do FP_FIND_EXCLUDES="$FP_FIND_EXCLUDES ! -name $(basename $_fp_obj)"; done
 unset _fp_obj
@@ -601,15 +601,15 @@ if [ -n "$OBJDUMP64" ]; then
         "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/drivers/playstation2/ps2_builtins.ps2.o | grep -cE '[[:space:]](add|sub|mul|div)\.s[[:space:]]') -ge 4 ]"
     # The kernel's own two halves: the arithmetic is inline on COP1, ...
     assert_check "vertex_stage.ps2.o emits COP1 mul.s/add.s arithmetic (PS2_FP=hw reached the file)" \
-        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/gl/tinygl/vertex_stage.ps2.o | grep -cE '[[:space:]](mul|add)\.s[[:space:]]') -ge 40 ]"
+        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/desktop/graphics/tinygl/vertex_stage.ps2.o | grep -cE '[[:space:]](mul|add)\.s[[:space:]]') -ge 40 ]"
     # ... and its six clip plane tests are in the form this CPU answers.  Six rather than
     # twelve because all six go through `c.olt.s`: the three that C writes as `>` reach it
     # with the operands swapped, which is what `gl_clipcode()`'s TGL_CLIP_LT does
-    # (src/gl/tinygl/zgl.h).  The second half is the requirement that the image-wide row above
+    # (src/desktop/graphics/tinygl/zgl.h).  The second half is the requirement that the image-wide row above
     # cannot make: a kernel with no compares at all also scans clean, and a kernel that lost
     # its clip tests is the shape the black screen arrived in.
     assert_check "vertex_stage.ps2.o's clip tests are ordered c.olt.s and none of the unordered family" \
-        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/gl/tinygl/vertex_stage.ps2.o | grep -cE '[[:space:]]c\.olt\.s[[:space:]]') -ge 6 ] && ! (\$OBJDUMP64 -d --triple=mips64el-unknown-elf src/gl/tinygl/vertex_stage.ps2.o | grep -cE '[[:space:]]c\.(un|ueq|ult|ule)\.s[[:space:]]')"
+        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/desktop/graphics/tinygl/vertex_stage.ps2.o | grep -cE '[[:space:]]c\.olt\.s[[:space:]]') -ge 6 ] && ! (\$OBJDUMP64 -d --triple=mips64el-unknown-elf src/desktop/graphics/tinygl/vertex_stage.ps2.o | grep -cE '[[:space:]]c\.(un|ueq|ult|ule)\.s[[:space:]]')"
     # ... and the linked image actually branches into it, which is what says the unit is a
     # kernel and not dead weight the linker kept.  Read off $ELF rather than off the object:
     # an object's `jal 0x0` carries no name until the link resolves it, and a call the linker
@@ -621,17 +621,17 @@ if [ -n "$OBJDUMP64" ]; then
     # (32 -> 16) is a real configuration and halving the working set must not read as the
     # flag having gone missing -- a -msoft-float build of this file has zero of both.
     assert_check "xmb_wave.ps2.o emits COP1 mul.s/add.s arithmetic (PS2_FP=hw reached the wave)" \
-        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/apps/xmb_wave.ps2.o | grep -cE '[[:space:]](mul|add)\.s[[:space:]]') -ge 40 ]"
+        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/media/xmb/xmb_wave.ps2.o | grep -cE '[[:space:]](mul|add)\.s[[:space:]]') -ge 40 ]"
     # Its six compares are the fold's and the degenerate-cell test's, all in the ordered
     # form.  The tier guards are *not* among them: `BTRONFLT_LT()` compares bit patterns in
     # integer registers precisely because `>` would lower to `c.ule.s`.
     assert_check "xmb_wave.ps2.o's compares are ordered c.olt.s and none of the unordered family" \
-        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/apps/xmb_wave.ps2.o | grep -cE '[[:space:]]c\.olt\.s[[:space:]]') -ge 6 ] && ! (\$OBJDUMP64 -d --triple=mips64el-unknown-elf src/apps/xmb_wave.ps2.o | grep -cE '[[:space:]]c\.(un|ueq|ult|ule)\.s[[:space:]]')"
+        "[ \$($OBJDUMP64 -d --triple=mips64el-unknown-elf src/media/xmb/xmb_wave.ps2.o | grep -cE '[[:space:]]c\.olt\.s[[:space:]]') -ge 6 ] && ! (\$OBJDUMP64 -d --triple=mips64el-unknown-elf src/apps/xmb_wave.ps2.o | grep -cE '[[:space:]]c\.(un|ueq|ult|ule)\.s[[:space:]]')"
     # The register-file law at the file that earned it, naming the file rather than leaving
     # the image-wide row to point at a diff.  Measured history: 52 pair stores -> 36 -> 18
     # -> 4 -> 0 by the shapes described in the file's header comment.
     assert_check "xmb_wave.ps2.o references no callee-saved single (no float survives a call)" \
-        "! ($OBJDUMP64 -d --triple=mips64el-unknown-elf src/apps/xmb_wave.ps2.o | grep -cE '$CSR_PAT')"
+        "! ($OBJDUMP64 -d --triple=mips64el-unknown-elf src/media/xmb/xmb_wave.ps2.o | grep -cE '$CSR_PAT')"
     # And the wiring, in both directions.  `wv_sinf`/`wv_cosf`/`wv_sqrtf` are `WV_PASS`
     # (noinline) so their live temps stay inside the callee instead of joining the caller's
     # working set -- measured, the linked image branches into them 6 times in total and into
@@ -792,10 +792,10 @@ fi
 # carries a weak definition, so a strong-symbol regression would bring back "not available
 # yet" while every other row here still passed.
 if [ -f btron_sys.vol ]; then
-    VOL_ADDR="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image" {print "0x"$2; exit}')"
-    VOL_END="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image_end" {print "0x"$2; exit}')"
-    DATA_ADDR="$($READELF -S $ELF | awk '$3==".data" {print "0x"$5; exit}')"
-    DATA_OFF="$($READELF -S $ELF | awk '$3==".data" {print "0x"$6; exit}')"
+    VOL_ADDR="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image" {print "0x"$2}' | head -n1)"
+    VOL_END="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image_end" {print "0x"$2}' | head -n1)"
+    DATA_ADDR="$($READELF -S $ELF | awk '$3==".data" {print "0x"$5}' | head -n1)"
+    DATA_OFF="$($READELF -S $ELF | awk '$3==".data" {print "0x"$6}' | head -n1)"
     VOL_BYTES=$((VOL_END - VOL_ADDR))
     VOL_FILE_OFF=$((DATA_OFF + VOL_ADDR - DATA_ADDR))
     VOL_ON_DISK=$(wc -c < btron_sys.vol | tr -d ' ')
@@ -993,10 +993,10 @@ if [ -f "$ISO" ]; then
         fi
         # The second half of the freeze, read off the image's own symbols rather
         # than off the assembly source: the embedded region is one whole volume.
-        VOL_ADDR="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image" {print "0x"$2; exit}')"
-        VOL_END="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image_end" {print "0x"$2; exit}')"
-        DATA_ADDR="$($READELF -S $ELF | awk '$3==".data" {print "0x"$5; exit}')"
-        DATA_OFF="$($READELF -S $ELF | awk '$3==".data" {print "0x"$6; exit}')"
+        VOL_ADDR="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image" {print "0x"$2}' | head -n1)"
+        VOL_END="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image_end" {print "0x"$2}' | head -n1)"
+        DATA_ADDR="$($READELF -S $ELF | awk '$3==".data" {print "0x"$5}' | head -n1)"
+        DATA_OFF="$($READELF -S $ELF | awk '$3==".data" {print "0x"$6}' | head -n1)"
         if [ -n "$VOL_ADDR" ] && [ -n "$DATA_OFF" ]; then
             EMB_BYTES=$((VOL_END - VOL_ADDR))
             EMB_FILE_OFF=$((DATA_OFF + VOL_ADDR - DATA_ADDR))
@@ -1060,13 +1060,13 @@ if command -v mipsel-linux-gnu-objdump >/dev/null 2>&1; then
     SHAPE_SCALE=$($OBJDUMP -d $ELF | awk '/<ps2_usb_on_mouse>:/{f=1;print;next} f&&/^[[:space:]]*$/{f=0} f' | grep -c 'jal.*<dp_ptr_scale>' || true)
     IMG_RISCOS=$($OBJDUMP -d $ELF | grep -c 'jal.*<dp_ptr_riscos>' || true)
     RISCOS_TEXT=$($OBJDUMP -d $ELF | grep -c '<dp_ptr_riscos>:' || true)
-    assert_check "LAW 13d: the pointer's shaping is proportional -- $SHAPE_RISCOS accelerator calls in the mouse handler, $IMG_RISCOS anywhere in the image, and $SHAPE_SCALE dp_ptr_scale calls still doing the gain over $SHAPE_CALLS jumps" \
-        "[ \$SHAPE_CALLS -ge 1 ] && [ \$SHAPE_RISCOS -eq 0 ] && [ \$IMG_RISCOS -eq 0 ] && [ \$SHAPE_SCALE -eq 2 ]"
+    assert_check "LAW 13d: the pointer is 1:1 hardware -- $SHAPE_RISCOS accelerator calls in the mouse handler, $IMG_RISCOS anywhere in the image, $SHAPE_SCALE dp_ptr_scale gain calls over $SHAPE_CALLS jumps" \
+        "[ \$SHAPE_CALLS -ge 1 ] && [ \$SHAPE_RISCOS -eq 0 ] && [ \$IMG_RISCOS -eq 0 ] && [ \$SHAPE_SCALE -eq 0 ]"
     # And the row a hand reads at boot says the same thing as the code the image carries: the
     # hw profile's own gain line used to advertise the curve it was applying.  The absent
     # string is spelled here and not in the book, because doc/txt/PS2.txt is the /SYS payload.
-    assert_check "...and the boot row says what the shaping does: 'proportional (no curve)' is in the image and the old 'RISC OS step' announcement is not" \
-        "[ \$(LC_ALL=C grep -ac 'proportional (no curve)' $ELF) -ge 1 ] && [ \$(LC_ALL=C grep -ac 'RISC OS step' $ELF) -eq 0 ]"
+    assert_check "...and the boot row says what the shaping does: '1:1 hardware pointer (no curve)' is in the image and the old 'RISC OS step' announcement is not" \
+        "[ \$(LC_ALL=C grep -ac '1:1 hardware pointer (no curve)' $ELF) -ge 1 ] && [ \$(LC_ALL=C grep -ac 'RISC OS step' $ELF) -eq 0 ]"
     # The compile-out itself, read off the image rather than off the #if, because the #if is only
     # worth what the link shows it to be worth.
     assert_check "...and the accelerator this target no longer uses is not compiled into this image at all -- $RISCOS_TEXT block(s) of dp_ptr_riscos text, against the pre-lane15 image's 1" \

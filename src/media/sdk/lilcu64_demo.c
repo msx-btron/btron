@@ -1480,7 +1480,7 @@ static void render_2d_dashboard(WND *wnd, GDEV *dev) {
     drw_tc_string(dev, 32, dev->height - 32, hint_buf, COLOR_WHITE, 0);
 
 #if defined(BTRON_PS2_TARGET)
-    if (wnd && wnd->gl_layer) {
+    if (wnd && wnd->gl_layer && wnd == wnd_gl_layer()) {
         GDEV *screen = wnd_mgr_get_screen();
         if (screen && screen->pixels) {
             const H title_h = (wnd->attr & WND_ATTR_TITLE) ? WND_TITLE_HEIGHT : 0;

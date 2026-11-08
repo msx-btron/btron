@@ -25,32 +25,28 @@ static volatile uint32_t* dma_chan_regs(int channel) {
 }
 
 int bcm2711_dma_init(void) {
-    /* 1. Enable DMA Channel 0, 4 (Audio), and Channel 7 in DMA_ENABLE register */
+    /* 1. Enable DMA Channel 0 and Channel 7 (audio channel 4 is enabled on stream open) in DMA_ENABLE register */
     volatile uint32_t *dma_en = (volatile uint32_t *)DMA_ENABLE_REG;
-    *dma_en |= (1u << 0) | (1u << 4) | (1u << 7);
+    *dma_en |= (1u << 0) | (1u << 7);
     __asm__ volatile("dsb sy" : : : "memory");
 
-    /* 2. Reset DMA Channels 0, 4 & 7 */
+    /* 2. Reset DMA Channels 0 & 7 */
     volatile uint32_t *chan0 = dma_chan_regs(0);
     chan0[BCM_DMA_CS / 4] = BCM_DMA_CS_RESET;
-    volatile uint32_t *chan4 = dma_chan_regs(4);
-    chan4[BCM_DMA_CS / 4] = BCM_DMA_CS_RESET;
     volatile uint32_t *chan7 = dma_chan_regs(7);
     chan7[BCM_DMA_CS / 4] = BCM_DMA_CS_RESET;
 
     for (volatile int to = 0; to < 1000; to++) {
         if (!(chan0[BCM_DMA_CS / 4] & BCM_DMA_CS_RESET) &&
-            !(chan4[BCM_DMA_CS / 4] & BCM_DMA_CS_RESET) &&
             !(chan7[BCM_DMA_CS / 4] & BCM_DMA_CS_RESET)) break;
     }
 
     /* 3. Clear residual END / INT bits */
     chan0[BCM_DMA_CS / 4] = BCM_DMA_CS_END | BCM_DMA_CS_INT;
-    chan4[BCM_DMA_CS / 4] = BCM_DMA_CS_END | BCM_DMA_CS_INT;
     chan7[BCM_DMA_CS / 4] = BCM_DMA_CS_END | BCM_DMA_CS_INT;
     __asm__ volatile("dsb sy" : : : "memory");
 
-    uart_puts("[DMA] BCM2711 Hardware 2D DMA Engine (Channels 0, 4, 7) initialized.\n");
+    uart_puts("[DMA] BCM2711 Hardware 2D DMA Engine (Channels 0 & 7) initialized.\n");
     return 0;
 }
 
@@ -212,6 +208,8 @@ int bcm2711_dma_start_cyclic(int channel, uintptr_t cb_phys) {
     if (channel < 0 || channel > 14 || cb_phys == 0) return -1;
     volatile uint32_t *chan = dma_chan_regs(channel);
 
+    *(volatile uint32_t *)DMA_ENABLE_REG |= (1u << channel);
+    __asm__ volatile("dsb sy" : : : "memory");
     chan[BCM_DMA_CS / 4] = BCM_DMA_CS_RESET;
     __asm__ volatile("dsb sy" : : : "memory");
 

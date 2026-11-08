@@ -62,6 +62,7 @@ void clu_mars     (const char *args, ShellOutputFn out, void *ud);
  * TRUE when `verb` is one of them, so the shell's dispatch stays one line and the
  * list of what can be launched lives in clu.c. */
 BOOL clu_launch_app(const char *verb, ShellOutputFn out, void *ud);
+void clu_list_apps(ShellOutputFn out, void *ud);
 void clu_sc       (const char *args, ShellOutputFn out, void *ud);
 void clu_tv       (const char *args, ShellOutputFn out, void *ud);
 void clu_be       (const char *args, ShellOutputFn out, void *ud);

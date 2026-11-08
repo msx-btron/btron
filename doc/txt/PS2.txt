@@ -828,6 +828,42 @@ PART SEVEN -- BUILDING, VERIFYING, RUNNING
     make test-ps2     # Executes automated regression test suite
 
 
+21.2  Build Dials, Configuration Knobs, and Verification Increments
+
+  - PS2_FP: Hardware vs software floating point (hw: R5900 COP1 with O32 soft-float calling convention; soft: pure integer libcalls).
+  - PS2_GL: Graphics rasterization backend (eegs: native hardware GS renderer; tinygl: software rasterizer fallback).
+  - PS2_MSX: Dual-boot MSX subsystem (1: link B-MSX core and 7.5 MB heap; 0: unpark 11 MB heap for native hardware 3D).
+  - PS2_NV: NVIDIA microcode tables for `be` editor (1: include tables; 0: park tables to save 3.4 MB RDRAM).
+  - PS2_PW: Parallel asynchronous paint worker scheduler (1: rate-limited paint callbacks with [PW] stats; 0: synchronous compositing).
+  - PS2_IDENT: Frame-to-frame GIF group identity hash tracking (1: [GSTID] invariance telemetry enabled; 0: compiled out).
+  - BENCH_APP: Automated XMB application lifecycle benchmark via kernel task shim (1: enabled; 0: desktop idle).
+  - BENCH_GS: GS hardware census verification (1: Stage-1 VRAM readback, 2: live desktop census, 6: PSMCT16 plate, 7: two-page rotation).
+  - BENCH_TEX: Texture plane VRAM read-back before/after title-tick differential census.
+  - BENCH_ORDER: Execution ordering of 3D applications (1: lilcu demo before XMB; 0: XMB first).
+  - Increment 2 (test_ps2_gs_pack): GIF packet builder encoding bitfields verified against register layout literals.
+  - Increment 3 (test_ps2_gs_env): GS drawing environment registers and VRAM page base arithmetic.
+  - Increment 4 (test_ps2_gs_rec): GS vertex recorder packet formatting and NLOOP count verification.
+  - Increment 5a (test_eegs_raster): EE/GS raster stage primitive dispatch, vertex color channel ordering, and texture coordinates.
+  - Increment 5b (test_ps2_gs_tex): GS texture-plane registry, VRAM allocation layout, and TEX0 register encoding.
+  - Increment 5c (test_eegs_present): Presentation dispatch sequencing, upload vs stream ordering, and DMAC channel 2 capacity.
+  - PS2_FP_COUNT: Soft-float libcall profiling counters (1: count calls per stage boundary for [XMBT]; 0: compiled away).
+  - PS2_QUAKE: Quake 3D engine payload park (1: link engine; 0: park to save ~3.9 MB RDRAM).
+  - BENCH_APP_FRAMES: Number of frames the app phase runs before injecting Escape (default: 60).
+  - BENCH_LAUNCH_FRAMES: Frames for launcher-by-key cycle phase (default: 3).
+  - LANE 9b (test_ps2_gs_poster): Flat-color SPRITE batch packet generation and NLOOP overflow protection.
+  - LANE 10 (test_ps2_gif_ring): Hardware GIF DMA writer ring non-blocking queue capacity and completion tracking.
+  - LANE 12f (test_grid_map): Batch grid map projection bit-identical verification against TinyGL vertex pipeline.
+  - LANE 19 Rung 2 (test_ps2_gs_read): Local->Host VRAM read request packet formation and alignment refusal verification.
+  - LANE 22 (test_ps2_paint_worker): Per-app paint budget allocation and window deduplication policy.
+  - Pointer Dynamics (test_ps2_ptr_stroke, test_ps2_ptr_accum): Dual-speed stroke velocity segmentation and differential pointer acceleration.
+  - LANE 9c (test_ps2_fused_row): Composite row rule differential check comparing output against host and PS2 target dialects.
+  - LANE 12i (test_desktop_clip): Banded presentation losslessness and counted tracker menu render invocation check.
+  - LANE 24 (test_gl_context_isolation): Single TinyGL context preservation across multiple window surface lifecycles.
+  - FBORDER (test_fb_order): Framebuffer byte order validation ensuring COLOR-order and canvas-order normalizations match byte-for-byte.
+  - GLMATH (test_gl_math_float): Freestanding single-precision math series verification against host libm.
+  - GLBLANE (test_gl_backend_choice): Preprocessor GL backend selection dial verification across all port flag configurations.
+
+
 22. Verification, and how a gate earns trust
 --------------------------------------------
 
@@ -932,7 +968,6 @@ APPENDIX C -- DEVELOPMENT RECORD (QUARANTINED)
   specification.
 
   Reference Documents:
-  - doc/md/PS2-GS-LOG.md : Comprehensive hardware run traces and timings.
   - verify/models/JPL.md : NASA JPL Power of 10 code compliance verification.
   - doc/txt/ASYNC.txt    : InterCore Nexus protocol specification.
   - doc/txt/INTERPRETER.txt : BTRON kernel execution plane theorems.

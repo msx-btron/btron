@@ -302,6 +302,7 @@ ER top_wnd(WND *wnd) {
 ER mov_wnd(WND *wnd, H x, H y) {
     if (!wnd) return E_PAR;
 
+    RECT old_r = wnd->bounds;
     H w = wnd->bounds.right - wnd->bounds.left;
     H h = wnd->bounds.bottom - wnd->bounds.top;
 
@@ -316,6 +317,9 @@ ER mov_wnd(WND *wnd, H x, H y) {
     wnd->client.right = x + w - 4;
     wnd->client.bottom = y + h - 4;
 
+    wnd_inval_rect(&old_r);
+    wnd_inval_rect(&wnd->bounds);
+
     return E_OK;
 }
 
@@ -323,6 +327,8 @@ ER rsz_wnd(WND *wnd, H w, H h) {
     if (!wnd) return E_PAR;
     if (w < 160) w = 160;
     if (h < 100) h = 100;
+
+    RECT old_r = wnd->bounds;
 
     wnd->bounds.right = wnd->bounds.left + w;
     wnd->bounds.bottom = wnd->bounds.top + h;
@@ -354,6 +360,9 @@ ER rsz_wnd(WND *wnd, H w, H h) {
         wnd->dev = opn_dev(new_dev_w, new_dev_h);
         wnd->img_valid = FALSE;
     }
+
+    wnd_inval_rect(&old_r);
+    wnd_inval_rect(&wnd->bounds);
 
     return E_OK;
 }
@@ -422,29 +431,15 @@ static BOOL gl_client_rect(const WND *wnd, RECT *out) {
 }
 
 BOOL wnd_gl_layer_rect(RECT *out) {
-    BOOL found = FALSE;
-    RECT u = { 0, 0, 0, 0 };
-    for (WND *c = g_wnd_head; c; c = c->next) {
-        if (c->visible && c->gl_layer) {
-            RECT cr;
-            if (gl_client_rect(c, &cr)) {
-                if (!found) {
-                    u = cr;
-                    found = TRUE;
-                } else {
-                    if (cr.left < u.left) u.left = cr.left;
-                    if (cr.top < u.top) u.top = cr.top;
-                    if (cr.right > u.right) u.right = cr.right;
-                    if (cr.bottom > u.bottom) u.bottom = cr.bottom;
-                }
-            }
+    WND *top_gl = find_gl_layer();
+    if (top_gl) {
+        RECT cr;
+        if (gl_client_rect(top_gl, &cr)) {
+            if (out) *out = cr;
+            s_gl_rect_last = cr;
+            s_gl_rect_last_wnd = top_gl;
+            return TRUE;
         }
-    }
-    if (found) {
-        if (out) *out = u;
-        s_gl_rect_last = u;
-        s_gl_rect_last_wnd = find_gl_layer();
-        return TRUE;
     }
     if (s_gl_rect_last_wnd) {
         if (out) *out = s_gl_rect_last;
@@ -790,12 +785,34 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
     s_frame_body_skip_px = 0u;
 
     set_clip(g_screen_dev, damage);
+    WND *gl_wnd = find_gl_layer();
+    int gl_idx = -1;
+    if (gl_wnd) {
+        for (int k = 0; k < count; k++) {
+            if (stack[k] == gl_wnd) { gl_idx = k; break; }
+        }
+    }
+
     for (int i = count - 1; i >= 0; i--) {
         WND *wnd = stack[i];
         if (!wnd || !wnd->visible ||
             wnd->bounds.right <= damage->left || wnd->bounds.left >= damage->right ||
             wnd->bounds.bottom <= damage->top || wnd->bounds.top >= damage->bottom)
             continue;
+
+        /* If this window is in front of the active GL layer in z-order,
+         * its intersection covers the GL layer. Register it so presentation restores
+         * this window over the hardware 3D layer. */
+        if (gl_idx >= 0 && i < gl_idx && gl_wnd) {
+            RECT isect;
+            isect.left   = wnd->bounds.left   > gl_wnd->bounds.left   ? wnd->bounds.left   : gl_wnd->bounds.left;
+            isect.top    = wnd->bounds.top    > gl_wnd->bounds.top    ? wnd->bounds.top    : gl_wnd->bounds.top;
+            isect.right  = wnd->bounds.right  < gl_wnd->bounds.right  ? wnd->bounds.right  : gl_wnd->bounds.right;
+            isect.bottom = wnd->bounds.bottom < gl_wnd->bounds.bottom ? wnd->bounds.bottom : gl_wnd->bounds.bottom;
+            if (isect.right > isect.left && isect.bottom > isect.top) {
+                wnd_gl_cover_add(&isect);
+            }
+        }
 
         drawn++;
         /* Staleness is a property of one window's image, not of the composite: the
@@ -812,7 +829,7 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
                              wnd->dev && wnd->dev->pixels;
 
         t_mark = btron_render_perf_us();
-        draw_retro_window_frame(g_screen_dev, wnd, records && wnd->gl_layer);
+        draw_retro_window_frame(g_screen_dev, wnd, records && wnd->gl_layer && wnd == gl_wnd);
         t_frame += btron_render_perf_us() - t_mark;
         if (!wnd->dev || !wnd->dev->pixels) continue;
         H title_h = (wnd->attr & WND_ATTR_TITLE) ? WND_TITLE_HEIGHT : 0;
@@ -835,25 +852,17 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
             btron_cooperative_input_pump();
             t_paint += btron_render_perf_us() - t_mark;
             wnd->img_valid = TRUE;
-            if (wnd->gl_layer) {
+            if (wnd->gl_layer && wnd == gl_wnd) {
                 RECT cr;
                 if (gl_client_rect(wnd, &cr)) {
-                    if (!s_gl_pending) {
-                        s_gl_client = cr;
-                    } else {
-                        if (cr.left < s_gl_client.left) s_gl_client.left = cr.left;
-                        if (cr.top < s_gl_client.top) s_gl_client.top = cr.top;
-                        if (cr.right > s_gl_client.right) s_gl_client.right = cr.right;
-                        if (cr.bottom > s_gl_client.bottom) s_gl_client.bottom = cr.bottom;
-                    }
+                    s_gl_client = cr;
                     s_gl_pending = TRUE;
                 }
             }
         }
         /* The GS draws these pixels, into the same VRAM this canvas was just uploaded to.
-         * Blitting the client pixmap here would put the software picture under the stream,
-         * where it is invisible, and would cost the band's whole area for nothing. */
-        if (wnd->gl_layer) continue;
+         * Only the active hardware GL layer skips software client pixmap blitting. */
+        if (wnd->gl_layer && wnd == gl_wnd) continue;
 
         H cx0 = damage->left - dest_x;
         H cy0 = damage->top - dest_y;

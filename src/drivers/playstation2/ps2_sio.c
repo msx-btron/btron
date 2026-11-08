@@ -30,14 +30,16 @@ void ps2_sio_init(void)
 
 void ps2_sio_putc(char c)
 {
+    uint32_t spin = 0;
     if (c == '\n') {
-        while ((SIO_ISR & 0xF000) == 0x8000)
-            ;
+        while ((SIO_ISR & 0xF000) == 0x8000 && ++spin < 50000u)
+            __asm__ volatile("nop" : : : "memory");
         SIO_TXFIFO = '\r';
     }
 
-    while ((SIO_ISR & 0xF000) == 0x8000)
-        ;
+    spin = 0;
+    while ((SIO_ISR & 0xF000) == 0x8000 && ++spin < 50000u)
+        __asm__ volatile("nop" : : : "memory");
 
     SIO_TXFIFO = (uint8_t)c;
 }

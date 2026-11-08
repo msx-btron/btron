@@ -403,6 +403,9 @@ static void launch_vesa_desktop_session(int active_cores) {
     }
 #endif
 
+    extern int g_cursor_in_backbuffer;
+    g_cursor_in_backbuffer = 1;
+
     /* Initialize authentic BTRON desktop with off-screen backbuffer for tear-free rendering */
     init_desktop_vram(1024, 768, s_desktop_backbuffer);
     BTRON_DESKTOP *dt = get_btron_desktop();
@@ -552,7 +555,28 @@ static void launch_vesa_desktop_session(int active_cores) {
     kprint("\n[B-SYSTEM] Returned from VESA Desktop to Console Shell.\n\n", 0x0A);
 }
 
+static void boot_shell_out(const char *line, COLOR col, void *ud) {
+    (void)ud;
+    uint8_t attr = 0x07;
+    if (col == COLOR_CYAN) attr = 0x0B;
+    else if (col == COLOR_GREEN) attr = 0x0A;
+    else if (col == COLOR_YELLOW) attr = 0x0E;
+    else if (col == COLOR_RED) attr = 0x0C;
+    else if (col == COLOR_WHITE) attr = 0x0F;
+    kprint(line, attr);
+    kprint("\n", attr);
+}
+
+static int s_boot_active_cores = 1;
+static void boot_gui_launcher_callback(void *ctx) {
+    (void)ctx;
+    launch_vesa_desktop_session(s_boot_active_cores);
+}
+
 static void run_btron_shell(int active_cores) {
+    s_boot_active_cores = active_cores;
+    btron_register_gui_launcher(boot_gui_launcher_callback, NULL);
+
     /* Drain any leftover key from bootloader */
     while (btron_kbd_has_key()) (void)btron_kbd_get_scancode();
     while (uart_has_char()) (void)uart_getc();
@@ -568,7 +592,7 @@ static void run_btron_shell(int active_cores) {
     kprint(" SMP Multi-Core Scheduler Active — 4 Cores Live\n", 0x0E);
 #endif
     kprint(" Type 'desktop' or 'startx' to launch VESA 1024x768 GUI!\n", 0x0B);
-    kprint(" Commands: ps, mem, ski, ver, desktop, startx, clear\n", 0x07);
+    kprint(" Commands: ps, mem, ski, ver, desktop, startx, clear, help\n", 0x07);
     kprint("==========================================================\n\n", 0x0A);
 
     kprint("btron3# ", 0x0F);
@@ -601,43 +625,12 @@ static void run_btron_shell(int active_cores) {
                 kprint("\n", 0x07);
                 cmd_buf[cmd_len] = '\0';
 
-                if (strcmp_k(cmd_buf, "help") == 0) {
-                    kprint("B-System BTRON3 Available Commands:\n", 0x0B);
-                    kprint("  desktop / startx - Launch authentic B-System 1024x768 GUI\n", 0x0E);
-                    kprint("  ps               - List running tasks with CORE # column\n", 0x07);
-                    kprint("  mem              - Show T-Kernel 2.0 heap memory statistics\n", 0x07);
-                    kprint("  ski              - Show Ski Bootloader targets\n", 0x07);
-                    kprint("  ver              - Display kernel version & SMP APIC info\n", 0x07);
-                    kprint("  clear            - Clear terminal screen\n", 0x07);
+                if (strcmp_k(cmd_buf, "clear") == 0) {
+                    render_btron_text_desktop(active_cores);
                 } else if (strcmp_k(cmd_buf, "desktop") == 0 || strcmp_k(cmd_buf, "startx") == 0 || strcmp_k(cmd_buf, "gui") == 0) {
                     launch_vesa_desktop_session(active_cores);
-                } else if (strcmp_k(cmd_buf, "ps") == 0) {
-                    kprint("PID   CORE  TASK           STAT   ADDR         BOUNDS    TITLE\n", 0x0B);
-                    kprint("-------------------------------------------------------------------------\n", 0x08);
-                    kprint("  1   #0    tk_desktop     RUN    0x01020000   1024x768  [B-System Desktop]\n", 0x0A);
-                    kprint("  2   #1    tk_wnd_mgr     READY  0x01040000   1024x768  [Window Compositor]\n", 0x0A);
-                    kprint("  3   #2    tk_tip_ime     READY  0x010A0000   Candidate [Mozc Japanese IME]\n", 0x0A);
-                    kprint("  4   #3    gterm#1        RUN    0x010C0000   640x480   [Terminal Console]\n", 0x0E);
-                } else if (strcmp_k(cmd_buf, "mem") == 0) {
-                    kprint("T-Kernel 2.0 Memory Pool Statistics:\n", 0x0B);
-                    kprint("  Heap Base  : 0x00100000\n", 0x07);
-                    kprint("  Heap Limit : 0x40000000 (1GB RAM)\n", 0x07);
-                    kprint("  Heap Used  : 0x00240000 (2.25 MB)\n", 0x07);
-                } else if (strcmp_k(cmd_buf, "ski") == 0) {
-                    kprint("🎿 Ski Bootloader Profile Targets:\n", 0x0B);
-                    kprint("  [1] B-System BTRON3 Workstation x86_64 UEFI SMP (Active, 4 Cores)\n", 0x0A);
-                    kprint("  [2] Raspberry Pi 5 BCM2712 / RP1 ARM64 Workstation\n", 0x07);
-                    kprint("  [3] NEC PC-9801 / PC-9821 VM (Awe Morris Kernel)\n", 0x07);
-                } else if (strcmp_k(cmd_buf, "ver") == 0) {
-                    kprint("B-System BTRON3 3.20 (x86_64 UEFI SMP — Kota Uchida Engine)\n", 0x0A);
-                    kprint("  Graphics: VESA VBE 2.0/3.0 Linear Framebuffer (1024x768x32)\n", 0x0E);
-                    kprint("  Subsystem: ACPI 6.5 MADT, LAPIC 0xFEE00000, IO-APIC 0xFEC00000\n", 0x07);
-                } else if (strcmp_k(cmd_buf, "clear") == 0) {
-                    render_btron_text_desktop(active_cores);
-                } else if (cmd_len > 0) {
-                    kprint("Unknown command: ", 0x0C);
-                    kprint(cmd_buf, 0x0C);
-                    kprint(" (type 'help' for commands)\n", 0x0C);
+                } else {
+                    shell_execute_cmd(cmd_buf, boot_shell_out, NULL, NULL);
                 }
 
                 cmd_len = 0;

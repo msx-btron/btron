@@ -1300,26 +1300,9 @@ test-m68k: $(M68K_TARGET)
 # Sony PlayStation 2 Emotion Engine Kernel (ps2 / PCSX2) [Target 8]
 # ═══════════════════════════════════════════════════════════════════
 AUTO_GUI       ?= 1
-# HIDTRACE=1 make ps2  -- per-keypress and per-control-transfer rows.  Off by
-# default because a [KBD] row costs the console a line for every keystroke, which
-# is what scrolls the prompt away while it is being typed into.
+# HIDTRACE=1: Trace per-keypress and USB control-transfers on console (0: disabled)
 HIDTRACE       ?= 0
-# Which rasteriser a GL window on this image gets by default.  The port links both software
-# ones -- src/desktop/graphics/tinygl/ and src/desktop/graphics/virgl/backend_virgl.c are in the source list -- so tinygl and
-# virgl are a choice, not a capability, and it is worth choosing because the two are not the
-# same size: backend_virgl.c keeps one float per pixel for depth, which at 768x500 is 1.5 MB
-# to allocate and 384k software-float stores to fill, against TinyGL's 16-bit z of half that.
-# PS2_GL=virgl builds the old combination, and the [XMBT] rows time the same load against both.
-#
-# The third value is the Graphics Synthesizer: it makes the build's default the backend the
-# Display applet's "OpenGL PS2" row offers, so an A/B run against TinyGL needs a make flag and
-# no clicking.  Until src/desktop/graphics/eegs/backend_eegs.c exists (row 5 of the plan of record in
-# doc/txt/PS2.txt) that request is answered by the linked software rasterizer with a console line
-# saying so, which is why this is a default and not a capability either -- the settings row can
-# still outrank it, and a built image reports what actually drew its frames.
-# A value that is none of the three is a typo, and a typo here builds a working image whose
-# timing rows describe a different pipeline than the one the operator asked for, so it is an
-# error rather than a silent tinygl.
+# PS2_GL: Graphics rasterization backend (eegs: GS hardware, tinygl/virgl: software)
 PS2_GL          ?= eegs
 ifeq (,$(filter $(PS2_GL),tinygl virgl eegs))
 $(error PS2_GL=$(PS2_GL) is not one of tinygl, virgl, eegs)
@@ -1337,37 +1320,13 @@ endif
 ifeq ($(PS2_GL),eegs)
 PS2_CFLAGS    += -DBTRON_GL_PREFER_EEGS
 endif
-# FP_COUNT=1 makes the soft-float libcalls count themselves, and the [XMBT] rows print
-# that count per stage boundary: it is how a stage's microseconds are split between
-# arithmetic and everything else, which no disassembly reading can settle because the
-# number of calls a vertex actually executes is a property of the compiled path, not of
-# the source.  Costs a load, an add and a store on the hot side of a call worth ~28
-# cycles, so an instrumented run's microseconds are inflated and only its counts are
-# read.  0 compiles the counters away.
+# PS2_FP_COUNT=1: Instrument soft-float libcalls with per-stage call counters
 PS2_FP_COUNT    ?= 0
 PS2_CFLAGS    += -DBTRON_PS2_FP_COUNT=$(PS2_FP_COUNT)
-# PS2_IDENT=1 is LANE 12h's deciding instrument: the present folds a per-group hash over the staged
-# GIF stream, carries it one frame forward, and prints how many of this frame's groups and quadwords
-# are identical to the previous presented frame's same-index group (`[GSTID]`).  It decides between
-# the lane's two rungs -- a replay of an invariant span versus a textured batch map -- and nothing
-# else in the port can answer the question, because LANE 10's buffer-lifetime law forbids keeping
-# the words.  Cost is two 32-bit multiplies per quadword inside the copy the sink already does, so an
-# ident run's microseconds are slightly inflated and only its invariance columns are read: the same
-# rule PS2_FP_COUNT states for its counters.  0 compiles the instrument out of the shipped image.
+# PS2_IDENT=1: GIF stream per-group hash invariance telemetry ([GSTID])
 PS2_IDENT       ?= 0
 PS2_CFLAGS    += -DBTRON_PS2_GS_IDENT=$(PS2_IDENT)
-# PS2_PW=1 is LANE 22 (task #165): the per-app paint worker.  It compiles the policy in
-# src/drivers/playstation2/ps2_paint_worker.c and the seam that uses it in src/cores/core_ps2.c, so a pass can
-# run one window's paint callback once -- priced by what it cost last time, admitted only while the
-# frame's remaining slice can afford it, and forced through when the price would starve the app.
-# The claim is not parallelism: the Emotion EE has one main core, `sta_tsk()` is synchronous and
-# `slp_tsk()` is a no-op, so the only three wins available are fewer redundant callbacks, a bounded
-# pass, and a cost named per application.  Which of the three it actually buys is measured on the
-# [PW] rows and the `paint:`/`loop:` columns, and the answer is readable at run time rather than
-# baked in: `paintw 0|1` and Ctrl+O switch it on one image, so the operator A/B's the smoothness
-# themselves instead of rebuilding for it.  0 leaves the shipped image exactly as it was: the module
-# is not even linked (see PS2_PW_SRCS below), and the compositor path every other target shares is
-# untouched.
+# PS2_PW=1: Per-app paint worker scheduler and rate-limiter (0: synchronous)
 PS2_PW          ?= 0
 ifeq (,$(filter $(PS2_PW),0 1))
 $(error PS2_PW=$(PS2_PW) is not 0 or 1)
@@ -1375,12 +1334,7 @@ endif
 PS2_CFLAGS    += -DBTRON_PS2_PAINT_WORKER=$(PS2_PW)
 PS2_PW_SRCS     = $(if $(filter 1,$(PS2_PW)),src/drivers/playstation2/ps2_paint_worker.c,)
 PS2_STARTUP    = src/cores/core_ps2.c
-# The termios-scope applications gterm hosts: Sokhatsky Commander and Terminal
-# Vision.  They sit in COMMON_SRCS, so the hosted targets have always had them and
-# a bare-metal link has not -- without which gterm.c's weak sc_session_init() is
-# the definition that wins, returns -1, and leaves the terminal window in its shell
-# forever.  Named here rather than folded into COMMON_NO_SDL_SRCS because the other
-# bare-metal targets have not been measured against it.
+# Termios-hosted console applications (gterm, SC commander, TV vision)
 CLU_TERMIO_SRCS = src/apps/clu/lang.c           \
                   src/apps/clu/term.c           \
                   src/apps/clu/tty.c            \
@@ -1390,25 +1344,9 @@ CLU_TERMIO_SRCS = src/apps/clu/lang.c           \
                   src/apps/clu/sc/sc.c          \
                   src/apps/clu/tv/tv.c          \
                   src/apps/clu/be/native.c
-# PS2_NV parks the nvidia decoder island (NV_SRCS, named just above BE_DASM_SRCS) out of this
-# link: `nm` over every `*.ps2.o` reads zero undefined references into those 27 units, because
-# the only caller of their entry point -- `case ARCH_NVIDIA: decodeNV(...)` in
-# src/apps/clu/be/dasm/dasm.c -- is not in any PS2 source list at all.  It is therefore 3,414,308 B
-# of unreachable statics, not a feature this image loses; the host and POSIX lanes still get it
-# through the `+=` that puts it back.  The dial and its stamp are here for the same reason as
-# PS2_QUAKE's: an un-park is the control, and a stale object is the failure mode.
+# PS2_NV=1: Include NVIDIA disassembler tables (0: parked to save 3.4 MB RDRAM)
 CLU_TERMIO_SRCS += $(if $(filter 1,$(PS2_NV)),$(BE_DASM_SRCS),$(filter-out $(NV_SRCS),$(BE_DASM_SRCS)))
-# The GL layer this port links, minus the app bundle GL_SRCS also carries.  Quake's
-# hunk arena alone is a 64 MiB static array -- 1 MiB under the PS2 branch of mem.c's
-# HUNK_TOTAL_SIZE, but 3,911,851 B across its 22 units either way -- and the Lil Cu demo's
-# node table 3 MiB
-# more, against an Emotion Engine with 32 MB of RDRAM: an image that big does not
-# fail to build, it simply puts every later .bss object -- the event queue, the
-# deskbar, the tracker -- past the end of memory, where a write to them is accepted
-# and a read of them comes back zero.  The desktop noticed as input going dead
-# (2026-10-09, see the [BENCH] echo row); ps2.ld now refuses the link instead.
-# The launcher reaches its apps through weak open_*_window() externs, so an app that
-# is not linked here is a menu row that does nothing rather than a link error.
+# PS2 Graphics Synthesizer and 3D application runtime sources
 PS2_GL_SRCS    = src/desktop/graphics/gles/gl_dispatch.c     \
                  src/desktop/graphics/gles/gl_backend_choice.c \
                  src/desktop/graphics/gles/egl_surface.c     \
@@ -1423,88 +1361,14 @@ PS2_GL_SRCS    = src/desktop/graphics/gles/gl_dispatch.c     \
                  src/media/sdk/glgears.c       \
                  $(DEMO_SRCS)             \
                  $(PS2_QUAKE_SRCS)
-# B-MSX rides in the image when PS2_MSX=1: the tronMSX core reads no float, no host
-# clock and no libc beyond what src/kernel/libstr.c provides, and its two pieces of
-# media -- C-BIOS and the cartridge catalogue -- are bodies of the /SYS volume the
-# image already carries (tools/manifest.txt, the `cbios` and `msx` drawers).  So
-# the XMB Games band lists what the machine holds and Cross opens it, with no file
-# system below the program at all.
-#
-# It is PARKED at 0 as of 2026-10-14, and the reason changed within that day, which is
-# worth keeping in the comment because it is the reason the dial has a STAMP.  It landed
-# as a link rescue: the objects of that morning summed 35,809,162 B of .bss against the
-# ceiling ps2.ld ASSERTs at 0x01FF0000 = 33,488,896 B, with slots.c alone at 5,496,436.
-# The control for a park is the un-park, and `make ps2 PS2_MSX=1 PS2_GL=eegs PS2_FP=hw`
-# re-run at 02:24 the same day LINKS: ELF 6,018,220 bytes, _end = 0x01F89A00, 419,328 B
-# under the ceiling.  The B-MSX lane's own 01:01 commit (9bbec9d) rewrote slots.c and
-# geo3d.c under the failure, and today's objects read slots.c 2,350,712, bios.c 442,368,
-# vdp.c 393,998, msx_app.c 129,580, summing 3,316,862 B over the fifteen units the dial
-# adds; the two linked images differ by 3,316,864 B of .bss and 3,402,880 B of _end.
-# So the dial is not what makes the image link any more.  It stays at 0 because the
-# un-park spends 3.4 MB of the port's 3.8 MB headroom -- 419,328 B left, one
-# cartridge -- and because that headroom is not free to spend: the image's 11 MiB heap
-# (PS2_HEAP_SIZE, src/cores/core_ps2.c:112) is NOT MSX-gated and sits in both builds,
-# which also means the old "12 MiB MSX pool" line in this comment was wrong twice over.
-# And tronMSX still asks the host folder for a C-BIOS the volume holds, so the Games
-# band would ship a window saying it cannot find its own BIOS (doc/txt/PS2.txt M17 and
-# the PS2_MSX row of chapter 21).  With the dial at 0 the
-# five B-MSX gate rows print SKIP by name, and src/media/xmb/xmb.c's weak open_msx_window*()
-# stubs mean a Games row is a menu row that does nothing rather than a link error.  The
-# stamp exists because a source-list change is not a recompile: make compares file
-# mtimes, so without it yesterday's [MSX] rows link into today's parked image -- and two
-# .bss readings of the same filename three megabytes apart, on one day, is the evidence
-# for that sentence in this very comment.
-#
-# The dial now also answers to the GL backend, because one of this port's two heaps has to be
-# the bigger one.  `PS2_HEAP_SIZE` (src/cores/core_ps2.c) is `7500 * 1024` under `-DBTRON_PS2_MSX`
-# and `9 * 1024 * 1024` without it -- the MSX core's .bss (cartridge buffers, V9938 VRAM, S1985/
-# S1990, Geo3D) takes what the extra 1.5 MB of heap would have been.  The XMB's GL window asks for
-# ~8.7 MB of planes against that: 1500 kB surface + 750 kB depth plane (TinyGL's `ZB_open`) +
-# 576 kB icon atlas, on a desktop baseline already holding ~5.85 MB.  At 7500 kB the ask fails by
-# name on both halves -- `[TinyGL] ERROR: ZB_open failed (OOM?)` and `[GL] xmb: no memory for the
-# icon atlas` -- and the operator sees a framed window with nothing inside it.  That is the shipped
-# "empty inside" of `make run-ps2` under `PS2_GL=eegs`, and the LANE 19 census cleared the stream
-# of it: with the heap at 9 MB the same eegs page paints 383,951 of its own 384,000 client pixels.
-# So eegs parks MSX and takes the 9 MB heap.  `origin` is what makes this a DEFAULT and not an
-# override: `make ps2 PS2_MSX=1 PS2_GL=eegs` is still the falsifying control, and it still OOMs the
-# atlas and the depth plane by name; a `PS2_MSX=0` in the environment is honoured unchanged.
+# PS2_MSX=1: Link B-MSX core and 7.5 MB heap (0: parked, unparks 11 MB heap for 3D)
 ifeq ($(origin PS2_MSX),undefined)
 PS2_MSX         := $(if $(filter eegs,$(PS2_GL)),0,1)
 else
 PS2_MSX         ?= 1
 endif
 PS2_MSX_SRCS    = $(if $(filter 1,$(PS2_MSX)),$(MSX_SRCS) src/emulators/msx/msx_app.c,)
-# Quake is PARKED at 0 as of 2026-10-24 by the operator, for the same reason B-MSX is and with
-# the same shape: it is a Games-band row, and the image it lives in is over ps2.ld's budget.
-# The measurement, taken against a link with both ASSERTs relaxed (`_end = 0x02621700`):
-#
-#   the image needs                          38,934,272 B under the stack top
-#   RDRAM under the stack, with reserve      32,178,176 B  (0x01FB0000 - 0x00100000)
-#   over by                                  6,756,096 B
-#   $(QUAKE_SRCS) is                         3,911,851 B of that  (145,304 text + 104 data
-#                                                + 3,766,443 .bss across 22 objects; the three
-#                                                1 MiB arrays are mem.c's hunk buffer, r_alias's
-#                                                skin plane and texture.c's RGBA scratch)
-#
-# The other 2,842,496 B is not Quake's, and this dial does not pretend to have paid it -- it is
-# what the remaining levers are for.  What it does pay is the single largest app bundle in the
-# link, and it pays it because the machine's purpose is the DAW: CLU, Lil Cu and the orchestra
-# are what this image is for, and a brush model of E1M1 is not.
-#
-# Parking is safe here in a way B-MSX's park was not quite: the twenty-two units take no call
-# from anywhere else in the image.  Measured with `nm` over every `*.ps2.o`: 437 symbols
-# defined among them, zero of them named as an undefined reference by any other unit.  The one
-# name the desktop does ask for -- `open_quake_window()` -- is answered by src/apps/clu/clu.c's weak
-# stub, which the strong definition in quake_app.c has been overriding all along; the four
-# consumers (desktop.c, global_menu.c, tracker.c, xmb.c) already null-test it, and core_ps2.c's
-# `quake` console command does not, so at PS2_QUAKE=0 it runs the stub and then prints
-# `[PS2-UI] Opened Quake 3D.`, which is the same silent lie the MSX park already prints and is
-# left alone rather than patched into a lane that is not being measured.
-#
-# The stamp is the law that a source-list change is not a recompile: without it the twenty-two
-# objects of the last un-parked build survive into the parked link, and the ASSERT then charges
-# 3.9 MB of .bss to an app nobody can call.  `make -n PS2_QUAKE=0` purges them too, because
-# `$(shell ...)` runs while parsing.
+# PS2_QUAKE=1: Link Quake 3D engine (0: parked to save 3.9 MB RDRAM)
 PS2_QUAKE      ?= 0
 PS2_QUAKE_SRCS = $(if $(filter 1,$(PS2_QUAKE)),$(QUAKE_SRCS),)
 PS2_QUAKE_STAMP = .build/ps2-quake.stamp
@@ -1514,11 +1378,7 @@ $(shell mkdir -p ./.build && echo '$(PS2_QUAKE)' >$(PS2_QUAKE_STAMP) && \
         rm -f $(QUAKE_SRCS:.c=.ps2.o) $(QUAKE_SRCS:.c=.pbench.o))
 $(info [PS2] PS2_QUAKE is now $(PS2_QUAKE) (was $(if $(PS2_QUAKE_PREV),$(PS2_QUAKE_PREV),unset)) -- the Quake units will rebuild)
 endif
-# PS2_NV is the same shape and the bigger half of the answer: 27 units, 3,414,308 B, and no
-# caller at all in this link.  Read the reason where the `$(filter-out)` sits, at
-# CLU_TERMIO_SRCS above.  The stamp is here because a park the objects do not know about is a
-# park that still charges 3.4 MB of .data -- mostly gm107.c's 1,382,528 B of opcode tables -- to
-# the image-budget ASSERT.
+# PS2_NV=1: Include NVIDIA disassembler tables (0: parked to save 3.4 MB RDRAM)
 PS2_NV         ?= 0
 PS2_NV_STAMP    = .build/ps2-nv.stamp
 PS2_NV_PREV    := $(shell cat $(PS2_NV_STAMP) 2>/dev/null)
@@ -1529,7 +1389,12 @@ $(info [PS2] PS2_NV is now $(PS2_NV) (was $(if $(PS2_NV_PREV),$(PS2_NV_PREV),uns
 endif
 PS2_SRCS       = $(PS2_STARTUP)           \
                  src/cores/core_init.c    \
+                 src/drivers/playstation2/ps2_heap.c \
+                 src/drivers/playstation2/ps2_console.c \
+                 src/drivers/playstation2/ps2_kbd.c \
+                 src/drivers/playstation2/ps2_boot.c \
                  src/drivers/playstation2/ps2_gs.c \
+                 src/drivers/playstation2/ps2_gs_present.c \
                  src/drivers/playstation2/ps2_gif_ring.c \
                  src/drivers/playstation2/ps2_gs_pack.c \
                  src/drivers/playstation2/ps2_gs_vram.c \
@@ -1557,28 +1422,9 @@ PS2_OBJS       = src/drivers/playstation2/boot_ps2.ps2.o         \
                  $(PS2_SYS_VOL_OBJ)                    \
                  $(PS2_SRCS:.c=.ps2.o)
 
-# The /SYS volume rides inside the image's .data (doc/txt/PS2.txt, chapter 20): the bytes are
-# btron_sys.vol, which the host tool mkbtronfs writes from tools/manifest.txt, and the object is
-# the one .incbin of them.  It is a prerequisite of nothing here -- the volume's own rule now waits
-# on the manifest's payloads -- so a document edit rebuilds the volume, which rebuilds this object,
-# which relinks the image, and no step of that is a human remembering to run the tool first.
-# `-I.` is what makes the .incbin path mean the file at the top of the checkout rather than a file
-# next to the .s, because make runs from the repository root and the assembler resolves that path
-# the way it resolves an include.
+# Built-in /SYS filesystem volume embedded in image data; verify manifest integrity
 PS2_SYS_VOL_OBJ     = src/drivers/playstation2/ps2_sys_vol.ps2.o
 PS2_SYS_VOL_SOURCE  = src/drivers/playstation2/ps2_sys_vol.s
-# And the prerequisite is NOT a read-only input, which is the part learned the hard way on
-# 2026-10-14: three host suites mount the real btron_sys.vol read/write -- test_b_drivesetup.c
-# mounts it as /SYS at :158 and then writes its scratch `sys_boot_%d.cfg` into it at :959,
-# test_editor_ui.c:1043 and test_fs.c:978/:1027 open it the same way -- so after a `make test`
-# the working file is no longer what the manifest says (measured: 90 bytes, once 40,841).  A
-# mutation that bumps its mtime makes this rule run, and the naive rule then .incbin's a test's
-# scratch file into the shipped image.  test-ps2 cannot see that happening, because its own pair
-# of payload rows compares the ELF against the same mutated file; the row that can see it is
-# #90, and it went red on exactly this.  So the link repairs its own input first: mkbtronfs is
-# byte-reproducible (two fresh builds compare clean), so rebuild the manifest elsewhere and, if
-# the working file is not that, replace it.  The repair happens before the compile line, so the
-# object always ends up newer than the volume and a clean tree still says "nothing to do".
 $(PS2_SYS_VOL_OBJ): $(PS2_SYS_VOL_SOURCE) btron_sys.vol
 	@./mkbtronfs tools/manifest.txt -o .build/ps2-vol-fresh.vol >/dev/null 2>&1; \
 	 if ! cmp -s .build/ps2-vol-fresh.vol btron_sys.vol; then \
@@ -1588,63 +1434,17 @@ $(PS2_SYS_VOL_OBJ): $(PS2_SYS_VOL_SOURCE) btron_sys.vol
 	 rm -f .build/ps2-vol-fresh.vol
 	$(PS2_CC) -I. -c $< -o $@
 
-# One calling convention for the whole PS2 image.  A 64-bit-GPR MIPS under O32
-# passes fixed arguments 5..8 in $t0..$t3 where a 32-bit-GPR MIPS puts them on
-# the stack, and it lays its vararg save area out in 8-byte slots while va_arg
-# still walks four bytes at a time.  Neither difference shows up inside one
-# translation unit, which is why -march=mips3 for most files and -march=mips2 for
-# the two that own a va_list looked harmless; but every fixed call of five or more
-# arguments crossing between them silently passed garbage, and so did every console
-# line printed by a mips3 file.  The cursor is what made it visible:
-# draw_baremetal_cursor_raw() takes five arguments, its fifth -- the canvas height
-# -- arrived as junk when core_ps2.c called it, `py >= h` rejected every row, and
-# the sprite vanished on the first banded pass after the whole-canvas repaint that
-# draws it from inside desktop.c, where the call stays mips3 -> mips3 (2026-10-09).
-#
-# mips2 is the side that has to win: it is the only O32 flavour whose vararg layout
-# agrees with the va_arg walk, and its instruction set is a subset of MIPS III, so
-# nothing illegal for the Emotion Engine is emitted.  (mips32r2 would be 32-bit-GPR
-# too, but clang may reach for ext/ins/clz/madd, which a R5900 does not have -- the
-# reason this port originally moved off it.)  The one thing that does need a 64-bit
-# instruction is the GS, which latches a privileged register on a single sd and
-# takes two writes if a mips2 build splits the store in half; that access lives in
-# src/drivers/playstation2/ps2_gs_reg.s, whose three 32-bit arguments mean exactly the same
-# thing under either ISA, so it cannot be corrupted by a mixed link.  The other
-# thing a 32-bit-GPR MIPS cannot do is convert a double to or from a 64-bit integer
-# -- the FPU speaks 32-bit GPRs here, and so does the Emotion Engine's -- so clang
-# emits the O32 libcall names __floatdidf/__fixdfdi at the float-heavy files, and
-# src/drivers/playstation2/ps2_builtins.c defines them for the -nostdlib link.
-
+# MIPS O32 calling convention rules: mips2 ISA ensures consistent varargs and 32-bit GPR ABI
 %.ps2.o: %.s
 	$(PS2_CC) -c $< -o $@
 
 %.ps2.o: %.c
 	$(PS2_CC) $(PS2_CFLAGS) -MMD -MP -c $< -o $@
 
-# src/media/sdk/gst_rt.c crashes LLVM 22.1.8 in MachineFunction's ShrinkWrap pass, on
-# `Shrink Wrapping analysis' against @clock_block: the same file at commit 544425f, with the
-# flags at commit 544425f, dies identically, so this is the toolchain and not the lane.
-# Reproduce with `make ps2`, or by compiling that revision's copy with PS2_CFLAGS.
-# -mllvm -enable-shrink-wrap=false is the suppression, measured rather than guessed: with
-# the base flags the compile crashes, adding this one emits a 71420-byte object.  The
-# clang-native spelling is -fno-shrink-wrap and this build of clang does not accept it;
-# -mllvm -no-shrink-wrap is likewise unknown.  Nothing here moves the ISA, the 32-bit GPR
-# O32 ABI or the soft-float contract in doc/txt/PS2.txt -- shrink-wrap only decides where
-# a function's prologue and epilogue go -- and `make test-ps2` measures that on the object
-# instead of trusting this comment.
-# Scoped to the one object on purpose: PS2_CFLAGS is what every [BENCH] row was measured
-# under, and widening it here would silently re-baseline the numbers the bench reports.
+# Disable LLVM shrink-wrap pass on gst_rt.c to work around compiler crash
 src/media/sdk/gst_rt.ps2.o: PS2_CFLAGS += -mllvm -enable-shrink-wrap=false
 
-# `PS2_GL=` changes the flags three translation units compile under, and make does not see a
-# flag change: their objects stay newer than their sources and get linked into the image built
-# for the other value, which is worse than a build failure because the `[GL]` row then describes
-# a pipeline nobody asked for and the [XMBT] timings describe it too.  So the value itself is
-# what gets tracked: it is written into a stamp file and, when the two disagree, the objects
-# that read it are removed before anything is linked.  The same law scripts/test_ps2_smooth.sh
-# applies to PS2_FP_COUNT, here so a bare `make ps2 PS2_GL=eegs` is covered by it too -- and it
-# has to be a content comparison rather than a stamp target with a recipe, because a target with
-# no prerequisites is never considered out of date and would sit there holding the old value.
+# PS2_GL stamp: rebuild backend selection units on rasterizer change
 PS2_GL_STAMP  = .build/ps2-gl.stamp
 PS2_GL_PREV  := $(shell cat $(PS2_GL_STAMP) 2>/dev/null)
 ifneq ($(PS2_GL_PREV),$(PS2_GL))
@@ -1653,11 +1453,7 @@ $(shell mkdir -p ./.build && echo '$(PS2_GL)' >$(PS2_GL_STAMP) && \
 $(info [PS2] PS2_GL is now $(PS2_GL) (was $(if $(PS2_GL_PREV),$(PS2_GL_PREV),unset)) -- the objects that read it will rebuild)
 endif
 
-# PS2_MSX is a flag as well as a source list: src/cores/core_ps2.c compiles its [MSX] bench
-# phase under it, and a stale object there would print a row about a machine the image does
-# not contain -- or omit a row about one it does.  Same content-comparison stamp, same
-# disease as PS2_GL, and it removes the bench object too because that is a second compile
-# of the same source under the same define.
+# PS2_MSX stamp: rebuild core_ps2 on MSX configuration change
 PS2_MSX_STAMP = .build/ps2-msx.stamp
 PS2_MSX_PREV := $(shell cat $(PS2_MSX_STAMP) 2>/dev/null)
 ifneq ($(PS2_MSX_PREV),$(PS2_MSX))
@@ -1669,12 +1465,7 @@ ifeq ($(PS2_MSX),1)
 PS2_CFLAGS    += -DBTRON_PS2_MSX=1
 endif
 
-# LANE 22's dial is a flag on two units and a source list on one, so it is the same staleness as
-# PS2_MSX in three places at once: core_ps2.c's seam compiles under it, the bench object is a second
-# compile of the same source, and ps2_paint_worker.ps2.o must not survive a switch to 0 as an object
-# no header declares any more -- which is what the image-budget ASSERT then charges for .bss nobody
-# references.  A switch to 1 removes nothing but itself: the leaf appears in PS2_SRCS by the same
-# $(filter) test.
+# PS2_PW stamp: rebuild paint worker and core_ps2 on policy change
 PS2_PW_STAMP = .build/ps2-pw.stamp
 PS2_PW_PREV := $(shell cat $(PS2_PW_STAMP) 2>/dev/null)
 ifneq ($(PS2_PW_PREV),$(PS2_PW))
@@ -1684,89 +1475,26 @@ $(shell mkdir -p ./.build && echo '$(PS2_PW)' >$(PS2_PW_STAMP) && \
 $(info [PS2] PS2_PW is now $(PS2_PW) (was $(if $(PS2_PW_PREV),$(PS2_PW_PREV),unset)) -- the paint worker's units will rebuild)
 endif
 
-# The PS2 lane owns its allocator: src/cores/core_ps2.c defines Imalloc, Icalloc, Ifree and
-# Irealloc strong against `s_ps2_heap`, and libstr.c's four weak versions only ever answer a
-# link that has nothing else.  libstr's fallback arena is therefore dead weight here, but dead
-# weight make can still see: 1,048,576 B of .bss in a 32 MB machine whose image was over
-# ps2.ld's budget by 2,842,496 B with Quake already parked.  The define shrinks it to the 64 B
-# stub the ARM lanes use.
-#
-# It is a per-object flag rather than a PS2_CFLAGS one because the lane cannot afford the
-# difference: a flag on the whole recipe is a change every `*.ps2.o` has to answer, and the
-# staleness law (see PS2_MSX above) would have me purge the entire image to move one array.
-# Same shape as the gst_rt shrink-wrap override above and the bench TU's defines below, and it
-# needs the one-time purge only the first time, because make compares file dates and a Makefile
-# is not a prerequisite of an object.
-#
-# The define is its own name and not the lane's existing -DBTRON_PS2_TARGET because that one is
-# also handed to host suites' rules (see the note above TEST_PTRACCUM_OBJ: "must not reach any
-# other suite's object through a pattern rule").  A hosted test that uses the fallback allocator
-# and finds a 64-byte arena is a failure nobody could read off the console.
+# Shrink libstr fallback arena to 64 bytes; PS2 uses native s_ps2_heap allocator
 src/kernel/libstr.ps2.o: PS2_CFLAGS += -DBTRON_LIBSTR_NO_HEAP=1
 
-# PS2 measurement build: the present/pointer bench lives only in core_ps2.c, so one
-# object is rebuilt with the define and the shipped btron-ps2.elf keeps its own
-# flags -- the artifact measured is not the artifact flashed.  scripts/test_ps2_bench.sh
-# runs it under PCSX2 -nogui, so the table needs no window and no hand.
+# PS2 headless measurement build (core_ps2.pbench.o)
 PS2_BENCH_OBJ  = src/cores/core_ps2.pbench.o
 PS2_BENCH_OBJS = $(PS2_BENCH_OBJ) $(filter-out src/cores/core_ps2.ps2.o,$(PS2_OBJS))
 PS2_BENCH_TARGET = btron-ps2-bench.elf
-# BENCH_APP=1 scripts/test_ps2_bench.sh additionally opens xmb.c and counts the frames the
-# task shim gives it.  Off by default: the app it opens does not reach its own exit yet
-# (see the phase's note in core_ps2.c), so the phase would end the run at its timeout
-# rather than at its sentinel.
+# BENCH_APP: Enable XMB app lifecycle benchmarking (0: desktop idle)
 BENCH_APP      ?= 0
-# Frames the app phase asks for before it injects its own Escape.  The default keeps
-# the table's resolution; scripts/test_ps2_smooth.sh lowers it so a run ends at its
-# sentinel instead of at a harness timeout -- 60 frames of this app is 24 minutes.
+# BENCH_APP_FRAMES: Frame budget before Escape injection (default: 60)
 BENCH_APP_FRAMES ?= 60
-# Frames the launcher-by-key CYCLE phase asks for, which is the phase that ends the run at its own
-# sentinel (the frame hook injects Escape when this budget is spent, and the harness stops the
-# emulator at that sentinel).  It is 3 because the phase's question is "did the row open and draw",
-# not "what does a long run look like".  It is a dial because LANE 22's paint worker is judged on a
-# RATIO over many passes -- how often a frame refused the app, what it priced the refusal against --
-# and three passes cannot show a policy deciding.  `BENCH_LAUNCH_FRAMES=40` is what #165's
-# measurement uses.
+# BENCH_LAUNCH_FRAMES: Frames for launcher-by-key cycle (default: 3)
 BENCH_LAUNCH_FRAMES ?= 3
-# BENCH_GS=1 makes the headless run the GS census instead of the desktop bench: the
-# Local->Host read-back (LANE 19 rung 2) is only honest at the Stage-1 console, because
-# the desktop's own presents erase the read blocks and its ring traffic makes a read
-# refuse.  Off by default, and it replaces rather than joins the run -- see the rung's
-# note in core_ps2.c.
-# BENCH_GS=2 is the opposite rung: LANE 19 rung 6 reads the page a LIVE desktop made, so it boots
-# the session like a normal bench run and censuses page 0 against its own canvas from the app
-# phase's frame hook.  It therefore needs BENCH_APP=1 to have a window up, and it prints nothing
-# between its drawn control and its bands -- the console's own repaint is what the read's idle
-# precondition refuses.
-# BENCH_GS=6 takes the census branch again, and adds LANE 21 rung 3a to it: one plate uploaded into a
-# PSMCT16 display page and read back through VIF1, censused at 32 bits, at 16 with the GS's dither,
-# and at 16 without it.  It is a Stage-1 rung because it is a read of a page nothing else may be
-# writing -- inside a desktop session the present path uploads the same page between the plate and the
-# read, and the verdict row would describe a race instead of a format.
-# BENCH_GS=7 adds LANE 21 rung 4 to the same branch: the two-page rotation.  It dials PSMCT16, turns
-# the second page on, plates four colours across three passes, and censuses the page each flip claims
-# is now being scanned -- including the pass whose damage is one rect on a page that owes another,
-# which is the reading that fails if ps2_rot_owe() is removed.  Stage-1 for the same reason as 6: the
-# rotation is only measurable against a page no compositor is writing.  The flip's vsync wait and its
-# unaligned count print as their own labelled row and are NOT part of the verdict, because whether
-# PCSX2 raises CSR.VSYNC here is a fact about the emulator rather than about the rotation.
+# BENCH_GS: GS hardware census (1: stage 1 readback, 2: live desktop, 6: PSMCT16 plate, 7: rotation)
 BENCH_GS       ?= 0
-# LANE 24's two dials, both off so every older run keeps its rows.  BENCH_TEX=1 arms a paired cell
-# census taken from the app phase's frame hook: the live display page and the desktop canvas read at
-# the SAME box, plus every registered texture plane read out of VRAM, and the verdict row says which
-# of the three holds the flat rectangles the user reports.  It is now a BEFORE/AFTER pair rather than
-# one frame, because the report moved: "Icons show inititially fine but get corrupted after FPS ticker
-# changed" names an event, so the hook watches the window caption (fps_overlay_tick() renames it through
-# wnd_set_title(), whose damage is the tab rect alone) and censuses again on the next pass and at +4,
-# diffing cell by cell and diffing the texture registry's VRAM spans.  BENCH_ORDER=1 opens `lilcu`
-# before `xmb` -- the sequence the original report describes -- which is the variable; the census above
-# is the measurement.  Both need BENCH_APP=1, since the windows they ask about only the app phase opens.
-# With either dial up, the app phase runs WITHOUT the launcher-by-key cycle ahead of it: that phase
-# never returns (its Escape does not close the launcher, task #30), and the census lives in the phase
-# after it, which is why bench logs back to 2026-10-16 carry no `opened through the task shim` row.
+# BENCH_TEX: Texture plane before/after title-tick differential census
+# BENCH_ORDER: Execution ordering (1: lilcu demo before XMB, 0: XMB first)
 BENCH_TEX      ?= 0
 BENCH_ORDER    ?= 0
-$(PS2_BENCH_OBJ): PS2_CFLAGS += -DBTRON_PS2_BENCH=1 -DBTRON_PS2_BENCH_APP=$(BENCH_APP) \
+$(PS2_BENCH_OBJ): PS2_CFLAGS += -DBTRON_PS2_BENCH=1 -DBTRON_PS2_PROBE=1 -DBTRON_PS2_BENCH_APP=$(BENCH_APP) \
                                 -DBTRON_PS2_BENCH_APP_FRAMES=$(BENCH_APP_FRAMES)u \
                                 -DBTRON_PS2_BENCH_LAUNCH_FRAMES=$(BENCH_LAUNCH_FRAMES)u \
                                 -DBTRON_PS2_BENCH_TEX=$(BENCH_TEX) \
@@ -1785,53 +1513,14 @@ endif
 %.pbench.o: %.c
 	$(PS2_CC) $(PS2_CFLAGS) -MMD -MP -c $< -o $@
 
-# The three objects in the image that may hold COP1 instructions.  -msoft-float is an
-# argument-passing law (the note at PS2_CC), and none of these breaks any part of it: every
-# entry point in src/drivers/playstation2/ps2_builtins.c takes and returns an integer register holding
-# IEEE-754 bits, and the only float-shaped things in that file are inside __asm__ strings;
-# the two functions in src/desktop/graphics/tinygl/vertex_stage.c take a `GLVertex *` and return nothing,
-# so the floats they compute never leave the unit; and src/media/xmb/xmb_wave.c takes the effect
-# clock as bits in an integer, takes the window's size as two integers, returns nothing, and
-# hands the sheet out through memory the reader loads as a float -- its two wide-trig calls
-# are bits in and bits out as well.  All three still need the flag off to assemble at all --
-# under -msoft-float clang rejects `mtc1` with "instruction requires a CPU feature not
-# currently enabled", which is why the EE's own FPU was unusable for single precision until
-# that first file, unusable for the geometry until the second, and unusable for the wave's
-# lattice until the third.  The link keeps recording `FP ABI: Soft float` for the whole
-# image, and mipsel-linux-gnu-ld accepts the mixed .MIPS.abiflags the way it is.  PS2_FP=soft
-# builds without any of them, and then the bit engine answers every call exactly as it did
-# before 2026-10-10 -- which is also the escape hatch if a console ever boots with the FPU
-# off, since a hard-float unit cannot ask the runtime valve (`btron_fp_on`) to substitute for
-# instructions it has already emitted.
-#
-# Inside these three there is a second law, and it is not about instructions.  The R5900 has
-# 32 single-precision registers and no double ones, so the O32 convention's callee-saved
-# $f20/$f22/.../$f30 -- which a normal MIPS preserves with `sdc1` of the even/odd pair --
-# cannot be preserved here at all: the store and its reload are both ignored, and a unit that
-# lets the allocator put a live value in one of them silently destroys its caller's.  Two of
-# the three ways that happens are visible in the source (a working set over the caller-saved
-# ten, a loop whose invariant float is live across its own call); the third is LLVM's
-# allocator preferring a callee-saved register for any long live range, which is a cost-model
-# decision no source spelling changes.  So the three units are built with that preference
-# priced out, and the image is then scanned for the pair instructions: `PS2_FP_CSR_COST` is
-# the knob, and scripts/test_ps2.sh's FPU row is the proof.  Measured on the wave unit, this
-# flag is 52 pair stores down to 4 and the four were one real working-set overflow that the
-# source has since been split for; on the source as it now stands, dropping the flag gives
-# 14 pair stores and 32 references to $f20-$f31 against the shipped object's zero of each,
-# which is the control that says the knob is still load-bearing rather than a relic of the
-# first arrangement.  An unknown `-mllvm` argument fails the compile, so a toolchain that
-# drops the option stops the build instead of quietly re-opening the hole.
+# PS2_FP: Floating-point mode (hw: COP1 hardware with CSR cost penalty; soft: software libcalls)
 PS2_FP ?= hw
 PS2_FP_OBJ     = src/drivers/playstation2/ps2_builtins.ps2.o
 PS2_KERNEL_OBJ = src/desktop/graphics/tinygl/vertex_stage.ps2.o
 PS2_WAVE_OBJ   = src/media/xmb/xmb_wave.ps2.o
 PS2_FP_OBJS    = $(PS2_FP_OBJ) $(PS2_KERNEL_OBJ) $(PS2_WAVE_OBJ)
 PS2_FP_CSR_COST = -mllvm -regalloc-csr-first-time-cost=1000000000
-# The flag is per object, and make does not see a flag change: switching PS2_FP leaves the
-# three objects newer than their sources and links an image whose FPU law is whatever the
-# previous value built -- the same disease PS2_GL has, and the same content-comparison stamp
-# cures it.  Note that this `$(shell ...)` runs while *parsing*, so even `make -n PS2_FP=...`
-# removes the three objects: pass the value you mean, dry runs included.
+# PS2_FP stamp: rebuild FPU-using units on mode change
 PS2_FP_STAMP = .build/ps2-fp.stamp
 PS2_FP_PREV := $(shell cat $(PS2_FP_STAMP) 2>/dev/null)
 ifneq ($(PS2_FP_PREV),$(PS2_FP))
@@ -1843,16 +1532,7 @@ $(PS2_FP_OBJS): PS2_CC := $(subst -msoft-float,-mhard-float,$(PS2_CC)) $(PS2_FP_
 $(PS2_FP_OBJS): PS2_CFLAGS += -DBTRON_PS2_FP_HW
 endif
 
-# PS2_FP_COUNT is named in three units and paid for by all of them: the counters themselves are
-# incremented inside the soft-float runtime (ps2_builtins.c), xmb.c prints a stage's census from
-# them, and core_ps2.c prices the classes and prints the [FPU] rows.  A link where those three
-# disagree is worse than either value -- with ps2_builtins counted and xmb not, every call still
-# pays the counter's load, add and store while no row explains why the microseconds moved -- and
-# make cannot see the change, because the flag is not a file date.  Measured 2026-10-14: a
-# supposedly-production image that `nm` showed holding `btron_fp_calls`, from a census round that
-# left xmb.ps2.o newer than its source.  Same content-comparison stamp as the other dials, same
-# object list as the disease, and note again that `$(shell ...)` runs while *parsing* -- a
-# `make -n PS2_FP_COUNT=1` purges these too.
+# PS2_FP_COUNT stamp: rebuild profiling units on counter state change
 PS2_FPC_OBJS = src/drivers/playstation2/ps2_builtins.ps2.o src/media/xmb/xmb.ps2.o \
                src/cores/core_ps2.ps2.o src/cores/core_ps2.pbench.o
 PS2_FPC_STAMP = .build/ps2-fpc.stamp
@@ -1862,12 +1542,7 @@ $(shell mkdir -p ./.build && echo '$(PS2_FP_COUNT)' >$(PS2_FPC_STAMP) && rm -f $
 $(info [PS2] PS2_FP_COUNT is now $(PS2_FP_COUNT) (was $(if $(PS2_FPC_PREV),$(PS2_FPC_PREV),unset)) -- the units that read it will rebuild)
 endif
 
-# PS2_IDENT is three units and the same disease: the hash and the row are built in eegs_present.c,
-# the stage attribution column is printed by xmb.c from the present's own counter, and core_ps2.c is
-# the half that prints [GSTID] -- the bench object included, because that is the one this dial is
-# turned on for.  An image where eegs_present counted and core_ps2 did not print is an instrument
-# nobody reads; one where xmb printed `g=` against a stream nothing hashed is a column that means
-# nothing.  Same content-comparison stamp, same note that `$(shell ...)` runs while *parsing*.
+# PS2_IDENT stamp: rebuild invariance tracking units on state change
 PS2_IDENT_OBJS = src/desktop/graphics/eegs/eegs_present.ps2.o src/media/xmb/xmb.ps2.o \
                  src/cores/core_ps2.ps2.o src/cores/core_ps2.pbench.o
 PS2_IDENT_STAMP = .build/ps2-ident.stamp
@@ -1879,21 +1554,13 @@ endif
 
 ps2-bench: $(PS2_BENCH_TARGET)
 
-# The bench TU is the LANE 19 census, and the census's cost is .rodata: every rung adds print rows, and
-# `_end` climbs with them.  ps2.ld's stack reserve is a shipped-image guarantee (256 KiB, 11x the
-# measured 22 KiB high-water of a desktop-plus-XMB session), and this image does not ship, so it takes
-# 64 KiB -- still ~3x the measurement.  Production links without this flag and keeps the full reserve.
-# If a bench run ever dies on stack, the census that prints `stack used=` is the one that will say so.
-# The `=` form, not the comma: GNU ld accepts `--defsym SYM=EXPR` and `--defsym=SYM=EXPR` and rejects
-# `--defsym,SYM=EXPR`, and ld.lld takes the `=` form too -- MIPS_LD is whichever of the two the host has.
+# Benchmark image links with 64 KiB stack reserve for extra .rodata headroom
 $(PS2_BENCH_TARGET): $(PS2_BENCH_OBJS) $(PS2_LD_SCRIPT)
 	$(MIPS_LD) -T $(PS2_LD_SCRIPT) --defsym=__ps2_stack_reserve=0x10000 $(PS2_BENCH_OBJS) -o $@
 	@echo "[PS2-BENCH] Built: $@"
 	@file $@
 
-# ps2_usb.h changes the layout of ps2_ohci_probe_t, which core_ps2.c reads by
-# offset.  Without generated header dependencies the two objects are built from
-# different generations of that struct and the boot log prints shifted fields.
+# Auto-generated header dependencies for PS2 objects
 -include $(PS2_OBJS:.ps2.o=.ps2.d)
 
 ps2: $(PS2_TARGET) $(PS2_ISO)
@@ -1906,24 +1573,7 @@ $(PS2_TARGET): $(PS2_OBJS) $(PS2_LD_SCRIPT)
 	@echo "[PS2-ELF] Built: $@"
 	@file $@
 
-# LANE 14 Rung 1: the full-feature disc.  The image binary is FROZEN -- this rule
-# does not touch the link line above it, and its own falsifying gate is that
-# `make ps2` leaves btron-ps2.elf byte-identical -- so every app payload that is
-# not already inside the ELF ships as a FILE on the CD9660 tree instead:
-#
-#   SYSTEM.CNF          the boot record the BIOS reads (cdrom0:\BTRON.ELF;1)
-#   BTRON.ELF           the kernel image, unchanged
-#   SYS.VOL             the /SYS volume, 1 MiB
-#   ANDERS.VOL          the /ANDERS volume, 1 MiB
-#   QUAKE/PAK0.PAK      18,689,235 B -- a STREAM read off the disc, never an embed
-#   QUAKE/DRONE1MN.DEM  the eight replay demos
-#
-# Every name is 8.3-uppercase, so a level-1 Rock Ridge-less reader sees the same
-# name the guest will ask for.  Both volumes are regenerated from their manifests
-# INSIDE the recipe rather than copied from the working files, because a host FS
-# suite writes scratch into the working btron_sys.vol -- that is exactly why the
-# contamination guard at $(PS2_SYS_VOL_OBJ) exists -- and the disc must carry what
-# the manifest says it carries, not whatever the last test left in the tree.
+# Package bootable ISO (SYSTEM.CNF, BTRON.ELF, SYS.VOL, ANDERS.VOL, QUAKE assets)
 $(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt assets/quake/pak/pak0.pak $(wildcard assets/quake/drone1m*.dem)
 	@echo "=========================================================="
 	@echo " Packaging Bootable PS2 Disc ISO: $@"
@@ -1954,15 +1604,7 @@ $(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt
 
 run-ps: run-ps2
 
-# Prepare the run's data directory.  PCSX2 writes the config file back on exit, so
-# a run can dirty pcsx2/PCSX2/inis/PCSX2.ini in git -- revert it rather than
-# delete it.  The [USB2] keyboard binding and the [Hotkeys] entries trimmed for it
-# are what let a host keypress reach the emulated device at all, and the BIOS
-# images are linked rather than copied because they are Sony's, not ours.
-# The environment a measurement was made in, printed rather than guessed.  PS2_MSX is DERIVED from
-# PS2_GL now, so reading the dial out of this file quotes a default instead of the value in force,
-# and a run whose dials are not recorded cannot be re-run by somebody else.  scripts/ps2_eegs_repro.sh
-# calls this first and puts the output in its manifest beside the ELF's hash.
+# Prepare emulator run environment and record build configuration dials
 ps2-dials:
 	@echo "PS2_GL=$(PS2_GL)"
 	@echo "PS2_MSX=$(PS2_MSX)"
@@ -2015,13 +1657,7 @@ run-ps2: $(PS2_TARGET) ps2-cfg
 	    exit 1; \
 	fi
 
-# include/rt/math.h's large-argument trig fold, read as a shape law rather than as a
-# value: past 4*pi a float angle must be folded with multiplies and no software double
-# division, and not handed to the double series (whose thirteen __divdf3 are the reason
-# the guard exists).  Needs the image's own flags -- and the image itself is no help,
-# because sinf is static inline and dissolves into its call sites.  See
-# verify/tests/ps2_farfold_probe.c; scripts/test_ps2.sh asserts the count and SKIPs, not
-# PASSes, when the probe has not been built.
+# Large-argument float trig folding verification probe
 PS2_FARFOLD_OBJ = ./.build/ps2_farfold_probe.o
 
 $(PS2_FARFOLD_OBJ): verify/tests/ps2_farfold_probe.c include/rt/math.h
@@ -2031,13 +1667,7 @@ $(PS2_FARFOLD_OBJ): verify/tests/ps2_farfold_probe.c include/rt/math.h
 test-ps2: $(PS2_TARGET) $(PS2_ISO) $(PS2_FARFOLD_OBJ)
 	@PS2_GL=$(PS2_GL) PS2_FP=$(PS2_FP) PS2_FP_COUNT=$(PS2_FP_COUNT) PS2_MSX=$(PS2_MSX) ./scripts/test_ps2.sh
 
-# The PS2 image is built -msoft-float (the R5900 FPU has no double-precision
-# instructions), so every floating-point operation in it runs through
-# src/drivers/playstation2/ps2_builtins.c -- a file no PS2-independent test can reach,
-# because the compiler calls it by names that only exist at link time.  This
-# compiles that same source on the host and throws each of its 32 symbols at the
-# host FPU, comparing bit patterns: the only way to know the port's arithmetic is
-# right before a screen can be looked at.
+# Verify PS2 soft-float runtime against host hardware FPU
 TEST_PSFLOAT_SRCS = verify/tests/test_ps2_softfloat.c
 TEST_PSFLOAT_OBJS = $(TEST_PSFLOAT_SRCS:.c=.test.o)
 TEST_PSFLOAT_BIN  = ./.build/test_ps2_softfloat
@@ -2121,11 +1751,7 @@ $(TEST_BT_AUDIO_BIN): $(TEST_BT_AUDIO_OBJS)
 	@mkdir -p ./.build
 	$(CC) $(TEST_BT_AUDIO_OBJS) -o $@ $(LDFLAGS) -lm
 
-# Increment 2 of the EE/GS plan of record (doc/txt/PS2.txt): the packet builder.  A GS field
-# one bit off cannot be seen -- it draws a triangle somewhere the screen is not -- so the
-# encoders are compiled into this program and every word is compared with a literal that
-# was derived by hand from the manual's field table, the test_ps2_fb_order discipline of
-# expectations that are not computed by the code they check.
+# Increment 2: GS packet builder encoding verification vs register layout literals.
 TEST_GSPACK_SRCS = verify/tests/test_ps2_gs_pack.c
 TEST_GSPACK_OBJS = $(TEST_GSPACK_SRCS:.c=.test.o)
 TEST_GSPACK_BIN  = ./.build/test_ps2_gs_pack
@@ -2140,10 +1766,7 @@ $(TEST_GSPACK_BIN): $(TEST_GSPACK_OBJS) src/drivers/playstation2/ps2_gs_pack.c s
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSPACK_OBJS) -o $@ $(LDFLAGS)
 
-# Increment 3: the drawing environment and the VRAM arithmetic it rests on.  Same discipline as
-# the builder's gate -- literals derived from the register tables, not from the code -- because
-# the two things here are a page unit nobody can see on a screen and an eleven-word packet whose
-# registers must arrive in the order the hardware expects.
+# Increment 3: GS drawing environment registers and VRAM page base arithmetic.
 TEST_GSENV_SRCS = verify/tests/test_ps2_gs_env.c
 TEST_GSENV_OBJS = $(TEST_GSENV_SRCS:.c=.test.o)
 TEST_GSENV_BIN  = ./.build/test_ps2_gs_env
@@ -2158,12 +1781,7 @@ $(TEST_GSENV_BIN): $(TEST_GSENV_OBJS) src/drivers/playstation2/ps2_gs_env.c src/
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSENV_OBJS) -o $@ $(LDFLAGS)
 
-# Increment 4: the vertex recorder.  Same idiom as the two gates above -- the recorder and the
-# packer are #included into the test, so the identical translation unit is what the gate measures
-# and what links into btron-ps2.elf -- and the same reason: a GIF group whose NLOOP counts
-# quadwords instead of vertices, or a vertex left in pixels instead of 12.4, is a packet the GS
-# decodes happily and draws in the wrong place.  The buffer is overridden to 64 quadwords by the
-# test's own #define so the split paths are reachable without ten thousand vertices.
+# Increment 4: GS vertex recorder packet formatting and NLOOP count verification.
 TEST_GSREC_SRCS = verify/tests/test_ps2_gs_rec.c
 TEST_GSREC_OBJS = $(TEST_GSREC_SRCS:.c=.test.o)
 TEST_GSREC_BIN  = ./.build/test_ps2_gs_rec
@@ -2237,20 +1855,7 @@ $(TEST_PS2ROUTING_BIN): verify/tests/test_ps2_opengl_routing.c $(FS_OBJS) src/ap
 	$(CC) $(CFLAGS) -Isrc verify/tests/test_ps2_opengl_routing.c $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS) src/desktop/graphics/eegs/backend_eegs.c src/drivers/playstation2/ps2_gs_rec.c src/drivers/playstation2/ps2_gs_tex.c -o $@ $(LDFLAGS) -lm
 
 
-# LANE 9b: the flat-colour SPRITE batch, the poster half of row 9.  Same #include idiom as the three
-# gates above, with one difference that is not a style choice: the TU used to ship host-only because
-# nothing in the image called it and this port's image has a size law ps2.ld ASSERTs.  Its first
-# caller landed as LANE 19 rung 1 -- src/cores/core_ps2.c's `gsquad` probe, which sends one SPRITE to
-# answer whether the GS rasterises on the displayed page at all -- so it is in PS2_SRCS now, and the
-# caller's own gate is still the row that says a batch reached channel 2 (`[GSQUAD] bus:`).  What
-# remains unshipped is row 9b's PRODUCTION caller, the background plate, which the census priced out
-# (doc/txt/PS2.txt, LANE 9 Price).  What this suite owns in the meantime is the three things that
-# cannot be seen on a screen and cannot be derived from the code: the colour word (a poster read in
-# the desktop's own byte order paints teal as brown at an identical packet length), the corner word
-# (compared against gs_vertex_coord16() over every coordinate the field holds, so the integer shift
-# is shown to be the recorder's encoding rather than a rival one), and NLOOP (which must shrink with
-# the rects a refusal removes, or the DMA's QWC is shorter than the tag and the GIF decodes the
-# overflow as another packet).
+# LANE 9b: flat-color SPRITE batch packet generation and NLOOP overflow verification.
 TEST_GSPOSTER_SRCS = verify/tests/test_ps2_gs_poster.c
 TEST_GSPOSTER_OBJS = $(TEST_GSPOSTER_SRCS:.c=.test.o)
 TEST_GSPOSTER_BIN  = ./.build/test_ps2_gs_poster
@@ -2267,13 +1872,7 @@ $(TEST_GSPOSTER_BIN): $(TEST_GSPOSTER_OBJS) src/drivers/playstation2/ps2_gs_post
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSPOSTER_OBJS) -o $@ $(LDFLAGS)
 
-# Increment 5b: the texture-plane registry.  Same idiom as the three gates above -- the registry
-# and the two units it plans against are #included into the test -- and the same reason: a plane
-# given the wrong 256-byte block is a triangle that samples its neighbour's texels, which draws
-# something and draws it wrong, with nothing on the screen to say which of the four fields was
-# off.  The three words are compared against literals written from the register tables, the spans
-# against the budget doc/txt/PS2.txt states, and the sink against the law that a plane crosses the
-# moment its bytes exist.
+# Increment 5b: GS texture-plane registry, VRAM layout, and TEX0 register encoding.
 TEST_GSTEX_SRCS = verify/tests/test_ps2_gs_tex.c
 TEST_GSTEX_OBJS = $(TEST_GSTEX_SRCS:.c=.test.o)
 TEST_GSTEX_BIN  = ./.build/test_ps2_gs_tex
@@ -2291,22 +1890,7 @@ $(TEST_GSTEX_BIN): $(TEST_GSTEX_OBJS) src/drivers/playstation2/ps2_gs_tex.c \
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSTEX_OBJS) -o $@ $(LDFLAGS)
 
-# LANE 19 rung 2: the Local->Host read request.  Same #include idiom as the four gates above, and a
-# sharper reason to use it: every other unit in this suite draws something, so a wrong word is a
-# wrong pixel -- visible, if anyone can see.  A read request that is wrong produces NO pixels and
-# says nothing about why, and the census it returns is indistinguishable from a screen that really
-# is black.  So the words themselves are the only part of this instrument that can be verified
-# without eyes on the GS, and this gate owns exactly that: the VIF code quadword (FLUSHA must precede
-# DIRECT, and DIRECT's immediate is the PACKET's 6 quadwords -- count the block's 7 and VIF1 waits
-# forever for a quadword that does not exist), the five AD words against literals written from the
-# register tables, and the refusal table, which is what gs_read_last_err() exists to make a single
-# number: "the download was refused because the rect does not end on a 16-byte boundary" is a
-# different fact from "the download ran and the page is black".  Two of the cases are controls with
-# opposite answers on purpose -- a BITBLTBUF built as DBA/DBW instead of SBA/SBW is the same LENGTH,
-# so only the field-by-field comparison catches it, and CT24 must accept x=16/w=16 while refusing
-# x=4/w=4, which is PCSX2's own "transfer rectangles are exact multiples of a qword" law expressed in
-# bytes rather than in pixels.  The bus turn that consumes these words -- DMAC channel 1, VIF1, the
-# FINISH receipt -- is ps2_gs_vram_read(); its first caller is the `gsread` Stage-1 verb.
+# LANE 19 rung 2: Local->Host VRAM read request packet formatting and alignment verification.
 TEST_GSREAD_SRCS = verify/tests/test_ps2_gs_read.c
 TEST_GSREAD_OBJS = $(TEST_GSREAD_SRCS:.c=.test.o)
 TEST_GSREAD_BIN  = ./.build/test_ps2_gs_read
@@ -2324,21 +1908,12 @@ $(TEST_GSREAD_BIN): $(TEST_GSREAD_OBJS) src/drivers/playstation2/ps2_gs_read.c \
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSREAD_OBJS) -o $@ $(LDFLAGS)
 
-# The pointer's two-speed pair, on the PS2 side only.  The splitter lives in a header src/cores
-# includes, so the test #includes that same header and measures the identical code the image links
-# -- which matters here more than anywhere else in this suite, because the row it prints is the one
-# that decides whether a guest gain can be shipped at all, and it is read in a session whose screen
-# nobody can see.  Two of the cases are controls with opposite answers: counts that proportion to
-# distance must read 1.00x and counts that proportion to speed must read as acceleration, and a
-# harness that prints 1.00x for both is not an instrument.
+# Pointer dynamics: dual-speed stroke velocity segmentation.
 TEST_PTRSTROKE_SRCS = verify/tests/test_ps2_ptr_stroke.c
 TEST_PTRSTROKE_OBJS = $(TEST_PTRSTROKE_SRCS:.c=.test.o)
 TEST_PTRSTROKE_BIN  = ./.build/test_ps2_ptr_stroke
 
-# The accumulation differential, compiled with the PS2 dial because it reads the dial's own table:
-# dp_accel.c is #included, so the arithmetic the gate checks is the arithmetic that links into
-# btron-ps2.elf.  A private object suffix, not the shared %.test.o rule, because -DBTRON_PS2_TARGET
-# must not reach any other suite's object through a pattern rule.
+# Pointer dynamics: differential pointer acceleration table check (dp_accel.c).
 TEST_PTRACCUM_OBJ = verify/tests/test_ps2_ptr_accum.accum.o
 TEST_PTRACCUM_BIN = ./.build/test_ps2_ptr_accum
 
@@ -2363,12 +1938,7 @@ $(TEST_PTRACCUM_OBJ): verify/tests/test_ps2_ptr_accum.c src/desktop/graphics/dp_
 $(TEST_PTRACCUM_BIN): $(TEST_PTRACCUM_OBJ)
 	$(CC) $(TEST_PTRACCUM_OBJ) -o $@ $(LDFLAGS)
 
-# LANE 9c: the composite's row rule, after the walk's second read of the same band was removed.
-# The header is #included rather than linked, so the identical code is what the gate checks and
-# what wnd.c compiles on every port.  The suite runs TWICE, once per side of the port dial, and
-# that is not decoration: the one fact a single run cannot see is the dial itself, because the
-# dispatcher's output is compared against the shape its #if names -- an inverted #if would ship a
-# row that passes every byte test on both ports, and only the second binary calls it wrong.
+# LANE 9c: composite row rule differential check (host dial vs PS2 dial).
 TEST_FUSEDROW_SRCS = verify/tests/test_ps2_fused_row.c
 TEST_FUSEDROW_OBJS = $(TEST_FUSEDROW_SRCS:.c=.test.o)
 TEST_FUSEDROW_BIN  = ./.build/test_ps2_fused_row
@@ -2386,8 +1956,7 @@ $(TEST_FUSEDROW_BIN): $(TEST_FUSEDROW_OBJS) include/btron/fused_row.h include/bt
 	@mkdir -p ./.build
 	$(CC) $(TEST_FUSEDROW_OBJS) -o $@ $(LDFLAGS)
 
-# The forced dial, compiled from the same source with the PS2 target macro: this is the shape
-# btron-ps2.elf carries, and the flag is the only thing that selects it.
+# PS2 target macro build of the fused row test.
 $(TEST_FUSEDROW_DIAL_OBJ): verify/tests/test_ps2_fused_row.c include/btron/fused_row.h
 	$(CC) $(CFLAGS) -DBTRON_PS2_TARGET -MMD -MP -c $< -o $@
 
@@ -2395,12 +1964,7 @@ $(TEST_FUSEDROW_DIAL_BIN): $(TEST_FUSEDROW_DIAL_OBJ) include/btron/fused_row.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_FUSEDROW_DIAL_OBJ) -o $@ $(LDFLAGS)
 
-# Increment 5a: the raster stage's decisions, on top of the recorder's words.  Same idiom again --
-# backend_eegs.c and the recorder are #included into the test, so the identical translation unit is
-# what the gate measures and what will link into btron-ps2.elf -- and the same reason: a triangle
-# that asks for the wrong PRIM, or a vertex colour whose bytes are unpacked in the wrong order, is
-# a packet the GS decodes happily and draws in the wrong colour.  The suite is the one law in this
-# port a hand literal alone can pin, so it is compiled before any of it reaches a screen.
+# Increment 5a: EE/GS raster stage primitive dispatch and vertex color channel ordering.
 TEST_EEGSR_SRCS = verify/tests/test_eegs_raster.c
 TEST_EEGSR_OBJS = $(TEST_EEGSR_SRCS:.c=.test.o)
 TEST_EEGSR_BIN  = ./.build/test_eegs_raster
@@ -2418,24 +1982,7 @@ $(TEST_EEGSR_BIN): $(TEST_EEGSR_OBJS) src/desktop/graphics/eegs/backend_eegs.c s
 	@mkdir -p ./.build
 	$(CC) $(TEST_EEGSR_OBJS) -o $@ $(LDFLAGS)
 
-# LANE 12f gate (a): the VALUES.  `tgl_grid_map()` and `tgl_grid_map_points()` are a second encoding
-# of `tgl_vertex_to_viewport()`, and the only honest comparator for a second encoding is the first
-# one, so this suite links TinyGL and drives the real API -- glViewport, the app's own
-# glOrtho(0,w,h,0,-1,1), identity modelview, blend on -- over a quarter-pixel lattice and the channel
-# byte's own flip points, and requires BIT equality on both device pixels and all four colour bytes.
-# -ffp-contract=off is insurance, not the load-bearing half of this gate: the Emotion Engine has no
-# FMA at all, so `off` is the setting under which the host runs the IMAGE's arithmetic (the same
-# reasoning is in that file's header), and it has to reach every TU in the link or the comparison
-# would be between two different compilers rather than two encodings.  Measured 2026-10-14: dropping
-# the flag leaves this suite green on Apple clang 21 / arm64, which does not contract these
-# statements; it would not be green under gcc's default -ffp-contract=fast.  What does bite is the
-# precision of the truncate -- a double-intermediate map loop moves 1,932 device pixels at 640x480 and
-# none of them is visible on an interior lattice point; see the header of the suite.
-# One trap for whoever runs those mutations: restoring vertex_stage.c with `cp` can leave the source
-# and its *.gm.o with the same second of mtime, and make then re-runs the MUTATED object and reports
-# failures that are no longer in the tree.  Delete the object, do not re-touch the source.
-# backend_virgl.c is here as it is in the other GL suites: the GL_BACKEND_VIRGL case in gl_init is
-# unconditional in the shipped image too.
+# LANE 12f gate (a): batch grid map projection bit-identical check vs TinyGL vertex walk.
 TEST_GRIDMAP_SRCS = verify/tests/test_grid_map.c src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/backend_tinygl.c \
                     src/desktop/graphics/virgl/backend_virgl.c $(TINYGL_SRCS) src/media/xmb/xmb_wave.c
 TEST_GRIDMAP_OBJS = $(TEST_GRIDMAP_SRCS:.c=.gm.o)
@@ -2454,13 +2001,7 @@ $(TEST_GRIDMAP_BIN): $(TEST_GRIDMAP_OBJS) src/desktop/graphics/gles/grid_map.h s
 	@mkdir -p ./.build
 	$(CC) $(TEST_GRIDMAP_OBJS) -o $@ $(LDFLAGS) -lm
 
-# Increment 5c: the present's own law, which is an order and two counts rather than a set of words.
-# eegs_present.c is #included with the stage, the recorder, the packer, the allocator and the
-# environment builder, and the bus is the one stub -- so what the suite can see is exactly what a
-# frame puts on DMAC channel 2 and in which order.  The environment-then-primitives half is the
-# rule the hardware forces (a stream sent before the canvas upload is a stream the upload erases);
-# the copy-not-alias half is differential, because the recorder reuses its buffer and each group is
-# individually correct at the instant it is handed over -- which no word gate can notice.
+# Increment 5c: EE/GS presentation ordering, upload vs stream staging, and capacity.
 TEST_EEGSP_SRCS = verify/tests/test_eegs_present.c
 TEST_EEGSP_OBJS = $(TEST_EEGSP_SRCS:.c=.test.o)
 TEST_EEGSP_BIN  = ./.build/test_eegs_present
@@ -2480,15 +2021,7 @@ $(TEST_EEGSP_BIN): $(TEST_EEGSP_OBJS) src/desktop/graphics/eegs/eegs_present.c s
 	@mkdir -p ./.build
 	$(CC) $(TEST_EEGSP_OBJS) -o $@ $(LDFLAGS)
 
-# LANE 10: the GIF writer ring, gated on a machine with no GIF in it.  This is the reason the ring
-# is a translation unit of its own with three hooks rather than three more lines inside
-# ps2_gs_gif_send(): "a producer is refused or accepted, never blocked" and "a completion check
-# leaves nothing outstanding" are properties of a queue, and a queue can be driven against a channel
-# that is held busy forever -- which is not a state any image row can conjure.  The capacity here is
-# the suite's own 8 (overridden in the test source) so the refusal path and the index wrap are
-# reachable; the shipped 512 and its relation to the stage's group table is compile-time law in
-# src/desktop/graphics/eegs/eegs_present.c, and the ordering a refusal would corrupt is asserted through the real
-# staging unit, just above.
+# LANE 10: hardware GIF DMA writer ring non-blocking queue capacity and completion tracking.
 TEST_GIFRING_SRCS = verify/tests/test_ps2_gif_ring.c
 TEST_GIFRING_OBJS = $(TEST_GIFRING_SRCS:.c=.test.o)
 TEST_GIFRING_BIN  = ./.build/test_ps2_gif_ring
@@ -2504,13 +2037,7 @@ $(TEST_GIFRING_BIN): $(TEST_GIFRING_OBJS) src/drivers/playstation2/ps2_gif_ring.
 	@mkdir -p ./.build
 	$(CC) $(TEST_GIFRING_OBJS) -o $@ $(LDFLAGS)
 
-# Task #165: the per-app paint policy, gated on a machine with no compositor in it, in the shape
-# LANE 10's ring established.  The claims this module makes are all about states the shipped image
-# cannot conjure -- a frame whose remaining slice is smaller than one window's price, the same
-# window asked to paint by four bands in one pass, a job so expensive it would never be admitted
-# again -- and a policy that has only ever run inside a live paint pass has not been shown to
-# refuse anything.  The suite is #include-the-source again (PS2_PW_MAX 4 so capacity is reachable)
-# because the table is file-static and the whole law is who gets in and who does not.
+# Task #165: per-app paint budget allocation and window deduplication policy.
 TEST_PAINTW_SRCS = verify/tests/test_ps2_paint_worker.c
 TEST_PAINTW_OBJS = $(TEST_PAINTW_SRCS:.c=.test.o)
 TEST_PAINTW_BIN  = ./.build/test_ps2_paint_worker
@@ -2526,17 +2053,12 @@ $(TEST_PAINTW_BIN): $(TEST_PAINTW_OBJS) src/drivers/playstation2/ps2_paint_worke
 	@mkdir -p ./.build
 	$(CC) $(TEST_PAINTW_OBJS) -o $@ $(LDFLAGS)
 
-# The Makefile's `PS2_GL=` dial, measured against the rule it is supposed to drive.  The dial is
-# three -D flags and the rule is a preprocessor branch, so one binary compiled with one value of
-# it cannot see the other values -- which is exactly how a flag that names nothing at all looks
-# from the inside.  This suite links src/desktop/graphics/gles/gl_backend_choice.c four times, each port TU carrying
-# the flags spelled as PS2_CFLAGS spells them, and compares all four answers.
+# GL backend selection dial verification (Makefile PS2_GL= dial vs preprocessor rule).
 TEST_GLBLANE_SRCS = verify/tests/test_gl_backend_choice.c
 TEST_GLBLANE_BIN  = ./.build/test_gl_backend_choice
 GLBLANE_CFLAGS    = $(CFLAGS) -DBTRON_GL_BACKEND_TINYGL
 
-# The measuring TU takes the plain flags: it names the four ports' functions and includes no
-# implementation, so which arm of the rule it was compiled under would be meaningless.
+# Measuring TU compiled with standard flags.
 %.blc.o: %.c
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
@@ -2559,8 +2081,7 @@ verify/tests/gl_backend_choice_eegs_port.blc.o: verify/tests/gl_backend_choice_e
 	@mkdir -p ./.build
 	$(CC) $(GLBLANE_CFLAGS) -DBTRON_GL_PREFER_EEGS -MMD -MP -c $< -o $@
 
-# No -DBTRON_GL_BACKEND_TINYGL: the arm every target that does not list src/desktop/graphics/tinygl/ compiles
-# under, and the one the dial must leave alone.
+# Plain port TU without BTRON_GL_BACKEND_TINYGL.
 verify/tests/gl_backend_choice_nostgl_port.blc.o: verify/tests/gl_backend_choice_nostgl_port.c src/desktop/graphics/gles/gl_backend_choice.c src/desktop/graphics/gles/gl_backend_choice.h
 	@mkdir -p ./.build
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
@@ -2573,21 +2094,10 @@ $(TEST_GLBLANE_BIN): $(TEST_GLBLANE_SRCS:.c=.blc.o) \
 	@mkdir -p ./.build
 	$(CC) $^ -o $@ $(LDFLAGS)
 
-# include/rt/math.h is the freestanding math for every bare-metal target, and its
-# no-x87 half is what the PS2 and the Malta MIPS actually execute: sqrtf/sinf/cosf/
-# floorf as single-precision series, because the Emotion Engine runs single-precision
-# on COP1 in ~20 cycles and double-precision not at all.  A wrong constant factor in
-# one of them is invisible on a screen and unarguable without one, so each is measured
-# against the host's libm per binade and per reduction region.  Two TUs because the
-# shim's definitions are static inline under the names libm owns -- see
-# verify/tests/gl_math_float_port.c.
+# Freestanding single-precision math series verification against host libm.
 TEST_GLMATH_BIN = ./.build/test_gl_math_float
 
-# The port TU needs the branch forced two ways (BTRON_UEFI_TARGET inside the file, the
-# ISA macros here) and needs the compiler to leave its own functions alone; at -O2, or
-# with a -march=native default, a function named sqrtf is folded back into the hardware
-# instruction and the run measures the machine it is standing on.  -fno-builtin-<name>
-# is per-name: extend it in lockstep when the header gains a float-native function.
+# Port TU forcing freestanding series evaluation with disabled builtins.
 GLMATH_PORTFLAGS = -O1 -std=c11 -Wall -Wextra -ffreestanding \
                    -U__x86_64__ -U__i386__ -Iinclude -Iinclude/rt -Iinclude/graphics \
                    -fno-builtin-sqrt -fno-builtin-sqrtf -fno-builtin-sin -fno-builtin-sinf \
@@ -2613,16 +2123,7 @@ $(TEST_GLMATH_BIN): verify/tests/test_gl_math_float.test.o verify/tests/gl_math_
 # ═══════════════════════════════════════════════════════════════════
 # PS2 canvas byte order -- one scene, both PIXEL domains, twice built
 # ═══════════════════════════════════════════════════════════════════
-# The GS reads CT32 memory as R,G,B,A and a BTRON COLOR is 0xAARRGGBB, so every canvas word
-# the PS2 scans out has its R and B fields exchanged (include/btron/types.h), and TinyGL's
-# whole PIXEL domain is declared in that order too because its pbuf *is* the canvas
-# (src/desktop/graphics/tinygl/zbuffer.h).  Both are compile-time decisions with no visible symptom until
-# a colour is on a screen, and the macro that decides them appears in exactly three files --
-# so this gate builds the same scene twice, once per domain, normalises each canvas word
-# back through BTRON_PIXEL_FB(), and requires the two dumps to be byte-identical.  A store
-# site that never converted itself, or a read of a canvas word that bypassed the macros,
-# shows up as one differing word at a known offset; the program's own raw-word assertions
-# then say which half of the flip failed.  See verify/tests/test_fb_order.c.
+# PS2 canvas byte order verification: COLOR-order build vs canvas-order build.
 TEST_FBORDER_SRCS = verify/tests/test_fb_order.c src/desktop/graphics/dp_core.c \
                     src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c \
                     src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/virgl/backend_virgl.c \
@@ -2639,12 +2140,7 @@ TEST_FBORDER_PBIN  = ./.build/test_fb_order_canvas
 %.fbo.o: %.c
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
-# The only difference between the two builds.  Two files read BTRON_PS2_TARGET besides
-# src/cores/core_init.c (which is not linked here): src/desktop/graphics/tinygl/clip.c's GS raster stage and
-# src/desktop/graphics/tinygl/texture.c's 5b plane publish, and therefore the five units they call -- the
-# recorder, the packer, the registry and the VRAM arithmetic it plans against -- which is why they
-# are in the list above for *both* builds.  The two binaries have to differ in one macro and
-# nothing else, or a PASS would only say that two different links agree.
+# Target build with BTRON_PS2_TARGET for canvas byte order comparison.
 %.fbp.o: %.c
 	$(CC) $(CFLAGS) -DBTRON_PS2_TARGET -MMD -MP -c $< -o $@
 
@@ -3193,14 +2689,7 @@ TEST_CLIP_SRCS = verify/tests/test_desktop_clip.c verify/tests/test_desktop_clip
                  src/desktop/graphics/dp_core.c src/desktop/graphics/icons_bundle.c src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c
 TEST_CLIP_OBJS = $(TEST_CLIP_SRCS:.c=.clip.o)
 TEST_CLIP_BIN  = ./.build/test_desktop_clip
-# LANE 12i rung (ii)'s COUNT half: renaming the tracker renderer makes every call
-# site in workbench.c / global_menu.c / the harness route through the counting
-# wrapper in *_count_port.c, which delegates to the real definition (the two TUs
-# without this flag).  The plain build reports SKIP for those two rows.  The
-# rename TUs live in their OWN `.clip.o' namespace because these sources are
-# shared with the other suites through `.test.o': a renamed
-# src/apps/workbench/global_menu.test.o would leak `counted_tracker_render_menu' into
-# test_global_menu's link, which has no wrapper to resolve it.
+# LANE 12i rung (ii): banded presentation losslessness with counted tracker menu render.
 verify/tests/test_desktop_clip.clip.o:             CFLAGS += -Dtracker_render_menu=counted_tracker_render_menu
 src/apps/workbench/global_menu.clip.o:             CFLAGS += -Dtracker_render_menu=counted_tracker_render_menu
 src/apps/workbench/workbench.clip.o:               CFLAGS += -Dtracker_render_menu=counted_tracker_render_menu
@@ -3322,16 +2811,7 @@ $(TEST_XMB_BIN): $(TEST_XMB_OBJS)
 	@mkdir -p ./.build
 	$(CC) $(TEST_XMB_OBJS) -o $@ $(LDFLAGS) -lm
 
-# The same test, against the rasterizer the PS2 actually ships.  This one exists
-# because the two backends disagree in a way no amount of reading reveals: the
-# virgl path is real GL, so it honours the RGBA the bar uploads and the alpha it
-# blends with, while src/desktop/graphics/tinygl/ truncates any texture that is not exactly
-# 256x256 and drops texture alpha on the floor.  Every icon, glyph and fade in
-# the XMB goes through both of those, so a gate that only ever ran virgl could
-# not see the corruption the console shows -- which is what this harness is for.
-# backend_virgl.c is linked here as well, and not for its code: gl_dispatch's
-# GL_BACKEND_VIRGL case is unconditional in the shipped image too, so this is the
-# closer of the two, not the tidier one.
+# XMB OpenGL render verification on PS2 TinyGL backend.
 TEST_XMB_TGL_SRCS = verify/tests/test_xmb_render.c src/media/xmb/xmb.c src/media/xmb/xmb_wave.c \
                     src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/egl_surface.c \
                     src/desktop/graphics/gles/gl_backend_choice.c \
@@ -3356,13 +2836,7 @@ $(TEST_XMB_TGL_BIN): $(TEST_XMB_TGL_OBJS)
 	@mkdir -p ./.build
 	$(CC) $(TEST_XMB_TGL_OBJS) -o $@ $(LDFLAGS) -lm
 
-# LANE 24's other half: the law that the icon rectangles were actually breaking.  egl_surface.c
-# installs a GL pipeline for EVERY window surface and tears it down when any one of them closes,
-# and TinyGL has one context -- so the second window orphaned the first's texture names, and a
-# lost name is not an error to the sampler, it is the vertex colour drawn instead of the texel:
-# one flat rectangle per icon.  See the header of the suite for the two operator reports that
-# pinned it, and for why `lilcu then xmb` made it disappear.
-# A private object suffix, because this is the only suite that includes tinygl/zgl.h.
+# LANE 24: TinyGL context isolation across multiple window surfaces.
 TEST_GLCI_SRCS = verify/tests/test_gl_context_isolation.c \
                  src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/backend_tinygl.c src/desktop/graphics/virgl/backend_virgl.c \
                  $(TINYGL_SRCS)
@@ -3385,11 +2859,7 @@ $(TEST_GLCI_BIN): $(TEST_GLCI_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 # XMB icon atlas: geometry on the host, sheet in the image
 # ═══════════════════════════════════════════════════════════════════
-# The glyphs' signed-distance arithmetic now lives in verify/tests/gen_xmb_atlas.c
-# (it moved out of the bar, where it measured 132 ms a cell -- 2.8 s of the load --
-# and src/media/xmb/xmb_atlas.h is what that program prints.  Nothing builds the sheet
-# implicitly: it is committed like the other embedded assets, so test-xmb-atlas is
-# what stops it going stale against the geometry.
+# XMB icon atlas: geometry generation and static header validation.
 GEN_XMB_ATLAS_OBJS = verify/tests/gen_xmb_atlas.test.o
 GEN_XMB_ATLAS_BIN  = ./.build/gen_xmb_atlas
 

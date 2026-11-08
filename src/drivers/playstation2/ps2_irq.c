@@ -35,7 +35,6 @@ extern int32_t ps2_ee_syscall3(int32_t nr, int32_t a0, int32_t a1, int32_t a2);
 extern void ps2_ee_exit_handler(void);      /* sync; CP0.Status EIE set by hand */
 extern void ps2_ee_enable_interrupts(void); /* same */
 extern uint32_t ps2_count_read(void);       /* CP0 Count */
-extern void ps2_delay_cycles(uint32_t count);
 
 /* The EE kernel's syscall numbers.  The convention is the ROM's own: the number in $v1,
  * arguments in $a0..$a3 untouched on the way in, the answer in $v0. */
@@ -304,7 +303,7 @@ int ps2_irq_calib_wait(void)
 
     for (spin = 0; spin < CALIB_WAIT_SPINS; spin++) {
         if (s_ticks_per_us) return 1;
-        ps2_delay_cycles(200u);
+        __asm__ volatile("nop" : : : "memory");
     }
     /* No answer.  Either the plane is not ticking -- in which case the arm's own row
      * says DEAD and nothing here can invent a rate -- or Count has stopped, which makes

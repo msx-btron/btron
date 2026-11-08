@@ -21,7 +21,6 @@ extern void ps2_usb_on_mouse(int dx, int dy, uint8_t buttons);
 
 /* EE wall clock helpers, implemented in boot_ps2.s */
 extern uint32_t ps2_count_read(void);
-extern void ps2_delay_cycles(uint32_t count);
 
 /* Hardware presence flag */
 static volatile int s_usb_available = 0;
@@ -72,7 +71,7 @@ static int count_running(void)
 static void ohci_wait_us(uint32_t us)
 {
     if (!count_running()) {
-        ps2_delay_cycles(us * 300u);
+        for (volatile uint32_t i = 0; i < us * 50u; i++) { __asm__ volatile("nop"); }
         return;
     }
     uint32_t start = ps2_count_read();
@@ -1527,3 +1526,103 @@ void ps2_usb_inject_mouse(uint8_t buttons, int8_t dx, int8_t dy)
 {
     ps2_usb_on_mouse((int)dx, (int)dy, buttons);
 }
+
+extern void ps2_kprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+
+void ps2_usb_log_tx(const ps2_usb_tx_t *t)
+{
+#if BTRON_HID_TRACE
+    ps2_kprintf("[TX] p%u t%u %04x n%u r=%d hd=%x dn=%x st=%u cc=%u sv=%x d0=%x q%d\n",
+                t->port, t->tag, t->req, t->ntd, (int)t->result, t->head, t->done,
+                t->stuck, t->cc, t->svc, t->data0, (int)t->quiet);
+#else
+    (void)t;
+#endif
+}
+
+void ps2_usb_report_landed(uint32_t kbd, uint32_t mouse)
+{
+    ps2_kprintf("[HID] first report landed, frame 0x%04x kbd=%u mouse=%u\n",
+                (unsigned int)ps2_usb_frame_number(), kbd, mouse);
+}
+
+void ps2_usb_log_kbd(uint32_t mod, uint32_t code, uint32_t key, uint32_t reports)
+{
+#if BTRON_HID_TRACE
+    ps2_kprintf("[KBD] mod=%02x c=%02x k=%x n=%u\n", mod, code, key, reports);
+#else
+    (void)mod; (void)code; (void)key; (void)reports;
+#endif
+}
+
+void ps2_usb_log_mouse_raw(uint32_t reports, uint32_t b3b0)
+{
+#if BTRON_HID_TRACE
+    if (reports <= 12u || (reports & 63u) == 0) {
+        ps2_kprintf("[RAW] #%u %02x %02x %02x %02x\n", (unsigned int)reports,
+                    (unsigned int)(b3b0 & 0xffu),
+                    (unsigned int)((b3b0 >> 8) & 0xffu),
+                    (unsigned int)((b3b0 >> 16) & 0xffu),
+                    (unsigned int)((b3b0 >> 24) & 0xffu));
+    }
+#else
+    (void)reports; (void)b3b0;
+#endif
+}
+
+void ps2_usb_log_ring(uint32_t dev, uint32_t got, uint32_t burst, uint32_t frame)
+{
+#if BTRON_HID_TRACE
+    const ps2_usb_dev_t *d = ps2_usb_dev((int)dev);
+    static uint32_t s_ring_rows;
+
+    if (!d || d->is_keyboard || d->mps >= 8u) return;
+    if (s_ring_rows < 12u || (s_ring_rows & 63u) == 0u) {
+        ps2_kprintf("[RING] n=%u max=%u f=%u\n", (unsigned int)got,
+                    (unsigned int)burst, (unsigned int)frame);
+    }
+    s_ring_rows++;
+#else
+    (void)dev; (void)got; (void)burst; (void)frame;
+#endif
+}
+
+int ps2_usb_log_host(void)
+{
+    static const char *const steps[] = {
+        "none", "reset", "desc0", "addr", "cfg", "setcfg", "poll", "dupadd"
+    };
+    int live = 0;
+
+    for (int i = 0; i < 2; i++) {
+        const ps2_usb_dev_t *d = ps2_usb_dev(i);
+        if (!d) continue;
+        if (d->live) live++;
+        ps2_kprintf("[HID] p%u %-6s ep=%u mps=%u cc=%u st=%u w=%d ad=%u id=%x pl=%u er=%u\n",
+                    (unsigned int)d->port,
+                    steps[d->step <= 7u ? d->step : 0u],
+                    (unsigned int)d->ep,
+                    (unsigned int)d->mps,
+                    (unsigned int)d->cc,
+                    (unsigned int)d->stuck_td,
+                    d->wait_ret,
+                    (unsigned int)d->addr,
+                    (unsigned int)d->desc_id,
+                    (unsigned int)d->polls,
+                    (unsigned int)d->errors);
+    }
+#if BTRON_HID_TRACE
+    ps2_kprintf("[USB] after host: ctl=0x%x cmd=0x%x int=0x%x frm=0x%x done=0x%x rel=%u rearm=%u\n",
+                ps2_usb_reg(OHCI_REG_CONTROL), ps2_usb_reg(OHCI_REG_CMDSTATUS),
+                ps2_usb_reg(OHCI_REG_INTSTATUS), ps2_usb_reg(OHCI_REG_FMNUMBER),
+                ps2_usb_reg(OHCI_REG_DONE_HEAD),
+                ps2_usb_async_releases(), ps2_usb_engine_rearms());
+#endif
+    ps2_kprintf("[HID] %s, %d us, frame 0x%04x  reports kbd=%u mouse=%u\n",
+                live ? "host engine up" : "no device left polling",
+                (int)ps2_usb_host_us(), (unsigned int)ps2_usb_frame_number(),
+                (unsigned int)ps2_usb_kbd_reports(), (unsigned int)ps2_usb_mouse_reports());
+    return live;
+}
+
+

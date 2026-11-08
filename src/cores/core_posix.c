@@ -315,14 +315,45 @@ static ITRON_TASK *tsk_self(void) {
 W btron_list_tasks(BTRON_TSK_ROW *out, W max) {
     if (max < 0) return 0;
 
-    pthread_mutex_lock(&g_kernel_mutex);
     W n = 0;
+
+    /* PID 1: Real-time Input Worker Plane */
+    if (out && n < max) {
+        out[n].tskid = 1;
+        out[n].name  = "posix_input";
+        out[n].pri   = 1;
+        out[n].entry = NULL;
+        out[n].state = BTRON_TSK_RUN;
+        n++;
+    }
+
+    /* PID 2: Desktop Presentation Plane */
+    if (out && n < max) {
+        out[n].tskid = 2;
+        out[n].name  = "posix_desktop";
+        out[n].pri   = 5;
+        out[n].entry = NULL;
+        out[n].state = BTRON_TSK_RUN;
+        n++;
+    }
+
+    /* PID 3: Terminal Console Dispatcher */
+    if (out && n < max) {
+        out[n].tskid = 3;
+        out[n].name  = "posix_shell";
+        out[n].pri   = 4;
+        out[n].entry = NULL;
+        out[n].state = BTRON_TSK_RUN;
+        n++;
+    }
+
+    pthread_mutex_lock(&g_kernel_mutex);
     for (int i = 0; i < MAX_TASKS && n < max; i++) {
         const ITRON_TASK *t = &g_tasks[i];
         if (!t->active) continue;         /* free slot, or a body that returned */
         if (out) {
-            out[n].tskid = t->tskid;
-            out[n].name  = t->config.name;
+            out[n].tskid = (ID)(n + 1);
+            out[n].name  = t->config.name ? t->config.name : "(worker)";
             out[n].pri   = t->config.itskpri;
             out[n].entry = t->config.task;
             out[n].state = !t->started         ? BTRON_TSK_NEW :

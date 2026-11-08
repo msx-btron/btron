@@ -60,6 +60,7 @@ void ps2_iopram_write32(uint32_t off, uint32_t value);
  * directions.  Returns 1 when a shadow block was claimed and verified. */
 int ps2_iopram_claim(ps2_iopram_t *out);
 const ps2_iopram_t *ps2_iopram_last(void);
+void ps2_iopram_log(const ps2_iopram_t *r);
 uint32_t ps2_iopram_shadow_off(void);   /* 0 until a claim succeeds */
 int ps2_iopram_shadow_intact(void);     /* re-checks the sentinels */
 uint32_t ps2_iopram_clobbered_at(void); /* byte offset of the first broken sentinel */

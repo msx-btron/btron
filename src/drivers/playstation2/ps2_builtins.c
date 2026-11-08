@@ -1245,3 +1245,23 @@ uint64_t __fixunssfdi(uint32_t a)
     if (cls == FPK_BIG || cls == FPK_INF) return 0xFFFFFFFFFFFFFFFFULL;
     return mag;
 }
+
+uint32_t __floatdisf(int64_t v)
+{
+    FP_COUNT(FP_SF_CVTI);
+    const uint32_t sign = (v < 0) ? 1u : 0u;
+    const uint64_t mag = (v < 0) ? (uint64_t)0u - (uint64_t)v : (uint64_t)v;
+    return (uint32_t)fp_pack(sign, mag, 0, 0, &FP_F32);
+}
+
+uint64_t __fixunsdfdi(uint64_t a)
+{
+    uint32_t sign;
+    FP_COUNT(FP_DF_GEN);
+    int cls;
+    const uint64_t mag = fp_trunc(a, &FP_F64, &sign, &cls);
+    if (cls == FPK_NAN || sign) return 0;
+    if (cls == FPK_BIG || cls == FPK_INF) return 0xFFFFFFFFFFFFFFFFULL;
+    return mag;
+}
+
