@@ -1,8 +1,8 @@
 # B-System BTRON3 — DriveSetup Application Specification (DRIVESETUP.md)
 
-**Document Version**: 2.1  
-**Target Subsystem**: Storage & Volume Management (`src/apps/b_drivesetup.c`, `src/apps/b_drivesetup.h`)  
-**Design Guidelines**: Authentic BTRON3 Window UI, B-System HMI Standards, NASA/JPL Rule 3 (100% Static Non-Allocating Memory Model)  
+**Document Version**: 2.1
+**Target Subsystem**: Storage & Volume Management (`src/apps/b_drivesetup.c`, `src/apps/b_drivesetup.h`)
+**Design Guidelines**: Authentic BTRON3 Window UI, B-System HMI Standards, NASA/JPL Rule 3 (100% Static Non-Allocating Memory Model)
 
 ## 1. Executive Summary & Purpose
 

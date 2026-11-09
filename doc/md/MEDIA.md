@@ -1,4 +1,4 @@
-# GST-SYNC-RTP.md
+# MEDIA.md
 
 **Deterministic Real-Time Media Pipelines:**
 GStreamer WebRTC MCU · Synchronization Architecture · NuStream for NuttX/BTRON

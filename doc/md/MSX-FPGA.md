@@ -1,8 +1,8 @@
 # MSX turboR FPGA Clean-Room Reincarnation Plan
-## Minimalistic, Spec-Based, Tick-Precise Dual-CPU (R800 + Z80A) Architecture in Bluespec SystemVerilog (BSV)
-### Grounded in `./src/emulators/msx` with a Pure C99 Verification Harness
 
----
+## Minimalistic, Spec-Based, Tick-Precise Dual-CPU (R800 + Z80A) Architecture in Bluespec SystemVerilog (BSV)
+
+### Grounded in `./src/emulators/msx` with a Pure C99 Verification Harness
 
 ## 1. Minimalist Design Philosophy & Architectural Principles
 
@@ -28,8 +28,6 @@ To ensure rapid bootstrapping, zero architectural drift, and high maintainabilit
 5. **Flat 24-bit Linear Physical Memory Crossbar:**
    - Primary slots, secondary subslots, 512KB–4MB mapper, and shadow DRAM (from `src/emulators/msx/slots.c`) translate into a single flat 24-bit physical address space (`0x000000 - 0x3FFFFF`).
 
----
-
 ## 2. Reference Implementation Mapping: `./src/emulators/msx` $\to$ `./src/emulators/bx8/bsv`
 
 The hardware packages in `./src/emulators/bx8/bsv/` map 1:1 to the C99 modules in `./src/emulators/msx/`:
@@ -46,8 +44,6 @@ The hardware packages in `./src/emulators/bx8/bsv/` map 1:1 to the C99 modules i
 | **PCM Audio** | `pcm.c` | `audio/PCM.bsv` | turboR S1990 8-bit DAC/ADC, 15.7 kHz hardware sample clock (228 T-states), latched (03H) & slew (02H) modes |
 | **PPI & Matrix** | `ppi.c`, `kbd.c`, `msx_kbd.h` | `io/PPI.bsv`, `io/Keyboard.bsv` | Intel 8255 (slot selector, Caps LED, click/mute), 11x8 keyboard matrix scanner |
 | **Clock / RTC** | `t9769c.c` (Ports `0xB4`/`0xB5`) | `io/RTC.bsv` | Ricoh RP5C01 Real-Time Clock & 26-nibble non-volatile RAM |
-
----
 
 ## 3. Pure C99 Verification Harness Architecture
 
@@ -120,8 +116,6 @@ void  vl_set_inputs(void *handle, uint8_t joy1, uint8_t joy2, const uint8_t *kbd
 #endif /* _VL_BRIDGE_H_ */
 ```
 
----
-
 ## 4. Dynamic CPU Switching & S1990 Handshake
 
 The hardware implementation in `cpu/T9769C.bsv` follows `src/emulators/msx/t9769c.c` exactly:
@@ -146,8 +140,6 @@ sequenceDiagram
     T9769->>CPU: Resume micro-sequencer with target timing parameters
     Note over CPU: Execution continues immediately without register copying
 ```
-
----
 
 ## 5. Target Directory Structure in `./src/emulators/bx8/`
 
@@ -204,8 +196,6 @@ sequenceDiagram
         └── tang_mega_60k/         # Gowin GW5AT-60, 512 MB DDR3 on the SOM
 ```
 
----
-
 ## 6. Phased Implementation Roadmap
 
 ```mermaid
@@ -235,8 +225,6 @@ flowchart TD
 | **5** | **Audio Matrix & Input** | `src/emulators/bx8/bsv/audio/PSG.bsv`, `audio/SCC.bsv`, `audio/OPLL.bsv`, `audio/PCM.bsv`, `io/Keyboard.bsv` | PCM 15.7 kHz sample counter and latch modes match `pcm.c` bit-for-bit; PSG, SCC, and OPLL wave accumulators match `psg.c`, `scc.c`, and `opll.c`; keyboard matrix reads match `kbd.c`. |
 | **6** | **Full turboR & Synthesis** | `src/emulators/bx8/syn/yosys/ecp5_synth.ys`, physical board wrappers | Commercial turboR titles (*Fray In Magical World*, *Illusion City*, *Xak III*) boot headlessly to title screens; Yosys timing closure achieved at 57.27 MHz on the iCESugar-Pro (LFE5U-25F). |
 
----
-
 ## 7. Industry Best-Practice Techniques Applied
 
 > [!TIP]
@@ -248,10 +236,6 @@ flowchart TD
 > 5. **Single Unified Register Bank:** Prevents register desynchronization during CPU mode switching and halves FPGA BRAM/LUT usage.
 > 6. **Flat 24-bit Physical Address Translator:** Keeps memory access latency deterministic (1 cycle hit in BRAM/SDRAM controller).
 > 7. **Headless Pure C99 Frame Capture:** Uses `stb_image_write.h` in C99 to capture PNG frames directly from simulated VRAM, accelerating test cycles by $100\times$.
-
-
-
----
 
 ## 8. Critical Hardware Implementation Details & Edge Cases
 
@@ -310,8 +294,6 @@ This technical investigation analyzes the exact system requirements, hardware co
 - **Neon Revenant** (`assets/msx/NEON_REVENANT-HC-Geo3D-256-v0.2.0.rom` — 4,194,304 bytes / 4 MiB) & **Night Raven Flight Demo / Geo3D** (`assets/msx/NIGHT_RAVEN_GEO3D.ROM` — 1,048,576 bytes / 1 MiB)
 - **Bullrush** (`assets/msx/BULLRUSH.ROM` — 1,048,576 bytes / 1 MiB)
 
----
-
 ## 1. ROM Profile & Hardware Requirements Breakdown
 
 | Subsystem | **Aurel Vault** (1 MiB) | **Neon Revenant / Night Raven** (4 MiB / 1 MiB) | **Bullrush** (1 MiB) |
@@ -323,8 +305,6 @@ This technical investigation analyzes the exact system requirements, hardware co
 | **Audio Hardware** | **OPLL** (YM2413 / MSX-MUSIC) + **PSG** (YM2149) | **OPLL** + **PSG** + **PCM** DAC | **PSG** (YM2149 / AY-3-8910) |
 | **System Timing** | **T9769C Gate Array Port `#E6`/`#E7`** 16-bit timer | **T9769C Gate Array Port `#E6`/`#E7`** 16-bit timer | 60 Hz VBLANK / VDP Interrupts |
 | **Firmware / BIOS** | MSX turboR BIOS (`cbios_main_msxtr_jp.rom` or `tbios_main_msxtr.rom` with Sub-ROM) | MSX turboR BIOS + Sub-ROM (`cbios_sub.rom`) | MSX2+ or turboR BIOS |
-
----
 
 ## 2. Deep Dive: Critical Subsystems
 
@@ -358,11 +338,10 @@ The Alexander Moncks / HRA! Geo3D coprocessor sits on the MSX I/O bus and offloa
    - When triggered, Geo3D transforms all vertices, computes Cohen-Sutherland edge clipping against the VDP viewport, performs backface normal culling, and renders lines or shaded polygon spans directly into V9958/V9968 VRAM.
 
 ### D. Audio Architecture
+
 - **OPLL (Yamaha YM2413 / MSX-MUSIC)**: Controlled via I/O ports `#7C` (register latch) and `#7D` (register data). Provides 9 channels of FM synthesis for Aurel Vault’s background music and stage jingles.
 - **PSG (Yamaha YM2149)**: Ports `#A0` (address latch), `#A1` (data write), `#A2` (data read). Aurel Vault and Bullrush use PSG for sound effects, hops, and collision feedback.
 - **PCM DAC (MSX turboR engine)**: Ports `#A4` (FIFO data / 15.7 kHz sample flag) and `#A5` (control / DAC enable). Used by Neon Revenant for sound samples and engine rumbles.
-
----
 
 ## 3. Codebase Support Status (`src/emulators/msx/`)
 
@@ -378,10 +357,9 @@ The in-tree C99 codebase already has all major components for these ROMs:
 | **Audio Mixers** | [`opll.c`](file:///Users/tonpa/depot/bitedits/btron/src/emulators/msx/opll.c), [`psg.c`](file:///Users/tonpa/depot/bitedits/btron/src/emulators/msx/psg.c), [`pcm.c`](file:///Users/tonpa/depot/bitedits/btron/src/emulators/msx/pcm.c) | **Fully implemented**: Combined mixed 44.1 kHz stereo audio stream with DC capacitor simulation. |
 
 ### How to Run in `msx_app`:
+
 1. In `src/emulators/msx/msx_app.c`, `msx_machine_for()` automatically assigns `BMSX_MACHINE_MSXTR_CBIOS` to any ROM $> 64\text{ KB}$ or matching `AUREL_VAULT`, `NEON`, `NIGHT`, or `BULLRUSH`.
 2. Ensure the BIOS loader finds the turboR C-BIOS or T-BIOS images (located in `third_party/cbios-nextor_FDD-and-turboR/cbios/derived/bin` or `.build/tbios/`).
-
----
 
 ## 4. FPGA Clean-Room Reincarnation Plan (`src/emulators/bx8/bsv/`)
 
@@ -438,8 +416,6 @@ Ran check sub and music ROMs
 
 To test the authentic MSX turbo R cartridges and demos in [`./assets/msx/`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/), we can follow a systematic 4-stage progression from automated headless co-simulation to interactive local playback and physical FPGA deployment.
 
----
-
 ### Analysis of ROM Assets in `./assets/msx/`
 
 An inspection of `./assets/msx/` reveals three distinct tiers of ROM images:
@@ -449,8 +425,6 @@ An inspection of `./assets/msx/` reveals three distinct tiers of ROM images:
 | **Tier 1: Plain Cartridges (16 KB – 48 KB)** | [`MSX_LOGO.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/MSX_LOGO.rom) (16K)<br>[`c0man.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/c0man.rom) (16K)<br>[`Dynamite Go! Go! - Demo.ROM`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/Dynamite%20Go!%20Go!%20-%20Demo%20(2021)%20(Rutubo%20Gameworks).ROM) (32K)<br>[`YAZZIER.ROM`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/YAZZIER.ROM) (32K)<br>[`xracing_v1.0.4.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/xracing_v1.0.4.rom) (48K) | **Standard Linear Slot 1**<br>(Page 1: `0x4000..0x7FFF`, Page 2: `0x8000..0xBFFF`) | Header signature `41 42` (`'AB'`), initial execution at `0x4010`. No bank switching required. |
 | **Tier 2: MegaROM Titles (1 MB – 4 MB)** | [`Bad Apple (MDPC)[ASCII16].rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/Bad%20Apple%20(MDPC)[ASCII16].rom) (2MB)<br>[`AUREL_VAULT.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/AUREL_VAULT.rom) (1MB)<br>[`BULLRUSH.ROM`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/BULLRUSH.ROM) (1MB)<br>[`NIGHT_RAVEN_GEO3D.ROM`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/NIGHT_RAVEN_GEO3D.ROM) (1MB)<br>[`NEON_REVENANT-HC-Geo3D.rom`](file:///Users/tonpa/depot/bitedits/btron/assets/msx/NEON_REVENANT-HC-Geo3D-256-v0.2.0.rom) (4MB) | **ASCII16 / ASCII8 / Konami SCC**<br>(Bank registers at `0x6000`, `0x7000`, `0x9000`, `0xB000`) | Header signature `41 42` (`'AB'`), entry at `0x4010` or `0x4810`. Requires dynamic bank translation. |
 | **Tier 3: Disk Images (.dsk)** | `512 Bytes MSX1 Demo.dsk`, `IOD GIF Demo.dsk`, `Puzzle Egg.dsk` | **Nextor / C-BIOS Disk Driver** | Requires disk ROM controller in Slot 2. |
-
----
 
 ### Step-by-Step Execution Plan
 
@@ -473,6 +447,7 @@ Create a CLI test harness in `src/emulators/bx8/sim/verilator/sim_rom.c` utilizi
    - Detect when PC enters the cartridge space (`0x4000..0xBFFF`), confirming successful boot.
 
 #### Stage 2: Headless Frame Dumps & Visual Verification
+
 - As the ROM executes, capture video frames from the VDP scanout or VRAM (identical to Phase 4's headless `frame_phase4.ppm` generator).
 - Inspect the generated `.ppm` / `.png` screenshots to verify title screens, sprites, text rendering, and blitter graphics.
 - We can immediately test with **Tier 1** ROMs:
@@ -481,19 +456,15 @@ Create a CLI test harness in `src/emulators/bx8/sim/verilator/sim_rom.c` utilizi
   - `assets/msx/Dynamite Go! Go! - Demo (2021) (Rutubo Gameworks).ROM`
 
 #### Stage 3: Support MegaROM Bank Switching (Tier 2)
+
 - For 1 MB – 4 MB games like `Bad Apple (MDPC)[ASCII16].rom` and `BULLRUSH.ROM`:
   - Hook the memory model responder to intercept writes to `0x6000..0x67FF` and `0x7000..0x77FF` (ASCII16 bank registers) or `0x5000/0x7000/0x9000/0xB000` (Konami/SCC).
   - Dynamically recalculate the 24-bit physical address offset:
     $$\text{Addr}_{\text{phys}} = \text{baseCartA} + (\text{bank} \times 16\text{ KB}) + (\text{cpu\_addr} \bmod 16\text{ KB})$$
 
 #### Stage 4: Interactive Local GUI (SDL2)
+
 - Wrap `vl_bridge_p6` with an optional lightweight SDL2 frontend (`sim_gui.c`):
   - Renders the 57.27 MHz `video_rgb565` output to an SDL2 window at 60 Hz.
   - Streams `audio_pcm_sample` to the macOS audio output.
   - Passes host keystrokes into `vl_p6_kbd_key_down` / `vl_p6_kbd_key_up`.
-
----
-
-### Recommended Immediate Next Step
-
-Would you like to build **Stage 1 & 2** now by creating `src/emulators/bx8/sim/verilator/sim_rom.c` and a `make run_rom ROM=...` target, so we can boot `MSX_LOGO.rom` and `Dynamite Go! Go!` headlessly and dump the resulting framebuffers?
