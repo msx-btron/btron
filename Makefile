@@ -3231,7 +3231,7 @@ test-tbios: $(TEST_TBIOS_DIFF_BIN) $(TEST_TBIOS_CORE_BIN) $(TEST_TBIOS_VIDEO_BIN
 	@./$(TEST_TBIOS_DISK_BIN)
 	@./$(TEST_BMSX_CFG_BIN)
 
-test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context
+test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor
 	@echo "=========================================================="
 	@echo " ALL B-SYSTEM TEST SUITES PASSED (100% SUCCESS)!"
 	@echo "=========================================================="
@@ -3708,3 +3708,17 @@ quake-screens: $(CAPTURE_QUAKE_BIN)
 	@./$(CAPTURE_QUAKE_BIN)
 	@python3 scripts/screen_raw_to_png.py
 	@python3 scripts/screen_update_quake.py
+
+# Nexus SPSC ring gate (host)
+test-nexus-ring:
+	@mkdir -p ./.build
+	$(CC) -std=gnu11 -Wall -Wextra -O2 verify/tests/test_nexus_ring.c -o ./.build/test_nexus_ring
+	@./.build/test_nexus_ring
+.PHONY: test-nexus-ring
+
+# Shared compositor policy gate (host)
+test-compositor:
+	@mkdir -p ./.build
+	$(CC) -std=gnu11 -Wall -Wextra -O2 -Iinclude verify/tests/test_compositor.c -o ./.build/test_compositor
+	@./.build/test_compositor
+.PHONY: test-compositor

@@ -90,6 +90,7 @@ typedef struct WND {
  * the compositor paints exactly as it did before. */
 typedef void (*WndGLBind)(WND *wnd);
 void wnd_set_gl_bind(WndGLBind bind);
+uint32_t wnd_gl_nest_refused(void);   /* nested GL paints refused by the scope */
 
 ER   init_wnd_mgr(GDEV *screen_dev);
 WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr);

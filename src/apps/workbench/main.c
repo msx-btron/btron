@@ -12,6 +12,8 @@
 #include <btron/about.h>
 #include <btron/dnd.h>
 #include <SDL.h>
+#include <time.h>
+#include <btron/compositor.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -79,18 +81,18 @@ static WND *s_resize_wnd = NULL;
 static H s_resize_orig_w = 0, s_resize_orig_h = 0;
 static H s_resize_start_x = 0, s_resize_start_y = 0;
 
-void btron_desktop_step(void) {
-    if (!s_desktop_screen_dev) {
-        s_desktop_screen_dev = wnd_mgr_get_screen();
-        if (!s_desktop_screen_dev) return;
-    }
+/* Shared compositor policy (include/btron/compositor.h): the same pass ARM64 and PS2 run. */
+static uint32_t posix_comp_now(void *x) { (void)x; return btron_render_perf_us(); }
+static void     posix_comp_render(void *x, int full);
 
+static int posix_comp_drain(void *x) {
+    (void)x;
     EVT ev;
     /* Poll and process all pending system events */
     while (get_evt(&ev, 0) == E_OK) {
         if (ev.type == EV_WND_CLOSE) {
             s_desktop_running = FALSE;
-            break;
+            return -1;
         } else if (ev.type == EV_BUT_DOWN) {
             raise_sdl_window();
             /* 0. Check Global System Menu (Deskbar & Chokanji Top Menus) */
@@ -226,6 +228,18 @@ void btron_desktop_step(void) {
         }
     }
 
+    return 1;   /* hosted desktop repaints at the plane period: animations and blink are damage */
+}
+
+static int  posix_comp_detect(void *x) { (void)x; return 1; }
+static void posix_comp_idle(void *x) {
+    struct timespec ts = { 0, 1000000L };   /* nothing due: sleep 1 ms, the INPUT period */
+    (void)x;
+    nanosleep(&ts, NULL);
+}
+
+static void posix_comp_render(void *x, int full) {
+    (void)x; (void)full;
     orchestra_ui_tick();
     cassette_service();
 
@@ -264,6 +278,31 @@ void btron_desktop_step(void) {
 
     /* Flush composite buffer to SDL window */
     flush_gdev_to_sdl(s_desktop_screen_dev);
+}
+
+static const btron_plane_cfg_t s_posix_planes = {
+    .input_period_us = ASYNC_INPUT_PERIOD_US, .ui_period_us = 16667u,
+    .panel_refresh_us = 1000000u, .full_convergence_us = 0u, .input_slices_max = 16u,
+    .ui_period_slow_us = 33333u, .ui_slow_paint_us = 30000u
+};
+static const compositor_ops_t s_posix_comp_ops = {
+    .now_us = posix_comp_now, .drain_events = posix_comp_drain, .detect_damage = posix_comp_detect,
+    .render = posix_comp_render, .present = NULL, .idle = posix_comp_idle
+};
+static compositor_t s_posix_comp;
+static int s_posix_comp_ready;
+
+void btron_desktop_step(void) {
+    if (!s_desktop_screen_dev) {
+        s_desktop_screen_dev = wnd_mgr_get_screen();
+        if (!s_desktop_screen_dev) return;
+    }
+    if (!s_posix_comp_ready) {
+        btron_planes_install(&s_posix_planes);
+        comp_init(&s_posix_comp, &s_posix_comp_ops, btron_planes(), ASYNC_UI_BUDGET_US);
+        s_posix_comp_ready = 1;
+    }
+    (void)comp_pass(&s_posix_comp);
 }
 
 int main(int argc, char **argv) {

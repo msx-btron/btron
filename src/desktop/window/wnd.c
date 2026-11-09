@@ -79,6 +79,12 @@ static WndGLBind s_gl_bind = NULL;
 
 void wnd_set_gl_bind(WndGLBind bind) { s_gl_bind = bind; }
 
+/* The window whose paint callback currently owns the GL context (NULL outside a paint),
+ * and how many nested paints the scope refused.  Single-threaded compositor state. */
+static WND *s_gl_scope_owner;
+static uint32_t s_gl_nest_refused;
+uint32_t wnd_gl_nest_refused(void) { return s_gl_nest_refused; }
+
 ER init_wnd_mgr(GDEV *screen_dev) { if (!screen_dev) return E_PAR;
     g_screen_dev = screen_dev;
     /* Preserve existing windows if any were opened before screen attachment */
@@ -864,17 +870,28 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
              * virgl backend swaps a pointer and TinyGL's resize already returns when the array
              * and size are unchanged, so a window that paints alone pays nothing extra and only
              * a genuine switch between two GL windows re-opens a raster buffer. */
-            if (s_gl_bind && wnd->gl_surf) s_gl_bind(wnd);
-            btron_cooperative_input_pump();
-            wnd->paint(wnd, wnd->dev);
-            btron_cooperative_input_pump();
-            t_paint += btron_render_perf_us() - t_mark;
-            wnd->img_valid = TRUE;
-            if (wnd->gl_layer && wnd == gl_wnd) {
-                RECT cr;
-                if (gl_client_rect(wnd, &cr)) {
-                    s_gl_client = cr;
-                    s_gl_pending = TRUE;
+            /* Scoped GL ownership: exactly one window owns the current context for the
+             * span of its paint callback.  A paint that is entered while another window's
+             * scope is open (re-entry through an input pump or a delay) is refused and
+             * counted instead of drawing into the wrong context or target; the window
+             * stays invalid and repaints on the next pass. */
+            if (s_gl_scope_owner) {
+                s_gl_nest_refused++;      /* image stays invalid: repaints next pass */
+            } else {
+                s_gl_scope_owner = wnd;
+                if (s_gl_bind && wnd->gl_surf) s_gl_bind(wnd);
+                btron_cooperative_input_pump();   /* guarded against re-entry by the core */
+                wnd->paint(wnd, wnd->dev);
+                btron_cooperative_input_pump();
+                s_gl_scope_owner = NULL;
+                t_paint += btron_render_perf_us() - t_mark;
+                wnd->img_valid = TRUE;
+                if (wnd->gl_layer && wnd == gl_wnd) {
+                    RECT cr;
+                    if (gl_client_rect(wnd, &cr)) {
+                        s_gl_client = cr;
+                        s_gl_pending = TRUE;
+                    }
                 }
             }
         }

@@ -83,6 +83,7 @@ _Static_assert(HEAP_BASE == 0x02000000UL && HEAP_BASE >= BTRON_NOCACHE_END,
  * <btron/async_rt.h>—not a priority boost—bound the input-to-presentation
  * path on the Pi 400 (ASYNC.txt Tier-1). */
 #include <btron/async_rt.h>
+#include <btron/compositor.h>
 #define ASYNC_UI_EVENT_BUDGET       16u
 #ifndef ASYNC_TELEMETRY
 #define ASYNC_TELEMETRY              1
@@ -702,8 +703,19 @@ void blit_backbuffer_to_fb(volatile uint32_t *gpu_fb) {
         s_async_rt_stats.blit_max_us = s_async_rt_stats.blit_us;
 }
 
+/* ASYNC.txt plane table for this machine: one policy, read off the same
+ * btron_plane_cfg_t the PS2 core installs, instead of per-core constants. */
+static const btron_plane_cfg_t s_arm64_planes = {
+    .input_period_us     = ASYNC_INPUT_PERIOD_US,
+    .ui_period_us        = ASYNC_UI_PERIOD_US,
+    .panel_refresh_us    = 1000000u,   /* the clock row */
+    .full_convergence_us = 0u,         /* every ARM64 frame is already whole */
+    .input_slices_max    = 16u,
+    .ui_period_slow_us   = 33333u,   /* heavy software 3D: ~30 Hz keeps INPUT budget */
+    .ui_slow_paint_us    = 15000u
+};
+
 static volatile uint32_t *s_active_gpu_fb = NULL;
-static uint32_t s_last_paint_duration_us = 0;
 static uint32_t s_uart_key_time_us = 0;
 static UW       s_uart_held_key = 0;
 
@@ -765,7 +777,9 @@ static void poll_uart_input(uint32_t now) {
 }
 
 void btron_cooperative_input_pump(void) {
-    if (!s_gui_active) return;
+    static volatile int s_in_pump;
+    if (!s_gui_active || s_in_pump) return;   /* never re-enter from a paint callback */
+    s_in_pump = 1;
     uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
     if (g_use_xhci) {
         if (!s_async_irq_active) {
@@ -776,13 +790,94 @@ void btron_cooperative_input_pump(void) {
         usb_poll_devices(NULL);
     }
     poll_uart_input(now);
-
-    /* Drain and dispatch events immediately for zero-lag response */
-    EVT ev;
-    while (get_evt(&ev, 0) == E_OK) {
-        workbench_process_event(NULL, &ev);
-    }
+    /* Events stay queued: workbench_process_event() runs only from the compositor
+     * loop (ASYNC.txt: input plane never dispatches UI work inside a paint). */
+    s_in_pump = 0;
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+ * Shared compositor ops (policy: include/btron/compositor.h)
+ * ═══════════════════════════════════════════════════════════════════ */
+typedef struct {
+    GDEV              *screen;
+    volatile uint32_t *gpu_fb;
+    compositor_t      *comp;
+    H                  prev_mx, prev_my;
+    uint32_t           last_usb_poll;
+} arm64_comp_ctx_t;
+static arm64_comp_ctx_t s_comp_ctx;
+
+static uint32_t arm64_comp_now(void *x) { (void)x; return *(volatile uint32_t *)(TIMER_BASE + 0x04); }
+
+/* ASYNC 1 ms input plane: USB, then the PL011 console keys. */
+static void arm64_comp_poll_input(void *x)
+{
+    arm64_comp_ctx_t *c = x;
+    uint32_t now = arm64_comp_now(x);
+
+    if (g_use_xhci) {
+        if (!s_async_irq_active) xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
+        input_plane_task(c->screen, now);
+    } else if ((now - c->last_usb_poll) >= ASYNC_INPUT_PERIOD_US) {
+        c->last_usb_poll = now;
+        usb_poll_devices(c->screen);
+    }
+    poll_uart_input(now);
+}
+
+static int arm64_comp_drain(void *x)
+{
+    arm64_comp_ctx_t *c = x;
+    EVT ev;
+    int redraw = 0;
+
+    while (get_evt(&ev, 0) == E_OK) {
+        workbench_process_event(c->screen, &ev);
+        if (ev.type != EV_MOUSE_MOVE || ev.button != 0 ||
+            wnd_mgr_is_interacting() || ev.pos.y <= 25 ||
+            global_menu_is_open() || tracker_is_menu_open())
+            redraw = 1;
+    }
+    if (!s_gui_active) return -1;
+
+    orchestra_ui_tick();
+    cassette_service();
+    intercore_poll_signals();      /* non-blocking InterCore poll */
+    btron_scheduler_dispatch();
+    return redraw;
+}
+
+static int arm64_comp_detect(void *x)
+{
+    arm64_comp_ctx_t *c = x;
+    int d = 0;
+
+    if (wnd_mgr_flush_resize()) d = 1;
+    if (wnd_any_image_invalid()) d = 1;
+    if (s_mouse_x != c->prev_mx || s_mouse_y != c->prev_my) {
+        set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
+        d = 1;
+    }
+    return d;
+}
+
+static void arm64_comp_render(void *x, int full)
+{
+    arm64_comp_ctx_t *c = x;
+    (void)full;                      /* single physical buffer: every frame is whole */
+    c->prev_mx = s_mouse_x;
+    c->prev_my = s_mouse_y;
+    workbench_render(c->screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
+    blit_backbuffer_to_fb(c->gpu_fb);
+}
+
+static void arm64_comp_idle(void *x) { (void)x; __asm__ volatile("dsb sy" : : : "memory"); }
+
+static const compositor_ops_t s_comp_ops = {
+    .ctx = &s_comp_ctx, .now_us = arm64_comp_now, .poll_input = arm64_comp_poll_input,
+    .drain_events = arm64_comp_drain, .detect_damage = arm64_comp_detect,
+    .render = arm64_comp_render, .present = NULL, .idle = arm64_comp_idle
+};
 
 /* Stage 2: Launch full B-System Workbench desktop session. */
 static void launch_pi4_desktop_session(uint32_t *gpu_fb)
@@ -793,6 +888,7 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     /* Clean double-buffered atomic cursor: eliminates square bounding box & flicker */
     g_cursor_in_backbuffer = 1;
     s_active_gpu_fb = gpu_fb;
+    btron_planes_install(&s_arm64_planes);
 
     GDEV *screen = init_baremetal_desktop(
         (uint32_t *)s_desktop_backbuffer, BTRON_SCREEN_W, BTRON_SCREEN_H);
@@ -806,8 +902,10 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
     blit_backbuffer_to_fb(gpu_fb);
 
-    H prev_mx = s_mouse_x;
-    H prev_my = s_mouse_y;
+    s_comp_ctx.screen = screen;
+    s_comp_ctx.gpu_fb = gpu_fb;
+    s_comp_ctx.prev_mx = s_mouse_x;
+    s_comp_ctx.prev_my = s_mouse_y;
 
     /* Disable on-screen log: workbench owns the framebuffer now */
     fb_log_enable(NULL);
@@ -828,85 +926,21 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     s_input_last.acc_wheel = s_pointer_slot.acc_wheel;
     s_input_last.buttons = s_pointer_slot.buttons;
 
-    uint32_t last_clock = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    uint32_t last_usb_poll = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    uint32_t last_present = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    int pending_redraw = 0;
+    s_comp_ctx.last_usb_poll = *(volatile uint32_t *)(TIMER_BASE + 0x04);
 
-    EVT ev;
+    compositor_t comp;
+    comp_init(&comp, &s_comp_ops, btron_planes(), ASYNC_UI_BUDGET_US);
+    s_comp_ctx.comp = &comp;
+    comp.pending = 0;   /* the cold paint above already presented frame 0 */
+    comp.full_pending = 0;
 
+    /* The policy (damage, pacing, throttle, charge) is include/btron/compositor.h and is shared
+     * with the PS2 and POSIX cores; only the ops below are ARM64-specific. */
     while (s_gui_active) {
-        uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-
-        /* 1. Poll USB / input devices (ASYNC.txt 1 ms cadence) */
-        if (g_use_xhci) {
-            if (!s_async_irq_active) {
-                xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
-            }
-            input_plane_task(screen, now);
-        } else {
-            if ((now - last_usb_poll) >= ASYNC_INPUT_PERIOD_US) {
-                last_usb_poll = now;
-                usb_poll_devices(screen);
-            }
-        }
-
-        /* 2. Poll PL011 UART for interactive keys & arrows */
-        poll_uart_input(now);
-
-        /* 3. Dispatch queued BTRON events */
-        while (get_evt(&ev, 0) == E_OK) {
-            workbench_process_event(screen, &ev);
-            if (ev.type != EV_MOUSE_MOVE || ev.button != 0 ||
-                wnd_mgr_is_interacting() || ev.pos.y <= 25 ||
-                global_menu_is_open() || tracker_is_menu_open()) {
-                pending_redraw = 1;
-            }
-        }
-        if (!s_gui_active) break;
-
-        orchestra_ui_tick();
-        cassette_service();
-
-        /* 4. Non-blocking InterCore queue poll & non-blocking task scheduler */
-        intercore_poll_signals();
-        btron_scheduler_dispatch();
-
-        /* 5. Detect state changes that require composite update */
-        if (wnd_mgr_flush_resize()) pending_redraw = 1;
-        if (wnd_any_image_invalid()) pending_redraw = 1;
-        if (s_mouse_x != prev_mx || s_mouse_y != prev_my) {
-            set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
-            pending_redraw = 1;
-        }
-
-        if ((now - last_clock) >= 1000000) {
-            last_clock = now;
-            pending_redraw = 1;
-        }
-
-        /* ASYNC presentation plane: budgeted cadence (ASYNC_UI_PERIOD_US) */
-        uint32_t ui_interval = ASYNC_UI_PERIOD_US;
-        if (s_last_paint_duration_us > 15000) {
-            /* Heavy software 3D paint detected (e.g. Quake / XMB taking >15 ms).
-             * Throttle to budgeted slice cadence (~30 Hz / 33 ms) so the CPU is not
-             * 100% starved and the mouse task maintains dedicated budget. */
-            ui_interval = 33333u;
-        }
-
-        if (pending_redraw && ((now - last_present) >= ui_interval)) {
-            uint32_t t_render_start = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-            last_present = now;
-            pending_redraw = 0;
-            prev_mx = s_mouse_x;
-            prev_my = s_mouse_y;
-            workbench_render(screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
-            blit_backbuffer_to_fb(gpu_fb);
-            s_last_paint_duration_us = *(volatile uint32_t *)(TIMER_BASE + 0x04) - t_render_start;
-        }
-
-        __asm__ volatile("dsb sy" : : : "memory");
+        (void)comp_pass(&comp);
     }
+    s_async_rt_stats.composite_us = comp.ui.last_us;
+    s_async_rt_stats.composite_max_us = comp.ui.max_us;
 
     s_active_gpu_fb = NULL;
     g_cursor_in_backbuffer = 1;

@@ -359,6 +359,11 @@ PART ONE -- THE NEXUS AND THE MACHINE
   Periods and cycle budgets are determined strictly by hardware silicon
   timings:
 
+  NOTE (reconciled with ASYNC.txt): the Priority column is the ORDER IN WHICH
+  due planes are serviced by the dispatcher, not preemption levels.  INPUT and
+  UI are peers (pri(input) == pri(ui)); determinism comes from periods,
+  budgets and slice-boundary yields, never from preempting EE software.
+
   Plane  Name             Target Engine    Period (us)   Budget (us)  Priority
   ----------------------------------------------------------------------------
   1      Input & HID      IOP/USB/Timer0          1000            50  Highest
@@ -664,7 +669,10 @@ PART FOUR -- THE INTERCONNECT -- INPUT AS A REAL PLANE
        coalesced into a single net vector per pass and scaled via an
        integer ballistic curve (1:1 for 1 px precision, 1.5x for 2 px, 2x
        for 3..7 px, and 3x for >= 8 px) with zero analog stick deadzones.
-     - Cooperative Input Pumping & DMA Gathering: All GIF ring waits
+     - Cooperative Input Pumping & DMA Gathering (STATUS: transitional; the
+        pump is guarded against re-entry, but ASYNC.txt forbids in-blit USB
+        drain as a target architecture -- INFERRED goal: slice-boundary
+        yield_check() fed by the Timer0 ISR flag).  All GIF ring waits
        (ps2_gif_drain, ps2_gif_reap) and GS texture uploads (ps2_gs_upload,
        batching up to 200 QW / 800 px per DMA burst) pump USB/PS2pad hardware
        cooperatively while preserving the pass-start cursor snapshot
@@ -1021,6 +1029,31 @@ APPENDIX B -- MISALIGNMENTS WITH THE GOVERNING STANDARD
      GS eDRAM is not memory-mapped into the CPU address space. All pixel
      data must pass through the GIF DMA channel. Direct CPU framebuffer
      pointers are routed through the EE/GS presentation driver.
+
+  4. Nexus status (PROVEN by code review): the EE side of the Nexus is
+     include/btron/nexus_ring.h (SPSC ring, no CAS, S_FULL refusal counted;
+     gate: make test-nexus-ring).  It carries the never-drop BUT/KEY edge
+     ring in core_ps2.c.  The EE-IOP SIF rings and the per-producer HID rings
+     described in 1.1 are INFERRED/planned, not built: pad, USB and key
+     repeat still share snd_evt.  slp_tsk/wup_tsk are stubs until the
+     dispatcher exists.
+
+  5. Pixels (PROVEN): sections 14 and 19 describe the target.  Today the EE
+     composites a CPU canvas (s_desktop_backbuffer) and uploads dirty bands
+     to the GS; only the 3D layer is GS-native.  "EE never touches frame
+     pixels" is a goal, not the current state.
+
+  6. Law 15.1 (PROVEN violated in part): ps2_gif_ring waits still pump input
+     cooperatively.  Target: DMAC ch2 end-of-chain IRQ posts a fence; no
+     status-register waits.
+
+  7. Pointer path: dt-dependent gain compensation was removed; motion is
+     coalesced to one EV_MOUSE_MOVE per 1 ms input period; button and key
+     edges are never dropped (retry ring, 64 slots, refusal counter).
+
+  8. GL ownership: wnd.c opens a scope per paint callback; a nested paint is
+     refused and counted (wnd_gl_nest_refused()).  wnd_gl_freeze(0) is
+     released at one point (the ps2_gui_pass wrapper).
 
 
 =====================================================================

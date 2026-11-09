@@ -62,6 +62,8 @@ extern void cassette_service(void);
 #include "ps2_gs_present.h"
 #include "ps2_iopram.h"
 #include "ps2_irq.h"
+#include <btron/nexus_ring.h>
+#include <btron/compositor.h>
 
 #include "../desktop/graphics/eegs/eegs_present.h"
 #include "../desktop/graphics/eegs/backend_eegs.h"
@@ -160,26 +162,54 @@ uint32_t btron_render_perf_us(void)
 extern int32_t  g_ptr_gain_fp;
 extern uint32_t g_ptr_delay_us;
 static int32_t s_mouse_rem_x, s_mouse_rem_y;
-static uint32_t s_last_mouse_us;
+
+/* Never-drop edge ring (ASYNC.txt Phase 2: BUT/KEY are never dropped).  snd_evt()
+ * may refuse when the system queue is full; the edge then waits here, in order,
+ * and is retried by the input plane.  Ordering is preserved: while the ring is
+ * non-empty new edges queue behind it. */
+NEXUS_RING_DEFINE(ps2_edge_ring_t, EVT, 64)
+static ps2_edge_ring_t s_edge_ring;
+static int32_t s_move_dx, s_move_dy;      /* coalesced, one EV_MOUSE_MOVE per input period */
+
+static void ps2_edge_flush(void)
+{
+    EVT ev;
+    while (ps2_edge_ring_t_len(&s_edge_ring)) {
+        ev = s_edge_ring.slot[s_edge_ring.tail & 63u];
+        if (snd_evt(&ev) != E_OK) return;          /* still full: retry next period */
+        (void)ps2_edge_ring_t_rcv(&s_edge_ring, &ev);
+    }
+}
+
+static ER ps2_post_edge(EVT *ev)
+{
+    ps2_edge_flush();
+    if (ps2_edge_ring_t_len(&s_edge_ring) == 0u && snd_evt(ev) == E_OK) return E_OK;
+    return ps2_edge_ring_t_snd(&s_edge_ring, ev) == 0 ? E_OK : E_LIMIT;   /* counted in .refused */
+}
+
+/* Emit the coalesced motion as a single event (bounded: no per-report storm). */
+static void ps2_move_flush(void)
+{
+    EVT ev;
+    if (!s_move_dx && !s_move_dy) return;
+    tkl_memset(&ev, 0, sizeof(ev));
+    ev.type   = EV_MOUSE_MOVE;
+    ev.pos.x  = (H)s_mouse_x;
+    ev.pos.y  = (H)s_mouse_y;
+    ev.button = (s_prev_mouse_btn & 1u) ? 1 : (s_prev_mouse_btn & 2u) ? 2 : (s_prev_mouse_btn & 4u) ? 3 : 0;
+    ev.data   = (VW)(((uint32_t)(uint16_t)(int16_t)s_move_dx) | ((uint32_t)(uint16_t)(int16_t)s_move_dy << 16));
+    if (snd_evt(&ev) == E_OK) s_move_dx = s_move_dy = 0;   /* MOVE may be dropped; keep accumulating */
+}
 
 static __attribute__((noinline)) void ps2_move_mouse(int dx, int dy)
 {
     const int32_t gain = g_ptr_gain_fp > 0 ? g_ptr_gain_fp : PS2_MOUSE_VELOCITY_FP;
     const uint32_t delay_us = g_ptr_delay_us > 0u ? g_ptr_delay_us : PS2_MOUSE_DELAY_US;
-    int32_t comp_gain = gain;
-    const uint32_t now_us = btron_render_perf_us();
-    if (delay_us <= PS2_MOUSE_COMP_MAX_US && s_last_mouse_us > 0u) {
-        uint32_t dt_us = now_us - s_last_mouse_us;
-        if (dt_us > 2u * delay_us) {
-            uint32_t extra_us = dt_us - delay_us;
-            if (extra_us > 8000u) extra_us = 8000u;
-            comp_gain = gain + (gain * (int32_t)extra_us) / 16384;
-        }
-    }
-    s_last_mouse_us = now_us;
+    const int32_t comp_gain = gain;   /* deterministic: no wall-time dependent gain */
+    (void)delay_us;
 
     int32_t nx, ny;
-    EVT ev;
     dx = (int)dp_ptr_scale((int32_t)dx, comp_gain, &s_mouse_rem_x);
     dy = (int)dp_ptr_scale((int32_t)dy, comp_gain, &s_mouse_rem_y);
     if (dx == 0 && dy == 0) return;
@@ -191,13 +221,8 @@ static __attribute__((noinline)) void ps2_move_mouse(int dx, int dy)
     s_mouse_y = (int)ny;
     set_baremetal_mouse_pos((H)s_mouse_x, (H)s_mouse_y);
 
-    tkl_memset(&ev, 0, sizeof(ev));
-    ev.type   = EV_MOUSE_MOVE;
-    ev.pos.x  = (H)s_mouse_x;
-    ev.pos.y  = (H)s_mouse_y;
-    ev.button = (s_prev_mouse_btn & 1u) ? 1 : (s_prev_mouse_btn & 2u) ? 2 : (s_prev_mouse_btn & 4u) ? 3 : 0;
-    ev.data   = (VW)(((uint32_t)(uint16_t)(int16_t)dx) | ((uint32_t)(uint16_t)(int16_t)dy << 16));
-    snd_evt(&ev);
+    s_move_dx += dx;
+    s_move_dy += dy;
 }
 
 static void ps2_click_mouse(int button, int down)
@@ -210,7 +235,7 @@ static void ps2_click_mouse(int button, int down)
     ev.pos.x  = (H)s_mouse_x;
     ev.pos.y  = (H)s_mouse_y;
     ev.button = button;
-    snd_evt(&ev);
+    (void)ps2_post_edge(&ev);
 }
 
 static ER ps2_inject_key(UW keycode, int down)
@@ -221,7 +246,7 @@ static ER ps2_inject_key(UW keycode, int down)
     ev.pos.x = (H)s_mouse_x;
     ev.pos.y = (H)s_mouse_y;
     ev.key   = keycode;
-    return snd_evt(&ev);
+    return ps2_post_edge(&ev);
 }
 
 /* Probe builds override this; release builds report it as unavailable. */
@@ -399,9 +424,10 @@ ER wup_tsk(ID tskid)     { (void)tskid; return E_OK; }
 
 /* ── Desktop session: input plane + presentation pass ────────────── */
 
-static uint32_t s_pass_panel_due, s_pass_full_due;
+static uint32_t s_pass_panel_due, s_pass_full_due;   /* us, btron_render_perf_us() clock */
 static GDEV    *s_gui_screen;
 static int      s_task_driving;
+static int      s_in_gui_pass;   /* dly_tsk must not recurse into the compositor */
 
 /* ps2_cursor_input_task - the 1 ms input worker: pad, USB, key repeat, pointer. */
 static void ps2_cursor_input_task(GDEV *screen, uint32_t now_us)
@@ -413,39 +439,87 @@ static void ps2_cursor_input_task(GDEV *screen, uint32_t now_us)
     ps2_usb_poll();
     ps2_kbd_repeat_tick();
     set_baremetal_mouse_pos((H)s_mouse_x, (H)s_mouse_y);
+    ps2_edge_flush();
+    ps2_move_flush();
     ps2_plane_charge(&s_plane_input, t0, ASYNC_INPUT_BUDGET_US);
 }
 
 /* btron_cooperative_input_pump - lets long-running apps keep the pointer live. */
 void btron_cooperative_input_pump(void)
 {
-    if (!s_gui_active || !s_gui_screen) return;
+    static volatile int s_in_pump;
+    if (!s_gui_active || !s_gui_screen || s_in_pump) return;   /* never re-enter */
+    s_in_pump = 1;
     ps2_cursor_input_task(s_gui_screen, 0);
+    s_in_pump = 0;
 }
 
-/* ps2_gui_pass - one pass: input, events, damage decision, present. */
-static void ps2_gui_pass(GDEV *screen)
+/* ── Compositor: shared policy (include/btron/compositor.h), PS2 machine ops ──────────
+ *
+ * The pass is the same one ARM64 and POSIX run; what is PS2 is below:
+ *   poll_input   the 1 ms input worker
+ *   drain_events console, BTRON events, app ticks, pointer snapshot
+ *   render       damage -> band set -> ps2_paint_bands into the BACK page (never flips)
+ *   present      the single place the page is exposed: ps2_gs_flip, then the plane charge
+ * The band set lives in this context between render and present, so the GL layer's stream,
+ * the canvas upload and the flip are ordered by construction, not by who calls whom.
+ *
+ * Cadence is unchanged from the pre-refactor loop: the compositor is given a table with no
+ * pacing of its own (periods 0), because on the PS2 the pass is paced by the GS flip wait, and
+ * panel / convergence timers stay band-aware inside render (they apply only while the pointer
+ * is still).  The real plane table is still what the late counter and the UI budget read. */
+typedef struct {
+    GDEV          *screen;
+    ps2_bandset_t  set;           /* owed bands: written by render, consumed by present */
+    int            force_full;
+    int            pass_mx, pass_my;
+    int            dbl;
+    int            painted;       /* render produced bands that present must expose     */
+    uint32_t       ui_t0;         /* start of the UI plane's work this pass (EE count)  */
+} ps2_comp_ctx_t;
+
+static ps2_comp_ctx_t   s_ps2_ctx;
+static compositor_t     s_ps2_comp;
+static const btron_plane_cfg_t s_ps2_comp_cfg;   /* all zero: no pacing of its own */
+
+static uint32_t ps2_comp_now(void *x) { (void)x; return btron_render_perf_us(); }
+
+static void ps2_comp_poll_input(void *x)
 {
-    ps2_bandset_t set = { { { 0, 0, 0, 0 } }, 0, 0 };
+    ps2_comp_ctx_t *c = x;
+    ps2_cursor_input_task(c->screen, 0);
+}
+
+static int ps2_comp_drain(void *x)
+{
+    ps2_comp_ctx_t *c = x;
     EVT ev;
-    int force_full = 0, pass_mx, pass_my;
-    uint32_t ui_t0, ov = 0u, flip_wait_us = 0u;
-    int dbl;
 
-    ps2_cursor_input_task(screen, 0);
-
-    ui_t0 = ps2_count_read();
+    c->ui_t0 = ps2_count_read();
     ps2_console_shell_poll();
 
+    c->force_full = 0;
     while (get_evt(&ev, 0) == E_OK) {
-        workbench_process_event(screen, &ev);
-        if (ev.type != EV_MOUSE_MOVE) force_full = 1;
+        workbench_process_event(c->screen, &ev);
+        if (ev.type != EV_MOUSE_MOVE) c->force_full = 1;
     }
-    pass_mx = s_mouse_x;
-    pass_my = s_mouse_y;
+    c->pass_mx = s_mouse_x;
+    c->pass_my = s_mouse_y;
 
     orchestra_ui_tick();
     cassette_service();
+    return 1;   /* damage is decided per band in render(); GL layers are dirty every pass */
+}
+
+static void ps2_comp_render(void *x, int full)
+{
+    ps2_comp_ctx_t *c = x;
+    GDEV *screen = c->screen;
+    uint32_t ov = 0u;
+
+    (void)full;   /* PS2 damage is a band set, not a flag */
+    c->painted = 0;
+    c->set = (ps2_bandset_t){ { { 0, 0, 0, 0 } }, 0, 0 };
 
     {   /* GL layers refresh every pass; software GL windows take turns. */
         static uint32_t turn;
@@ -459,19 +533,15 @@ static void ps2_gui_pass(GDEV *screen)
         if (n > 0) inval_wnd(sw[turn++ % (uint32_t)n]);
     }
 
-    ps2_bands_for_pass(&set, pass_mx, pass_my, s_shown_x, s_shown_y);
+    ps2_bands_for_pass(&c->set, c->pass_mx, c->pass_my, s_shown_x, s_shown_y);
 
-    if (s_timebase_ok && pass_mx == s_shown_x && pass_my == s_shown_y && !wnd_mgr_is_interacting()) {
-        const uint32_t now = ps2_count_read();
-        const uint32_t tpu = btron_ee_ticks_per_us();
-        if ((uint32_t)(now - s_pass_panel_due) >= btron_planes()->panel_refresh_us * tpu) {
-            ps2_bandset_add(&set, 0, PS2_SCREEN_WIDTH, 0, PS2_PANEL_ROWS);
-            s_pass_panel_due = now;
-        }
-        if ((uint32_t)(now - s_pass_full_due) >= btron_planes()->full_convergence_us * tpu) {
-            force_full = 1;
-            s_pass_full_due = now;
-        }
+    if (s_timebase_ok && c->pass_mx == s_shown_x && c->pass_my == s_shown_y && !wnd_mgr_is_interacting()) {
+        /* Same period test as ARM64 and POSIX, applied band-aware. */
+        const uint32_t now_us = btron_render_perf_us();
+        if (comp_period_due(now_us, &s_pass_panel_due, btron_planes()->panel_refresh_us))
+            ps2_bandset_add(&c->set, 0, PS2_SCREEN_WIDTH, 0, PS2_PANEL_ROWS);
+        if (comp_period_due(now_us, &s_pass_full_due, btron_planes()->full_convergence_us))
+            c->force_full = 1;
     }
 
     /* Overlays are drawn only by the whole-canvas composite. */
@@ -479,23 +549,23 @@ static void ps2_gui_pass(GDEV *screen)
         tip_get_state() == TIP_STATE_CONVERTING || tip_get_state() == TIP_STATE_CANDIDATE_SELECT)
         ov = 1u;
 
-    if (force_full || set.overflow || ov) ps2_bandset_full(&set);
+    if (c->force_full || c->set.overflow || ov) ps2_bandset_full(&c->set);
 
-    dbl = (int)gs_disp_is_double();
-    if (dbl) (void)ps2_rot_step(&set);
+    c->dbl = (int)gs_disp_is_double();
+    if (c->dbl) (void)ps2_rot_step(&c->set);
 
-    if (!set.n) {
+    if (!c->set.n) {
         wnd_gl_freeze(0);
         __asm__ volatile("nop" : : : "memory");
-        return;
+        return;   /* nothing owed: present() sees painted == 0 and does not flip */
     }
 
 #if BTRON_PS2_PAINT_WORKER
-    ps2_pw_plan(&set, ps2_pw_us(ui_t0, ps2_count_read()));
+    ps2_pw_plan(&c->set, ps2_pw_us(c->ui_t0, ps2_count_read()));
 #endif
     {
         uint32_t r_us, s_us, u_us, px;
-        ps2_paint_bands(screen, &set, &r_us, &s_us, &u_us, &px);
+        ps2_paint_bands(screen, &c->set, &r_us, &s_us, &u_us, &px);
         wnd_gl_freeze(0);
 #if BTRON_PS2_PAINT_WORKER
         if (s_pw_on)
@@ -503,16 +573,48 @@ static void ps2_gui_pass(GDEV *screen)
         ps2_pw_freeze(0);
         s_pw_layer = NULL;
 #endif
-        if (dbl) flip_wait_us = ps2_gs_flip(force_full ? 1 : 0);
-        if (ps2_band_is_full(&set.b[0])) s_pass_full_due = ps2_count_read();
+        c->painted = 1;
     }
+}
+
+static uint32_t ps2_comp_present(void *x)
+{
+    ps2_comp_ctx_t *c = x;
+    uint32_t flip_wait_us = 0u;
+
+    if (!c->painted) return 0u;
+    c->painted = 0;
+
+    if (c->dbl) flip_wait_us = ps2_gs_flip(c->force_full ? 1 : 0);
+    if (ps2_band_is_full(&c->set.b[0])) s_pass_full_due = btron_render_perf_us();
 
     /* The flip wait is the GS scanning, not bus work: excluded from the charge. */
-    ps2_plane_charge(&s_plane_ui, ui_t0 + flip_wait_us * btron_ee_ticks_per_us(), ASYNC_UI_BUDGET_US);
+    ps2_plane_charge(&s_plane_ui, c->ui_t0 + flip_wait_us * btron_ee_ticks_per_us(), ASYNC_UI_BUDGET_US);
     ps2_plane_ui_deadline();
-    s_shown_x = pass_mx;
-    s_shown_y = pass_my;
+    s_shown_x = c->pass_mx;
+    s_shown_y = c->pass_my;
     __asm__ volatile("nop" : : : "memory");
+    return flip_wait_us;
+}
+
+static const compositor_ops_t s_ps2_comp_ops = {
+    .ctx = &s_ps2_ctx, .now_us = ps2_comp_now, .poll_input = ps2_comp_poll_input,
+    .drain_events = ps2_comp_drain, .detect_damage = NULL,
+    .render = ps2_comp_render, .present = ps2_comp_present, .idle = NULL
+};
+
+/* ps2_gui_pass - one compositor pass. */
+static void ps2_gui_pass(GDEV *screen)
+{
+    if (s_in_gui_pass) return;
+    s_in_gui_pass = 1;
+    if (s_ps2_ctx.screen != screen || !s_ps2_comp.ops) {
+        s_ps2_ctx.screen = screen;
+        comp_init(&s_ps2_comp, &s_ps2_comp_ops, &s_ps2_comp_cfg, ASYNC_UI_BUDGET_US);
+    }
+    (void)comp_pass(&s_ps2_comp);
+    wnd_gl_freeze(0);          /* single release point for every exit path of a pass */
+    s_in_gui_pass = 0;
 }
 
 /* ── µITRON tasks: pass-driven, bodies run on the caller's stack ─── */
@@ -690,7 +792,7 @@ void launch_ps2_desktop_session(void)
         }
         s_shown_x = s_mouse_x; s_shown_y = s_mouse_y;
     }
-    s_pass_panel_due = s_pass_full_due = ps2_count_read();
+    s_pass_panel_due = s_pass_full_due = btron_render_perf_us();
     s_gui_screen = screen;
     { RENDER_STATS discard; btron_render_stats_take(&discard); }
     ps2_kprintf("[PS2] Desktop up. Ctrl+Q returns to the console.\n");

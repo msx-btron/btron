@@ -368,6 +368,20 @@ ISR rules:
    Architecture requires in-blit USB drain        forbidden
    On Tier 2: message path uses only CMPXCHG8     required (Zero-Switch Actor Topology)
 
+10.1 Shared compositor (implemented)
+------------------------------------
+
+  include/btron/compositor.h is the one compositor policy: input plane ->
+  event drain -> damage -> pacing/throttle -> render (BACK target) -> present
+  -> WCET charge, with a re-entry latch.  A core supplies only
+  compositor_ops_t.  Gate: make test-compositor.
+
+    ARM64  core_arm64.c  full adoption (comp_pass loop; whole-frame render)
+    POSIX  workbench/main.c  full adoption (plane table 60 Hz, 1 ms idle)
+    PS2    core_ps2.c  partial: panel/convergence timers use comp_period_due();
+           band damage, flip and GL layer stay in ps2_gui_pass_body until
+           ps2_paint_bands/ps2_gs_flip are expressed as render()/present().
+
 11. Relation to EVENTING.md
 ---------------------------
 

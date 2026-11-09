@@ -52,6 +52,8 @@ typedef struct {
     uint16_t input_slices_max;     /* periods caught up per pass, not all of   */
                                    /* them: a long paint must not turn into a  */
                                    /* long loop just because time passed       */
+    uint32_t ui_period_slow_us;    /* UI period once a paint exceeds           */
+    uint32_t ui_slow_paint_us;     /* this many us; 0 = never throttle         */
 } btron_plane_cfg_t;
 
 void btron_planes_install(const btron_plane_cfg_t *cfg);
