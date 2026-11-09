@@ -1,9 +1,14 @@
 /*
- * ps2_tile.c — Open the eight-app PS2 desktop in one grid.
+ * ps2_tile.c — Open the eight-app PS2 desktop as a compact-tab cascade.
  *
  * Same rule as a retail PS2 game: the disc holds PAK/ROMs (CD ~700 MiB,
- * DVD ~4 GiB); RDRAM holds the live working set.  Cell sizes come from
- * include/btron/ps2_tile.h (tools/ps2_tile_budget.py).
+ * DVD ~4 GiB); RDRAM holds the live working set.  Rects come from
+ * include/btron/ps2_tile.h (tools/ps2_tile_budget.py): every window
+ * shares y=PANEL so the title tabs form a horizontal click-strip;
+ * XMB is flush-right and EEGS-sized (client >= 320x220) so the GS
+ * layer is live from the first paint.  After the set is open, XMB
+ * is raised so EEGS is the visible window and the other tabs peek
+ * from the left (minimal mouse travel).
  */
 #include <stddef.h>
 #include <btron/ps2_tile.h>
@@ -33,6 +38,7 @@ int ps2_tile_open_standard(void)
 {
     int n = 0;
     const ps2_tile_rect_t *r;
+    WND *xmb = 0;
 
     r = ps2_tile_rect(PS2_TILE_TERM);
     if (r)
@@ -51,9 +57,12 @@ int ps2_tile_open_standard(void)
                                                 k_tile_attr));
 
     r = ps2_tile_rect(PS2_TILE_XMB);
-    if (r)
-        n += tile_got(PS2_TILE_XMB,
-                      open_xmb_window_rect(r->x, r->y, r->w, r->h));
+    if (r) {
+        /* First GL window: claims the GS layer.  Size is EEGS-water
+         * (client >= 320x220) so make_current does not demote to TinyGL. */
+        xmb = open_xmb_window_rect(r->x, r->y, r->w, r->h);
+        n += tile_got(PS2_TILE_XMB, xmb);
+    }
 
     r = ps2_tile_rect(PS2_TILE_MARS);
     if (r)
@@ -74,6 +83,12 @@ int ps2_tile_open_standard(void)
     if (r)
         n += tile_got(PS2_TILE_QUAKE,
                       open_quake_window(r->x, r->y, r->w, r->h));
+
+    /* Later opens sit on top of the z-stack.  Raise XMB so the EEGS
+     * layer is the visible window and the other compact tabs peek from
+     * the left — a short horizontal mouse move switches any of them. */
+    if (xmb)
+        top_wnd(xmb);
 
     ps2_kprintf("[TILE] standard set %d/%d (PAK/ROMs stay on disc)\n",
                 n, PS2_TILE_N);

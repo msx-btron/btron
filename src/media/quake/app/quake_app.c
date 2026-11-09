@@ -44,8 +44,8 @@ static void Quake_Shutdown(void) {
     /* Tear down world data — clears g_world and entity string copy */
     World_UnloadMap();
 
-    /* Invalidate the BSP pre-cache so FS_CacheBSP re-reads on next launch */
-    memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
+    /* Drop the heap BSP so closing Quake returns the level to the pool. */
+    FS_DropBSP();
 
     /* Clear texture table — GL objects are already gone with the surface */
     g_num_gl_textures = 0;

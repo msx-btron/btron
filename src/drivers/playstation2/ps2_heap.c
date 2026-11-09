@@ -175,11 +175,18 @@ static void* ps2_heap_take(size_t size, const void *ra)
 
     {
         const size_t hole = ps2_heap_largest_free();
+        static unsigned s_oom_rpt;
 
         s_heap_ooms++;
+        if (s_heap_oom_site == site && s_heap_oom_size == size)
+            s_oom_rpt++;
+        else
+            s_oom_rpt = 1;
         s_heap_oom_site = site;
         s_heap_oom_size = size;
-        ps2_kprintf("[HEAP] out of memory asking %u kB from 0x%x: used=%u kB in %u kB, largest free hole %u kB\n",
+        /* A failed rsz_wnd used to log this every compositor pass (~17 ms). */
+        if (s_oom_rpt <= 2u || (s_oom_rpt & 15u) == 0u)
+            ps2_kprintf("[HEAP] out of memory asking %u kB from 0x%x: used=%u kB in %u kB, largest free hole %u kB\n",
                     (unsigned int)(size / 1024u), site,
                     (unsigned int)(s_heap_used / 1024u),
                     (unsigned int)(PS2_HEAP_SIZE / 1024u),
@@ -279,8 +286,33 @@ void *Irealloc(void *ptr, size_t size)
     if (!b || !b->used)
         return NULL;
     old = b->size;
+    size = (size + PS2_HEAP_ALIGN - 1u) & ~(size_t)(PS2_HEAP_ALIGN - 1u);
     if (size <= old)
         return ptr;
+    /* Eat the next free block when it is large enough so a GDEV/zbuf
+     * grow does not need old+new contiguous at once. */
+    if (b->next && !b->next->used) {
+        size_t room = old + PS2_HEAP_HDR + b->next->size;
+        if (room >= size) {
+            size_t leftover = room - size;
+            ps2_blk *oldn = b->next;
+            if (leftover >= PS2_HEAP_HDR + PS2_HEAP_ALIGN) {
+                ps2_blk *tail = (ps2_blk *)(void *)((uint8_t *)(b + 1) + size);
+                tail->next = oldn->next;
+                tail->size = leftover - PS2_HEAP_HDR;
+                tail->used = 0;
+                tail->ra = 0;
+                b->next = tail;
+            } else {
+                b->next = oldn->next;
+                size = room;
+            }
+            s_heap_used += size - old;
+            if (s_heap_used > s_heap_peak) s_heap_peak = s_heap_used;
+            b->size = size;
+            return ptr;
+        }
+    }
     n = ps2_heap_take(size, __builtin_return_address(0));
     if (!n)
         return NULL;

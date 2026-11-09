@@ -1022,8 +1022,9 @@ void launch_ps2_desktop_session(void)
     ps2_spawn_planes();
     btron_desktop_note_size(PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
     workbench_init(PS2_SCREEN_WIDTH);
-    /* Eight-app tile grid.  Surfaces are the RAM working set; PAK/ROMs
-     * stay on the ISO the way a retail PS2 title keeps levels on disc. */
+    /* Eight-app tab-strip cascade.  Surfaces are the RAM working set;
+     * PAK/ROMs stay on the ISO the way a retail PS2 title keeps levels
+     * on disc.  XMB is EEGS-sized; the other tabs peek from the left. */
     {
         int n = ps2_tile_open_standard();
         ps2_kprintf("[PS2] tile desktop %d/%d\n", n, PS2_TILE_N);

@@ -124,6 +124,13 @@ int FS_PakIndexed(void)
     return ht_find("maps/e1m1.bsp") ? 1 : 0;
 }
 
+#if (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1 && !defined(BTRON_UEFI_TARGET)) || defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+void FS_DropBSP(void)
+{
+    memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
+}
+#endif
+
 /* ────────────────────────────────────────────────────────────────── */
 /*   Hosted build (POSIX / QEMU)                                     */
 /* ────────────────────────────────────────────────────────────────── */
@@ -329,6 +336,15 @@ extern unsigned char ps2_pak0_image_end[] __attribute__((weak));
 static uint32_t s_pak_lba;          /* ISO LBA of QUAKE/PAK0.PAK (CDVD fallback) */
 static int      s_pak_fd = -1;      /* FILEIO fd of cdrom0:QUAKE/PAK0.PAK */
 static byte    *s_level_image;      /* one heap BSP; replaced on warp */
+
+void FS_DropBSP(void)
+{
+    if (s_level_image) {
+        free(s_level_image);
+        s_level_image = NULL;
+    }
+    memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
+}
 
 static int s_ht_hashed;
 
@@ -659,6 +675,13 @@ static int fs_init_cdvd_pak(void)
     return 1;
 }
 #endif /* BTRON_PS2_TARGET */
+
+#if !defined(BTRON_PS2_TARGET)
+void FS_DropBSP(void)
+{
+    memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
+}
+#endif
 
 int FS_Init(void) {
     memset(s_ht, 0, sizeof(s_ht));

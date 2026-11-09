@@ -219,6 +219,15 @@ EGL_SURFACE* egl_create_window_surface(WND *wnd) {
      * each glyph comes out a solid rectangle.  On the TinyGL/GS path there is one context and
      * this is the resize the compositor was about to do anyway. */
     egl_make_current(surf);
+#if defined(BTRON_PS2_TARGET)
+    /* apply_live logs only on a switch.  Boot size that already matches
+     * still needs a line so EEGS-at-open is visible on UART. */
+    if (surf->layer_home) {
+        uart_puts_raw("[GL] live ");
+        uart_puts_raw(gl_backend_name(surf->backend));
+        uart_puts_raw("\n");
+    }
+#endif
     return surf;
 }
 

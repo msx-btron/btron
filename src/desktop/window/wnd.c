@@ -80,6 +80,9 @@ static int s_gl_layer_recorded; /* first EEGS stream has landed; freeze may appl
  * Declared here because rsz_wnd (above the event dispatcher) reads it to
  * decide GDEV slack. */
 static BOOL s_wnd_resizing = FALSE;
+static WND *s_gdev_oom_wnd;
+static H    s_gdev_oom_w;
+static H    s_gdev_oom_h;
 
 static void wnd_mgr_window_destroyed(WND *wnd);
 static void wnd_inval_rect(const RECT *r);
@@ -294,6 +297,7 @@ ER cls_wnd(WND *wnd) {
         if (s_gl_rect_last_wnd == wnd) s_gl_rect_last_wnd = NULL;
     }
 
+    if (s_gdev_oom_wnd == wnd) s_gdev_oom_wnd = NULL;
     if (wnd->dev) cls_dev(wnd->dev);
     free(wnd);
     return E_OK;
@@ -377,22 +381,107 @@ static void gdev_set_view(GDEV *d, H w, H h)
     d->clip.right = w;
     d->clip.bottom = h;
 }
-/* Grow with 64-pixel slack while the grip is held so OHCI MOVE bursts do
- * not realloc the pixmap every report.  Button-up flushes exact. */
+/* Grow slack while the grip is held so OHCI MOVE bursts do not realloc
+ * the pixmap every report.  64 px on hosted; 16 px on PS2 so a just-EEGS
+ * client (321×221) asks ~301 kB instead of 384×256 = 384 kB, which is
+ * larger than the typical first-fit hole after the eight-app set. */
+#if defined(BTRON_PS2_TARGET)
+#define GDEV_SLACK 16
+#else
+#define GDEV_SLACK 64
+#endif
+
+static void gdev_slack_cap(H need_w, H need_h, int grow_slack, H *cap_w, H *cap_h)
+{
+    *cap_w = need_w;
+    *cap_h = need_h;
+    if (!grow_slack) return;
+    *cap_w = (H)((need_w + (GDEV_SLACK - 1)) & ~(GDEV_SLACK - 1));
+    *cap_h = (H)((need_h + (GDEV_SLACK - 1)) & ~(GDEV_SLACK - 1));
+    if (*cap_w < need_w) *cap_w = need_w;
+    if (*cap_h < need_h) *cap_h = need_h;
+}
+
 static GDEV *gdev_acquire(H need_w, H need_h, int grow_slack)
 {
-    H cap_w = need_w, cap_h = need_h;
+    H cap_w, cap_h;
     GDEV *d;
-    if (grow_slack) {
-        cap_w = (H)((need_w + 63) & ~63);
-        cap_h = (H)((need_h + 63) & ~63);
-        if (cap_w < need_w) cap_w = need_w;
-        if (cap_h < need_h) cap_h = need_h;
-    }
+    gdev_slack_cap(need_w, need_h, grow_slack, &cap_w, &cap_h);
     d = opn_dev(cap_w, cap_h);
+    if (!d && grow_slack && (cap_w != need_w || cap_h != need_h))
+        d = opn_dev(need_w, need_h);
     if (!d) return NULL;
     gdev_set_view(d, need_w, need_h);
     return d;
+}
+
+/* Replace the pixmap.  Alloc the new buffer first so a failure keeps the
+ * old one.  If that fails, free the old buffer and retry so first-fit can
+ * coalesce.  Never leaves d->pixels NULL when the old pixmap existed. */
+static int gdev_fit(GDEV *d, H need_w, H need_h, int grow_slack)
+{
+    H cap_w, cap_h, old_cw, old_ch, old_vw, old_vh;
+    COLOR *npx;
+    size_t n;
+    if (!d || d->is_vram) return 0;
+    gdev_slack_cap(need_w, need_h, grow_slack, &cap_w, &cap_h);
+    old_cw = gdev_cap_w(d);
+    old_ch = gdev_cap_h(d);
+    old_vw = d->width;
+    old_vh = d->height;
+    if (old_cw >= cap_w && old_ch >= cap_h) {
+        gdev_set_view(d, need_w, need_h);
+        if (!grow_slack) {
+            d->cap_w = need_w;
+            d->cap_h = need_h;
+        }
+        return 1;
+    }
+    n = (size_t)cap_w * (size_t)cap_h;
+    npx = (COLOR *)calloc(n, sizeof(COLOR));
+    if (!npx && grow_slack && (cap_w != need_w || cap_h != need_h)) {
+        cap_w = need_w;
+        cap_h = need_h;
+        n = (size_t)cap_w * (size_t)cap_h;
+        npx = (COLOR *)calloc(n, sizeof(COLOR));
+    }
+    if (!npx) {
+        COLOR *oldp = d->pixels;
+        d->pixels = NULL;
+        free(oldp);
+        n = (size_t)cap_w * (size_t)cap_h;
+        npx = (COLOR *)calloc(n, sizeof(COLOR));
+        if (!npx && (cap_w != need_w || cap_h != need_h)) {
+            cap_w = need_w;
+            cap_h = need_h;
+            n = (size_t)cap_w * (size_t)cap_h;
+            npx = (COLOR *)calloc(n, sizeof(COLOR));
+        }
+        if (!npx) {
+            n = (size_t)old_vw * (size_t)old_vh;
+            if (n == 0) n = 1;
+            npx = (COLOR *)calloc(n, sizeof(COLOR));
+            if (!npx) return 0;
+            cap_w = old_vw;
+            cap_h = old_vh;
+            need_w = old_vw;
+            need_h = old_vh;
+        }
+    } else {
+        free(d->pixels);
+    }
+#if defined(BTRON_PS2_TARGET)
+    {
+        COLOR *px = npx;
+        int i, nn = (int)cap_w * (int)cap_h;
+        for (i = 0; i < nn; i++) px[i] = COLOR_LTGRAY;
+    }
+#endif
+    d->pixels = npx;
+    d->cap_w = cap_w;
+    d->cap_h = cap_h;
+    gdev_set_view(d, need_w, need_h);
+    return 1;
 }
 
 static void wnd_apply_chrome(WND *wnd, H w, H h)
@@ -450,10 +539,26 @@ ER rsz_wnd(WND *wnd, H w, H h) {
             /* view already matches; keep slack until button-up */
         } else if (fits && (slack || exact)) {
             gdev_set_view(wnd->dev, new_dev_w, new_dev_h);
+            if (!slack) {
+                wnd->dev->cap_w = new_dev_w;
+                wnd->dev->cap_h = new_dev_h;
+            }
             wnd->img_valid = FALSE;
+        } else if (s_gdev_oom_wnd == wnd &&
+                   new_dev_w <= s_gdev_oom_w && new_dev_h <= s_gdev_oom_h) {
+            /* Same grow already failed this drag; keep the old pixmap. */
+        } else if (!gdev_fit(wnd->dev, new_dev_w, new_dev_h, slack)) {
+            s_gdev_oom_wnd = wnd;
+            s_gdev_oom_w = new_dev_w;
+            s_gdev_oom_h = new_dev_h;
         } else {
-            cls_dev(wnd->dev);
-            wnd->dev = gdev_acquire(new_dev_w, new_dev_h, slack);
+            if (wnd->dev->width < new_dev_w || wnd->dev->height < new_dev_h) {
+                s_gdev_oom_wnd = wnd;
+                s_gdev_oom_w = new_dev_w;
+                s_gdev_oom_h = new_dev_h;
+            } else {
+                s_gdev_oom_wnd = NULL;
+            }
             wnd->img_valid = FALSE;
         }
     } else {

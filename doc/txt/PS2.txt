@@ -868,16 +868,21 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
 
 19.2  Tile live/rest: the pointer plane stays first
 
-  LAW.  The eight-app tile set is the RAM working set (heap 6100 KiB,
-  3x3 cells of 266x190).  The compositor paints at most
-  PS2_TILE_GL_PER_PASS (1) TinyGL window per pass.  The focused
-  GL window is picked whenever it owes a frame; other invalid GL
-  windows round-robin the leftover slots.  The focused app's task
-  asks every PS2_TILE_LIVE_MS (16 ms); unfocused tasks rest at
-  PS2_TILE_REST_MS (100 ms) so they do not steal the raster.
-  Closing a window frees its GDEV and its task.  Five GL tiles
-  rasterizing every pass were ~140 ms (~7 FPS each).  Fair RR
-  from the last pick capped the focused app at 60/N.
+  LAW.  The eight-app set is the RAM working set (heap 6400 KiB).
+  Boot placement is a same-y compact-tab cascade (y=PANEL, x
+  stepped 40 px) so the title tabs form a horizontal click-strip;
+  XMB is flush-right at 520x360 (client 512x324, above the EEGS
+  water of 320x220) and is raised after open so the GS layer is
+  the visible window.  The other seven windows stay 266x190 and
+  peek from the left — a short horizontal mouse move switches any
+  of them.  The compositor paints at most PS2_TILE_GL_PER_PASS (1)
+  TinyGL window per pass.  The focused GL window is picked whenever
+  it owes a frame; other invalid GL windows round-robin the leftover
+  slots.  The focused app's task asks every PS2_TILE_LIVE_MS (16 ms);
+  unfocused tasks rest at PS2_TILE_REST_MS (100 ms) so they do not
+  steal the raster.  Closing a window frees its GDEV and its task.
+  Five GL tiles rasterizing every pass were ~140 ms (~7 FPS each).
+  Fair RR from the last pick capped the focused app at 60/N.
   UI sleeps 1 ms while the focused GL still owes or the pointer
   moved; otherwise one NTSC frame (16.667 ms).  ui_slow_paint_us
   is 0.  INPUT stays 1 ms.  One HID pump runs before the paint
@@ -887,22 +892,25 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   ZB_clear is one packed fill (64-bit stores on EE); EEGS skips
   the software color and depth fills; PS2 builds drop stipple,
   magenta skip, OpenMP tex copy, and the init compat test.
-  XMB is the first GL tile and the EEGS layer; an unrecorded
+  XMB is the first GL window and the EEGS layer; an unrecorded
   layer still paints once while frozen, then freeze replays the
   last stream.  Unfocused XMB skips the 32x32 ribbon (PS2_TILE_SKIP_WAVE).
   A resize MOVE updates chrome immediately so the frame follows the
   pointer; GDEV realloc and TinyGL ZB_resize wait for one
   wnd_mgr_flush_resize() per compositor pass (and button-up).  Held
-  grows keep 64-pixel slack; button-up shrinks to the exact client.
-  The layer_home surface (XMB) switches live: client below 280x180
-  is TinyGL (pixmap blit), at/above 320x220 is EEGS (GS stream);
-  the band between keeps the current backend.  Demote clears the
-  layer so blit resumes; promote claims only if vacant.  Gears, Cu
-  and Quake stay TinyGL.  detect() pumps HID after the flush so an
-  OHCI burst during realloc still moves the pointer.
+  grows keep 16-pixel slack on PS2 (64 hosted) so a just-EEGS client
+  does not round to 384x256 = 384 kB.  A failed grow keeps the old
+  pixmap (never NULL) and does not retry the same size every pass.
+  Button-up drops slack in the cap fields.  Closing Quake calls
+  FS_DropBSP() so the heap BSP returns to the pool.
+  Live TinyGL↔EEGS switching on resize (client below 280x180 is
+  TinyGL, at/above 320x220 is EEGS) is in the surface but is the
+  next debug; boot size already enables EEGS.  Gears, Cu and Quake
+  stay TinyGL.  detect() pumps HID after the flush so an OHCI burst
+  during realloc still moves the pointer.
   tools/ps2_tile_budget.py and tools/ps2_fps_loop.py model RAM
-  and FPS; first-OK RAM is 3x3 heap=6100; focused Quake-alone
-  ~54 FPS (18 ms paint, NTSC cap 60).
+  and FPS; first-OK RAM is cascade heap=6400, XMB 520x360;
+  focused Quake-alone ~54 FPS (18 ms paint, NTSC cap 60).
 
   WHY.  TinyGL is one context per process.  Focused XMB on a tile
   is ~12.6 ms; unfocused is a gradient plus icons (~3.2 ms) or
@@ -917,11 +925,11 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   fps~=` every 2 s.  The focused GL title (`BTRON_GL_FPS_OVERLAY`)
   tracks paint-rate, not 60/N.  Closing a GL window drops gl= and
   remaining GL tiles animate faster.  `[GL] xmb: XrossMediaBar open`
-  is a live bar, not an empty layer hole.  `[GL] live tinygl` /
-  `[GL] live eegs` is a live TinyGL↔EEGS switch on the layer_home
-  window (XMB) as the client crosses 280x180 / 320x220.  `[USB] IOP shadow
+  is a live bar, not an empty layer hole.  Boot XMB logs
+  `[GL] live eegs` (client 512x324).  `[GL] live tinygl` /
+  `[GL] live eegs` on resize is the later switch debug.  `[USB] IOP shadow
   clobbered` is a skipped HID pass, not a permanent USB death.
-  Heap peak of the eight-app set stays under 6100 KiB.  Host gate:
+  Heap peak of the eight-app set stays under 6400 KiB.  Host gate:
   verify/tests/test_desktop_clip.c
   `unfocused_gl_freezes_when_quota_one` (includes focused-outranks-RR),
   `layer_records_once_while_frozen`, and

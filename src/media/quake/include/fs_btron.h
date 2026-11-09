@@ -67,6 +67,8 @@ void  FS_FreeFile(void *buffer);
 
 /* Warm the BSP hunk cache.  Returns 1 on success, 0 on failure.    */
 int   FS_CacheBSP(const char *bsp_path);
+/* Drop the current BSP (heap image on PS2).  Warp and window close. */
+void  FS_DropBSP(void);
 
 /* Return a pointer directly into the PAK image (zero-copy). */
 const byte *FS_FindInPak(const char *path, int *out_len);

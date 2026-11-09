@@ -4,15 +4,15 @@
 #ifndef BTRON_PS2_TILE_H
 #define BTRON_PS2_TILE_H
 
-#define PS2_BUDGET_HEAP_KB        6100
+#define PS2_BUDGET_HEAP_KB        6400
 #define PS2_BUDGET_GTERM_HIST     512
 #define PS2_BUDGET_TEDITOR_ROWS   200
 #define PS2_BUDGET_TEDITOR_COLS   128
 #define PS2_TILE_SCREEN_W         800
 #define PS2_TILE_SCREEN_H         600
 #define PS2_TILE_PANEL            28
-#define PS2_TILE_COLS             3
-#define PS2_TILE_ROWS             3
+#define PS2_TILE_CASCADE          1
+#define PS2_TILE_TAB_STEP         40
 #define PS2_TILE_N                8
 #define PS2_TILE_LIVE_MS          16
 #define PS2_TILE_REST_MS          100
@@ -39,13 +39,13 @@ static inline const ps2_tile_rect_t *ps2_tile_rect(int id)
 {
     static const ps2_tile_rect_t r[PS2_TILE_N] = {
         { 0, 28, 266, 190 }, /* term */
-        { 266, 28, 266, 190 }, /* cabinet */
-        { 532, 28, 266, 190 }, /* editor */
-        { 0, 218, 266, 190 }, /* xmb */
-        { 266, 218, 266, 190 }, /* mars */
-        { 532, 218, 266, 190 }, /* gears */
-        { 0, 408, 266, 190 }, /* cu */
-        { 266, 408, 266, 190 }, /* quake */
+        { 40, 28, 266, 190 }, /* cabinet */
+        { 80, 28, 266, 190 }, /* editor */
+        { 280, 28, 520, 360 }, /* xmb */
+        { 120, 28, 266, 190 }, /* mars */
+        { 160, 28, 266, 190 }, /* gears */
+        { 200, 28, 266, 190 }, /* cu */
+        { 240, 28, 266, 190 }, /* quake */
     };
     if (id < 0 || id >= PS2_TILE_N) return 0;
     return &r[id];
