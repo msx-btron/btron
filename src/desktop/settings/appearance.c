@@ -124,6 +124,28 @@ static void paint_appearance_settings(WND *wnd, GDEV *dev) {
     g_state_appearance.icon_size_sel = (appearance_get_icon_size() == BTRON_ICON_SIZE_32) ? 0 : 1;
     g_state_appearance.menu_style_sel = (app_menu_get_global_style() == APP_MENU_STYLE_CLASSIC_3D) ? 0 : 1;
 
+    if (dev->height < 390) {
+        s_appearance_sections[0].columns = 2;
+        s_appearance_sections[0].start_y = 46;
+        s_appearance_sections[0].height  = 62;
+        s_appearance_sections[1].columns = 2;
+        s_appearance_sections[1].start_y = 114;
+        s_appearance_sections[1].height  = 62;
+        s_appearance_sections[2].columns = (dev->width > 420) ? 2 : 1;
+        s_appearance_sections[2].start_y = 182;
+        s_appearance_sections[2].height  = 58;
+    } else {
+        s_appearance_sections[0].columns = 1;
+        s_appearance_sections[0].start_y = 56;
+        s_appearance_sections[0].height  = 98;
+        s_appearance_sections[1].columns = 1;
+        s_appearance_sections[1].start_y = 170;
+        s_appearance_sections[1].height  = 106;
+        s_appearance_sections[2].columns = 1;
+        s_appearance_sections[2].start_y = 292;
+        s_appearance_sections[2].height  = 80;
+    }
+
     settings_draw_dialog(dev, "appearance", "Appearance", "外観", "Themes, colours & window styles",
                          s_appearance_sections, 3,
                          s_appearance_controls, 11,
@@ -145,13 +167,32 @@ WND* open_appearance_settings_window(void) {
     g_state_appearance.icon_size_sel = (appearance_get_icon_size() == BTRON_ICON_SIZE_32) ? 0 : 1;
     g_state_appearance.menu_style_sel = (app_menu_get_global_style() == APP_MENU_STYLE_CLASSIC_3D) ? 0 : 1;
 
+    GDEV *scr = wnd_mgr_get_screen();
+    H scr_w = scr ? scr->width : 800;
+    H scr_h = scr ? scr->height : 600;
+#if defined(BTRON_PS2_TARGET)
+    H win_w = 480;
+    H win_h = 360;
+#else
+    H win_w = (scr_w <= 800) ? 500 : 640;
+    H win_h = (scr_h <= 600) ? 370 : 440;
+#endif
+    H win_x = (scr_w - win_w) / 2;
+    H win_y = (scr_h - win_h) / 2;
+    if (win_x < 10) win_x = 10;
+    if (win_y < 30) win_y = 30;
+
     WND *wnd = opn_wnd("外観設定 (Appearance Settings)",
-                       80, 45, 640, 440,
+                       win_x, win_y, win_w, win_h,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
-    if (!wnd) return NULL;
+    if (!wnd || !wnd->dev) {
+        if (wnd) cls_wnd(wnd);
+        return NULL;
+    }
     g_state_appearance.wnd = wnd;
     wnd->user_data = (VW)(uintptr_t)&g_state_appearance;
     wnd->paint = paint_appearance_settings;
     wnd->event_handler = handle_appearance_event;
+    inval_wnd(wnd);
     return wnd;
 }

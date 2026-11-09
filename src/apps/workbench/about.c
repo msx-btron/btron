@@ -75,7 +75,7 @@ static void paint_tab_specs(GDEV *dev, const RECT *body_r) {
     };
 
     static const struct SpecRow specs[] = {
-        { "HARDWARE PLATFORM",  "NISSAN BTRON WS-9800 (SMP 4-Core)",           SONY_COL_TEXT_WHITE },
+        { "HARDWARE PLATFORM",  "MSX-BTRON WS-9800 AMP",                       SONY_COL_TEXT_WHITE },
         { "MICROKERNEL CORE",   "T-Kernel 2.0 SMP Real-Time Executive",        SONY_COL_CYAN },
         { "SYSTEM SPEC",        "Ken Sakamura TRON Architecture (BTRON 3.20)", SONY_COL_TEXT_WHITE },
         { "CPU PROCESSOR",      "4x x86_64 @ 2.40 GHz",                        SONY_COL_TEXT_WHITE },
@@ -269,11 +269,11 @@ static void paint_about_window(WND *wnd, GDEV *dev) {
     drw_lin(dev, 0, 82, dev->width, 82);
 
     /* SONY Brand Badge */
-    drw_tc_string(dev, 14, 10, "S O N Y", SONY_COL_TEXT_WHITE, SONY_COL_HEADER);
-    drw_tc_string(dev, 80, 10, "|  B-SYSTEM WORKSTATION ARCHITECTURE", SONY_COL_GOLD, SONY_COL_HEADER);
+    drw_tc_string(dev, 14, 10, "MSX-BTRON", SONY_COL_TEXT_WHITE, SONY_COL_HEADER);
+    drw_tc_string(dev, 95, 10, "| B-SYSTEM WORKSTATION ARCHITECTURE", SONY_COL_GOLD, SONY_COL_HEADER);
 
     /* Sub-Model & Specification Badges */
-    drw_tc_string(dev, 14, 28, "MODEL: NEWS-TRON WS-9800 PRO", SONY_COL_TEXT_SILVER, SONY_COL_HEADER);
+    drw_tc_string(dev, 14, 28, "MODEL: WS-9800 PRO", SONY_COL_TEXT_SILVER, SONY_COL_HEADER);
     drw_tc_string(dev, 14, 44, "STANDARD: BTRON 3.20 / T-KERNEL 2.0 SMP CORE", SONY_COL_TEXT_DIM, SONY_COL_HEADER);
 
     /* SONY Status Indicators (LEDs) */
@@ -309,13 +309,17 @@ static void paint_about_window(WND *wnd, GDEV *dev) {
     drw_tc_string(dev, nyan_box.left + 2, nyan_box.bottom - 10, nyan_tag, SONY_COL_TEXT_DIM, SONY_COL_INSET);
 
     /* 4. Tab Navigation Bar (84 to 110px) */
+    BOOL compact = (dev->width < 540);
+    H tab1_w = compact ? ((dev->width - 36) / 3) : 160;
+    H tab2_w = compact ? ((dev->width - 36) / 3) : 195;
+    H tab3_w = compact ? (dev->width - 36 - 2 * tab1_w) : 150;
     struct TabDef {
         const char *label;
         H w;
     } tabs[ABOUT_TAB_MAX] = {
-        { "1. SYSTEM SPECS", 160 },
-        { "2. KERNEL TEAM & NAMES", 195 },
-        { "3. SUBSYSTEMS", 150 }
+        { compact ? "1. SPECS" : "1. SYSTEM SPECS", tab1_w },
+        { compact ? "2. TEAM" : "2. KERNEL TEAM & NAMES", tab2_w },
+        { compact ? "3. SUBSYSTEMS" : "3. SUBSYSTEMS", tab3_w }
     };
 
     H cur_tab_x = 12;
@@ -413,18 +417,35 @@ static void handle_about_event(WND *wnd, const EVT *evt) {
 
         /* 2. Tab selection buttons (86 to 110px) */
         if (rel_y >= 86 && rel_y <= 110) {
-            if (rel_x >= 12 && rel_x <= 172) {
-                g_about_state.current_tab = ABOUT_TAB_SPECS;
-                inval_wnd(wnd);
-                return;
-            } else if (rel_x >= 178 && rel_x <= 373) {
-                g_about_state.current_tab = ABOUT_TAB_PEOPLE;
-                inval_wnd(wnd);
-                return;
-            } else if (rel_x >= 379 && rel_x <= 529) {
-                g_about_state.current_tab = ABOUT_TAB_SUBSYSTEMS;
-                inval_wnd(wnd);
-                return;
+            if (client_w < 540) {
+                H tab_w = (client_w - 36) / 3;
+                if (rel_x >= 12 && rel_x < 12 + tab_w) {
+                    g_about_state.current_tab = ABOUT_TAB_SPECS;
+                    inval_wnd(wnd);
+                    return;
+                } else if (rel_x >= 12 + tab_w && rel_x < 12 + tab_w * 2) {
+                    g_about_state.current_tab = ABOUT_TAB_PEOPLE;
+                    inval_wnd(wnd);
+                    return;
+                } else if (rel_x >= 12 + tab_w * 2 && rel_x < client_w - 10) {
+                    g_about_state.current_tab = ABOUT_TAB_SUBSYSTEMS;
+                    inval_wnd(wnd);
+                    return;
+                }
+            } else {
+                if (rel_x >= 12 && rel_x <= 172) {
+                    g_about_state.current_tab = ABOUT_TAB_SPECS;
+                    inval_wnd(wnd);
+                    return;
+                } else if (rel_x >= 178 && rel_x <= 373) {
+                    g_about_state.current_tab = ABOUT_TAB_PEOPLE;
+                    inval_wnd(wnd);
+                    return;
+                } else if (rel_x >= 379 && rel_x <= 529) {
+                    g_about_state.current_tab = ABOUT_TAB_SUBSYSTEMS;
+                    inval_wnd(wnd);
+                    return;
+                }
             }
         }
 
@@ -555,15 +576,34 @@ WND* open_about_window(void) {
     g_about_state.people_page = 0;
     g_about_state.animation_enabled = TRUE;
 
+    GDEV *scr = wnd_mgr_get_screen();
+    H scr_w = scr ? scr->width : 800;
+    H scr_h = scr ? scr->height : 600;
+#if defined(BTRON_PS2_TARGET)
+    int win_w = 460;
+    int win_h = 320;
+#else
+    int win_w = (scr_w <= 800) ? 480 : 580;
+    int win_h = (scr_h <= 600) ? 330 : 360;
+#endif
+    H win_x = (scr_w - win_w) / 2;
+    H win_y = (scr_h - win_h) / 2;
+    if (win_x < 10) win_x = 10;
+    if (win_y < 30) win_y = 30;
+
     WND *wnd = opn_wnd("システム情報 (System Information)",
-                       100, 70, 580, 360,
+                       win_x, win_y, win_w, win_h,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
-    if (!wnd) return NULL;
+    if (!wnd || !wnd->dev) {
+        if (wnd) cls_wnd(wnd);
+        return NULL;
+    }
 
     g_about_state.wnd = wnd;
     wnd->user_data = (VW)(uintptr_t)&g_about_state;
     wnd->paint = paint_about_window;
     wnd->event_handler = handle_about_event;
     wnd->destroy = destroy_about_window;
+    inval_wnd(wnd);
     return wnd;
 }

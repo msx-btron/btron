@@ -867,10 +867,15 @@ btron_anders.vol: mkbtronfs tools/manifest_anders.txt
 	./mkbtronfs tools/manifest_anders.txt -o btron_anders.vol -l ANDERS --deps btron_anders.vol.d
 	@echo "[FS] btron_anders.vol written."
 
+btron_msx.vol: mkbtronfs tools/manifest_msx.txt
+	./mkbtronfs tools/manifest_msx.txt -o btron_msx.vol -l MSX -b 32768 --deps btron_msx.vol.d
+	@echo "[FS] btron_msx.vol written."
+
 # Written by the recipe above, so the first build after a clean has no payload dependencies and
 # every one after it does -- exactly the trade `-include *.d` already makes for C headers.
 -include btron_sys.vol.d
 -include btron_anders.vol.d
+-include btron_msx.vol.d
 
 
 # ── FS unit tests ──────────────────────────────────────────────────────
@@ -1452,13 +1457,14 @@ $(shell mkdir -p ./.build && echo '$(PS2_GL)' >$(PS2_GL_STAMP) && \
 $(info [PS2] PS2_GL is now $(PS2_GL) (was $(if $(PS2_GL_PREV),$(PS2_GL_PREV),unset)) -- the objects that read it will rebuild)
 endif
 
-# PS2_MSX stamp: rebuild core_ps2 on MSX configuration change
+# PS2_MSX stamp: rebuild core_ps2 and ps2_heap on MSX configuration change
 PS2_MSX_STAMP = .build/ps2-msx.stamp
 PS2_MSX_PREV := $(shell cat $(PS2_MSX_STAMP) 2>/dev/null)
 ifneq ($(PS2_MSX_PREV),$(PS2_MSX))
 $(shell mkdir -p ./.build && echo '$(PS2_MSX)' >$(PS2_MSX_STAMP) && \
-        rm -f src/cores/core_ps2.ps2.o src/cores/core_ps2.pbench.o)
-$(info [PS2] PS2_MSX is now $(PS2_MSX) (was $(if $(PS2_MSX_PREV),$(PS2_MSX_PREV),unset)) -- the unit that reads it will rebuild)
+        rm -f src/cores/core_ps2.ps2.o src/cores/core_ps2.pbench.o \
+              src/drivers/playstation2/ps2_heap.ps2.o src/drivers/playstation2/ps2_heap.pbench.o)
+$(info [PS2] PS2_MSX is now $(PS2_MSX) (was $(if $(PS2_MSX_PREV),$(PS2_MSX_PREV),unset)) -- the units that read it will rebuild)
 endif
 ifeq ($(PS2_MSX),1)
 PS2_CFLAGS    += -DBTRON_PS2_MSX=1
@@ -2310,7 +2316,7 @@ $(PI400_ARMSTUB_BIN): src/drivers/broadcom/armstub8.S
 	$(LLVM_OBJCOPY) -O binary .build/pi400/armstub8.elf $@
 	@SZ=$$(wc -c < $@ | tr -d ' '); echo "[PI400] armstub8.bin: $$SZ bytes (EL3, linked @0x0)"
 
-$(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol
+$(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol btron_msx.vol
 	@echo "=========================================================="
 	@echo " BTRON Pi 400 — SD Card Image Builder"
 	@echo " ELF     : $(ARM64_TARGET)"
@@ -2362,6 +2368,9 @@ $(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol
 	cp .build/pi400/armstub8.bin        $$MOUNT_PT/armstub8.bin; \
 	cp btron_sys.vol                    $$MOUNT_PT/btron_sys.vol; \
 	if [ -f btron_anders.vol ]; then cp btron_anders.vol $$MOUNT_PT/btron_anders.vol; fi; \
+	if [ -f btron_msx.vol ]; then cp btron_msx.vol $$MOUNT_PT/btron_msx.vol; fi; \
+	mkdir -p $$MOUNT_PT/msx; \
+	cp -f assets/msx/*.rom assets/msx/*.ROM assets/msx/*.dsk assets/msx/*.DSK $$MOUNT_PT/msx/ 2>/dev/null || true; \
 	python3 scripts/tool_mk_pi400_payload.py .build/pi400/btron_payload.bin; \
 	cp .build/pi400/btron_payload.bin   $$MOUNT_PT/btron_payload.bin; \
 	if [ -f assets/quake/pak/pak0.pak ]; then cp assets/quake/pak/pak0.pak $$MOUNT_PT/pak0.pak; fi; \
@@ -2476,7 +2485,7 @@ run-yoko: $(ARM64_TARGET)
 	    exit 1; \
 	fi
 
-run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol
+run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	@echo "=========================================================="
 	@echo " Launching T-Kernel AArch64 on QEMU Raspberry Pi 4B (BCM2711)"
 	@echo " Honoring : Takanori Yokoyama (横山 孝徳) — T-Kernel Pioneer"
@@ -2494,6 +2503,7 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol
 	    $(QEMU_AARCH64) -M raspi4b -m 2G $(KERNEL_DISPLAY) \
 	        -device loader,file=btron_sys.vol,addr=0x03000000 \
 	        -device loader,file=btron_anders.vol,addr=0x03200000 \
+	        -device loader,file=btron_msx.vol,addr=0x0A000000 \
 	        $$(test -f assets/quake/pak/pak0.pak && echo "-device loader,file=assets/quake/pak/pak0.pak,addr=0x04000000") \
 	        -device usb-kbd -device usb-mouse \
 	        -kernel $(ARM64_TARGET) -serial stdio; \

@@ -1,0 +1,60 @@
+# B-System /MSX Volume Manifest
+# Processed by: mkbtronfs manifest_msx.txt -o btron_msx.vol -l MSX -b 32768
+# Format: FILE "name"  TAD|MD|TXT|PNG|BIN|LINK  [payload_path | target_fid | -]  [parent_drawer]
+#         DIR  "name"  [parent_drawer]
+
+DIR "msx" -
+FILE "512 Bytes MSX1 Demo.dsk" BIN "assets/msx/512 Bytes MSX1 Demo.dsk" msx
+FILE "An Uncle in Brazil (IOD).dsk" BIN "assets/msx/An Uncle in Brazil (IOD).dsk" msx
+FILE "Audio Wave 3 (IOD).dsk" BIN "assets/msx/Audio Wave 3 (IOD).dsk" msx
+FILE "AUREL_VAULT.rom" BIN "assets/msx/AUREL_VAULT.rom" msx
+FILE "Bad Apple (MDPC)[ASCII16].rom" BIN "assets/msx/Bad Apple (MDPC)[ASCII16].rom" msx
+FILE "Bad Apple Pyhesty (2021).dsk" BIN "assets/msx/Bad Apple Pyhesty (2021).dsk" msx
+FILE "BULLRUSH.ROM" BIN "assets/msx/BULLRUSH.ROM" msx
+FILE "btron8.rom" BIN "assets/msx/btron8.rom" msx
+FILE "c0man.rom" BIN "assets/msx/c0man.rom" msx
+FILE "Dynamite Go! Go! - Demo (2021) (Rutubo Gameworks).ROM" BIN "assets/msx/Dynamite Go! Go! - Demo (2021) (Rutubo Gameworks).ROM" msx
+FILE "IOD GIF Demo (1991).dsk" BIN "assets/msx/IOD GIF Demo (1991).dsk" msx
+FILE "MAGICAL_HAPPY_RACE_3D_EXTERNAL_88H.rom" BIN "assets/msx/MAGICAL_HAPPY_RACE_3D_EXTERNAL_88H.rom" msx
+FILE "MAGICAL_HAPPY_RACE_3D_INTERNAL_98H.rom" BIN "assets/msx/MAGICAL_HAPPY_RACE_3D_INTERNAL_98H.rom" msx
+FILE "MARS.ROM" BIN "assets/msx/MARS.ROM" msx
+FILE "MSX_LOGO.rom" BIN "assets/msx/MSX_LOGO.rom" msx
+FILE "MSX_LOGO-v2.rom" BIN "assets/msx/MSX_LOGO-v2.rom" msx
+FILE "MSX_LOGO-clean-final.rom" BIN "assets/msx/MSX_LOGO-clean-final.rom" msx
+FILE "NEON_REVENANT-HC-Geo3D-256-v0.2.0.rom" BIN "assets/msx/NEON_REVENANT-HC-Geo3D-256-v0.2.0.rom" msx
+FILE "NICCC3D.ROM" BIN "assets/msx/NICCC3D.ROM" msx
+FILE "NIGHT_RAVEN_FLIGHT_DEMO.ROM" BIN "assets/msx/NIGHT_RAVEN_FLIGHT_DEMO.ROM" msx
+FILE "NIGHT_RAVEN_GEO3D.ROM" BIN "assets/msx/NIGHT_RAVEN_GEO3D.ROM" msx
+FILE "Puzzle Egg (2022)(Fony).dsk" BIN "assets/msx/Puzzle Egg (2022)(Fony).dsk" msx
+FILE "tfw_main_msx2+.rom" BIN "assets/msx/tfw_main_msx2+.rom" msx
+FILE "tfw_main_msx2.rom" BIN "assets/msx/tfw_main_msx2.rom" msx
+FILE "tfw_main_msxtr.rom" BIN "assets/msx/tfw_main_msxtr.rom" msx
+FILE "Xmas Demo (IOD).dsk" BIN "assets/msx/Xmas Demo (IOD).dsk" msx
+FILE "xracing_v1.0.4.rom" BIN "assets/msx/xracing_v1.0.4.rom" msx
+FILE "YAZZIER.ROM" BIN "assets/msx/YAZZIER.ROM" msx
+FILE "ZeroNoHoukouR-v0.4.8.rom" BIN "assets/msx/ZeroNoHoukouR-v0.4.8.rom" msx
+
+DIR "tbios" -
+FILE "tbios_main_msxtr.rom"  BIN "assets/msx/tbios/tbios_main_msxtr.rom" tbios
+FILE "tbios_main_msx2+.rom"  BIN "assets/msx/tbios/tbios_main_msx2+.rom" tbios
+FILE "tbios_main_msx2.rom"   BIN "assets/msx/tbios/tbios_main_msx2.rom" tbios
+FILE "tbios_logo.rom"        BIN "assets/msx/tbios/tbios_logo.rom" tbios
+FILE "tbios_sub.rom"         BIN "assets/msx/tbios/tbios_sub.rom" tbios
+FILE "tbios_music.rom"       BIN "assets/msx/tbios/tbios_music.rom" tbios
+FILE "tdos_disk.rom"         BIN "assets/msx/tbios/tdos_disk.rom" tbios
+
+DIR "cbios" -
+FILE "cbios_main_msxtr_jp.rom" BIN "SYS/cbios/cbios_main_msxtr_jp.rom" cbios
+FILE "cbios_main_msxtr.rom"    BIN "SYS/cbios/cbios_main_msxtr.rom" cbios
+FILE "cbios_main_msx2+_jp.rom" BIN "SYS/cbios/cbios_main_msx2+_jp.rom" cbios
+FILE "cbios_main_msx2+.rom"    BIN "SYS/cbios/cbios_main_msx2+.rom" cbios
+FILE "cbios_main_msx2_jp.rom"  BIN "SYS/cbios/cbios_main_msx2_jp.rom" cbios
+FILE "cbios_main_msx2.rom"     BIN "SYS/cbios/cbios_main_msx2.rom" cbios
+FILE "cbios_main_msx1.rom"     BIN "SYS/cbios/cbios_main_msx1.rom" cbios
+FILE "cbios_logo_msx1.rom"     BIN "SYS/cbios/cbios_logo_msx1.rom" cbios
+FILE "cbios_logo_msx2.rom"     BIN "SYS/cbios/cbios_logo_msx2.rom" cbios
+FILE "cbios_logo_msx2+.rom"    BIN "SYS/cbios/cbios_logo_msx2+.rom" cbios
+FILE "cbios_sub.rom"           BIN "SYS/cbios/cbios_sub.rom" cbios
+FILE "cbios_music.rom"         BIN "SYS/cbios/cbios_music.rom" cbios
+FILE "cbios_disk.rom"          BIN "SYS/cbios/cbios_disk.rom" cbios
+FILE "cbios_basic.rom"         BIN "SYS/cbios/cbios_basic.rom" cbios

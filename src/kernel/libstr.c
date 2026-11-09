@@ -505,7 +505,15 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
                 format++;
             }
         }
-        if (*format == 'l' || *format == 'z') {
+        int is_long_long = 0;
+        int is_long = 0;
+        while (*format == 'l' || *format == 'z') {
+            if (*format == 'l') {
+                if (is_long) is_long_long = 1;
+                else is_long = 1;
+            } else if (*format == 'z') {
+                is_long = 1;
+            }
             format++;
         }
 
@@ -518,16 +526,35 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
                 for (int pad = 0; pad < width - slen && out < end; pad++) *out++ = ' ';
             }
         } else if (*format == 'd' || *format == 'i' || *format == 'u') {
-            int val = va_arg(ap, int);
+            unsigned long long uval = 0;
             char tmp[32];
             int p = 0;
-            if (val == 0) tmp[p++] = '0';
-            else {
-                unsigned int uval = (unsigned int)val;
-                if (*format != 'u' && val < 0) {
-                    if (out < end) *out++ = '-';
-                    uval = (unsigned int)(-val);
+            if (*format == 'u') {
+                if (is_long_long) {
+                    uval = va_arg(ap, unsigned long long);
+                } else if (is_long) {
+                    uval = (unsigned long long)va_arg(ap, unsigned long);
+                } else {
+                    uval = (unsigned long long)va_arg(ap, unsigned int);
                 }
+            } else {
+                long long sval;
+                if (is_long_long) {
+                    sval = va_arg(ap, long long);
+                } else if (is_long) {
+                    sval = (long long)va_arg(ap, long);
+                } else {
+                    sval = (long long)va_arg(ap, int);
+                }
+                if (sval < 0) {
+                    if (out < end) *out++ = '-';
+                    uval = (unsigned long long)(-sval);
+                } else {
+                    uval = (unsigned long long)sval;
+                }
+            }
+            if (uval == 0) tmp[p++] = '0';
+            else {
                 while (uval > 0) {
                     tmp[p++] = (char)('0' + (uval % 10));
                     uval /= 10;
@@ -535,15 +562,25 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
             }
             while (p > 0 && out < end) *out++ = tmp[--p];
         } else if (*format == 'x' || *format == 'X' || *format == 'p') {
-            unsigned int val = va_arg(ap, unsigned int);
+            unsigned long long uval = 0;
+            if (*format == 'p') {
+                uval = (uintptr_t)va_arg(ap, void *);
+            } else if (is_long_long) {
+                uval = va_arg(ap, unsigned long long);
+            } else if (is_long) {
+                uval = (unsigned long long)va_arg(ap, unsigned long);
+            } else {
+                uval = (unsigned long long)va_arg(ap, unsigned int);
+            }
             char tmp[32];
             int p = 0;
-            if (val == 0) tmp[p++] = '0';
+            if (uval == 0) tmp[p++] = '0';
             else {
-                while (val > 0) {
-                    int digit = val & 0xF;
-                    tmp[p++] = (char)((digit < 10) ? ('0' + digit) : ('a' + digit - 10));
-                    val >>= 4;
+                char base_char = (*format == 'X') ? 'A' : 'a';
+                while (uval > 0) {
+                    int digit = (int)(uval & 0xF);
+                    tmp[p++] = (char)((digit < 10) ? ('0' + digit) : (base_char + digit - 10));
+                    uval >>= 4;
                 }
             }
             while (p > 0 && out < end) *out++ = tmp[--p];

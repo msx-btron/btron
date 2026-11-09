@@ -223,7 +223,8 @@ static uint16_t msx_machine_for(const char *name, size_t size)
                   strstr(name, "BTRON") || strstr(name, "bmsx") ||
                   strstr(name, "BMSX") || strstr(name, "MAGICAL") ||
                   strstr(name, "NICCC") || strstr(name, "Geo3D") ||
-                  strstr(name, "GEO3D"))))
+                  strstr(name, "GEO3D") || strstr(name, "Zero") ||
+                  strstr(name, "AUREL"))))
         return BMSX_MACHINE_MSXTR_CBIOS;
     return BMSX_MACHINE_MSX;
 }
@@ -401,6 +402,23 @@ static void msx_scan_roms(MsxViewer *st)
         st->rom_fids[st->rom_count] = entries[i].fid;
         st->rom_count++;
     }
+
+    if (st->rom_count < MSX_MAX_ROMS) {
+        n = vfs_list_dir("/MSX/msx", entries, MSX_MAX_ROMS - st->rom_count);
+        if (n <= 0) n = vfs_list_dir("/MSX", entries, MSX_MAX_ROMS - st->rom_count);
+        for (int i = 0; i < n && st->rom_count < MSX_MAX_ROMS; i++) {
+            if (entries[i].is_dir || !msx_is_media_name(entries[i].name)) continue;
+            int dup = 0;
+            for (int k = 0; k < st->rom_count; k++) {
+                if (strcmp(st->roms[k], entries[i].name) == 0) { dup = 1; break; }
+            }
+            if (!dup) {
+                snprintf(st->roms[st->rom_count], MSX_ROW_NAME, "%s", entries[i].name);
+                st->rom_fids[st->rom_count] = entries[i].fid;
+                st->rom_count++;
+            }
+        }
+    }
     msx_sort_rows(st);
 }
 
@@ -442,15 +460,37 @@ static BOOL msx_load(MsxViewer *st, const char *name)
      * copies it out. A cartridge keeps the old order. */
     if (msx_is_dsk_name(name)) {
         cfg.machine = msx_machine_for(name, 0);
-        msx_init(&cfg);
+        int init_rc = msx_init(&cfg);
+        if (init_rc != MSX_OK) {
+            snprintf(st->notice, sizeof(st->notice),
+                     "BIOS を開けません (init error %d)", init_rc);
+            return FALSE;
+        }
         if (vfs_read_blob(st->path, rom_image, rom_cap, &got) != 0 || got == 0) {
+            uint32_t fid = msx_rom_fid(st, name);
+            vfs_child_path(st->path, sizeof(st->path), "/MSX/msx", name, fid);
+            if (vfs_read_blob(st->path, rom_image, rom_cap, &got) != 0 || got == 0) {
+                vfs_child_path(st->path, sizeof(st->path), "/MSX", name, fid);
+                (void)vfs_read_blob(st->path, rom_image, rom_cap, &got);
+            }
+        }
+        if (got == 0) {
             snprintf(st->notice, sizeof(st->notice),
                      "ROM を開けません (cannot open %s)", st->path);
             return FALSE;
         }
         rc = slots_set_dsk(rom_image, (uint32_t)got);
+        slots_set_rom(NULL, 0);
     } else if (msx_is_main_bios_name(name)) {
         if (vfs_read_blob(st->path, rom_image, rom_cap, &got) != 0 || got == 0) {
+            uint32_t fid = msx_rom_fid(st, name);
+            vfs_child_path(st->path, sizeof(st->path), "/MSX/msx", name, fid);
+            if (vfs_read_blob(st->path, rom_image, rom_cap, &got) != 0 || got == 0) {
+                vfs_child_path(st->path, sizeof(st->path), "/MSX", name, fid);
+                (void)vfs_read_blob(st->path, rom_image, rom_cap, &got);
+            }
+        }
+        if (got == 0) {
             snprintf(st->notice, sizeof(st->notice),
                      "ROM を開けません (cannot open %s)", st->path);
             return FALSE;
@@ -463,18 +503,36 @@ static BOOL msx_load(MsxViewer *st, const char *name)
         } else {
             msx_set_bios_mode(BMSX_BIOS_CBIOS);
         }
-        msx_init(&cfg);
+        int init_rc = msx_init(&cfg);
+        if (init_rc != MSX_OK) {
+            snprintf(st->notice, sizeof(st->notice),
+                     "BIOS を開けません (init error %d)", init_rc);
+            return FALSE;
+        }
         slots_set_bios(rom_image, (uint32_t)got);
         slots_set_rom(NULL, 0);
         rc = MSX_OK;
     } else {
         if (vfs_read_blob(st->path, rom_image, rom_cap, &got) != 0 || got == 0) {
+            uint32_t fid = msx_rom_fid(st, name);
+            vfs_child_path(st->path, sizeof(st->path), "/MSX/msx", name, fid);
+            if (vfs_read_blob(st->path, rom_image, rom_cap, &got) != 0 || got == 0) {
+                vfs_child_path(st->path, sizeof(st->path), "/MSX", name, fid);
+                (void)vfs_read_blob(st->path, rom_image, rom_cap, &got);
+            }
+        }
+        if (got == 0) {
             snprintf(st->notice, sizeof(st->notice),
                      "ROM を開けません (cannot open %s)", st->path);
             return FALSE;
         }
         cfg.machine = msx_machine_for(name, got);
-        msx_init(&cfg);
+        int init_rc = msx_init(&cfg);
+        if (init_rc != MSX_OK) {
+            snprintf(st->notice, sizeof(st->notice),
+                     "BIOS を開けません (init error %d)", init_rc);
+            return FALSE;
+        }
         rc = msx_load_rom(rom_image, (uint32_t)got, 0);
     }
 
@@ -1241,7 +1299,8 @@ static WND *msx_open(const char *rom_name)
     wnd = opn_wnd("B-MSX", 60, 60, (H)win_w, (H)win_h,
                   WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_RESIZE |
                   WND_ATTR_BORDER);
-    if (!wnd) {
+    if (!wnd || !wnd->dev) {
+        if (wnd) cls_wnd(wnd);
         if (st->running) msx_shutdown();
         return NULL;
     }
@@ -1260,6 +1319,7 @@ static WND *msx_open(const char *rom_name)
     s_tsk = cre_tsk(&ctsk);
     if (s_tsk > 0) sta_tsk(s_tsk, 0);
 
+    inval_wnd(wnd);
     return wnd;
 }
 

@@ -619,7 +619,7 @@ static void ps2_gui_pass(GDEV *screen)
 
 /* ── µITRON tasks: pass-driven, bodies run on the caller's stack ─── */
 
-#define PS2_MAX_TASKS 4
+#define PS2_MAX_TASKS 16
 
 typedef struct {
     T_CTSK config;
@@ -662,6 +662,49 @@ ER sta_tsk(ID tskid, VW exinf)
     t->started = 1;
     return E_OK;
 }
+
+ER ter_tsk(ID tskid)
+{
+    if (tskid <= 0 || tskid > PS2_MAX_TASKS) return E_ID;
+    PS2_TASK *t = &s_ps2_tasks[tskid - 1];
+    if (!t->active) return E_NOEXS;
+    t->started = 0;
+    t->holding = 0;
+    return E_OK;
+}
+
+ER del_tsk(ID tskid)
+{
+    if (tskid <= 0 || tskid > PS2_MAX_TASKS) return E_ID;
+    PS2_TASK *t = &s_ps2_tasks[tskid - 1];
+    if (!t->active) return E_NOEXS;
+    t->active  = 0;
+    t->started = 0;
+    t->holding = 0;
+    return E_OK;
+}
+
+void ext_tsk(void)
+{
+    PS2_TASK *t = ps2_task_self();
+    if (t) {
+        t->active  = 0;
+        t->started = 0;
+        t->holding = 0;
+    }
+}
+
+void exd_tsk(void)
+{
+    ext_tsk();
+}
+
+ID   tk_cre_tsk(const T_CTSK *pk) { return cre_tsk(pk); }
+ER   tk_sta_tsk(ID tskid, VW exinf) { return sta_tsk(tskid, exinf); }
+ER   tk_ter_tsk(ID tskid) { return ter_tsk(tskid); }
+ER   tk_del_tsk(ID tskid) { return del_tsk(tskid); }
+void tk_ext_tsk(void) { ext_tsk(); }
+void tk_exd_tsk(void) { exd_tsk(); }
 
 /* ps2_task_ms - ms since boot, folded over Count wraps (32-bit math only). */
 static uint32_t ps2_task_ms(void)

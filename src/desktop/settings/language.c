@@ -56,6 +56,26 @@ static SETTINGS_SECTION s_language_sections[] = {
 static void paint_language_settings(WND *wnd, GDEV *dev) {
     if (!wnd || !dev) return;
 
+    if (dev->height < 390) {
+        s_language_sections[0].start_y = 44;
+        s_language_sections[0].height  = 44;
+        s_language_sections[1].start_y = 92;
+        s_language_sections[1].height  = 54;
+        s_language_sections[2].start_y = 150;
+        s_language_sections[2].height  = 54;
+        s_language_sections[3].start_y = 208;
+        s_language_sections[3].height  = 50;
+    } else {
+        s_language_sections[0].start_y = 46;
+        s_language_sections[0].height  = 64;
+        s_language_sections[1].start_y = 116;
+        s_language_sections[1].height  = 70;
+        s_language_sections[2].start_y = 192;
+        s_language_sections[2].height  = 70;
+        s_language_sections[3].start_y = 268;
+        s_language_sections[3].height  = 67;
+    }
+
     settings_draw_dialog(dev, "language", "Language", "言語・文字", "TRON Code, TIP Mozc & Tibetan Wylie",
                          s_language_sections, 4,
                          s_language_controls, 7,
@@ -63,12 +83,18 @@ static void paint_language_settings(WND *wnd, GDEV *dev) {
 
     /* Section 1 informational text */
     H left_x = s_language_sections[0].rect.left + 10;
-    drw_tc_string(dev, left_x, 52, "Cycle Mode Key (EN -> JP Hiragana -> JP Katakana -> TB):  F10", COLOR_BLACK, COLOR_WHITE);
-    drw_tc_string(dev, left_x, 70, "Direct Language Keys:  F6 (JP あ) | F7 (JP ア) | F8 (TB བོད) | F9 (Zen/Alphanum)", COLOR_GRAY, COLOR_WHITE);
-    drw_tc_string(dev, left_x, 88, "Standard Modifier Toggle:  Ctrl + Space / Alt + Space (Hankaku/Zenkaku)", COLOR_GRAY, COLOR_WHITE);
+    if (dev->height < 390) {
+        drw_tc_string(dev, left_x, 50, "Cycle Mode: F10 | Direct: F6 (JP あ) F7 (JP ア) F8 (TB བོད) F9", COLOR_BLACK, COLOR_WHITE);
+        drw_tc_string(dev, left_x, 66, "Toggle: Ctrl + Space / Alt + Space (Hankaku/Zenkaku)", COLOR_GRAY, COLOR_WHITE);
+    } else {
+        drw_tc_string(dev, left_x, 52, "Cycle Mode Key (EN -> JP Hiragana -> JP Katakana -> TB):  F10", COLOR_BLACK, COLOR_WHITE);
+        drw_tc_string(dev, left_x, 70, "Direct Language Keys:  F6 (JP あ) | F7 (JP ア) | F8 (TB བོད) | F9 (Zen/Alphanum)", COLOR_GRAY, COLOR_WHITE);
+        drw_tc_string(dev, left_x, 88, "Standard Modifier Toggle:  Ctrl + Space / Alt + Space (Hankaku/Zenkaku)", COLOR_GRAY, COLOR_WHITE);
+    }
 
     /* Section 2 informational note */
-    settings_draw_ui_checkbox(dev, s_language_sections[1].rect.left + 8, 162,
+    H sec2_sub_y = (dev->height < 390) ? (s_language_sections[1].rect.top + 34) : 162;
+    settings_draw_ui_checkbox(dev, s_language_sections[1].rect.left + 8, sec2_sub_y,
                               "Fullwidth Space (　 U+3000) inserted when Space is pressed in IDLE", TRUE, FALSE);
 }
 
@@ -85,14 +111,33 @@ WND* open_language_settings_window(void) {
     tip_get_key_settings(&g_lang_settings.current_config);
     g_lang_settings.saved_config = g_lang_settings.current_config;
 
+    GDEV *scr = wnd_mgr_get_screen();
+    H scr_w = scr ? scr->width : 800;
+    H scr_h = scr ? scr->height : 600;
+#if defined(BTRON_PS2_TARGET)
+    H win_w = 480;
+    H win_h = 360;
+#else
+    H win_w = (scr_w <= 800) ? 500 : 640;
+    H win_h = (scr_h <= 600) ? 360 : 420;
+#endif
+    H win_x = (scr_w - win_w) / 2;
+    H win_y = (scr_h - win_h) / 2;
+    if (win_x < 10) win_x = 10;
+    if (win_y < 30) win_y = 30;
+
     WND *wnd = opn_wnd("BTRONの言語と入力方法の設定 (Language and IME Settings)",
-                       80, 50, 640, 420,
+                       win_x, win_y, win_w, win_h,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
-    if (!wnd) return NULL;
+    if (!wnd || !wnd->dev) {
+        if (wnd) cls_wnd(wnd);
+        return NULL;
+    }
 
     g_lang_settings.wnd = wnd;
     wnd->user_data = (VW)(uintptr_t)&g_lang_settings;
     wnd->paint = paint_language_settings;
     wnd->event_handler = language_settings_event_handler;
+    inval_wnd(wnd);
     return wnd;
 }

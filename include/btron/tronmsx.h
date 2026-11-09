@@ -53,7 +53,7 @@ typedef struct {
 #define BMSX_MACHINE_HC95_CBIOS_FDD     22u
 
 /* The cartridge cap, in bytes: supports up to 4 MiB MegaROMs (e.g. Geo3D-256) */
-#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
+#if (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1) || defined(__aarch64__)
 #  define MSX_ROM_SIZE     4194304u
 #else
 /* Freestanding targets (PS2: 32 MiB of RDRAM for the whole image) hold the

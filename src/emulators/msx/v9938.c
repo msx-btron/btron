@@ -599,7 +599,7 @@ void v9938_write(v9938_t *v, uint8_t port, uint8_t val)
             if (a == 0x1801) {
                 extern uint16_t msx_get_pc(void);
                 extern uint64_t msx_total_cycles(void);
-                printf("DEBUG: Write to 0x1801: val=%02X from PC=%04X cyc=%llu\n", val, msx_get_pc(), (unsigned long long)msx_total_cycles());
+//                printf("DEBUG: Write to 0x1801: val=%02X from PC=%04X cyc=%llu\n", val, msx_get_pc(), (unsigned long long)msx_total_cycles());
             }
             v->vram[a] = val;
             cpu_step(v);

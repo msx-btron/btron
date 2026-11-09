@@ -72,15 +72,15 @@
 
 #include <stdint.h>
 
-/* Windows the table can hold a price for.  Sized from the pool that opens them: PS2_MAX_TASKS is 4
+/* Windows the table can hold a price for.  Sized from the pool that opens them: PS2_MAX_TASKS is 16
  * apps, and the desktop's own paintable windows that reach a pass' damage are the panel and at most
- * a couple of app windows, so 8 is "every window this machine can have up, plus slack".  A job that
+ * a couple of app windows, so 16 is "every window this machine can have up, plus slack".  A job that
  * does not fit is refused and counted (`no_slot`), which is the honest answer -- a full table means
  * the compositor paints that window as it always did, not that a frame is lost.  Overridable, in the
  * shape ps2_gif_ring.h sets for the same reason: the host gate needs to reach capacity to prove the
  * refusal path exists at all. */
 #ifndef PS2_PW_MAX
-#define PS2_PW_MAX 8u
+#define PS2_PW_MAX 16u
 #endif
 
 /* What `ps2_pw_ask()` answers.  PAINT means "run this window's callback now, and tell me what it

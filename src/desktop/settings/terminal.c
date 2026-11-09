@@ -157,6 +157,29 @@ static SETTINGS_SECTION s_term_sections[] = {
 static void paint_terminal_settings(WND *wnd, GDEV *dev) {
     if (!wnd || !dev) return;
     sync_terminal_state();
+    if (dev->height < 390) {
+        s_term_sections[0].start_y = 44;
+        s_term_sections[0].height  = 64;
+        s_term_sections[1].start_y = 112;
+        s_term_sections[1].height  = 36;
+        s_term_sections[2].start_y = 152;
+        s_term_sections[2].height  = 36;
+        s_term_sections[3].start_y = 192;
+        s_term_sections[3].height  = 36;
+        s_term_sections[4].start_y = 232;
+        s_term_sections[4].height  = 36;
+    } else {
+        s_term_sections[0].start_y = 64;
+        s_term_sections[0].height  = 80;
+        s_term_sections[1].start_y = 154;
+        s_term_sections[1].height  = 42;
+        s_term_sections[2].start_y = 206;
+        s_term_sections[2].height  = 42;
+        s_term_sections[3].start_y = 258;
+        s_term_sections[3].height  = 42;
+        s_term_sections[4].start_y = 310;
+        s_term_sections[4].height  = 42;
+    }
     settings_draw_dialog(dev, "terminal", "Terminal", "端末・通信", "VT100 Emulator & Colours",
                          s_term_sections, 5,
                          s_term_controls, 19,
@@ -175,15 +198,32 @@ WND* open_terminal_settings_window(void) {
     terminal_get_settings(&g_state_terminal.local_cfg);
     g_state_terminal.is_dirty = FALSE;
 
-    H win_w = 540;
-    H win_h = 450;   /* 40px header + 4 sections×(~80px) + 14px gaps×3 + 36px buttons + margins */
+    GDEV *scr = wnd_mgr_get_screen();
+    H scr_w = scr ? scr->width : 800;
+    H scr_h = scr ? scr->height : 600;
+#if defined(BTRON_PS2_TARGET)
+    H win_w = 480;
+    H win_h = 360;
+#else
+    H win_w = (scr_w <= 800) ? 500 : 540;
+    H win_h = (scr_h <= 600) ? 360 : 450;
+#endif
+    H win_x = (scr_w - win_w) / 2;
+    H win_y = (scr_h - win_h) / 2;
+    if (win_x < 10) win_x = 10;
+    if (win_y < 30) win_y = 30;
+
     WND *wnd = opn_wnd("端末・通信環境設定 (Terminal Settings)",
-                       (1280 - win_w) / 2 + 20, (800 - win_h) / 2 + 20, win_w, win_h,
+                       win_x, win_y, win_w, win_h,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
-    if (!wnd) return NULL;
+    if (!wnd || !wnd->dev) {
+        if (wnd) cls_wnd(wnd);
+        return NULL;
+    }
 
     g_state_terminal.wnd = wnd;
     wnd->paint = paint_terminal_settings;
     wnd->event_handler = handle_terminal_settings_event;
+    inval_wnd(wnd);
     return wnd;
 }

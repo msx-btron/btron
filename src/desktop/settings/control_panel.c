@@ -158,16 +158,16 @@ static int word_wrap_text(const char *src, char lines[][64], int max_lines, int 
 static void calculate_bar_layout(ControlBarLayout *bar, H x, H y, H w, H h, const SETTINGS_APP_INFO *info) {
     if (!bar || !info) return;
 
-    BTRON_ICON_SIZE icon_sz = appearance_get_icon_size();
-    H icon_box_dim = (icon_sz == BTRON_ICON_SIZE_32) ? 40 : 72;
+    BOOL compact = (h < 50);
+    H icon_box_dim = compact ? 30 : ((appearance_get_icon_size() == BTRON_ICON_SIZE_32) ? 40 : 72);
 
     /* 1. Calculate Image / Icon Placeholder subelement */
     H icon_w = icon_box_dim;
     H icon_h = icon_box_dim;
     if (w < 90) icon_w = (w > 20) ? (w / 2) : 10;
-    if (h < icon_box_dim) icon_h = (h > 12) ? (h - 10) : 6;
+    if (h < icon_box_dim) icon_h = (h > 12) ? (h - 6) : 6;
 
-    H icon_pad_x = 8;
+    H icon_pad_x = compact ? 4 : 8;
     H icon_pad_y = (h > icon_h) ? (h - icon_h) / 2 : 2;
 
     bar->icon_box.left = x + icon_pad_x;
@@ -182,23 +182,23 @@ static void calculate_bar_layout(ControlBarLayout *bar, H x, H y, H w, H h, cons
     bar->icon_symbol_y = bar->icon_box.top + (icon_h > 12 ? (icon_h - 12) / 2 : 2);
 
     /* 2. Calculate Text Label subelements */
-    H text_pad_left = 10;
+    H text_pad_left = compact ? 6 : 10;
     bar->title_x = bar->icon_box.right + text_pad_left;
-    bar->title_y = y + ((icon_sz == BTRON_ICON_SIZE_32) ? 5 : 7);
+    bar->title_y = y + (compact ? 3 : ((appearance_get_icon_size() == BTRON_ICON_SIZE_32) ? 5 : 7));
 
     bar->desc_x = bar->title_x;
-    bar->desc_y = y + ((icon_sz == BTRON_ICON_SIZE_32) ? 22 : 25);
+    bar->desc_y = y + (compact ? 19 : ((appearance_get_icon_size() == BTRON_ICON_SIZE_32) ? 22 : 25));
 
     /* 3. Calculate Status / Category Badge subelement */
-    H badge_w = 46;
-    H badge_h = 16;
-    bar->badge_box.right = x + w - 8;
+    H badge_w = compact ? 38 : 46;
+    H badge_h = compact ? 13 : 16;
+    bar->badge_box.right = x + w - (compact ? 4 : 8);
     bar->badge_box.left = (bar->badge_box.right > x + badge_w) ? (bar->badge_box.right - badge_w) : x;
     bar->badge_box.top = bar->title_y;
     bar->badge_box.bottom = bar->badge_box.top + badge_h;
 
-    bar->badge_text_x = bar->badge_box.left + 5;
-    bar->badge_text_y = bar->badge_box.top + 2;
+    bar->badge_text_x = bar->badge_box.left + (compact ? 3 : 5);
+    bar->badge_text_y = bar->badge_box.top + (compact ? 1 : 2);
 
     /* 4. Set enclosing bounding box of the Bar item (Parent of subelements) */
     bar->bar_box.left = x;
@@ -218,12 +218,27 @@ static void calculate_control_panel_layout(ControlPanelLayout *layout, H client_
     if (client_h < 150) client_h = 150;
 
     BTRON_ICON_SIZE icon_sz = appearance_get_icon_size();
-    H item_h = (icon_sz == BTRON_ICON_SIZE_32) ? 52 : 80;
-
-    H start_x = 16;
-    H start_y = 60;
-    H item_w = (client_w - 48) / 2;
+    BOOL compact = (client_h < 480) || (icon_sz == BTRON_ICON_SIZE_32);
+    H item_h = compact ? 38 : 80;
+    H gap_y = compact ? 4 : 8;
+    H start_x = compact ? 12 : 16;
+    H start_y = compact ? 48 : 60;
+    H gap_x = compact ? 10 : 16;
+    H item_w = (client_w - (start_x * 2 + gap_x)) / 2;
     if (item_w < 80) item_w = 80;
+
+    H ftr_h = (client_h < 480) ? 32 : 36;
+    if (compact) {
+        H avail_h = client_h - ftr_h - start_y - 4;
+        if (avail_h > 0) {
+            int num_rows = ((int)APP_REGISTRY_COUNT + 1) / 2;
+            H calc_item_h = (avail_h / num_rows) - 3;
+            if (calc_item_h < item_h && calc_item_h >= 26) item_h = calc_item_h;
+            gap_y = (avail_h - (item_h * num_rows)) / (num_rows > 1 ? (num_rows - 1) : 1);
+            if (gap_y < 2) gap_y = 2;
+            if (gap_y > 6) gap_y = 6;
+        }
+    }
 
     H min_x = client_w;
     H min_y = client_h;
@@ -233,8 +248,8 @@ static void calculate_control_panel_layout(ControlPanelLayout *layout, H client_
     for (int i = 0; i < (int)APP_REGISTRY_COUNT; i++) {
         int col = i % 2;
         int row = i / 2;
-        H x = start_x + col * (item_w + 16);
-        H y = start_y + row * (item_h + 8);
+        H x = start_x + col * (item_w + gap_x);
+        H y = start_y + row * (item_h + gap_y);
 
         calculate_bar_layout(&layout->bars[i], x, y, item_w, item_h, &g_app_registry[i]);
 
@@ -245,10 +260,10 @@ static void calculate_control_panel_layout(ControlPanelLayout *layout, H client_
     }
 
     /* Set parent container bounding box based on the calculated extent of child bars */
-    layout->parent_container_box.left = (min_x >= 6) ? (min_x - 6) : 0;
-    layout->parent_container_box.top = (min_y >= 6) ? (min_y - 6) : 0;
-    layout->parent_container_box.right = max_x + 6;
-    layout->parent_container_box.bottom = max_y + 6;
+    layout->parent_container_box.left = (min_x >= 4) ? (min_x - 4) : 0;
+    layout->parent_container_box.top = (min_y >= 4) ? (min_y - 4) : 0;
+    layout->parent_container_box.right = max_x + 4;
+    layout->parent_container_box.bottom = max_y + 4;
 }
 
 static void paint_control_panel(WND *wnd, GDEV *dev) {
@@ -264,7 +279,7 @@ static void paint_control_panel(WND *wnd, GDEV *dev) {
     drw_rec(dev, &bg_r);
 
     /* 2. SONY Brushed Graphite Header (0 to 52px) */
-    H hdr_h = (dev->height > 60) ? 52 : (dev->height / 2);
+    H hdr_h = (dev->height < 480) ? 42 : ((dev->height > 60) ? 52 : (dev->height / 2));
     RECT hdr_r = { 0, 0, dev->width, hdr_h };
     fill_rec(dev, &hdr_r, SONY_COL_HEADER);
     drw_lin(dev, 0, hdr_h, dev->width, hdr_h);
@@ -284,21 +299,21 @@ static void paint_control_panel(WND *wnd, GDEV *dev) {
     if (hdr_h >= 46 && dev->width > 200) {
         drw_tc_string(dev, 14, 38, "* SYSTEM: ONLINE", SONY_COL_GREEN, SONY_COL_HEADER);
         if (dev->width > 340) {
-            drw_tc_string(dev, 160, 38, "* APPLETS: 10 READY", SONY_COL_CYAN, SONY_COL_HEADER);
+            drw_tc_string(dev, 160, 38, "* APPLETS: 11 READY", SONY_COL_CYAN, SONY_COL_HEADER);
         }
         if (dev->width > 480) {
             drw_tc_string(dev, 320, 38, "* CONFIG: SYNCED", SONY_COL_GOLD, SONY_COL_HEADER);
         }
     }
 
-    /* 3. Parent Enclosing Container Box (Enclosing all 10 Bars) */
+    /* 3. Parent Enclosing Container Box (Enclosing all 11 Bars) */
     if (layout.parent_container_box.right > layout.parent_container_box.left &&
         layout.parent_container_box.bottom > layout.parent_container_box.top) {
         fill_rec(dev, &layout.parent_container_box, SONY_COL_INSET);
         drw_rec(dev, &layout.parent_container_box);
     }
 
-    /* 4. Render 10 Control Panel Bars with Multi-Line Descriptions */
+    /* 4. Render Control Panel Bars with Multi-Line Descriptions */
     for (int i = 0; i < (int)APP_REGISTRY_COUNT; i++) {
         const ControlBarLayout *b = &layout.bars[i];
         if (b->bar_box.top >= dev->height) continue;
@@ -329,14 +344,15 @@ static void paint_control_panel(WND *wnd, GDEV *dev) {
             drw_lin(dev, b->icon_box.left, b->icon_box.top, b->icon_box.left + 3, b->icon_box.top);
             drw_lin(dev, b->icon_box.right - 4, b->icon_box.bottom - 1, b->icon_box.right - 1, b->icon_box.bottom - 1);
 
-            /* Draw GIF icon scaled to current preference (32×32 or 64×64) */
+            /* Draw GIF icon scaled to current preference (32×32 or 64×64, compact 26x26) */
             BTRON_ICON_SIZE icon_sz = appearance_get_icon_size();
-            int icon_dim = (icon_sz == BTRON_ICON_SIZE_32) ? 32 : 64;
+            BOOL compact = (b->bar_box.bottom - b->bar_box.top < 50);
+            int icon_dim = compact ? 26 : ((icon_sz == BTRON_ICON_SIZE_32) ? 32 : 64);
             H icon_draw_x = b->icon_box.left + (H)(((int)(b->icon_box.right - b->icon_box.left) - icon_dim) / 2);
             H icon_draw_y = b->icon_box.top  + (H)(((int)(b->icon_box.bottom - b->icon_box.top)  - icon_dim) / 2);
             draw_setting_gif_icon_scaled(dev, g_app_registry[i].id_str, (int)icon_draw_x, (int)icon_draw_y, icon_dim, icon_dim);
             /* Fallback text glyph when icon did not render (freestanding or missing file) */
-            if (b->icon_box.right - b->icon_box.left < 32) {
+            if (b->icon_box.right - b->icon_box.left < 26) {
                 drw_tc_string(dev, b->icon_symbol_x, b->icon_symbol_y,
                               g_app_registry[i].icon_symbol, icon_border, icon_bg);
             }
@@ -355,16 +371,17 @@ static void paint_control_panel(WND *wnd, GDEV *dev) {
             drw_tc_string(dev, b->badge_text_x, b->badge_text_y, is_sel ? "OPEN" : "READY", is_sel ? SONY_COL_GOLD : SONY_COL_CYAN, is_sel ? SONY_COL_HEADER : SONY_COL_INSET);
         }
 
-        /* Description Subelement: Multi-Line Word-Wrapped (2-3 lines) */
+        /* Description Subelement: Multi-Line Word-Wrapped (2-3 lines, or 1 in compact) */
         H avail_desc_w = b->bar_box.right - b->desc_x - 8;
         int max_desc_chars = (avail_desc_w > 0) ? (avail_desc_w / 8) : 0;
         if (max_desc_chars > 6) {
             char desc_lines[3][64];
-            int num_lines = word_wrap_text(g_app_registry[i].desc, desc_lines, 3, max_desc_chars);
-            H line_step = 15;
+            int max_lines = (b->bar_box.bottom - b->bar_box.top < 50) ? 1 : 3;
+            int num_lines = word_wrap_text(g_app_registry[i].desc, desc_lines, max_lines, max_desc_chars);
+            H line_step = 14;
             for (int l = 0; l < num_lines; l++) {
                 H ly = b->desc_y + l * line_step;
-                if (ly + 12 > b->bar_box.bottom - 2) break;
+                if (ly + 11 > b->bar_box.bottom - 2) break;
                 drw_tc_string(dev, b->desc_x, ly, desc_lines[l], is_sel ? SONY_COL_TEXT_SILVER : SONY_COL_TEXT_DIM, bar_bg);
             }
         }
@@ -372,12 +389,13 @@ static void paint_control_panel(WND *wnd, GDEV *dev) {
 
     /* 5. High-Tech Telemetry Footer Bar */
     if (dev->height > 50) {
-        RECT ftr_r = { 0, dev->height - 36, dev->width, dev->height };
+        H ftr_h = (dev->height < 480) ? 32 : 36;
+        RECT ftr_r = { 0, dev->height - ftr_h, dev->width, dev->height };
         fill_rec(dev, &ftr_r, SONY_COL_HEADER);
-        drw_lin(dev, 0, dev->height - 36, dev->width, dev->height - 36);
+        drw_lin(dev, 0, dev->height - ftr_h, dev->width, dev->height - ftr_h);
 
         H btn_h = 22;
-        H btn_y = dev->height - 29;
+        H btn_y = dev->height - ftr_h + (ftr_h - btn_h) / 2;
 
         H close_w = 80;
         H open_w = 100;
@@ -397,8 +415,8 @@ static void paint_control_panel(WND *wnd, GDEV *dev) {
         /* Telemetry readout (only if room permits) */
         if (btn_open.left > 180) {
             char telem[64];
-            snprintf(telem, sizeof(telem), "WS-9800 | 10 APPS | NVRAM: SYNCED");
-            drw_tc_string(dev, 14, dev->height - 24, telem, SONY_COL_TEXT_DIM, SONY_COL_HEADER);
+            snprintf(telem, sizeof(telem), "WS-9800 | 11 APPS | NVRAM: SYNCED");
+            drw_tc_string(dev, 14, dev->height - ftr_h + (ftr_h - 12) / 2, telem, SONY_COL_TEXT_DIM, SONY_COL_HEADER);
         }
     }
 }
@@ -420,6 +438,7 @@ static void launch_and_center_applet(int index) {
             if (cx < 10) cx = 10;
             if (cy < 30) cy = 30;
             mov_wnd(opened, cx, cy);
+            inval_wnd(opened);
         }
     }
 }
@@ -453,8 +472,9 @@ static void handle_control_panel_event(WND *wnd, const EVT *evt) {
         }
 
         /* Check Footer Buttons */
+        H ftr_h = (client_h < 480) ? 32 : 36;
         H btn_h = 22;
-        H btn_y = client_h - 29;
+        H btn_y = client_h - ftr_h + (ftr_h - btn_h) / 2;
         H close_w = 80;
         H open_w = 100;
         if (client_w < 250) {
@@ -482,10 +502,22 @@ WND* open_control_panel_window(void) {
     g_ctrl_panel.selected_index = 0;
     BTRON_ICON_SIZE sz = appearance_get_icon_size();
     GDEV *scr = wnd_mgr_get_screen();
+#if defined(BTRON_PS2_TARGET)
+    H scr_w = scr ? scr->width : 800;
+    H scr_h = scr ? scr->height : 600;
+    int win_w = 440;
+    int win_h = 330;
+#else
     H scr_w = scr ? scr->width : 1280;
     H scr_h = scr ? scr->height : 800;
-    int win_w = 680;
-    int win_h = (sz == BTRON_ICON_SIZE_32) ? 520 : 660;
+    int win_w = (scr_w <= 800) ? 460 : 680;
+    int win_h;
+    if (scr_h <= 600) {
+        win_h = 340;
+    } else {
+        win_h = (sz == BTRON_ICON_SIZE_32) ? 520 : 600;
+    }
+#endif
     H win_x = (scr_w - win_w) / 2;
     H win_y = (scr_h - win_h) / 2;
     if (win_x < 10) win_x = 10;
@@ -493,10 +525,14 @@ WND* open_control_panel_window(void) {
     WND *wnd = opn_wnd("環境設定コントロールパネル (Preferences Panel)",
                        win_x, win_y, win_w, win_h,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
-    if (!wnd) return NULL;
+    if (!wnd || !wnd->dev) {
+        if (wnd) cls_wnd(wnd);
+        return NULL;
+    }
     g_ctrl_panel.wnd = wnd;
     wnd->user_data = (VW)(uintptr_t)&g_ctrl_panel;
     wnd->paint = paint_control_panel;
     wnd->event_handler = handle_control_panel_event;
+    inval_wnd(wnd);
     return wnd;
 }

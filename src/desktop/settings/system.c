@@ -57,13 +57,32 @@ WND* open_system_settings_window(void) {
     memset(&g_state_system, 0, sizeof(AppletState_system));
     for (int i = 0; i < 4; i++) g_state_system.checks[i] = TRUE;
 
+    GDEV *scr = wnd_mgr_get_screen();
+    H scr_w = scr ? scr->width : 800;
+    H scr_h = scr ? scr->height : 600;
+#if defined(BTRON_PS2_TARGET)
+    H win_w = 480;
+    H win_h = 340;
+#else
+    H win_w = (scr_w <= 800) ? 500 : 640;
+    H win_h = (scr_h <= 600) ? 350 : 430;
+#endif
+    H win_x = (scr_w - win_w) / 2;
+    H win_y = (scr_h - win_h) / 2;
+    if (win_x < 10) win_x = 10;
+    if (win_y < 30) win_y = 30;
+
     WND *wnd = opn_wnd("基本情報 (System)",
-                       80, 45, 640, 430,
+                       win_x, win_y, win_w, win_h,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
-    if (!wnd) return NULL;
+    if (!wnd || !wnd->dev) {
+        if (wnd) cls_wnd(wnd);
+        return NULL;
+    }
     g_state_system.wnd = wnd;
     wnd->user_data = (VW)(uintptr_t)&g_state_system;
     wnd->paint = paint_system_settings;
     wnd->event_handler = handle_system_event;
+    inval_wnd(wnd);
     return wnd;
 }

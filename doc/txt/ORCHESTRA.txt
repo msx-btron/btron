@@ -8,7 +8,7 @@ Status:  Normative.  The only DAW specification.  The desk is built.
 Form:    Manuscript of a forthcoming article.
 Related: SOUND.txt, ASYNC.txt, IO.txt,
          doc/pdf/btron-sound.tex,
-         doc/md/GST-SYNC-RTP.md,
+         doc/md/MEDIA.md,
          b-media/index.html, b-media/audio.html,
          b-media/sound.html,
          src/media/orchestra.c, src/media/gst_rt.c,
@@ -16,7 +16,6 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
          include/media/gst_rt.h, include/apps/orchestra.h,
          include/apps/orch_chk.h,
          include/device/virtio.h.
-
 
 Анотація
 --------

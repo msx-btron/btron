@@ -20,6 +20,8 @@
 #include <math.h>
 
 #include <drivers/broadcom/bcm2711_hdmi_audio.h>
+#include <drivers/broadcom/usb_audio_uac1.h>
+#include <drivers/virtio/virtio.h>
 
 /* Host test stubs for baremetal MMIO & DMA */
 uintptr_t g_mmio_base = 0;
@@ -170,6 +172,44 @@ static void test_pcm_streaming_simulation(void) {
     TEST_ASSERT(bcm2711_hdmi_audio_get_queued_bytes() == 0, "Queued bytes cleared on close");
 }
 
+/* ── Test 5: Dynamic Priority Arbiter (USB > HDMI > BT > PCIe) ───── */
+
+static void test_audio_priority_arbiter(void) {
+    /* 1. Neither USB nor HDMI attached */
+    usb_audio_uac1_init();
+    TEST_ASSERT(!usb_audio_uac1_is_present(), "USB initially not present");
+    TEST_ASSERT(!bcm2711_hdmi_audio_is_sink_present(), "HDMI sink not present");
+
+    int ret = virtio_sound_open(48000, 2);
+    TEST_ASSERT(ret < 0, "virtio_sound_open fails cleanly when no hardware attached");
+    TEST_ASSERT(!virtio_sound_is_ready(), "virtio_sound_is_ready false when absent");
+    TEST_ASSERT(virtio_sound_get_queued_bytes() == 0, "virtio_sound_get_queued_bytes is 0 when absent");
+
+    int16_t dummy[128 * 2] = {0};
+    ret = virtio_sound_write(dummy, 128);
+    TEST_ASSERT(ret < 0, "virtio_sound_write safely returns error when absent without hanging");
+    virtio_sound_close();
+    TEST_ASSERT(!virtio_sound_is_ready(), "Still not ready after close");
+
+    /* 2. Priority 1: USB audio attached */
+    usb_audio_uac1_attach(2 /* slot 2 */, 0x01 /* EP 1 OUT */, 192 /* MPS */);
+    TEST_ASSERT(usb_audio_uac1_is_present(), "USB present after attach");
+
+    ret = virtio_sound_open(48000, 2);
+    TEST_ASSERT(ret == 0, "virtio_sound_open routes to USB Audio successfully");
+    TEST_ASSERT(virtio_sound_is_ready() == true, "virtio_sound_is_ready true via USB");
+
+    ret = virtio_sound_write(dummy, 48);
+    TEST_ASSERT(ret == 48, "virtio_sound_write streams to USB backend");
+    TEST_ASSERT(virtio_sound_get_queued_bytes() == 192, "virtio_sound_get_queued_bytes matches USB telemetry");
+
+    virtio_sound_close();
+    TEST_ASSERT(!virtio_sound_is_ready(), "virtio_sound_is_ready false after close");
+
+    usb_audio_uac1_detach(2);
+    TEST_ASSERT(!usb_audio_uac1_is_present(), "USB detached");
+}
+
 int main(void) {
     printf("==========================================================\n");
     printf(" BCM2711 HDMI Audio Subsystem Verification & Simulation\n");
@@ -180,6 +220,7 @@ int main(void) {
     test_cea861_infoframe();
     test_realtime_audio_contracts();
     test_pcm_streaming_simulation();
+    test_audio_priority_arbiter();
 
     printf("\n[SUMMARY] Passed %d of %d tests successfully.\n", s_tests_passed, s_tests_run);
     printf("==========================================================\n");

@@ -1427,6 +1427,20 @@ static void update_kinematics(float dt) {
     update_waves(dt);
 }
 
+#if defined(BTRON_PS2_TARGET)
+static BOOL lilcu_is_rect_obscured(const RECT *r, const WND *wnd) {
+    if (!r || !wnd) return FALSE;
+    for (const WND *c = get_wnd_list(); c && c != wnd; c = c->next) {
+        if (!c->visible) continue;
+        if (c->bounds.left < r->right && c->bounds.right > r->left &&
+            c->bounds.top < r->bottom && c->bounds.bottom > r->top) {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+#endif
+
 /* ── 2D UI Dashboard Drawing Overlay ──────────────────────────────── */
 
 static void render_2d_dashboard(WND *wnd, GDEV *dev) {
@@ -1466,37 +1480,41 @@ static void render_2d_dashboard(WND *wnd, GDEV *dev) {
             const H dest_x  = wnd->bounds.left + border;
             const H dest_y  = wnd->bounds.top + title_h + border;
 
-            /* Blit bottom speech bubble / hint area (dev->height - 68 .. dev->height) to screen */
+            /* Blit bottom speech bubble / hint area to screen ONLY if not obscured by front window */
             H y0 = dev->height > 68 ? dev->height - 68 : 0;
             H y1 = dev->height;
             H clip_w = (dest_x + dev->width <= screen->width) ? dev->width : (screen->width - dest_x);
-            if (clip_w > 0 && dest_x >= 0) {
-                for (H y = y0; y < y1; y++) {
-                    H sy = dest_y + y;
-                    if (sy >= 0 && sy < screen->height) {
-                        memcpy(&screen->pixels[sy * screen->width + dest_x],
-                               &dev->pixels[y * dev->width],
-                               (size_t)clip_w * sizeof(COLOR));
-                    }
-                }
-            }
             RECT r_bubble = { dest_x, dest_y + y0, dest_x + dev->width, dest_y + y1 };
-            wnd_gl_cover_add(&r_bubble);
-
-            /* Blit top banner area (0 .. 48) to screen */
-            H top_h = dev->height < 48 ? dev->height : 48;
-            if (clip_w > 0 && dest_x >= 0) {
-                for (H y = 0; y < top_h; y++) {
-                    H sy = dest_y + y;
-                    if (sy >= 0 && sy < screen->height) {
-                        memcpy(&screen->pixels[sy * screen->width + dest_x],
-                               &dev->pixels[y * dev->width],
-                               (size_t)clip_w * sizeof(COLOR));
+            if (!lilcu_is_rect_obscured(&r_bubble, wnd)) {
+                if (clip_w > 0 && dest_x >= 0) {
+                    for (H y = y0; y < y1; y++) {
+                        H sy = dest_y + y;
+                        if (sy >= 0 && sy < screen->height) {
+                            memcpy(&screen->pixels[sy * screen->width + dest_x],
+                                   &dev->pixels[y * dev->width],
+                                   (size_t)clip_w * sizeof(COLOR));
+                        }
                     }
                 }
+                wnd_gl_cover_add(&r_bubble);
             }
+
+            /* Blit top banner area to screen ONLY if not obscured by front window */
+            H top_h = dev->height < 48 ? dev->height : 48;
             RECT r_banner = { dest_x, dest_y, dest_x + dev->width, dest_y + top_h };
-            wnd_gl_cover_add(&r_banner);
+            if (!lilcu_is_rect_obscured(&r_banner, wnd)) {
+                if (clip_w > 0 && dest_x >= 0) {
+                    for (H y = 0; y < top_h; y++) {
+                        H sy = dest_y + y;
+                        if (sy >= 0 && sy < screen->height) {
+                            memcpy(&screen->pixels[sy * screen->width + dest_x],
+                                   &dev->pixels[y * dev->width],
+                                   (size_t)clip_w * sizeof(COLOR));
+                        }
+                    }
+                }
+                wnd_gl_cover_add(&r_banner);
+            }
         }
     }
 #endif
@@ -1524,6 +1542,28 @@ static void demo_paint(WND *wnd, GDEV *dev) {
 
     /* Pump VirtIO sound PCM buffer */
     lilcu64_synth_pump_virtio(735); /* ~16.6ms of audio at 44.1kHz */
+
+    /* 1. Render opaque full-window background plate (celestial sapphire #131c36)
+     * This plates the entire client rectangle in GS VRAM / hardware rasteriser,
+     * ensuring plate_covers is set and preventing background flicker between pages. */
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_LIGHTING);
+    glDisable(GL_BLEND);
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    glOrtho(0.0, (double)dev->width, (double)dev->height, 0.0, -1.0, 1.0);
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+    glBegin(GL_QUADS);
+    glColor4f(0.075f, 0.110f, 0.212f, 1.0f);
+    glVertex2f(0.0f, 0.0f);
+    glVertex2f((float)dev->width, 0.0f);
+    glVertex2f((float)dev->width, (float)dev->height);
+    glVertex2f(0.0f, (float)dev->height);
+    glEnd();
+
+    /* Clear depth buffer for subsequent 3D primitives */
+    glClear(GL_DEPTH_BUFFER_BIT);
 
     glViewport(0, 0, dev->width, dev->height);
     glEnable(GL_DEPTH_TEST);
@@ -1555,9 +1595,9 @@ static void demo_paint(WND *wnd, GDEV *dev) {
     /* Camera at (0, 0.08, 9.2) looking at (0, 0.08, 0) */
     glTranslatef(0.0f, -0.08f, -9.2f);
 
-    /* Deep celestial sapphire background (matching index.html line 489 #131c36) */
+    /* Deep celestial sapphire background in software buffer */
     glClearColor(0.075f, 0.110f, 0.212f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClear(GL_COLOR_BUFFER_BIT);
 
     glPushMatrix();
 

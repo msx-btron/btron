@@ -962,7 +962,9 @@ void slots_init(void)
 {
     memset(ram, 0, sizeof(ram));
     memset(mapper_ram, 0, sizeof(mapper_ram));
-    memset(rom, 0xFF, sizeof(rom));
+    /* Note: rom buffer is intentionally preserved here; callers using msx_rom_buffer()
+     * stage cartridge/bios data into rom before msx_init(), and slots_set_rom()
+     * handles zero-padding/clearing. */
     memset(cart_sram, 0xFF, sizeof(cart_sram));
     memset(bios, 0, sizeof(bios));
     memset(logo, 0, sizeof(logo));

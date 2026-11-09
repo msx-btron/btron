@@ -600,6 +600,27 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
 
     /* ── END CLU Builtins ────────────────────────────────────────────────── */
 
+    if (strcmp(cmd, "msx") == 0 || strcmp(cmd, "bmsx") == 0 ||
+        strcmp(cmd, "bin/msx") == 0 || strcmp(cmd, "./msx") == 0 ||
+        strcmp(cmd, "/SYS/msx") == 0) {
+        out_fn("B-MSX Game System (MSX Cartridge Player):", COLOR_CYAN, user_data);
+        WND *w = NULL;
+        if (arg[0] != '\0') {
+            if (open_msx_window_with_rom) w = open_msx_window_with_rom(arg);
+            else if (open_msx_window)     w = open_msx_window();
+        } else {
+            if (open_msx_window)         w = open_msx_window();
+        }
+        if (w) {
+            inval_wnd(w);
+            out_fn("  Window opened on the Workbench desktop", COLOR_GREEN, user_data);
+        } else {
+            out_fn("  Failed to open window surface", COLOR_RED, user_data);
+        }
+        if (!wnd) btron_request_gui();
+        return;
+    }
+
     /* The application verbs -- xmb, glgears/gears, lilcu/lilcu64.  One call owns
      * the list and reports whether the app is in this image, so adding a fourth
      * verb is a row in clu.c's table and a line of help, not another branch here. */
@@ -610,6 +631,20 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
 
     if (strcmp(cmd, "open") == 0) {
         if (arg[0] != '\0') {
+            if (strncmp(arg, "msx ", 4) == 0) {
+                const char *rom = arg + 4;
+                while (*rom == ' ') rom++;
+                out_fn("B-MSX Game System (MSX Cartridge Player):", COLOR_CYAN, user_data);
+                WND *w = open_msx_window_with_rom ? open_msx_window_with_rom(rom) : (open_msx_window ? open_msx_window() : NULL);
+                if (w) {
+                    inval_wnd(w);
+                    out_fn("  Window opened on the Workbench desktop", COLOR_GREEN, user_data);
+                } else {
+                    out_fn("  Failed to open window surface", COLOR_RED, user_data);
+                }
+                if (!wnd) btron_request_gui();
+                return;
+            }
             if (clu_launch_app(arg, out_fn, user_data)) {
                 if (!wnd) btron_request_gui();
                 return;
@@ -662,6 +697,7 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
         out_fn("  xmb                 - Launch 横断メディアメニュー (XMB)", COLOR_YELLOW, user_data);
         out_fn("  glgears, gears      - Launch GLGears 3D (OpenGL ES 1.1)", COLOR_YELLOW, user_data);
         out_fn("  lilcu, lilcu64      - Launch Lil Cu 64 Demoscene (Hopf field)", COLOR_YELLOW, user_data);
+        out_fn("  msx [rom]           - Launch B-MSX Cartridge Player", COLOR_YELLOW, user_data);
         out_fn("  edit, editor        - Launch Editor instance", COLOR_LTGRAY, user_data);
         out_fn("  tad, browser        - Launch TAD Browser instance", COLOR_LTGRAY, user_data);
         out_fn("  chat                - Launch BeOS Chat instance", COLOR_LTGRAY, user_data);

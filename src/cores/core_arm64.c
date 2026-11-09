@@ -2036,6 +2036,23 @@ void btron_core_hfds_log(void) {
         }
     }
 
+    /* ── Mount /MSX volume ─────────────────────────────────────────── */
+    {
+        const uint16_t *msx_magic = (const uint16_t *)0x0A000000UL;
+        if (*msx_magic == 0xFE42 || *msx_magic == 0x42FE) {
+            BlkDev *msx_blk = blk_mem_create((void *)0x0A000000UL, 32768 * 1024, 0);
+            if (msx_blk) {
+                Volume *msx_vol = vol_mount(msx_blk);
+                if (msx_vol) {
+                    uart_puts("[FS  ] /MSX mounted from RAM 0x0A000000 (btron_msx.vol)  [OK]\n");
+                    fb_log("[FS  ] /MSX mounted from RAM 0x0A000000  [OK]\n");
+                } else {
+                    blk_destroy(msx_blk);
+                }
+            }
+        }
+    }
+
     if (g_sys_vol) {
         uart_puts("[HFDS] Root Volume: /SYS mounted  [OK]\n");
     }

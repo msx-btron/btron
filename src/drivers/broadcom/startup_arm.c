@@ -153,11 +153,11 @@ void __aeabi_memcpy8(void *dest, const void *src, size_t n) { tkl_memcpy(dest, s
 void* Imalloc(size_t sz) {
     if (heap_ptr == 0) heap_ptr = HEAP_BASE;
     uintptr_t aligned = (heap_ptr + 15) & ~(uintptr_t)15;
-    /* Skip RAM window 0x03000000 - 0x09FFFFFF reserved for preloaded volumes (SYS, ANDERS, PAK0) & Quake hunk (64 MB @ 0x06000000) */
-    if (aligned >= 0x03000000UL && aligned < 0x0A000000UL) {
-        aligned = 0x0A000000UL;
+    /* Skip RAM window 0x03000000 - 0x0CFFFFFF reserved for preloaded volumes (SYS, ANDERS, PAK0, MSX) & Quake hunk */
+    if (aligned >= 0x03000000UL && aligned < 0x0D000000UL) {
+        aligned = 0x0D000000UL;
     } else if (aligned < 0x03000000UL && aligned + sz > 0x03000000UL) {
-        aligned = 0x0A000000UL;
+        aligned = 0x0D000000UL;
     }
     if (aligned + sz > HEAP_LIMIT) return NULL;
     heap_ptr = aligned + sz;

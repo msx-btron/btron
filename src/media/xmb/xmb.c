@@ -2610,6 +2610,23 @@ static void xb_games_scan(void)
         snprintf(s_game_names[rows], XB_GAME_NAME, "%s", entries[i].name);
         rows++;
     }
+
+    if (rows < XB_GAME_ROWS) {
+        n = vfs_list_dir("/MSX/msx", entries, XB_GAME_ROWS - rows);
+        if (n <= 0) n = vfs_list_dir("/MSX", entries, XB_GAME_ROWS - rows);
+        for (int i = 0; i < n && rows < XB_GAME_ROWS; i++) {
+            if (entries[i].is_dir || !xb_game_is_media(entries[i].name))
+                continue;
+            int dup = 0;
+            for (int k = 0; k < rows; k++) {
+                if (strcmp(s_game_names[k], entries[i].name) == 0) { dup = 1; break; }
+            }
+            if (!dup) {
+                snprintf(s_game_names[rows], XB_GAME_NAME, "%s", entries[i].name);
+                rows++;
+            }
+        }
+    }
 #endif
 
     for (int i = 1; i < rows; i++) {

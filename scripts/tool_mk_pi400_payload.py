@@ -38,6 +38,14 @@ def build_payload(out_path):
                 out.write(data)
                 print(f"[PAYLOAD] pak0.pak written: {len(data)} bytes at offset 0x1000000")
 
+        # 4. /MSX Volume at offset 0x07000000 (112 MB) -> RAM 0x0A000000
+        if os.path.exists('btron_msx.vol'):
+            out.seek(0x07000000)
+            with open('btron_msx.vol', 'rb') as f:
+                data = f.read()
+                out.write(data)
+                print(f"[PAYLOAD] /MSX written: {len(data)} bytes at offset 0x7000000")
+
         total_sz = out.tell()
         print(f"[PAYLOAD] Total payload size: {total_sz} bytes ({total_sz // (1024*1024)} MiB)")
 

@@ -53,7 +53,13 @@ static const char *s_search_dirs[] = {
 #else
 static const char *s_search_dirs[] = {
     "/SYS/tbios",
+    "/MSX/tbios",
     MSX_BIOS_DEFAULT_DIR,
+    "/MSX/cbios",
+    "/MSX/msx",
+    "/MSX",
+    "/SYS/msx",
+    "/SYS",
     NULL
 };
 #endif

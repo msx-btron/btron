@@ -220,10 +220,10 @@ static SETTINGS_SECTION s_input_right_sec = {
 };
 
 static void layout_input_dialog(H width, H height) {
-    (void)height;
     H col_w = (width - 30) / 2;
-    s_input_left_sec.rect  = (RECT){ 10, 48, 10 + col_w, 380 };
-    s_input_right_sec.rect = (RECT){ 20 + col_w, 48, width - 10, 380 };
+    H sec_bot = (height > 50) ? (height - 40) : 380;
+    s_input_left_sec.rect  = (RECT){ 10, 48, 10 + col_w, sec_bot };
+    s_input_right_sec.rect = (RECT){ 20 + col_w, 48, width - 10, sec_bot };
 
     for (int i = 0; i < 11; i++) {
         s_input_controls[i].rect.left  = s_input_left_sec.rect.left + 8;
@@ -385,17 +385,36 @@ WND* open_input_settings_window(void) {
     g_state_input.mouse_handedness   = g_mouse_swap_select_adjust ? 1 : 0;
     g_state_input.dbl_click_sel      = 1; /* 50cs (500ms) RISC OS default */
 
+    GDEV *scr = wnd_mgr_get_screen();
+    H scr_w = scr ? scr->width : 800;
+    H scr_h = scr ? scr->height : 600;
+#if defined(BTRON_PS2_TARGET)
+    H win_w = 520;
+    H win_h = 410;
+#else
+    H win_w = (scr_w <= 800) ? 540 : 640;
+    H win_h = (scr_h <= 600) ? 410 : 430;
+#endif
+    H win_x = (scr_w - win_w) / 2;
+    H win_y = (scr_h - win_h) / 2;
+    if (win_x < 10) win_x = 10;
+    if (win_y < 30) win_y = 30;
+
 #if defined(BTRON_PS2_TARGET)
     WND *wnd = opn_wnd("Input & Pointer (入力環境) — Pointer Gain & Buttons",
 #else
     WND *wnd = opn_wnd("Input & Pointer (入力環境) — RISC OS & Haiku Options",
 #endif
-                       80, 45, 640, 430,
+                       win_x, win_y, win_w, win_h,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
-    if (!wnd) return NULL;
+    if (!wnd || !wnd->dev) {
+        if (wnd) cls_wnd(wnd);
+        return NULL;
+    }
     g_state_input.wnd = wnd;
     wnd->user_data = (VW)(uintptr_t)&g_state_input;
     wnd->paint = paint_input_settings;
     wnd->event_handler = handle_input_event;
+    inval_wnd(wnd);
     return wnd;
 }

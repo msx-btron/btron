@@ -30,6 +30,10 @@ extern int  bcm2711_dma_start_cyclic(int channel, uintptr_t cb_phys);
 extern void bcm2711_dma_stop(int channel);
 extern uint32_t bcm2711_dma_get_cb(int channel);
 
+__attribute__((weak)) uint32_t bcm283x_get_board_revision(void) {
+    return 0;
+}
+
 /* MMIO register access helpers (NASA JPL Rule 4: small inline helpers) */
 static inline uint32_t hdmi_read32(uintptr_t addr) {
     return *(volatile uint32_t *)addr;
@@ -120,6 +124,19 @@ int bcm2711_hdmi_build_infoframe(cea861_audio_infoframe_t *out_frame, uint32_t s
 
 bool bcm2711_hdmi_audio_is_sink_present(void) {
     if (g_mmio_base != 0xFE000000UL) return false;
+
+#if defined(__aarch64__) && !defined(BTRON_HOSTED)
+    /* Detect QEMU raspi4b emulator (no VideoCore VI HDMI hardware core) */
+    extern uint32_t bcm283x_get_board_revision(void);
+    uint32_t board_rev = bcm283x_get_board_revision();
+    bool is_qemu = (board_rev != 0) && (
+        ((board_rev & 0x00F00000u) == 0x00B00000u) ||
+        (board_rev == 0x00B03115u) || (board_rev == 0x00B03111u));
+    if (is_qemu) {
+        return false;
+    }
+#endif
+
     /* Probe HDMI0 Hotplug register */
     uint32_t hpd = hdmi_read32(BCM2711_HDMI0_CORE_BASE + HDMI_HOTPLUG);
     return (hpd & 1u) != 0;
@@ -211,6 +228,13 @@ int bcm2711_hdmi_audio_open(uint32_t sample_rate, uint8_t channels) {
     BT_ASSERT(sample_rate > 0);
     BT_ASSERT(channels >= 1 && channels <= 2);
 
+    /* If on real hardware, verify HDMI sink presence before programming registers or starting DMA */
+    if (g_mmio_base == 0xFE000000UL) {
+        if (!bcm2711_hdmi_audio_is_sink_present()) {
+            return -1;
+        }
+    }
+
     if (s_hdmi_state.opened) {
         bcm2711_hdmi_audio_close();
     }
@@ -228,7 +252,9 @@ int bcm2711_hdmi_audio_open(uint32_t sample_rate, uint8_t channels) {
     if (g_mmio_base == 0xFE000000UL) {
         hdmi_mai_configure_registers();
         hdmi_packet_configure(s_hdmi_state.sample_rate);
-        bcm2711_dma_start_cyclic(BCM2711_HDMI_DMA_CHANNEL, (uintptr_t)&s_hdmi_dma_cbs[0]);
+        if (bcm2711_dma_start_cyclic(BCM2711_HDMI_DMA_CHANNEL, (uintptr_t)&s_hdmi_dma_cbs[0]) != 0) {
+            return -1;
+        }
     }
 
     s_hdmi_state.opened = true;
@@ -297,52 +323,69 @@ uint32_t bcm2711_hdmi_audio_get_queued_bytes(void) {
 
 enum {
     B_AUDIO_BACKEND_NONE = 0,
-    B_AUDIO_BACKEND_HDMI,
     B_AUDIO_BACKEND_USB,
-    B_AUDIO_BACKEND_BT
+    B_AUDIO_BACKEND_HDMI,
+    B_AUDIO_BACKEND_BT,
+    B_AUDIO_BACKEND_PCIE
 };
 static int s_active_backend = B_AUDIO_BACKEND_NONE;
 
 int virtio_sound_open(uint32_t sample_rate, uint8_t channels) {
-    /* Auto-detect: Priority 1 = Physical HDMI; Priority 2 = USB Audio Class 1.0 (UAC1); Priority 3 = B-BT Wireless */
-    if (bcm2711_hdmi_audio_is_sink_present()) {
-        s_active_backend = B_AUDIO_BACKEND_HDMI;
-        return bcm2711_hdmi_audio_open(sample_rate, channels);
-    } else if (usb_audio_uac1_is_present()) {
-        s_active_backend = B_AUDIO_BACKEND_USB;
-        return usb_audio_uac1_open(sample_rate, channels);
-#if defined(BTRON_HAVE_BLUETOOTH)
-    } else if (b_bt_audio_is_present()) {
-        s_active_backend = B_AUDIO_BACKEND_BT;
-        return b_bt_audio_open(sample_rate, channels);
-#endif
-    } else {
-        /* Default fallback: attempt HDMI */
-        s_active_backend = B_AUDIO_BACKEND_HDMI;
-        return bcm2711_hdmi_audio_open(sample_rate, channels);
+    /* Priority 1: External USB Audio Class 1.0 (UAC1 DAC / headset) */
+    if (usb_audio_uac1_is_present()) {
+        if (usb_audio_uac1_open(sample_rate, channels) == 0) {
+            s_active_backend = B_AUDIO_BACKEND_USB;
+            return 0;
+        }
     }
+
+    /* Priority 2: External/Internal HDMI Audio (VideoCore VI MAI / ACR) */
+    if (bcm2711_hdmi_audio_is_sink_present()) {
+        if (bcm2711_hdmi_audio_open(sample_rate, channels) == 0) {
+            s_active_backend = B_AUDIO_BACKEND_HDMI;
+            return 0;
+        }
+    }
+
+    /* Priority 3: Bluetooth A2DP Audio (B-BT) */
+#if defined(BTRON_HAVE_BLUETOOTH)
+    if (b_bt_audio_is_present()) {
+        if (b_bt_audio_open(sample_rate, channels) == 0) {
+            s_active_backend = B_AUDIO_BACKEND_BT;
+            return 0;
+        }
+    }
+#endif
+
+    /* Priority 4: PCIe / SouthBridge Audio (fallback stub) */
+    /* When no external or physical audio sink is attached, do NOT attempt
+     * unmapped DMA or hang; report audio absent gracefully so media apps run. */
+    s_active_backend = B_AUDIO_BACKEND_NONE;
+    return -1;
 }
 
 int virtio_sound_write(const int16_t *samples, size_t frames) {
     if (s_active_backend == B_AUDIO_BACKEND_USB) {
         return usb_audio_uac1_write(samples, frames);
+    } else if (s_active_backend == B_AUDIO_BACKEND_HDMI) {
+        return bcm2711_hdmi_audio_write(samples, frames);
 #if defined(BTRON_HAVE_BLUETOOTH)
     } else if (s_active_backend == B_AUDIO_BACKEND_BT) {
         return b_bt_audio_write(samples, frames);
 #endif
     }
-    return bcm2711_hdmi_audio_write(samples, frames);
+    return -1;
 }
 
 void virtio_sound_close(void) {
     if (s_active_backend == B_AUDIO_BACKEND_USB) {
         usb_audio_uac1_close();
+    } else if (s_active_backend == B_AUDIO_BACKEND_HDMI) {
+        bcm2711_hdmi_audio_close();
 #if defined(BTRON_HAVE_BLUETOOTH)
     } else if (s_active_backend == B_AUDIO_BACKEND_BT) {
         b_bt_audio_close();
 #endif
-    } else {
-        bcm2711_hdmi_audio_close();
     }
     s_active_backend = B_AUDIO_BACKEND_NONE;
 }
@@ -350,22 +393,26 @@ void virtio_sound_close(void) {
 bool virtio_sound_is_ready(void) {
     if (s_active_backend == B_AUDIO_BACKEND_USB) {
         return usb_audio_uac1_is_ready();
+    } else if (s_active_backend == B_AUDIO_BACKEND_HDMI) {
+        return bcm2711_hdmi_audio_is_ready();
 #if defined(BTRON_HAVE_BLUETOOTH)
     } else if (s_active_backend == B_AUDIO_BACKEND_BT) {
         return b_bt_audio_is_ready();
 #endif
     }
-    return bcm2711_hdmi_audio_is_ready();
+    return false;
 }
 
 uint32_t virtio_sound_get_queued_bytes(void) {
     if (s_active_backend == B_AUDIO_BACKEND_USB) {
         return usb_audio_uac1_get_queued_bytes();
+    } else if (s_active_backend == B_AUDIO_BACKEND_HDMI) {
+        return bcm2711_hdmi_audio_get_queued_bytes();
 #if defined(BTRON_HAVE_BLUETOOTH)
     } else if (s_active_backend == B_AUDIO_BACKEND_BT) {
         return b_bt_audio_get_queued_bytes();
 #endif
     }
-    return bcm2711_hdmi_audio_get_queued_bytes();
+    return 0;
 }
 #endif
