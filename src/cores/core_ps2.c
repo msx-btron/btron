@@ -24,7 +24,6 @@
 #include <btron/itron.h>
 #include <btron/dp.h>
 #include <btron/dp_accel.h>
-#include <btron/dp_cal.h>
 #include <btron/fast_blit.h>
 #include <btron/fused_row.h>
 #include <btron/wnd.h>
@@ -63,8 +62,6 @@ extern void cassette_service(void);
 #include "ps2_gs_present.h"
 #include "ps2_iopram.h"
 #include "ps2_irq.h"
-
-#include "core_ps2_probe.h"
 
 #include "../desktop/graphics/eegs/eegs_present.h"
 #include "../desktop/graphics/eegs/backend_eegs.h"
@@ -150,11 +147,41 @@ uint32_t btron_render_perf_us(void)
 }
 
 /* ── Input: 1:1 hardware pointer, no curves ──────────────────────── */
+#ifndef PS2_MOUSE_VELOCITY_FP
+#define PS2_MOUSE_VELOCITY_FP 32 /* 8.8 fixed-point velocity (256=1.0x, 128=0.5x, 64=0.25x) */
+#endif
+#ifndef PS2_MOUSE_DELAY_US
+#define PS2_MOUSE_DELAY_US 150u
+#endif
+#ifndef PS2_MOUSE_COMP_MAX_US
+#define PS2_MOUSE_COMP_MAX_US BTRON_PTR_DELAY_COMP_MAX_US
+#endif
 
-static void ps2_move_mouse(int dx, int dy)
+extern int32_t  g_ptr_gain_fp;
+extern uint32_t g_ptr_delay_us;
+static int32_t s_mouse_rem_x, s_mouse_rem_y;
+static uint32_t s_last_mouse_us;
+
+static __attribute__((noinline)) void ps2_move_mouse(int dx, int dy)
 {
+    const int32_t gain = g_ptr_gain_fp > 0 ? g_ptr_gain_fp : PS2_MOUSE_VELOCITY_FP;
+    const uint32_t delay_us = g_ptr_delay_us > 0u ? g_ptr_delay_us : PS2_MOUSE_DELAY_US;
+    int32_t comp_gain = gain;
+    const uint32_t now_us = btron_render_perf_us();
+    if (delay_us <= PS2_MOUSE_COMP_MAX_US && s_last_mouse_us > 0u) {
+        uint32_t dt_us = now_us - s_last_mouse_us;
+        if (dt_us > 2u * delay_us) {
+            uint32_t extra_us = dt_us - delay_us;
+            if (extra_us > 8000u) extra_us = 8000u;
+            comp_gain = gain + (gain * (int32_t)extra_us) / 16384;
+        }
+    }
+    s_last_mouse_us = now_us;
+
     int32_t nx, ny;
     EVT ev;
+    dx = (int)dp_ptr_scale((int32_t)dx, comp_gain, &s_mouse_rem_x);
+    dy = (int)dp_ptr_scale((int32_t)dy, comp_gain, &s_mouse_rem_y);
     if (dx == 0 && dy == 0) return;
     nx = (int32_t)s_mouse_x + dx;
     ny = (int32_t)s_mouse_y + dy;
@@ -392,11 +419,8 @@ static void ps2_cursor_input_task(GDEV *screen, uint32_t now_us)
 /* btron_cooperative_input_pump - lets long-running apps keep the pointer live. */
 void btron_cooperative_input_pump(void)
 {
-    EVT ev;
-
     if (!s_gui_active || !s_gui_screen) return;
     ps2_cursor_input_task(s_gui_screen, 0);
-    while (get_evt(&ev, 0) == E_OK) workbench_process_event(s_gui_screen, &ev);
 }
 
 /* ps2_gui_pass - one pass: input, events, damage decision, present. */
@@ -404,25 +428,21 @@ static void ps2_gui_pass(GDEV *screen)
 {
     ps2_bandset_t set = { { { 0, 0, 0, 0 } }, 0, 0 };
     EVT ev;
-    int force_full = 0;
+    int force_full = 0, pass_mx, pass_my;
     uint32_t ui_t0, ov = 0u, flip_wait_us = 0u;
     int dbl;
 
-    ps2_cycle_begin(s_task_driving);
     ps2_cursor_input_task(screen, 0);
 
     ui_t0 = ps2_count_read();
     ps2_console_shell_poll();
-    ps2_cycle_mark();
-#if BTRON_PS2_BENCH_APP
-    ps2_bench_app_frame_hook(screen);
-#endif
-    ps2_cycle_mark();
 
     while (get_evt(&ev, 0) == E_OK) {
         workbench_process_event(screen, &ev);
-        if (ev.type != EV_MOUSE_MOVE) { force_full = 1; ps2_cycle_why(PS2_CYCLE_WHY_EVENT); }
+        if (ev.type != EV_MOUSE_MOVE) force_full = 1;
     }
+    pass_mx = s_mouse_x;
+    pass_my = s_mouse_y;
 
     orchestra_ui_tick();
     cassette_service();
@@ -439,9 +459,9 @@ static void ps2_gui_pass(GDEV *screen)
         if (n > 0) inval_wnd(sw[turn++ % (uint32_t)n]);
     }
 
-    ps2_bands_for_pass(&set, s_mouse_x, s_mouse_y, s_shown_x, s_shown_y);
+    ps2_bands_for_pass(&set, pass_mx, pass_my, s_shown_x, s_shown_y);
 
-    if (s_timebase_ok) {
+    if (s_timebase_ok && pass_mx == s_shown_x && pass_my == s_shown_y && !wnd_mgr_is_interacting()) {
         const uint32_t now = ps2_count_read();
         const uint32_t tpu = btron_ee_ticks_per_us();
         if ((uint32_t)(now - s_pass_panel_due) >= btron_planes()->panel_refresh_us * tpu) {
@@ -450,41 +470,33 @@ static void ps2_gui_pass(GDEV *screen)
         }
         if ((uint32_t)(now - s_pass_full_due) >= btron_planes()->full_convergence_us * tpu) {
             force_full = 1;
-            ps2_cycle_why(PS2_CYCLE_WHY_TIMER);
             s_pass_full_due = now;
         }
     }
 
     /* Overlays are drawn only by the whole-canvas composite. */
-    if (global_menu_is_open())    ov |= PS2_CYCLE_WHY_GMENU;
-    if (tracker_is_menu_open())   ov |= PS2_CYCLE_WHY_TRACKER;
-    if (wnd_mgr_is_interacting()) ov |= PS2_CYCLE_WHY_WM;
-    if (tip_get_state() == TIP_STATE_CONVERTING ||
-        tip_get_state() == TIP_STATE_CANDIDATE_SELECT) ov |= PS2_CYCLE_WHY_TIP;
+    if (global_menu_is_open() || tracker_is_menu_open() || wnd_mgr_is_interacting() ||
+        tip_get_state() == TIP_STATE_CONVERTING || tip_get_state() == TIP_STATE_CANDIDATE_SELECT)
+        ov = 1u;
 
-    ps2_cycle_why(ov);
-    if (set.overflow) ps2_cycle_why(PS2_CYCLE_WHY_OVERFLOW);
-    ps2_cycle_damage(&set);
     if (force_full || set.overflow || ov) ps2_bandset_full(&set);
 
     dbl = (int)gs_disp_is_double();
-    if (dbl && ps2_rot_step(&set)) ps2_cycle_why(PS2_CYCLE_WHY_ROTATE);
-    ps2_cycle_merged(&set);
+    if (dbl) (void)ps2_rot_step(&set);
 
     if (!set.n) {
-        ps2_cycle_stamp(0u, 0u, 0u, 0u, 0, 0);
+        wnd_gl_freeze(0);
         __asm__ volatile("nop" : : : "memory");
         return;
     }
-    ps2_cycle_mark();
 
 #if BTRON_PS2_PAINT_WORKER
     ps2_pw_plan(&set, ps2_pw_us(ui_t0, ps2_count_read()));
 #endif
     {
         uint32_t r_us, s_us, u_us, px;
-
         ps2_paint_bands(screen, &set, &r_us, &s_us, &u_us, &px);
+        wnd_gl_freeze(0);
 #if BTRON_PS2_PAINT_WORKER
         if (s_pw_on)
             s_pw_upload_us = s_pw_upload_us ? ((3u * s_pw_upload_us + u_us + 2u) >> 2) : u_us;
@@ -492,17 +504,14 @@ static void ps2_gui_pass(GDEV *screen)
         s_pw_layer = NULL;
 #endif
         if (dbl) flip_wait_us = ps2_gs_flip(force_full ? 1 : 0);
-        ps2_cycle_mark();
         if (ps2_band_is_full(&set.b[0])) s_pass_full_due = ps2_count_read();
-        ps2_cycle_mark();
-        ps2_cycle_stamp(r_us, s_us, u_us, px, (int)set.n, ps2_band_is_full(&set.b[0]));
     }
 
     /* The flip wait is the GS scanning, not bus work: excluded from the charge. */
     ps2_plane_charge(&s_plane_ui, ui_t0 + flip_wait_us * btron_ee_ticks_per_us(), ASYNC_UI_BUDGET_US);
     ps2_plane_ui_deadline();
-    s_shown_x = s_mouse_x;
-    s_shown_y = s_mouse_y;
+    s_shown_x = pass_mx;
+    s_shown_y = pass_my;
     __asm__ volatile("nop" : : : "memory");
 }
 
@@ -549,16 +558,6 @@ ER sta_tsk(ID tskid, VW exinf)
     if (!t->active || !t->config.task) return E_NOEXS;
     if (exinf != 0) t->config.exinf = exinf;
     t->started = 1;
-#if BTRON_PS2_BENCH_APP
-    if (s_bench_app_active) {
-        s_ps2_task_at[s_task_driving + 1] = tskid;
-        s_task_driving++;
-        t->config.task(t->config.exinf);
-        s_task_driving--;
-        s_ps2_task_at[s_task_driving + 1] = 0;
-        t->started = t->holding = t->active = 0;
-    }
-#endif
     return E_OK;
 }
 
@@ -591,16 +590,18 @@ ER get_tim(SYSTIME *t)
     return E_OK;
 }
 
-/* ps2_task_hold - spend ms (cap 250) polling input every 1 ms. */
+/* ps2_task_hold - spend ms (cap 250) polling input at tunable delay. */
 static void ps2_task_hold(uint32_t ms)
 {
     PS2_TASK *self = ps2_task_self();
     uint32_t start, budget, period, last;
+    const uint32_t delay_us = g_ptr_delay_us > 0u ? g_ptr_delay_us : PS2_MOUSE_DELAY_US;
+    const uint32_t tpu = btron_ee_ticks_per_us();
 
     if (!s_timebase_ok || ms == 0) return;
     if (ms > 250u) ms = 250u;
-    period = 1000u * btron_ee_ticks_per_us();
-    budget = ms * period;
+    period = (delay_us > 0u ? delay_us : 250u) * tpu;
+    budget = ms * 1000u * tpu;
     start  = last = ps2_count_read();
 
     if (self) self->holding = 1;
@@ -608,7 +609,13 @@ static void ps2_task_hold(uint32_t ms)
         const uint32_t now = ps2_count_read();
         if ((uint32_t)(now - last) >= period) {
             last = now;
-            if (s_gui_active && s_gui_screen) ps2_cursor_input_task(s_gui_screen, 0);
+            if (s_gui_active && s_gui_screen) {
+                ps2_cursor_input_task(s_gui_screen, 0);
+                if (delay_us <= PS2_MOUSE_COMP_MAX_US &&
+                    (s_mouse_x != s_shown_x || s_mouse_y != s_shown_y)) {
+                    break;
+                }
+            }
         }
         btron_scheduler_dispatch();
         __asm__ volatile("nop" : : : "memory");
@@ -618,12 +625,8 @@ static void ps2_task_hold(uint32_t ms)
 
 static void ps2_task_dly(W dlytim)
 {
-    uint32_t t0;
-
     if (s_gui_screen) ps2_gui_pass(s_gui_screen);
-    t0 = ps2_cycle_hold_begin();
     ps2_task_hold(dlytim > 0 ? (uint32_t)dlytim : 0u);
-    ps2_cycle_hold_end(t0, dlytim > 0 ? (int)dlytim : 0);
 }
 
 void dly_tsk(W dlytim)   { (void)ps2_task_ms(); ps2_task_dly(dlytim); }
@@ -660,11 +663,7 @@ void launch_ps2_desktop_session(void)
     g_cursor_in_backbuffer = 1;
 
     screen = init_baremetal_desktop((uint32_t *)s_desktop_backbuffer, PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
-    if (!screen) {
-        ps2_kprintf("[FATAL] desktop init failed\n");
-        ps2_set_gui(0);
-        return;
-    }
+    if (!screen) { ps2_kprintf("[FATAL] desktop init failed\n"); ps2_set_gui(0); return; }
     btron_desktop_note_size(PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
     workbench_init(PS2_SCREEN_WIDTH);
 
@@ -674,11 +673,9 @@ void launch_ps2_desktop_session(void)
     ps2_pw_reset(0u);
     s_pw_on = 1; s_pw_passes = 0u; s_pw_defer_passes = 0u;
 #endif
-
     {   /* Cold paint; with two pages, plate the second one too. */
         ps2_bandset_t whole = { { { 0, 0, 0, 0 } }, 0, 0 };
         uint32_t r, s, u, px;
-
         ps2_bandset_full(&whole);
         ps2_paint_bands(screen, &whole, &r, &s, &u, &px);
         if (gs_disp_is_double()) {
@@ -687,34 +684,25 @@ void launch_ps2_desktop_session(void)
             ps2_paint_bands(screen, &whole, &r, &s, &u, &px);
             ps2_rot_clear();
         }
-        s_shown_x = s_mouse_x;
-        s_shown_y = s_mouse_y;
+        s_shown_x = s_mouse_x; s_shown_y = s_mouse_y;
     }
-
     s_pass_panel_due = s_pass_full_due = ps2_count_read();
     s_gui_screen = screen;
-    {
-        RENDER_STATS discard;
-        btron_render_stats_take(&discard);
-    }
+    { RENDER_STATS discard; btron_render_stats_take(&discard); }
     ps2_kprintf("[PS2] Desktop up. Ctrl+Q returns to the console.\n");
-
 #if BTRON_PS2_BENCH
     ps2_bench_run(screen);
     s_gui_active = 0;
 #endif
-
     while (s_gui_active) {
         btron_scheduler_dispatch();
         ps2_gui_pass(screen);
         __asm__ volatile("nop" : : : "memory");
     }
-
     ps2_page_double_apply(0u);
     ps2_rot_clear();
 #if BTRON_PS2_PAINT_WORKER
-    ps2_pw_freeze(0);
-    s_pw_on = 0;
+    ps2_pw_freeze(0); s_pw_on = 0;
 #endif
     s_gui_screen = NULL;
     ps2_gs_text_clear();
@@ -739,7 +727,6 @@ void ps2_kernel_main(void)
     uint32_t c0, gs0, gs1, band0, probe0, full_us, band_us, gs_us, probe_us;
     int verdict;
 
-    ps2_stack_probe_arm();
     ps2_gs_set_framebuffer((uint32_t *)s_desktop_backbuffer);
     ps2_sio_init();
     ps2_console_shell_init(ps2_shell_exec, ps2_key_cb, ps2_move_mouse);
@@ -776,9 +763,7 @@ void ps2_kernel_main(void)
     btron_core_hfds_log();
     btron_core_banner();
 
-#if BTRON_PS2_BENCH_GS == 1 || BTRON_PS2_BENCH_GS >= 6
-    ps2_bench_gs_census();
-#elif defined(BTRON_AUTO_GUI) && (BTRON_AUTO_GUI == 1)
+#if defined(BTRON_AUTO_GUI) && (BTRON_AUTO_GUI == 1)
     launch_ps2_desktop_session();
 #else
     ps2_kprintf("btron-ps2# ");
@@ -789,7 +774,3 @@ void ps2_kernel_main(void)
         __asm__ volatile("nop" : : : "memory");
     }
 }
-
-#if defined(BTRON_PS2_PROBE) || defined(BTRON_PS2_BENCH)
-#include "core_ps2_probe.c"
-#endif

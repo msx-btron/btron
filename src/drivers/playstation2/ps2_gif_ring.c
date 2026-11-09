@@ -14,6 +14,13 @@
 
 #include "ps2_gif_ring.h"
 
+#if defined(BTRON_PS2_TARGET)
+extern void btron_cooperative_input_pump(void);
+#define GIF_INPUT_PUMP() btron_cooperative_input_pump()
+#else
+#define GIF_INPUT_PUMP() ((void)0)
+#endif
+
 typedef struct {
     const void *packet;
     uint32_t    qwc;
@@ -75,6 +82,7 @@ uint32_t ps2_gif_drain(void)
             s_gif_n--;
             s_gif_st.started++;
             started++;
+            if ((started & 15u) == 0u) GIF_INPUT_PUMP();
         }
     }
 
@@ -126,11 +134,15 @@ uint32_t ps2_gif_reap(void)
      * is in flight.  A caller reaps because it is about to write over a buffer a queued descriptor
      * points into, so "left one queued" would be the corruption this whole design is avoiding. */
     for (;;) {
+        uint32_t spins = 0u;
         (void)ps2_gif_drain();
         if (s_gif_n == 0u && !s_gif_in_flight) break;
-        while (ps2_gif_hw_busy())
+        while (ps2_gif_hw_busy()) {
+            if ((++spins & 255u) == 0u) GIF_INPUT_PUMP();
             __asm__ volatile("nop" : : : "memory");
+        }
         s_gif_in_flight = 0u;
+        GIF_INPUT_PUMP();
     }
 
     waited = ps2_gif_hw_us() - t0;

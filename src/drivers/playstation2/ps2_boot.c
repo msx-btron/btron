@@ -104,7 +104,7 @@ void ps2_log_async_calibration(void)
 
     if (arm_rc >= 0 && got > 0u) {
         ps2_usb_input_plane(1);
-        ps2_kprintf("[ASYNC] hid collection: the input plane reads the OHCI rings and a pass delivers them\n");
+        ps2_kprintf("[ASYNC] hid collection: 1 kHz ISR accumulator + OHCI DMA ring drain\n");
     }
 
     ps2_kprintf("[ASYNC] machine microsecond = %u Count ticks, measured over %u periods of the plane (%u ticks summed, mean %u) -- %s\n",

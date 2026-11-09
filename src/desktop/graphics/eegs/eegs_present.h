@@ -41,6 +41,9 @@ void eegs_present_end(void);
  */
 int eegs_present_send(const RECT *client);
 
+/* Re-dispatches the most recently staged valid GIF stream without re-running CPU paint. */
+int eegs_present_replay(const RECT *client);
+
 /* Frame presentation and hardware pipeline diagnostic statistics */
 typedef struct {
     uint32_t groups;         /* Total GIF packet groups dispatched to DMAC */

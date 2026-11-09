@@ -14,24 +14,11 @@
 #include <graphics/gl.h>
 
 /* ── Backend selector ────────────────────────────────────────────── */
-/* Both of these rasterize in the guest CPU.  The name "virgl" is what src/gl/
- * backend_virgl.c does on the QEMU target, where it also flushes the resource to
- * the host's VirtIO-GPU — those calls are guarded by BTRON_QEMU_TARGET, so on
- * every other image that file is a second software rasterizer rather than a
- * driver, and PCSX2 has no virtio device for it to talk to in the first place. */
 typedef enum {
     GL_BACKEND_TINYGL = 0,    /* TinyGL  (src/gl/tinygl/, ZBuffer + zgl)  */
     GL_BACKEND_VIRGL  = 1,    /* backend_virgl.c's own triangle raster    */
     GL_BACKEND_I915   = 2,    /* Awe Morris i915 zero-cost proxy (Ph.3)   */
-    /* The Graphics Synthesizer as the rasteriser and the Emotion Engine as the vertex
-     * transformer: no software fill and no canvas upload for the layer it owns.  It is a
-     * choice the user can already make (the Display applet's OpenGL row,
-     * src/gl/gl_backend_choice.c) and gl_init() installs the TinyGL pipeline for it -- the
-     * geometry still runs there, and the GIF recorder takes the groups from it.  The name
-     * stays distinct from GL_BACKEND_TINYGL because the present path differs: a TINYGL window
-     * blits its surface into the canvas, an EEGS one uploads that canvas *under* the GS
-     * stream and never draws its own pixels at all. */
-    GL_BACKEND_EEGS   = 3,
+    GL_BACKEND_EEGS   = 3,    /* PlayStation 2 Emotion Engine Graphics Synthesizer */
     GL_BACKEND_V3D    = 4,    /* VideoCore VI (V3D 4.2) BCM2711 Hardware Pipeline */
 } GL_BACKEND;
 

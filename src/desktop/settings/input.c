@@ -18,28 +18,9 @@ uint32_t g_kbd_repeat_delay_us    = 160000U; /* 16 cs = 160 ms (RISC OS Fast Del
 uint32_t g_kbd_repeat_interval_us = 25000U;  /* 40 cps (25 ms interval) */
 int      g_kbd_repeat_enabled     = 1;
 
+int32_t  g_ptr_gain_fp = 0;                     /* 0: auto, the source profile's own */
+uint32_t g_ptr_delay_us = 0;                    /* 0: auto, the source profile's own */
 #if defined(BTRON_PS2_TARGET)
-/* LAW 13e (doc/txt/PS2.txt): one gain, one home, several hands.  This is the
- * home -- the multiplier this port's pointer reads, in the 8.8 unit
- * dp_ptr_scale() takes, with 0 meaning "the live source profile's own default".
- * `sens` at the Stage-1 prompt, the block painted below, and the launcher's row
- * in the pointer band all write it; none of them keeps a copy, and the core
- * notices between passes.
- *
- * The stops themselves -- btron_ptr_gain_fp[], btron_ptr_gain_index() and
- * btron_ptr_gain_label() -- are in src/graphics/dp_accel.c behind the same
- * predicate, because that is where the multiplier is applied and a control that
- * named its own numbers would be a second copy of the thing it dials.
- *
- * g_mouse_step_mult and g_mouse_accel_profile -- the two the radios used to set
- * below -- are deliberately NOT defined for this target: LAW 13d left them with
- * no reader on this machine, and a dial the pointer ignores is worse than no
- * dial.  Their absence is the gate, in the same way dp_ptr_riscos()'s is: a PS2
- * row that tries to set one fails at the link rather than surviving as scenery.
- * The Pi 400 keeps both, its curve and its radios, untouched -- and the three
- * declarations under #else are in the order they had before this lane, because
- * the arm64 image's .data layout is the control this change is checked against. */
-int32_t g_ptr_gain_fp = 0;                     /* 0: auto, the source profile's own */
 int      g_mouse_swap_select_adjust = 0;      /* 0: Right-handed (Select/Menu/Adjust), 1: Left-handed */
 #else
 int      g_mouse_step_mult          = 2;      /* Default: Step 2 (Archimedes / Haiku natural responsive standard) */

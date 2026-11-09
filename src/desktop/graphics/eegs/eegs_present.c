@@ -372,6 +372,9 @@ static void eegs_stage_sink(void *user, const uint64_t *qw, uint32_t qwc)
     s_used += qwc;
 }
 
+static uint32_t s_saved_groups;
+static uint32_t s_saved_used;
+
 void eegs_present_begin(void)
 {
     /*
@@ -396,6 +399,14 @@ void eegs_present_end(void)
 {
     /* Finalizes the active group. No DMA is initiated until after canvas compositing. */
     eegs_frame_end();
+}
+
+int eegs_present_replay(const RECT *client)
+{
+    if (s_groups != 0u || s_saved_groups == 0u) return 0;
+    s_groups = s_saved_groups;
+    s_used   = s_saved_used;
+    return eegs_present_send(client);
 }
 
 int eegs_present_send(const RECT *client)
@@ -433,12 +444,21 @@ int eegs_present_send(const RECT *client)
      * origin the vertices are relative to, so the app's (0,0) lands on the client's top-left, and
      * SCISSOR is in plain screen pixels and bounds the primitive to the same rect.  Exclusive
      * edges become inclusive ones here because that is what the field means. */
-    env.win_x = (uint32_t)client->left;
-    env.win_y = (uint32_t)client->top;
-    env.clip_x0 = (uint32_t)client->left;
-    env.clip_y0 = (uint32_t)client->top;
-    env.clip_x1 = (uint32_t)client->right - 1u;
-    env.clip_y1 = (uint32_t)client->bottom - 1u;
+    {
+        int32_t cx0 = client->left   < 0 ? 0 : client->left;
+        int32_t cy0 = client->top    < 0 ? 0 : client->top;
+        int32_t cx1 = client->right  > (int32_t)PS2_SCREEN_WIDTH ? (int32_t)PS2_SCREEN_WIDTH : client->right;
+        int32_t cy1 = client->bottom > 600 ? 600 : client->bottom;
+
+        if (cx1 <= cx0 || cy1 <= cy0) return 0;
+
+        env.win_x   = (uint32_t)client->left;
+        env.win_y   = (uint32_t)client->top;
+        env.clip_x0 = (uint32_t)cx0;
+        env.clip_y0 = (uint32_t)cy0;
+        env.clip_x1 = (uint32_t)cx1 - 1u;
+        env.clip_y1 = (uint32_t)cy1 - 1u;
+    }
 
     if (eegs_depth_test_active()) {
         /* ZTEN=1 (Z test enable), ZTMETH=2 (GREATER_EQUAL) */
@@ -612,6 +632,10 @@ int eegs_present_send(const RECT *client)
     /* The frame is over: the next begin() starts a fresh stage, and a group that was sent is never
      * sent twice.  `sent` is the groups the ring ACCEPTED, not the groups the stage holds, so a
      * refusal shows up as the shorter frame it is wherever this return value is read. */
+    if (posted > 0u && s_dropped == 0u) {
+        s_saved_groups = posted;
+        s_saved_used   = qw_sent;
+    }
     sent = posted;
     s_groups = 0u;
     s_used = 0u;

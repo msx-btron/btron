@@ -196,8 +196,6 @@ uint32_t ps2_gs_flip_wait_max_us(void);
 void ps2_gs_putpixel(int x, int y, uint32_t color);
 void ps2_gs_fill_rect(int x, int y, int w, int h, uint32_t color);
 void ps2_gs_draw_rect(int x, int y, int w, int h, uint32_t color);
-void ps2_gs_draw_cursor(int x, int y);
-void ps2_gs_erase_cursor(int x, int y);
 
 /* Text Mode Console (Stage 1) */
 void ps2_gs_text_init(void);

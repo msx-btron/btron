@@ -34,20 +34,4 @@ size_t ps2_heap_largest_hole(void);
 size_t ps2_heap_used_bytes(void);
 size_t ps2_heap_peak_bytes(void);
 
-#if defined(BTRON_PS2_PROBE) || defined(BTRON_PS2_BENCH)
-#define PS2_HEAP_ALIGN  16u
-#define PS2_HEAP_HDR    16u
-#define PS2_HEAP_BLOCKS_MAX (PS2_HEAP_SIZE / (PS2_HEAP_HDR + PS2_HEAP_ALIGN))
-
-typedef struct ps2_blk {
-    struct ps2_blk *next;
-    size_t          size;
-    unsigned        used;
-    unsigned        ra;
-} ps2_blk;
-
-extern uint8_t s_ps2_heap[PS2_HEAP_SIZE];
-extern ps2_blk *s_heap_list;
-#endif
-
 #endif /* PS2_HEAP_H */

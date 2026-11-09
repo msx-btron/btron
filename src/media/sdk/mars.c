@@ -360,6 +360,8 @@ static void render_sky(uint8_t *dst, uint16_t cam_x, uint16_t cam_y, uint16_t ca
     }
 }
 
+__attribute__((weak)) void btron_cooperative_input_pump(void) {}
+
 static void render_terrain(uint8_t *dst, uint16_t cam_x, uint16_t cam_y, uint16_t cam_h) {
     if (!dst) return;
     for (int i = 0; i < 256; i++) {
@@ -368,6 +370,7 @@ static void render_terrain(uint8_t *dst, uint16_t cam_x, uint16_t cam_y, uint16_
     }
     int16_t ray_row = 60;
     while (ray_row > 0) {
+        if ((ray_row & 15) == 0) btron_cooperative_input_pump();
         uint16_t step_size = (uint16_t)((s_ray_table[ray_row + 200] << 4) + ((cam_y & 0x0f) ^ 0x0f));
         uint32_t temp_div = cam_h;
         int16_t tmp_03a2 = (int16_t)(temp_div / step_size) + 100;

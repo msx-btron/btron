@@ -261,8 +261,10 @@ static void send_image_stream(const void *src, uint32_t qwc)
  * a single DMA transfer burst.
  */
 #define PS2_GS_STAGE_QWC      512u     /* Staging buffer: 8 KiB */
-#define PS2_GS_STAGE_MAX_QWC   16u     /* Regions <= 64 px wide are gathered */
+#define PS2_GS_STAGE_MAX_QWC  200u     /* Regions <= 800 px wide are gathered */
 #define PS2_GS_STAGE_BYTES  (PS2_GS_STAGE_QWC * 16u)
+
+extern void btron_cooperative_input_pump(void);
 
 /* The one staging buffer, hoisted out of the branch that first needed it so the 16-bit gather below
  * fills the same 8 kB rather than standing up a second one: two paths that each own a stage are two
@@ -325,6 +327,7 @@ static void upload_ct16(int x, int y, int w, int h)
         /* Advance canvas source pointer by chunk row height */
         from += (size_t)n * row_words;
         row += n;
+        btron_cooperative_input_pump();
     }
 }
 
@@ -353,9 +356,13 @@ void ps2_gs_upload(int x, int y, int w, int h)
 
     /* The destination needs an even RRW and the stream is whole quadwords (ppx px) wide; widen to
      * both, which stays inside the 832-pixel VRAM page. */
-    x &= (int)~(ppx - 1u);
-    w = (int)(((uint32_t)w + ppx - 1u) & ~(ppx - 1u));
-    if (w > PS2_SCREEN_WIDTH) w = PS2_SCREEN_WIDTH;
+    {
+        int x1 = (int)(((uint32_t)(x + w) + ppx - 1u) & ~(ppx - 1u));
+        x &= (int)~(ppx - 1u);
+        if (x1 > PS2_SCREEN_WIDTH) x1 = PS2_SCREEN_WIDTH;
+        w = x1 - x;
+        if (w <= 0) return;
+    }
 
     canvas = (const uint8_t *)ps2_fb();
 
@@ -398,6 +405,7 @@ void ps2_gs_upload(int x, int y, int w, int h)
             send_trx_setup(x, y + (int)row, w, (int)n);
             send_image_stream(stage, qwc * n);
             row += n;
+            btron_cooperative_input_pump();
         }
     } else {
         /* Host->Local IMAGE data carries no row pitch, so a wide rectangle has to be uploaded a row
@@ -408,6 +416,7 @@ void ps2_gs_upload(int x, int y, int w, int h)
         for (int row = 0; row < h; row++, src += PS2_SCREEN_PITCH) {
             send_trx_setup(x, y + row, w, 1);
             send_image_stream(src, qwc);
+            if ((row & 15) == 15) btron_cooperative_input_pump();
         }
     }
 }
@@ -1090,84 +1099,6 @@ void ps2_gs_putpixel(int x, int y, uint32_t color)
 {
     if (x >= 0 && x < PS2_SCREEN_WIDTH && y >= 0 && y < PS2_SCREEN_HEIGHT) {
         ps2_fb()[y * PS2_SCREEN_WIDTH + x] = BTRON_PIXEL_FB(color);
-    }
-}
-
-/* Mouse cursor backing store for non-destructive cursor rendering */
-static uint32_t cursor_saved[16 * 16];
-static int cursor_saved_x = -1;
-static int cursor_saved_y = -1;
-
-void ps2_gs_erase_cursor(int x, int y)
-{
-    (void)x;
-    (void)y;
-    if (cursor_saved_x < 0 || cursor_saved_y < 0) return;
-
-    uint32_t *fb = ps2_fb();
-    for (int cy = 0; cy < 16; cy++) {
-        int py = cursor_saved_y + cy;
-        if (py >= PS2_SCREEN_HEIGHT) break;
-        for (int cx = 0; cx < 16; cx++) {
-            int px = cursor_saved_x + cx;
-            if (px >= PS2_SCREEN_WIDTH) break;
-            fb[py * PS2_SCREEN_WIDTH + px] = cursor_saved[cy * 16 + cx];
-        }
-    }
-    cursor_saved_x = -1;
-    cursor_saved_y = -1;
-}
-
-void ps2_gs_draw_cursor(int x, int y)
-{
-    if (cursor_saved_x >= 0) {
-        ps2_gs_erase_cursor(0, 0);
-    }
-    if (x < 0) x = 0;
-    if (y < 0) y = 0;
-    if (x >= PS2_SCREEN_WIDTH - 16) x = PS2_SCREEN_WIDTH - 16;
-    if (y >= PS2_SCREEN_HEIGHT - 16) y = PS2_SCREEN_HEIGHT - 16;
-
-    uint32_t *fb = ps2_fb();
-    for (int cy = 0; cy < 16; cy++) {
-        int py = y + cy;
-        if (py >= PS2_SCREEN_HEIGHT) break;
-        for (int cx = 0; cx < 16; cx++) {
-            int px = x + cx;
-            if (px >= PS2_SCREEN_WIDTH) break;
-            cursor_saved[cy * 16 + cx] = fb[py * PS2_SCREEN_WIDTH + px];
-        }
-    }
-    cursor_saved_x = x;
-    cursor_saved_y = y;
-
-    static const uint16_t cursor_mask[16] = {
-        0b1000000000000000, 0b1100000000000000, 0b1110000000000000, 0b1111000000000000,
-        0b1111100000000000, 0b1111110000000000, 0b1111111000000000, 0b1111111100000000,
-        0b1111111110000000, 0b1111110000000000, 0b1101111000000000, 0b1000111100000000,
-        0b0000011110000000, 0b0000001111000000, 0b0000000111000000, 0b0000000011000000
-    };
-    static const uint16_t cursor_outline[16] = {
-        0b1100000000000000, 0b1010000000000000, 0b1001000000000000, 0b1000100000000000,
-        0b1000010000000000, 0b1000001000000000, 0b1000000100000000, 0b1000000010000000,
-        0b1000000001000000, 0b1000011111100000, 0b1101010000000000, 0b0110101000000000,
-        0b0000010100000000, 0b0000001010000000, 0b0000000101000000, 0b0000000011000000
-    };
-
-    for (int cy = 0; cy < 16; cy++) {
-        uint16_t m = cursor_mask[cy];
-        uint16_t o = cursor_outline[cy];
-        int py = y + cy;
-        if (py >= PS2_SCREEN_HEIGHT) break;
-        for (int cx = 0; cx < 16; cx++) {
-            int px = x + cx;
-            if (px >= PS2_SCREEN_WIDTH) break;
-            if ((o >> (15 - cx)) & 1) {
-                fb[py * PS2_SCREEN_WIDTH + px] = BTRON_PIXEL_FB(0xFF000000u); /* Outline: Black */
-            } else if ((m >> (15 - cx)) & 1) {
-                fb[py * PS2_SCREEN_WIDTH + px] = BTRON_PIXEL_FB(0xFFFFFFFFu); /* Body: White */
-            }
-        }
     }
 }
 

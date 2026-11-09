@@ -632,6 +632,70 @@ PART FOUR -- THE INTERCONNECT -- INPUT AS A REAL PLANE
   - No framebuffer readback is ever performed. Pointer movement occurs with
     zero CPU blit overhead and sub-millisecond response latency.
 
+13.2  Input Latency: Root Causes, Kernel Compensation, and Hardware Tuning
+
+  Mouse latency and perceived sluggishness on the PlayStation 2 stem from a
+  combination of early USB 1.1 hardware limits, legacy game engine design,
+  and modern display signal processing:
+
+  1. Hardware & Protocol Bottlenecks:
+     - USB 1.1 Architecture: The PS2 provides two USB 1.1 ports routed
+       through the I/O Processor (IOP) OHCI controller rather than a high-
+       speed peripheral bus. Standard USB 1.1 HID mice operate at a 125 Hz
+       polling rate (8 ms intervals), compared to 500-1000 Hz (1-2 ms) on
+       modern gaming mice.
+     - High-Polling-Rate Overload: Connecting a modern 500-1000 Hz mouse
+       directly to the PS2 floods the 1 ms OHCI periodic schedule and narrow
+       TD ring buffer, causing packet drops, stutter, and irregular jumps.
+     - Legacy Engine Emulation & Frame Coupling: Most PS2 titles translate
+       mouse deltas through DualShock 2 analog stick curves with baked-in
+       deadzones, negative acceleration, and 30/60 fps frame-coupled stalls.
+     - Modern Display Lag: Connecting a PS2 to an HDTV or modern monitor via
+       composite/HDMI dongles introduces 30-80 ms of deinterlacing and
+       upscaling latency before the cursor move ever reaches the panel.
+
+  2. B-System Kernel Compensation Architecture:
+     - O(1) 1 kHz Timer 0 ISR Accumulator: Even with a 7-TD OHCI periodic
+       ring (INT_TD_PER_DEV = 8), the EE 1 kHz Timer 0 interrupt drains all
+       completed OHCI interrupt TDs every 1 ms into O(1) atomic accumulators
+       (s_isr_dx, s_isr_dy, s_isr_btns) and immediately re-arms the ring so
+       high-rate USB bursts never overflow IOP memory during heavy frames.
+     - Burst Coalescing & Ballistic Curve: All sub-frame USB reports are
+       coalesced into a single net vector per pass and scaled via an
+       integer ballistic curve (1:1 for 1 px precision, 1.5x for 2 px, 2x
+       for 3..7 px, and 3x for >= 8 px) with zero analog stick deadzones.
+     - Cooperative Input Pumping & DMA Gathering: All GIF ring waits
+       (ps2_gif_drain, ps2_gif_reap) and GS texture uploads (ps2_gs_upload,
+       batching up to 200 QW / 800 px per DMA burst) pump USB/PS2pad hardware
+       cooperatively while preserving the pass-start cursor snapshot
+       (pass_mx, pass_my) so dirty-band erase/draw tracking never drops a
+       trailing cursor move.
+     - Pointer-Priority Freeze & GS Sprite Overlay: During active cursor
+       motion or window drag, 3D XMB wave synthesis freezes (wnd_gl_freeze)
+       and replays its staged GIF stream (eegs_present_replay) at the live
+       window coordinates, while ps2_cursor_sprite_post emits a compact
+       GIF A+D GS_OP_SPRITE packet as the final bus step so the 16x16 cursor
+       remains sharp and transparent over both 2D and 3D layers.
+
+  3. Real-Console Hardware Tuning Recommendations:
+     - Enable TV "Game Mode": Always enable Game Mode on modern televisions
+       to bypass internal post-processing filters and cut display input lag.
+     - Use Proper Video Output: For zero display latency on original
+       hardware, use a CRT television or monitor via quality RGB SCART or
+       Component cables. On modern flat panels, use a low-latency hardware
+       scaler (such as RetroTINK or GBS-Control) instead of generic
+       composite-to-HDMI converters.
+     - Configure Mouse Onboard Polling Rate & DPI: If using a modern gaming
+       mouse with onboard memory (e.g., Logitech or Razer), connect it to a
+       PC first and set the hardware polling rate to 125 Hz so 500-1000 Hz
+       report floods do not overload the PS2 USB controller. Experiment with
+       higher hardware DPI settings paired with moderate software sensitivity
+       for smoother sub-pixel tracking.
+     - Tune Converter Ballistics (If Using an Adapter): When connecting a
+       mouse through a controller adapter (such as XIM or Brook Super
+       Converter), update its firmware and calibrate the ballistic and
+       deadzone curves on a PC to match the target application's physics.
+
 
 =====================================================================
 PART FIVE -- THE PRESENTATION PLANE -- THE EE/GS BACKEND

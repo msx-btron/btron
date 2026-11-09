@@ -15,8 +15,10 @@
 #include <btron/workbench.h>
 
 #include "ps2_gs.h"
+#include "ps2_gs_pack.h"
 #include "ps2_gs_vram.h"
 #include "ps2_gs_present.h"
+#include "ps2_gif_ring.h"
 #include "ps2_irq.h"
 #include "ps2_paint_worker.h"
 
@@ -230,6 +232,75 @@ void ps2_upload_canvas(int x0, int y0, int x1, int y1, const RECT *hole, int str
     ps2_upload_piece((hx1 + 3) & ~3, hy0, x1, hy1, stream, why);
 }
 
+static uint64_t s_cur_pkt[192] __attribute__((aligned(16)));
+
+static void ps2_cursor_sprite_post(int mx, int my)
+{
+    static const uint16_t cur_mask[16] = {
+        0x8000, 0xC000, 0xE000, 0xF000,
+        0xF800, 0xFC00, 0xFE00, 0xFF00,
+        0xFF80, 0xFE00, 0xDF00, 0x8F80,
+        0x0780, 0x03C0, 0x0180, 0x0000
+    };
+    static const uint16_t cur_outline[16] = {
+        0xC000, 0xE000, 0xF000, 0xF800,
+        0xFC00, 0xFE00, 0xFF00, 0xFF80,
+        0xFFC0, 0xFFE0, 0xFF80, 0xDFC0,
+        0xCFE0, 0x07E0, 0x03C0, 0x0180
+    };
+    const gs_disp_page_t *drawn = gs_disp_drawn();
+    uint64_t *p = (uint64_t *)((uintptr_t)s_cur_pkt | 0x20000000UL);
+    uint64_t *tag = p;
+    uint32_t fba = 0u, n = 0u;
+
+    (void)gs_vram_fba(drawn->byte, &fba);
+    p += 2;
+
+    *p++ = gs_pack_xyoffset(GS_XYOFFSET_PAGE, GS_XYOFFSET_PAGE);
+    *p++ = GS_GP_XYOFFSET_1;
+    *p++ = gs_pack_scissor(0u, (uint32_t)PS2_SCREEN_WIDTH - 1u, 0u, (uint32_t)PS2_SCREEN_HEIGHT - 1u);
+    *p++ = GS_GP_SCISSOR_1;
+    *p++ = gs_pack_frame(fba, drawn->fbw, drawn->psm, 0u);
+    *p++ = GS_GP_FRAME_1;
+    *p++ = 0u;
+    *p++ = GS_GP_TEST_1;
+    *p++ = gs_pack_prim(GS_OP_SPRITE, 0u, 0u, 0u, 0u, 0u);
+    *p++ = GS_GP_PRIM;
+    n += 5u;
+
+    for (int pass = 0; pass < 2; pass++) {
+        const uint32_t c = pass ? 0xFFu : 0x00u;
+        *p++ = gs_pack_rgbaq(c, c, c, 0x80u, 0x3F800000u);
+        *p++ = GS_GP_RGBAQ;
+        n++;
+        for (int y = 0; y < 16; y++) {
+            const int py = my + y;
+            if (py < 0 || py >= PS2_SCREEN_HEIGHT) continue;
+            uint16_t row = pass ? cur_mask[y] : (uint16_t)(cur_outline[y] & (uint16_t)~cur_mask[y]);
+            int x = 0;
+            while (x < 16) {
+                while (x < 16 && !(row & (0x8000u >> x))) x++;
+                if (x >= 16) break;
+                int x0 = x;
+                while (x < 16 && (row & (0x8000u >> x))) x++;
+                int sx0 = mx + x0, sx1 = mx + x;
+                if (sx0 < 0) sx0 = 0;
+                if (sx1 > PS2_SCREEN_WIDTH) sx1 = PS2_SCREEN_WIDTH;
+                if (sx1 > sx0 && n + 2u <= 94u) {
+                    *p++ = gs_pack_xyz2(gs_vertex_coord16(sx0), gs_vertex_coord16(py), 0u);
+                    *p++ = GS_GP_XYZ2;
+                    *p++ = gs_pack_xyz2(gs_vertex_coord16(sx1), gs_vertex_coord16(py + 1), 0u);
+                    *p++ = GS_GP_XYZ2;
+                    n += 2u;
+                }
+            }
+        }
+    }
+    tag[0] = gs_pack_giftag(n, 1u, 0u, 0u, GS_FLG_PACKED, 1u);
+    tag[1] = gs_pack_regs((const uint32_t[]){ GS_NIB_AD }, 1u);
+    (void)ps2_gif_post(s_cur_pkt, n + 1u);
+}
+
 void ps2_paint_region(GDEV *screen, int x0, int y0, int x1, int y1, int full,
                       uint32_t *r_us, uint32_t *s_us, uint32_t *u_us)
 {
@@ -306,21 +377,31 @@ void ps2_paint_region(GDEV *screen, int x0, int y0, int x1, int y1, int full,
                 s_20y_rect = gl_client;
                 gs_layer = TRUE;
             }
+        } else if (gl_hole_live &&
+                   x1 > gl_hole.left && x0 < gl_hole.right &&
+                   y1 > gl_hole.top  && y0 < gl_hole.bottom) {
+            gs_groups = eegs_present_replay(&gl_hole);
+            if (gs_groups > 0) {
+                gl_client = gl_hole;
+                gs_layer = TRUE;
+            }
         }
 
         int n_cover = wnd_gl_cover_take(&gl_cover);
         s_gs_cover_merge += (uint32_t)gl_cover.merged;
-        if (gs_layer) {
-            ps2_upload_cover_in_layer(&gl_cover, &gl_client);
+        if (gs_layer || gl_hole_live) {
+            ps2_upload_cover_in_layer(&gl_cover, gs_layer ? &gl_client : &gl_hole);
             s_gs_cover += (uint32_t)n_cover;
             s_gs_cover_drop += (uint32_t)gl_cover.dropped;
+            if (gs_layer) wnd_gl_freeze(1);
+        }
 
-            if (g_cursor_in_backbuffer) {
-                H mx = 0, my = 0;
-                get_baremetal_mouse_pos(&mx, &my);
-                RECT cur_rect = { mx, my, (H)(mx + PS2_CURSOR_COLS), (H)(my + PS2_CURSOR_ROWS) };
-                wnd_gl_cover cur_cov = { .r = &cur_rect, .n = 1, .dropped = 0, .merged = 0 };
-                ps2_upload_cover_in_layer(&cur_cov, &gl_client);
+        if (g_cursor_in_backbuffer) {
+            H mx = 0, my = 0;
+            get_baremetal_mouse_pos(&mx, &my);
+            if (gs_layer || (mx + PS2_CURSOR_COLS > x0 && mx < x1 &&
+                             my + PS2_CURSOR_ROWS > y0 && my < y1)) {
+                ps2_cursor_sprite_post((int)mx, (int)my);
             }
         }
 

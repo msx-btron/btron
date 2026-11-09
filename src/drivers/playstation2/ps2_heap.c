@@ -12,18 +12,9 @@
 
 extern void ps2_kprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
-#if defined(BTRON_PS2_PROBE) || defined(BTRON_PS2_BENCH)
-extern unsigned ps2_stack_probe_depth(void);
-#define PS2_STACK_PROBE_BYTES (512u * 1024u)
-#else
 #define ps2_stack_probe_depth() (0u)
 #define PS2_STACK_PROBE_BYTES (512u * 1024u)
-#endif
 
-#if defined(BTRON_PS2_PROBE) || defined(BTRON_PS2_BENCH)
-uint8_t s_ps2_heap[PS2_HEAP_SIZE] __attribute__((aligned(64)));
-ps2_blk *s_heap_list;
-#else
 static uint8_t s_ps2_heap[PS2_HEAP_SIZE] __attribute__((aligned(64)));
 
 #define PS2_HEAP_ALIGN  16u
@@ -37,7 +28,6 @@ typedef struct ps2_blk {
 } ps2_blk;
 
 static ps2_blk *s_heap_list;
-#endif
 
 typedef char ps2_heap_header_is_16[(sizeof(ps2_blk) == PS2_HEAP_HDR) ? 1 : -1];
 

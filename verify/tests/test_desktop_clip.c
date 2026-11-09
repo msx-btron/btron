@@ -320,15 +320,14 @@ static void whole_canvas_reports_its_stages(void)
 
     CHECK(st.bg_full_calls == 0u, "the second whole-canvas composite rebuilds no background");
     CHECK(st.bg_us > 0u, "and it reports the background restore it did");
-    CHECK(st.bars_us > 0u, "and it reports the test bars it filled");
     /* The panel's timing window is real, but its body is one of the stubs at the top of
      * this file (global_menu_render_bar is a no-op here), so the only work it encloses is
      * the two-row gold accent -- which at host speed can land inside a single tick.
      * Whether the device's panel costs anything is this harness cannot say. */
     SKIP("and it reports the system panel", "the panel bar is stubbed in this harness");
     snprintf(msg, sizeof(msg), "and its total covers the stages it names (%u >= %u)",
-             st.comp_us, st.bg_us + st.panel_us + st.bars_us);
-    CHECK(st.comp_us >= st.bg_us + st.panel_us + st.bars_us, msg);
+             st.comp_us, st.bg_us + st.panel_us);
+    CHECK(st.comp_us >= st.bg_us + st.panel_us, msg);
     CHECK(diff == 0u, "two whole-canvas composites are the same picture");
 
     free(before);

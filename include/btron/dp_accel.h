@@ -111,6 +111,16 @@ int btron_ptr_gain_index(int32_t fp);
  * than reading past the table. */
 const char *btron_ptr_gain_label(int index);
 
+/* ── Pointer Polling Delay & Low-Delay Compensation Dial ──────────────── */
+#define BTRON_PTR_DELAY_STEPS       6
+#define BTRON_PTR_DELAY_COMP_MAX_US 500u
+
+extern const uint32_t btron_ptr_delay_us[BTRON_PTR_DELAY_STEPS];
+extern uint32_t g_ptr_delay_us;
+
+int         btron_ptr_delay_index(uint32_t delay_us);
+const char *btron_ptr_delay_label(int index);
+
 #ifdef __cplusplus
 }
 #endif

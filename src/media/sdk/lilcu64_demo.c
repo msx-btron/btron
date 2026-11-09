@@ -597,6 +597,8 @@ static void draw_mouth(float smile_scale, float omouth_scale) {
 
 /* ── 4D Hopf Fibration Background Renderer ─────────────────────────── */
 
+__attribute__((weak)) void btron_cooperative_input_pump(void) {}
+
 static void render_hopf_fibration(float time, int density_mode) {
     /* 1:1 with densityConfigs in index.html line 6940:
      * Mode 0: tori=2, fibersPerTorus=9,  pts=40 (18 rings)
@@ -689,6 +691,7 @@ static void render_hopf_fibration(float time, int density_mode) {
             }
             glEnd();
         }
+        btron_cooperative_input_pump();
     }
 
     glEnable(GL_DEPTH_TEST);
@@ -814,19 +817,12 @@ static void render_lilcu64(const AnimPose *pose, float time) {
     glRotatef(pose->body_rot_z * 57.29578f, 0.0f, 0.0f, 1.0f);
     glScalef(pose->scale_x, pose->scale_y, pose->scale_z);
 
-#if defined(BTRON_PS2_TARGET)
-    uint32_t tm0 = btron_render_perf_us();
-#endif
-
     /* 1. Main Faceted Gem Cube at (0, 0.12, 0), color 0x85e8ff (0.522, 0.910, 1.0) — Lit */
     glEnable(GL_LIGHTING);
     glEnable(GL_COLOR_MATERIAL);
     glPushMatrix();
     glTranslatef(0.0f, 0.12f, 0.0f);
     draw_faceted_gem_cube(0.522f, 0.910f, 1.0f);
-#if defined(BTRON_PS2_TARGET)
-    uint32_t tm_gem = btron_render_perf_us();
-#endif
 
     /* 2. Internal rotating Octahedron Core at (0, 0.12, 0), radius 0.78, solid white — Unlit */
     glDisable(GL_LIGHTING);
@@ -844,9 +840,6 @@ static void render_lilcu64(const AnimPose *pose, float time) {
     glPopMatrix();
 
     glPopMatrix(); /* End main cube & octahedra */
-#if defined(BTRON_PS2_TARGET)
-    uint32_t tm_octa = btron_render_perf_us();
-#endif
 
     /* 4. Facial Features (Unlit for pure anime brilliance, matching Three.js MeshBasicMaterial) */
     glDisable(GL_LIGHTING);
@@ -882,9 +875,6 @@ static void render_lilcu64(const AnimPose *pose, float time) {
     glTranslatef(0.76f, -0.06f, 1.075f);
     draw_cheek_blush();
     glPopMatrix();
-#if defined(BTRON_PS2_TARGET)
-    uint32_t tm_face = btron_render_perf_us();
-#endif
 
     /* 5. Little Cube Hands at pivots (-1.26, 0.05, 0.1) and (1.26, 0.05, 0.1) — Lit */
     glEnable(GL_LIGHTING);
@@ -933,18 +923,6 @@ static void render_lilcu64(const AnimPose *pose, float time) {
     glTranslatef(0.0f, -0.20f, 0.06f);
     draw_box(0.72f, 0.48f, 0.88f, 1.0f, 0.302f, 0.553f);
     glPopMatrix();
-
-#if defined(BTRON_PS2_TARGET)
-    uint32_t tm_feet = btron_render_perf_us();
-    static uint32_t s_mascot_cnt = 0;
-    if ((++s_mascot_cnt % 30) == 1) {
-        ps2_kprintf("  [MASCOT BREAKDOWN] gem=%u octa=%u face=%u limbs=%u us\n",
-                    (unsigned)(tm_gem - tm0),
-                    (unsigned)(tm_octa - tm_gem),
-                    (unsigned)(tm_face - tm_octa),
-                    (unsigned)(tm_feet - tm_face));
-    }
-#endif
 
     glPopMatrix(); /* End Root Group */
 }
@@ -1542,19 +1520,10 @@ static void demo_paint(WND *wnd, GDEV *dev) {
         egl_surface_resize(surf, dev->width, dev->height);
     }
 
-#if defined(BTRON_PS2_TARGET)
-    static uint32_t s_paint_frame_cnt = 0;
-    uint32_t t0 = btron_render_perf_us();
-#endif
-
     update_kinematics(s_dt);
 
     /* Pump VirtIO sound PCM buffer */
     lilcu64_synth_pump_virtio(735); /* ~16.6ms of audio at 44.1kHz */
-
-#if defined(BTRON_PS2_TARGET)
-    uint32_t t_kin = btron_render_perf_us();
-#endif
 
     glViewport(0, 0, dev->width, dev->height);
     glEnable(GL_DEPTH_TEST);
@@ -1594,26 +1563,17 @@ static void demo_paint(WND *wnd, GDEV *dev) {
 
     /* 1. Render 4D Hopf Fibration Background */
     render_hopf_fibration(s_time, s_density_mode);
-#if defined(BTRON_PS2_TARGET)
-    uint32_t t_hopf = btron_render_perf_us();
-#endif
 
     /* 2. Render Spherical Radiant Pulse Waves */
     render_radiant_waves();
 
     /* 3. Render Lil Cu 64 Mascot (1:1 with index.html) */
     render_lilcu64(&s_pose, s_time);
-#if defined(BTRON_PS2_TARGET)
-    uint32_t t_mascot = btron_render_perf_us();
-#endif
 
     glPopMatrix();
 
     /* Swap OpenGL buffer to window client area */
     egl_swap_buffers(surf);
-#if defined(BTRON_PS2_TARGET)
-    uint32_t t_swap = btron_render_perf_us();
-#endif
 
     /* Draw 2D BTRON Dashboard & Speech Bubble */
     render_2d_dashboard(wnd, dev);
@@ -1622,21 +1582,6 @@ static void demo_paint(WND *wnd, GDEV *dev) {
     glDisable(GL_COLOR_MATERIAL);
     static const GLfloat def_amb[4] = { 0.2f, 0.2f, 0.2f, 1.0f };
     glLightfv(GL_LIGHT0, GL_AMBIENT, (const GLfloat *)def_amb);
-#if defined(BTRON_PS2_TARGET)
-    uint32_t t_dash = btron_render_perf_us();
-
-    s_paint_frame_cnt++;
-    if ((s_paint_frame_cnt % 30) == 1) {
-        ps2_kprintf("[LILCU PERF #%u] kin=%u hopf=%u mascot=%u swap=%u dash=%u total=%u us\n",
-                    (unsigned)s_paint_frame_cnt,
-                    (unsigned)(t_kin - t0),
-                    (unsigned)(t_hopf - t_kin),
-                    (unsigned)(t_mascot - t_hopf),
-                    (unsigned)(t_swap - t_mascot),
-                    (unsigned)(t_dash - t_swap),
-                    (unsigned)(t_dash - t0));
-    }
-#endif
 }
 
 /* ── Window Event Callback ────────────────────────────────────────── */

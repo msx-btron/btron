@@ -391,39 +391,11 @@ void redraw_baremetal_desktop(GDEV *screen, H w, H h) {
     fill_rec(screen, &gold_bar, COLOR_GOLD);
     btron_render_stat_max(&g_render_stats.panel_us, btron_render_perf_us() - t_mark);
 
-    /* The panel and the bars are desktop chrome drawn over every window, so a window the GS
-     * draws (doc/txt/PS2.txt, increment 5c) would bury them: the stream is what reaches VRAM last.
-     * Registering the two rects is what makes the present put them back. */
+    /* The panel is desktop chrome drawn over every window, so a window the GS
+     * draws (doc/txt/PS2.txt, increment 5c) would bury it: the stream is what reaches VRAM last.
+     * Registering the rect is what makes the present put it back. */
     const RECT panel_rows = { 0, 0, w, 28 };
     wnd_gl_cover_add(&panel_rows);
-
-#if !defined(BTRON_PS2_TARGET)
-    /* Color Test Bar (bottom 40px) */
-    COLOR bars[8] = {
-        COLOR_WHITE,
-        COLOR_YELLOW,
-        COLOR_CYAN,
-        COLOR_GREEN,
-        ARGB(0xFF, 0xFF, 0x00, 0xFF), /* Magenta */
-        COLOR_RED,
-        ARGB(0xFF, 0x00, 0x00, 0xFF), /* Blue */
-        COLOR_BLACK
-    };
-    H bar_h = 40;
-    H bar_y = (H)h - bar_h;
-    const RECT bar_rows = { 0, bar_y, w, h };
-    t_mark = btron_render_perf_us();
-    for (int bi = 0; bi < 8; bi++) {
-        H bx0 = (bi * (H)w) / 8;
-        H bx1 = ((bi + 1) * (H)w) / 8;
-        RECT br = { bx0, bar_y, bx1, (H)h };
-        fill_rec(screen, &br, bars[bi]);
-    }
-    /* Registered once for the strip, not per bar: the eight bars are one row range and one
-     * opaque fill each, so they are one cover rect.  Same reason the panel above adds one rect. */
-    wnd_gl_cover_add(&bar_rows);
-    btron_render_stat_max(&g_render_stats.bars_us, btron_render_perf_us() - t_mark);
-#endif
     btron_render_stat_max(&g_render_stats.comp_us, btron_render_perf_us() - t_all);
 
     /* Dynamic Classic B-TRON Mouse Cursor Rendering */
@@ -472,26 +444,6 @@ static void redraw_baremetal_desktop_mode(GDEV *screen, const RECT *damage, BOOL
         const RECT panel_rows = { 0, 0, screen->width, 28 };
         wnd_gl_cover_add(&panel_rows);
     }
-
-#if !defined(BTRON_PS2_TARGET)
-    H bar_y = screen->height - 40;
-    if (d.bottom > bar_y) {
-        t_mark = btron_render_perf_us();
-        COLOR bars[8] = {
-            COLOR_WHITE, COLOR_YELLOW, COLOR_CYAN, COLOR_GREEN,
-            ARGB(0xFF, 0xFF, 0x00, 0xFF), COLOR_RED,
-            ARGB(0xFF, 0x00, 0x00, 0xFF), COLOR_BLACK
-        };
-        for (int i = 0; i < 8; i++) {
-            RECT bar = { (H)(i * screen->width / 8), bar_y,
-                         (H)((i + 1) * screen->width / 8), screen->height };
-            fill_rec(screen, &bar, bars[i]);
-        }
-        btron_render_stat_max(&g_render_stats.bars_us, btron_render_perf_us() - t_mark);
-        const RECT bar_rows = { 0, bar_y, screen->width, screen->height };
-        wnd_gl_cover_add(&bar_rows);
-    }
-#endif
     set_clip(screen, NULL);
     btron_render_stat_max(&g_render_stats.comp_us, btron_render_perf_us() - t_all);
 #if defined(__aarch64__)
@@ -534,49 +486,6 @@ GDEV* init_baremetal_desktop(uint32_t *fb, uint32_t w, uint32_t h) {
     init_evt_sys();
     btron_desktop_note_size(w, h);
 
-#if defined(BTRON_PS2_TARGET)
-    gl_backend_select(GL_BACKEND_EEGS);
-    /* 4 OpenGL apps opened in Tile mode:
-     * Quadrant 0 (Top-Left): Terminal (392x276, client 384x248)
-     * Quadrant 1 (Top-Right): XMB (392x276, client 384x248)
-     * Quadrant 2 (Bottom-Left): GL Gears (392x276, client 384x248)
-     * Quadrant 3 (Bottom-Right): Quake (392x276, client 384x248)
-     * opn_wnd prepends each new window to g_wnd_head.
-     * Open in reverse order: Quake, GL Gears, XMB, Terminal.
-     */
-    H w_box = 392; /* dev width = 392 - 8 = 384 (16/4 byte aligned) */
-    H h_box = 276; /* dev height = 276 - 28 = 248 */
-    H q0_x = 6,   q0_y = 32;
-    H q1_x = 402, q1_y = 32;
-    H q2_x = 6,   q2_y = 312;
-    H q3_x = 402, q3_y = 312;
-
-    /* Quadrant 3 (Bottom-Right): Lil Cu 64 Demoscene (fallback to Quake) */
-    WND *w_demo = open_lilcu64_demo_window_rect ? open_lilcu64_demo_window_rect(q3_x, q3_y, w_box, h_box)
-                  : (open_quake_window ? open_quake_window(q3_x, q3_y, w_box, h_box) : NULL);
-    (void)w_demo;
-
-    /* Quadrant 2 (Bottom-Left): GL Gears */
-    WND *w_gears = open_glgears_window_rect ? open_glgears_window_rect(q2_x, q2_y, w_box, h_box)
-                   : (open_glgears_window ? open_glgears_window() : NULL);
-
-    /* Quadrant 1 (Top-Right): XMB */
-    WND *w_xmb   = open_xmb_window_rect ? open_xmb_window_rect(q1_x, q1_y, w_box, h_box)
-                   : (open_xmb_window ? open_xmb_window() : NULL);
-
-    /* Quadrant 0 (Top-Left): Terminal */
-    WND *w_cli   = open_gterm_window_rect ? open_gterm_window_rect(q0_x, q0_y, w_box, h_box,
-                        WND_ATTR_TITLE | WND_ATTR_BORDER | WND_ATTR_CLOSE | WND_ATTR_RESIZE)
-                   : (open_gterm_window ? open_gterm_window() : NULL);
-    (void)w_demo;
-    (void)w_gears;
-    (void)w_xmb;
-
-    if (w_cli) {
-        top_wnd(w_cli);
-        w_cli->focused = TRUE;
-    }
-#else
     open_vobj_manager_window();
     open_t_editor_window();
     WND *w_cli = open_gterm_window();
@@ -584,7 +493,6 @@ GDEV* init_baremetal_desktop(uint32_t *fb, uint32_t w, uint32_t h) {
         top_wnd(w_cli);
         w_cli->focused = TRUE;
     }
-#endif
 
     /* Initial paint to backbuffer (caller blits to GPU VRAM after this returns) */
     redraw_baremetal_desktop(screen, w, h);

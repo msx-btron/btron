@@ -21,6 +21,7 @@
  */
 
 #include <btron/dp_accel.h>
+#include <btron/libc_shim.h>
 
 /* Past this a report is not a hand moving a mouse; it is a burst, a stuck
  * device, or garbage off a bus, and none of them belong the pointer across the
@@ -31,19 +32,6 @@
 int32_t dp_ptr_scale(int32_t raw, int32_t mult_fp, int32_t *carry)
 {
     if (raw == 0) {
-        /* Keep the remainder, do not decay it.  |carry| is bounded at 255 by the
-         * clamp below, so a pause cannot bank up more than a pixel's fraction and
-         * pay it out afterwards -- the walking this decay was written against is
-         * the limiter's debt, which is a different quantity and lives elsewhere.
-         *
-         * What the decay does cost is distance, and it costs it asymmetrically in
-         * the one place a person notices.  A scale below 1.0 needs three 1-count
-         * reports to cross a pixel, and an axis that reads zero on any report
-         * between them -- which is ordinary, since a hand rarely moves both axes
-         * at once -- loses half of what it had saved, repeatedly, so the pixel is
-         * never reached.  A pointer parked on a screen border and then nudged is
-         * exactly that case: it is not the border holding it, it is the remainder
-         * being thrown away faster than the hand can save it. */
         return 0;
     }
 
@@ -51,11 +39,6 @@ int32_t dp_ptr_scale(int32_t raw, int32_t mult_fp, int32_t *carry)
     if (raw < -DP_PTR_MAX_COUNTS) raw = -DP_PTR_MAX_COUNTS;
 
     int32_t total = (carry ? *carry : 0) + raw * mult_fp;
-
-    /* C truncates towards zero and % keeps the dividend's sign, so a 0.4-pixel
-     * move is held as +102 or -102 and neither direction pays out early.  A
-     * floor would turn -0.4 into -1 with a positive remainder left behind, which
-     * reads as the pointer drifting west while the hand is still. */
     int32_t pixels = total / 256;
 
     if (carry) {
@@ -70,41 +53,6 @@ int32_t dp_ptr_scale(int32_t raw, int32_t mult_fp, int32_t *carry)
     return pixels;
 }
 
-/* The Archimedes / RISC OS MouseStep curve, for the ports whose pointer is meant
- * to gain as the hand moves faster: src/cores/core_arm64.c calls it for the Pi
- * 400's feel, and Settings > Input dials its step.
- *
- * Not compiled for BTRON_PS2_TARGET.  That port's shaping became proportional by
- * doc/txt/PS2.txt LAW 13d, and leaving this body linked in would keep a
- * speed-dependent multiplier living inside an image whose own law forbids one --
- * where nothing but a disassembly read can tell dead code apart from a curve a
- * merge restored.  Compiling it out makes the LINK the gate: a PS2 translation
- * unit that calls this function fails to build instead of quietly
- * re-accelerating the pointer on the one machine that has no screen to complain.
- *
- * The declaration in <btron/dp_accel.h> stays visible to every target on purpose,
- * so that failure names dp_ptr_riscos at link time rather than turning into an
- * implicit-declaration error at compile time: the first is the message that leads
- * a reader to the law, the second only to this header. */
-#ifndef BTRON_PS2_TARGET
-int32_t dp_ptr_riscos(int32_t raw, int step, int32_t *carry)
-{
-    int32_t mag = (raw < 0) ? -raw : raw;
-    int32_t mult_fp;
-
-    if (raw == 0) return dp_ptr_scale(0, 0, carry);
-
-    /* Fine positioning first, so the coarse end of the curve does not destroy
-     * the small moves that are used to land on a pixel boundary. */
-    if (mag <= 2) mag = (mag * 3) / 2;
-
-    if (step < 1 || step > 3) step = 4;
-    mult_fp = 256 + step * 128 + (mag > 4 ? 128 : 0);
-
-    return dp_ptr_scale((raw < 0) ? -mag : mag, mult_fp, carry);
-}
-#endif /* !BTRON_PS2_TARGET */
-
 int32_t dp_ptr_limit(int32_t want, int32_t max_step, int32_t *defer)
 {
     int32_t v, out, debt, bound;
@@ -116,10 +64,6 @@ int32_t dp_ptr_limit(int32_t want, int32_t max_step, int32_t *defer)
     else if (v < -max_step) out = -max_step;
     else out = v;
 
-    /* Clamped on the way in as well as checked on the way out: without this a
-     * hand that flicks 512 counts leaves the cursor walking for a quarter of a
-     * second after the stroke is over, which is the exact thing that makes a
-     * pointer feel like it is being dragged through something. */
     debt = v - out;
     bound = max_step * DP_PTR_LIMIT_DEBT;
     if (debt >  bound) debt =  bound;
@@ -128,24 +72,6 @@ int32_t dp_ptr_limit(int32_t want, int32_t max_step, int32_t *defer)
     return out;
 }
 
-#if defined(BTRON_PS2_TARGET)
-/* ── The gain dial (doc/txt/PS2.txt LAW 13e) ───────────────────────
- *
- * Defined here, in the one file every port's pointer arithmetic already comes
- * through, because the dial is that arithmetic seen from a control: a stop is a
- * multiplier, and the multiplier is the only number this stack's pointer honours.
- * It is compiled only for the target that has a dial of this shape, which is the
- * same predicate that leaves dp_ptr_riscos() out of this image -- a Pi 400 build
- * gets the bytes it got before this lane, and a port that reaches for a stop it
- * does not define fails at the link rather than shipping a control that sets
- * nothing.
- *
- * What the stops are *called* is derived from what they are, in one place:
- * btron_ptr_gain_label() formats each line out of this table, so the Settings
- * panel's radio and the launcher's row cannot give one gain two names, and
- * neither of them carries a hand-written copy of these numbers. */
-#include <btron/libc_shim.h>      /* snprintf, for the label line above */
-
 const int32_t btron_ptr_gain_fp[BTRON_PTR_GAIN_STEPS] = { 0, 64, 96, 128, 160, 192, 256 };
 
 int btron_ptr_gain_index(int32_t fp)
@@ -153,11 +79,11 @@ int btron_ptr_gain_index(int32_t fp)
     int i, best = 0;
     int32_t best_d = 0;
 
-    if (fp <= 0) return 0;                     /* auto: the profile's own default */
+    if (fp <= 0) return 0;
     for (i = 1; i < BTRON_PTR_GAIN_STEPS; i++) {
         int32_t d = btron_ptr_gain_fp[i] - fp;
         if (d < 0) d = -d;
-        if (i == 1 || d < best_d) { best_d = d; best = i; }   /* ties: the lower stop */
+        if (i == 1 || d < best_d) { best_d = d; best = i; }
     }
     return best;
 }
@@ -174,13 +100,6 @@ const char *btron_ptr_gain_label(int index)
         if (index == 0)
             snprintf(line[index], sizeof(line[index]), "%s", "Auto (source gain)");
         else
-            /* Two decimals rather than the 8.8 number the caller could read off
-             * the table: this line is spent in two places at once -- the panel's
-             * radio and the launcher's value field -- and the launcher's field is
-             * a column of the bar's layout, so a label long enough to spell
-             * `256/256` would run past what the bar leaves for a value.
-             * The /256 form the console prints is the same number, only rounded
-             * the other way, and it is printed by the core, not by a control. */
             snprintf(line[index], sizeof(line[index]), "%d.%02d px per count",
                      (int)((fp * 100 + 128) / 256 / 100),
                      (int)((fp * 100 + 128) / 256 % 100));
@@ -188,4 +107,35 @@ const char *btron_ptr_gain_label(int index)
     }
     return line[index];
 }
-#endif /* BTRON_PS2_TARGET */
+
+const uint32_t btron_ptr_delay_us[BTRON_PTR_DELAY_STEPS] = {
+    0u, 250u, 500u, 1000u, 2000u, 4000u
+};
+
+int btron_ptr_delay_index(uint32_t delay_us)
+{
+    int i, best = 0;
+    uint32_t best_d = 0u;
+
+    if (delay_us == 0u) return 0;
+    for (i = 1; i < BTRON_PTR_DELAY_STEPS; i++) {
+        uint32_t stop = btron_ptr_delay_us[i];
+        uint32_t d = (stop >= delay_us) ? (stop - delay_us) : (delay_us - stop);
+        if (i == 1 || d < best_d) { best_d = d; best = i; }
+    }
+    return best;
+}
+
+const char *btron_ptr_delay_label(int index)
+{
+    static const char *const labels[BTRON_PTR_DELAY_STEPS] = {
+        "Auto (source delay)",
+        "0.25 ms (Compensated)",
+        "0.50 ms (Compensated)",
+        "1.00 ms (1 kHz)",
+        "2.00 ms (500 Hz)",
+        "4.00 ms (250 Hz)"
+    };
+    if (index < 0 || index >= BTRON_PTR_DELAY_STEPS) return "delay";
+    return labels[index];
+}

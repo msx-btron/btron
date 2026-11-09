@@ -795,24 +795,39 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
 
     for (int i = count - 1; i >= 0; i--) {
         WND *wnd = stack[i];
-        if (!wnd || !wnd->visible ||
-            wnd->bounds.right <= damage->left || wnd->bounds.left >= damage->right ||
-            wnd->bounds.bottom <= damage->top || wnd->bounds.top >= damage->bottom)
-            continue;
+        if (!wnd || !wnd->visible) continue;
 
         /* If this window is in front of the active GL layer in z-order,
-         * its intersection covers the GL layer. Register it so presentation restores
-         * this window over the hardware 3D layer. */
+         * its opaque regions (compact title tab and main body) cover the GL layer.
+         * Register them before the damage clip so partial-band streams restore
+         * all overlapping front windows without uploading the transparent strip
+         * to the right of a compact title tab. */
         if (gl_idx >= 0 && i < gl_idx && gl_wnd) {
+            H cov_th = (wnd->attr & WND_ATTR_TITLE) ? WND_TITLE_HEIGHT : 0;
+            if (cov_th > 0) {
+                RECT tr, ti;
+                if (wget_tab_rect(wnd, &tr) == E_OK) {
+                    ti.left   = tr.left   > gl_wnd->bounds.left   ? tr.left   : gl_wnd->bounds.left;
+                    ti.top    = tr.top    > gl_wnd->bounds.top    ? tr.top    : gl_wnd->bounds.top;
+                    ti.right  = tr.right  < gl_wnd->bounds.right  ? tr.right  : gl_wnd->bounds.right;
+                    ti.bottom = tr.bottom < gl_wnd->bounds.bottom ? tr.bottom : gl_wnd->bounds.bottom;
+                    if (ti.right > ti.left && ti.bottom > ti.top) wnd_gl_cover_add(&ti);
+                }
+            }
             RECT isect;
+            H body_top = wnd->bounds.top + cov_th;
             isect.left   = wnd->bounds.left   > gl_wnd->bounds.left   ? wnd->bounds.left   : gl_wnd->bounds.left;
-            isect.top    = wnd->bounds.top    > gl_wnd->bounds.top    ? wnd->bounds.top    : gl_wnd->bounds.top;
+            isect.top    = body_top           > gl_wnd->bounds.top    ? body_top           : gl_wnd->bounds.top;
             isect.right  = wnd->bounds.right  < gl_wnd->bounds.right  ? wnd->bounds.right  : gl_wnd->bounds.right;
             isect.bottom = wnd->bounds.bottom < gl_wnd->bounds.bottom ? wnd->bounds.bottom : gl_wnd->bounds.bottom;
             if (isect.right > isect.left && isect.bottom > isect.top) {
                 wnd_gl_cover_add(&isect);
             }
         }
+
+        if (wnd->bounds.right <= damage->left || wnd->bounds.left >= damage->right ||
+            wnd->bounds.bottom <= damage->top || wnd->bounds.top >= damage->bottom)
+            continue;
 
         drawn++;
         /* Staleness is a property of one window's image, not of the composite: the

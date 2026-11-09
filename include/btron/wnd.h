@@ -144,7 +144,7 @@ BOOL wnd_take_inval_damage(RECT *out);
  * Tracker menu is the thing that is open, and workbench_cover_overlays() then asks both getters.
  * `merged` is the number the list refused, which is what makes that saving countable rather than
  * a code-reading claim. */
-#define WND_GL_COVER_MAX 8
+#define WND_GL_COVER_MAX 16
 typedef struct {
     const RECT *r;       /* the pending rects, in the order they were added */
     int n;               /* how many of them, at most WND_GL_COVER_MAX */

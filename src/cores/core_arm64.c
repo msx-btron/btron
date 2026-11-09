@@ -29,7 +29,6 @@
 #include <btron/itron.h>
 #include <btron/dp.h>
 #include <btron/dp_accel.h>
-#include <btron/dp_cal.h>
 #include <btron/troncode.h>
 #include <btron/wnd.h>
 #include <btron/desktop.h>
@@ -505,10 +504,6 @@ void btron_scheduler_dispatch(void);
 
 static void launch_pi4_desktop_session(uint32_t *gpu_fb);
 
-/* Defined beside the pointer path it measures, which is further down this file
- * than the console that calls it. */
-static int pi4_ptr_cal(void);
-
 static void pi4_shell_out(const char *text, COLOR col, void *user_data)
 {
     (void)col; (void)user_data;
@@ -552,8 +547,6 @@ static void pi4_shell_exec(const char *cmd, uint32_t *gpu_fb)
             fb_log("[V3D] VideoCore VI (V3D 4.2): Hardware core not present\n");
             fb_log("      Pipeline: TinyGL CPU software rasterizer active\n");
         }
-    } else if (tkl_strcmp(cmd, "ptrcal") == 0) {
-        (void)pi4_ptr_cal();
     } else if (tkl_strcmp(cmd, "clear") == 0) {
         if (s_fb_log_fb) {
             for (int i = 0; i < BTRON_SCREEN_W * BTRON_SCREEN_H; i++)
@@ -1695,6 +1688,19 @@ static void kbd_repeat_check(uint32_t now_us) {
     }
 }
 
+/* Archimedes / RISC OS MouseStep curve for Pi 400. */
+int32_t dp_ptr_riscos(int32_t raw, int step, int32_t *carry)
+{
+    int32_t mag = (raw < 0) ? -raw : raw;
+    int32_t mult_fp;
+
+    if (raw == 0) return dp_ptr_scale(0, 0, carry);
+    if (mag <= 2) mag = (mag * 3) / 2;
+    if (step < 1 || step > 3) step = 4;
+    mult_fp = 256 + step * 128 + (mag > 4 ? 128 : 0);
+    return dp_ptr_scale((raw < 0) ? -mag : mag, mult_fp, carry);
+}
+
 /* Raw HID delta batch -> accelerate -> integrate -> clamp -> gated MOVE. */
 static void mouse_motion_apply(int32_t rdx, int32_t rdy) {
     if (rdx == 0 && rdy == 0) return;
@@ -1734,58 +1740,6 @@ static void mouse_motion_apply(int32_t rdx, int32_t rdy) {
         ev.data   = (VW)(((uint32_t)(uint16_t)(int16_t)move_x) | ((uint32_t)(uint16_t)(int16_t)move_y << 16));
         snd_evt(&ev);
     }
-}
-
-/* ── Pointer Loopback Calibration ───────────────────────────────── */
-
-/* The same four hooks the PS2 port hands the shared measurement in
- * src/graphics/dp_cal.c, which is the point of that contract being so small.
- * The seam here is mouse_motion_apply -- the function every real HID report
- * already falls through -- so what gets measured is the path in use rather than
- * a second copy of it that could pass while the first one fails. */
-static void pi4_ptr_cal_send(int dx, int dy) { mouse_motion_apply(dx, dy); }
-static void pi4_ptr_cal_get(int *x, int *y)  { *x = s_mouse_x; *y = s_mouse_y; }
-static void pi4_ptr_cal_set(int x, int y)    { mouse_motion_apply(x - s_mouse_x, y - s_mouse_y); }
-
-static void pi4_ptr_cal_num(long v)
-{
-    if (v < 0) { fb_log("-"); v = -v; }   /* fb_log_dec is unsigned */
-    fb_log_dec((uint32_t)v);
-}
-
-static void pi4_ptr_cal_row(const char *tag, long v0, long v1, long v2, long v3)
-{
-    char head[16];
-    int  n = 0;
-    for (const char *s = "[CAL] "; *s && n < 14; s++) head[n++] = *s;
-    for (; *tag && n < 14; tag++) head[n++] = *tag;
-    head[n] = '\0';
-
-    fb_log(head);
-    fb_log(" "); pi4_ptr_cal_num(v0);
-    fb_log(" "); pi4_ptr_cal_num(v1);
-    fb_log(" "); pi4_ptr_cal_num(v2);
-    fb_log(" "); pi4_ptr_cal_num(v3);
-    fb_log("\n");
-}
-
-static const dp_cal_port_t s_pi4_ptr_cal_port = {
-    pi4_ptr_cal_send, pi4_ptr_cal_get, pi4_ptr_cal_set,
-    BTRON_SCREEN_W, BTRON_SCREEN_H,
-    pi4_ptr_cal_row,
-};
-
-static int pi4_ptr_cal(void)
-{
-    fb_log("[CAL] Pointer loopback: counts in, pixels out, no hand involved.\n");
-    fb_log("[CAL] GAINX/Y amp px stray counts | EDGEX/Y wall counts back short\n");
-    fb_log("[CAL] DRIFT dx dy | DIAG dx dy diff | CAL failures counts w h\n");
-    const int fails = dp_cal_run(&s_pi4_ptr_cal_port);
-    fb_log("[CAL] profile="); pi4_ptr_cal_num(g_mouse_accel_profile);
-    fb_log(" step=");         pi4_ptr_cal_num(g_mouse_step_mult);
-    fb_log(" -> failures=");  pi4_ptr_cal_num(fails);
-    fb_log("\n");
-    return fails;
 }
 
 /* Latest raw HID button byte -> RISC OS Select/Adjust/Menu edge events. */

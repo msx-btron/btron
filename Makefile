@@ -606,7 +606,6 @@ FOMA_SRCS = $(FOMA_STARTUP)             \
 COMMON_NO_SDL_SRCS = \
     src/desktop/graphics/dp_core.c \
     src/desktop/graphics/dp_accel.c \
-    src/desktop/graphics/dp_cal.c \
     src/desktop/graphics/icons_bundle.c \
     src/desktop/font/troncode.c    \
     src/desktop/font/jis_fonts.c   \
