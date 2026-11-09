@@ -6,23 +6,52 @@
 #include <btron/event.h>
 #include <btron/dp.h>
 #include <btron/libc_shim.h>
+#include <btron/nexus_ring.h>
 #if BTRON_HOSTED
 #include <SDL.h>
 #endif
 
-#ifndef EVENT_QUEUE_SIZE
-#define EVENT_QUEUE_SIZE 256
-#endif
+NEXUS_RING_DEFINE(evt_ring_t, EVT, 256)
+NEXUS_RING_DEFINE(evt_edge_t, EVT, 64)
 
-static EVT g_queue[EVENT_QUEUE_SIZE];
-static int g_q_head = 0;
-static int g_q_tail = 0;
-static int g_q_count = 0;
+static evt_ring_t s_evt;
+static evt_edge_t s_edge;
+static EVT        s_pending_move;
+static int        s_have_move;
+
+static int evt_is_edge(UW type)
+{
+    return type == EV_KEY_DOWN || type == EV_KEY_UP ||
+           type == EV_BUT_DOWN || type == EV_BUT_UP;
+}
+
+static int evt_queued(void)
+{
+    return (int)evt_ring_t_len(&s_evt) + (int)evt_edge_t_len(&s_edge) + s_have_move;
+}
+
+static int evt_take(EVT *p_evt)
+{
+    if (evt_ring_t_rcv(&s_evt, p_evt)) return 1;
+    if (evt_edge_t_rcv(&s_edge, p_evt)) return 1;
+    if (s_have_move) {
+        *p_evt = s_pending_move;
+        s_have_move = 0;
+        return 1;
+    }
+    return 0;
+}
+
+static void evt_flush_move(void)
+{
+    if (!s_have_move) return;
+    if (evt_ring_t_snd(&s_evt, &s_pending_move) == 0) s_have_move = 0;
+}
 
 ER init_evt_sys(void) {
-    g_q_head = 0;
-    g_q_tail = 0;
-    g_q_count = 0;
+    s_evt.head = s_evt.tail = s_evt.refused = 0;
+    s_edge.head = s_edge.tail = s_edge.refused = 0;
+    s_have_move = 0;
     return E_OK;
 }
 
@@ -98,57 +127,34 @@ static void poll_tty_stdin(void) {
 ER snd_evt(const EVT *p_evt) {
     if (!p_evt) return E_PAR;
 
-    /* 1. Coalesce any trailing run of EV_MOUSE_MOVE (latest position wins) */
-    if (p_evt->type == EV_MOUSE_MOVE && g_q_count > 0) {
-        int idx = (g_q_tail - 1 + EVENT_QUEUE_SIZE) % EVENT_QUEUE_SIZE;
-        int scanned = 0;
-        int updated = 0;
-
-        while (scanned < g_q_count && g_queue[idx].type == EV_MOUSE_MOVE) {
-            g_queue[idx].pos = p_evt->pos;
-            updated = 1;
-            scanned++;
-            idx = (idx - 1 + EVENT_QUEUE_SIZE) % EVENT_QUEUE_SIZE;
-        }
-        if (updated)
-            return E_OK;
-        /* fall through if no trailing move found */
+    /* MOVE coalesces in a producer-side slot: latest position wins, the ring
+     * never holds a run of motion, and a published slot is never mutated. */
+    if (p_evt->type == EV_MOUSE_MOVE) {
+        s_pending_move = *p_evt;
+        s_have_move = 1;
+        return E_OK;
     }
 
-    /* 2. On full queue: prefer dropping oldest mouse-motion, never drop a button/key */
-    if (g_q_count >= EVENT_QUEUE_SIZE) {
-        if (p_evt->type == EV_KEY_DOWN || p_evt->type == EV_KEY_UP ||
-            p_evt->type == EV_BUT_DOWN || p_evt->type == EV_BUT_UP) {
-            /* Drop oldest event to guarantee critical button/key delivery */
-            g_q_head = (g_q_head + 1) % EVENT_QUEUE_SIZE;
-            g_q_count--;
-        } else if (p_evt->type == EV_MOUSE_MOVE) {
-            /* Drop oldest if it is also a move; otherwise refuse the new move to protect button/key */
-            if (g_queue[g_q_head].type == EV_MOUSE_MOVE) {
-                g_q_head = (g_q_head + 1) % EVENT_QUEUE_SIZE;
-                g_q_count--;
-            } else {
-                return E_BUSY; /* protect non-motion events already queued */
-            }
-        } else {
-            return E_BUSY;
-        }
-    }
+    evt_flush_move();
 
-    g_queue[g_q_tail] = *p_evt;
-    g_q_tail = (g_q_tail + 1) % EVENT_QUEUE_SIZE;
-    g_q_count++;
-
-    if (p_evt->type == EV_KEY_DOWN || p_evt->type == EV_BUT_DOWN) {
+    if (evt_ring_t_snd(&s_evt, p_evt) == 0) {
+        if (p_evt->type == EV_KEY_DOWN || p_evt->type == EV_BUT_DOWN) {
 #if BTRON_HOSTED
-        printf("[TRACE-EVT] Enqueued type=%d key=%u ('%c') data=%ld (q_count=%d)\n",
-               p_evt->type, (unsigned)p_evt->key,
-               (p_evt->key >= 32 && p_evt->key <= 126) ? (char)p_evt->key : '?',
-               (long)(uintptr_t)p_evt->data, g_q_count);
-        fflush(stdout);
+            printf("[TRACE-EVT] Enqueued type=%d key=%u ('%c') data=%ld (q_count=%d)\n",
+                   p_evt->type, (unsigned)p_evt->key,
+                   (p_evt->key >= 32 && p_evt->key <= 126) ? (char)p_evt->key : '?',
+                   (long)(uintptr_t)p_evt->data, evt_queued());
+            fflush(stdout);
 #endif
+        }
+        return E_OK;
     }
-    return E_OK;
+
+    /* Ring full: never-drop KEY/BUT wait on the edge ring; MOVE already pending. */
+    if (evt_is_edge(p_evt->type)) {
+        return evt_edge_t_snd(&s_edge, p_evt) == 0 ? E_OK : E_BUSY;
+    }
+    return E_BUSY;
 }
 
 ER get_evt(EVT *p_evt, W timeout_ms) {
@@ -160,13 +166,8 @@ ER get_evt(EVT *p_evt, W timeout_ms) {
     poll_tty_stdin();
 #endif
 
-    /* Drain internal queue first */
-    if (g_q_count > 0) {
-        *p_evt = g_queue[g_q_head];
-        g_q_head = (g_q_head + 1) % EVENT_QUEUE_SIZE;
-        g_q_count--;
-        return E_OK;
-    }
+    /* Drain the Nexus queue first */
+    if (evt_take(p_evt)) return E_OK;
 
 #if BTRON_HOSTED
     /* Poll SDL events */
@@ -266,12 +267,7 @@ ER get_evt(EVT *p_evt, W timeout_ms) {
         }
 
         /* If an event was enqueued, return the head immediately */
-        if (g_q_count > 0) {
-            *p_evt = g_queue[g_q_head];
-            g_q_head = (g_q_head + 1) % EVENT_QUEUE_SIZE;
-            g_q_count--;
-            return E_OK;
-        }
+        if (evt_take(p_evt)) return E_OK;
     }
 #endif
 
@@ -280,39 +276,26 @@ ER get_evt(EVT *p_evt, W timeout_ms) {
 }
 
 ER clr_evt(UW mask) {
+    EVT ev;
     if (mask == 0) return E_OK;
-    int new_count = 0;
-
-    for (int i = 0; i < g_q_count; i++) {
-        int src_idx = (g_q_head + i) % EVENT_QUEUE_SIZE;
-        if (!(mask & EV_MASK(g_queue[src_idx].type))) {
-            if (new_count != i) {
-                int dst_idx = (g_q_head + new_count) % EVENT_QUEUE_SIZE;
-                g_queue[dst_idx] = g_queue[src_idx];
-            }
-            new_count++;
-        }
-    }
-
-    if (new_count == 0) {
-        g_q_head = 0;
-        g_q_tail = 0;
-        g_q_count = 0;
-    } else {
-        g_q_tail = (g_q_head + new_count) % EVENT_QUEUE_SIZE;
-        g_q_count = new_count;
-    }
+    while (evt_take(&ev)) { }
     return E_OK;
 }
 
 ER pke_evt(EVT *p_evt, UW mask) {
     if (!p_evt) return E_PAR;
-    for (int i = 0; i < g_q_count; i++) {
-        int idx = (g_q_head + i) % EVENT_QUEUE_SIZE;
-        if ((mask == 0) || (mask & EV_MASK(g_queue[idx].type))) {
-            *p_evt = g_queue[idx];
-            return E_OK;
-        }
+    if (!evt_queued()) return E_NOEXS;
+    if (evt_ring_t_len(&s_evt) != 0u) {
+        *p_evt = s_evt.slot[s_evt.tail & 255u];
+        if ((mask == 0) || (mask & EV_MASK(p_evt->type))) return E_OK;
+    }
+    if (evt_edge_t_len(&s_edge) != 0u) {
+        *p_evt = s_edge.slot[s_edge.tail & 63u];
+        if ((mask == 0) || (mask & EV_MASK(p_evt->type))) return E_OK;
+    }
+    if (s_have_move && ((mask == 0) || (mask & EV_MASK(EV_MOUSE_MOVE)))) {
+        *p_evt = s_pending_move;
+        return E_OK;
     }
     return E_NOEXS;
 }

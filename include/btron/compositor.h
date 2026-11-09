@@ -76,6 +76,15 @@ static inline void comp_init(compositor_t *c, const compositor_ops_t *ops,
 static inline void comp_damage(compositor_t *c)      { c->pending = 1; }
 static inline void comp_damage_full(compositor_t *c) { c->pending = 1; c->full_pending = 1; }
 
+/* Shared drain policy: a MOVE is not a repaint unless a button is held, a
+ * window is being dragged/resized, or a menu is open.  Typed without EVT so
+ * the host compositor test can call it. */
+static inline int comp_evt_redraw(int is_move, unsigned button, int interacting, int menu)
+{
+    if (!is_move) return 1;
+    return button != 0u || interacting || menu;
+}
+
 /* Active UI interval: the table's period, or its slow period after a heavy paint. */
 static inline uint32_t comp_ui_interval(const compositor_t *c)
 {

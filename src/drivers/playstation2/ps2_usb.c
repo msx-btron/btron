@@ -11,6 +11,8 @@
 #include "ps2_usb.h"
 #include "ps2_iopram.h"
 #include "ps2_irq.h"          /* btron_ee_ticks_per_us(), the image's one microsecond */
+#include <btron/async_rt.h>
+#include <btron/nexus_ring.h>
 
 /* External hooks implemented in core_ps2.c.  The key hook takes the report's
  * modifier byte as well as the decoded key: which modifiers were held is part of
@@ -1110,14 +1112,85 @@ static int intr_take(uint32_t dev, uint8_t out[8], uint32_t *cc_out)
     return 1;
 }
 
-/* O(1) 1 kHz ISR accumulator: prevents the 7-TD OHCI hardware ring from
- * saturating during > 7 ms CPU stretches without a 256-slot handoff queue. */
+/* O(1) 1 kHz ISR: seqlock pointer snapshot + never-drop button-edge ring.
+ * The INPUT worker is the sole consumer of both. */
 static volatile int      s_plane_collects;
-static volatile int      s_isr_dx, s_isr_dy, s_isr_has_mouse;
-static volatile uint8_t  s_isr_btns, s_isr_edge_btns;
-static volatile int      s_isr_has_edge, s_isr_edge_dx, s_isr_edge_dy;
+static pointer_slot_t    s_pointer_slot;
+static pointer_snapshot_t s_consumed;
+#define PS2_BTN_EDGE_N 64u
+static volatile uint8_t  s_btn_edge[PS2_BTN_EDGE_N];
+static volatile uint16_t s_btn_edge_h, s_btn_edge_t;
 static uint8_t           s_isr_kbd[16][8];
 static volatile uint32_t s_isr_kbd_w, s_isr_kbd_r;
+
+static void ps2_pointer_seqlock_write(int32_t dx, int32_t dy, uint8_t buttons)
+{
+    uint32_t seq = s_pointer_slot.seq;
+    s_pointer_slot.seq = seq + 1u;
+    NEXUS_BARRIER();
+    s_pointer_slot.acc_dx += dx;
+    s_pointer_slot.acc_dy += dy;
+    s_pointer_slot.buttons = buttons;
+    s_pointer_slot.present = 1;
+    if (dx != 0 || dy != 0) s_pointer_slot.motion_seq++;
+    NEXUS_BARRIER();
+    s_pointer_slot.seq = seq + 2u;
+}
+
+static int ps2_pointer_seqlock_read(pointer_snapshot_t *snap)
+{
+    uint32_t s1, s2;
+    do {
+        s1 = s_pointer_slot.seq;
+        NEXUS_BARRIER();
+        snap->acc_dx     = s_pointer_slot.acc_dx;
+        snap->acc_dy     = s_pointer_slot.acc_dy;
+        snap->acc_wheel  = s_pointer_slot.acc_wheel;
+        snap->buttons    = s_pointer_slot.buttons;
+        snap->present    = s_pointer_slot.present;
+        snap->motion_seq = s_pointer_slot.motion_seq;
+        NEXUS_BARRIER();
+        s2 = s_pointer_slot.seq;
+    } while ((s1 & 1u) != 0u || s1 != s2);
+    snap->seq = s1;
+    return snap->present;
+}
+
+int ps2_usb_pointer_consume(int32_t *dx, int32_t *dy, uint8_t *buttons)
+{
+    pointer_snapshot_t snap;
+    if (!ps2_pointer_seqlock_read(&snap)) {
+        if (dx) *dx = 0;
+        if (dy) *dy = 0;
+        if (buttons) *buttons = s_consumed.buttons;
+        return 0;
+    }
+    if (dx) *dx = snap.acc_dx - s_consumed.acc_dx;
+    if (dy) *dy = snap.acc_dy - s_consumed.acc_dy;
+    if (buttons) *buttons = snap.buttons;
+    s_consumed = snap;
+    return 1;
+}
+
+int ps2_usb_pointer_follow(int32_t *dx, int32_t *dy)
+{
+    pointer_snapshot_t snap;
+    int32_t rdx, rdy;
+    if (!ps2_pointer_seqlock_read(&snap)) {
+        if (dx) *dx = 0;
+        if (dy) *dy = 0;
+        return 0;
+    }
+    rdx = snap.acc_dx - s_consumed.acc_dx;
+    rdy = snap.acc_dy - s_consumed.acc_dy;
+    s_consumed.acc_dx = snap.acc_dx;
+    s_consumed.acc_dy = snap.acc_dy;
+    s_consumed.acc_wheel = snap.acc_wheel;
+    s_consumed.motion_seq = snap.motion_seq;
+    if (dx) *dx = rdx;
+    if (dy) *dy = rdy;
+    return (rdx != 0 || rdy != 0);
+}
 
 static void ps2_usb_input_tick(uint32_t tick)
 {
@@ -1138,6 +1211,7 @@ static void ps2_usb_input_tick(uint32_t tick)
                 uint32_t w = s_isr_kbd_w;
                 if ((uint32_t)(w - s_isr_kbd_r) < 16u) {
                     for (int k = 0; k < 8; k++) s_isr_kbd[w & 15u][k] = report[k];
+                    NEXUS_BARRIER();
                     s_isr_kbd_w = w + 1u;
                 }
             } else {
@@ -1145,18 +1219,15 @@ static void ps2_usb_input_tick(uint32_t tick)
                 const int dx = (int)(int8_t)report[1];
                 const int dy = (int)(int8_t)report[2];
                 s_mouse_reports++;
-                if (s_isr_has_mouse && btns != s_isr_btns && !s_isr_has_edge) {
-                    s_isr_edge_dx   = s_isr_dx;
-                    s_isr_edge_dy   = s_isr_dy;
-                    s_isr_edge_btns = s_isr_btns;
-                    s_isr_has_edge  = 1;
-                    s_isr_dx = 0;
-                    s_isr_dy = 0;
+                if (btns != s_pointer_slot.buttons) {
+                    uint16_t next = (uint16_t)((s_btn_edge_h + 1u) & (PS2_BTN_EDGE_N - 1u));
+                    if (next != s_btn_edge_t) {
+                        s_btn_edge[s_btn_edge_h] = btns;
+                        NEXUS_BARRIER();
+                        s_btn_edge_h = next;
+                    }
                 }
-                s_isr_btns = btns;
-                s_isr_dx  += dx;
-                s_isr_dy  += dy;
-                s_isr_has_mouse = 1;
+                ps2_pointer_seqlock_write((int32_t)dx, (int32_t)dy, btns);
             }
         }
     }
@@ -1223,23 +1294,24 @@ void ps2_usb_poll(void)
         while (s_isr_kbd_r != s_isr_kbd_w) {
             uint8_t kb[8];
             uint32_t r = s_isr_kbd_r;
+            NEXUS_BARRIER();
             for (int k = 0; k < 8; k++) kb[k] = s_isr_kbd[r & 15u][k];
+            NEXUS_BARRIER();
             s_isr_kbd_r = r + 1u;
             ps2_usb_process_keyboard_report(kb);
         }
-        if (s_isr_has_edge) {
-            int edx = s_isr_edge_dx, edy = s_isr_edge_dy;
-            uint8_t eb = s_isr_edge_btns;
-            s_isr_has_edge = 0;
-            ps2_usb_on_mouse(edx, edy, eb);
+        while (s_btn_edge_t != s_btn_edge_h) {
+            uint8_t b;
+            NEXUS_BARRIER();
+            b = s_btn_edge[s_btn_edge_t];
+            s_btn_edge_t = (uint16_t)((s_btn_edge_t + 1u) & (PS2_BTN_EDGE_N - 1u));
+            ps2_usb_on_mouse(0, 0, b);
         }
-        if (s_isr_has_mouse) {
-            int dx = s_isr_dx, dy = s_isr_dy;
-            uint8_t b = s_isr_btns;
-            s_isr_dx -= dx;
-            s_isr_dy -= dy;
-            s_isr_has_mouse = 0;
-            ps2_usb_on_mouse(dx, dy, b);
+        {
+            int32_t dx = 0, dy = 0;
+            uint8_t b = 0;
+            if (ps2_usb_pointer_consume(&dx, &dy, &b))
+                ps2_usb_on_mouse((int)dx, (int)dy, b);
         }
     } else {
         for (uint32_t i = 0; i < DEV_SLOTS; i++) {
@@ -1261,7 +1333,7 @@ void ps2_usb_poll(void)
 void ps2_usb_input_plane(int on)
 {
     if (on) {
-        s_isr_dx = s_isr_dy = s_isr_has_mouse = s_isr_has_edge = 0;
+        s_btn_edge_h = s_btn_edge_t = 0;
         s_isr_kbd_w = s_isr_kbd_r = 0u;
         s_plane_collects = 1;
         ps2_irq_input_set_hook(ps2_usb_input_tick);

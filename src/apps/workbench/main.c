@@ -88,6 +88,7 @@ static void     posix_comp_render(void *x, int full);
 static int posix_comp_drain(void *x) {
     (void)x;
     EVT ev;
+    int redraw = 0;
     /* Poll and process all pending system events */
     while (get_evt(&ev, 0) == E_OK) {
         if (ev.type == EV_WND_CLOSE) {
@@ -226,12 +227,32 @@ static int posix_comp_drain(void *x) {
                 }
             }
         }
+        redraw |= comp_evt_redraw(ev.type == EV_MOUSE_MOVE, ev.button,
+                                  s_dragging || s_resizing || s_sliding_tab ||
+                                      btron_dnd_is_active(),
+                                  global_menu_is_open() || tracker_is_menu_open());
     }
 
-    return 1;   /* hosted desktop repaints at the plane period: animations and blink are damage */
+    return redraw;
 }
 
-static int  posix_comp_detect(void *x) { (void)x; return 1; }
+static H s_posix_prev_mx, s_posix_prev_my;
+static uint32_t s_posix_caret_us;
+
+static int posix_comp_detect(void *x) {
+    int d = 0;
+    H mx = 0, my = 0;
+    uint32_t now = posix_comp_now(x);
+    get_baremetal_mouse_pos(&mx, &my);
+    if (wnd_any_image_invalid()) d = 1;
+    if (about_is_animating()) d = 1;
+    if (mx != s_posix_prev_mx || my != s_posix_prev_my) d = 1;
+    if ((uint32_t)(now - s_posix_caret_us) >= 500000u) {
+        s_posix_caret_us = now;
+        d = 1;
+    }
+    return d;
+}
 static void posix_comp_idle(void *x) {
     struct timespec ts = { 0, 1000000L };   /* nothing due: sleep 1 ms, the INPUT period */
     (void)x;
@@ -246,12 +267,6 @@ static void posix_comp_render(void *x, int full) {
     if (about_is_animating()) {
         WND *aw = about_get_wnd();
         if (aw) inval_wnd(aw);
-    }
-
-    /* Continuous cursor blinking for the active focused terminal / window */
-    WND *top_focused = get_top_wnd();
-    if (top_focused && top_focused->focused) {
-        inval_wnd(top_focused);
     }
 
     /* Render full BTRON desktop composition */
@@ -275,9 +290,16 @@ static void posix_comp_render(void *x, int full) {
     if (btron_dnd_is_active()) {
         btron_dnd_render_ghost(s_desktop_screen_dev);
     }
+}
 
-    /* Flush composite buffer to SDL window */
+static uint32_t posix_comp_present(void *x) {
+    H mx = 0, my = 0;
+    (void)x;
     flush_gdev_to_sdl(s_desktop_screen_dev);
+    get_baremetal_mouse_pos(&mx, &my);
+    s_posix_prev_mx = mx;
+    s_posix_prev_my = my;
+    return 0u;
 }
 
 static const btron_plane_cfg_t s_posix_planes = {
@@ -287,7 +309,7 @@ static const btron_plane_cfg_t s_posix_planes = {
 };
 static const compositor_ops_t s_posix_comp_ops = {
     .now_us = posix_comp_now, .drain_events = posix_comp_drain, .detect_damage = posix_comp_detect,
-    .render = posix_comp_render, .present = NULL, .idle = posix_comp_idle
+    .render = posix_comp_render, .present = posix_comp_present, .idle = posix_comp_idle
 };
 static compositor_t s_posix_comp;
 static int s_posix_comp_ready;

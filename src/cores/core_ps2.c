@@ -202,16 +202,12 @@ static void ps2_move_flush(void)
     if (snd_evt(&ev) == E_OK) s_move_dx = s_move_dy = 0;   /* MOVE may be dropped; keep accumulating */
 }
 
-static __attribute__((noinline)) void ps2_move_mouse(int dx, int dy)
+static void ps2_apply_delta(int dx, int dy, int enqueue)
 {
     const int32_t gain = g_ptr_gain_fp > 0 ? g_ptr_gain_fp : PS2_MOUSE_VELOCITY_FP;
-    const uint32_t delay_us = g_ptr_delay_us > 0u ? g_ptr_delay_us : PS2_MOUSE_DELAY_US;
-    const int32_t comp_gain = gain;   /* deterministic: no wall-time dependent gain */
-    (void)delay_us;
-
     int32_t nx, ny;
-    dx = (int)dp_ptr_scale((int32_t)dx, comp_gain, &s_mouse_rem_x);
-    dy = (int)dp_ptr_scale((int32_t)dy, comp_gain, &s_mouse_rem_y);
+    dx = (int)dp_ptr_scale((int32_t)dx, gain, &s_mouse_rem_x);
+    dy = (int)dp_ptr_scale((int32_t)dy, gain, &s_mouse_rem_y);
     if (dx == 0 && dy == 0) return;
     nx = (int32_t)s_mouse_x + dx;
     ny = (int32_t)s_mouse_y + dy;
@@ -220,9 +216,22 @@ static __attribute__((noinline)) void ps2_move_mouse(int dx, int dy)
     s_mouse_x = (int)nx;
     s_mouse_y = (int)ny;
     set_baremetal_mouse_pos((H)s_mouse_x, (H)s_mouse_y);
+    if (enqueue) {
+        s_move_dx += dx;
+        s_move_dy += dy;
+    }
+}
 
-    s_move_dx += dx;
-    s_move_dy += dy;
+static __attribute__((noinline)) void ps2_move_mouse(int dx, int dy)
+{
+    ps2_apply_delta(dx, dy, 1);
+}
+
+static void ps2_pointer_follow(void)
+{
+    int32_t dx = 0, dy = 0;
+    if (ps2_usb_pointer_follow(&dx, &dy))
+        ps2_apply_delta((int)dx, (int)dy, 0);
 }
 
 static void ps2_click_mouse(int button, int down)
@@ -419,15 +428,11 @@ void btron_core_print_ver(ShellOutputFn out_fn, void *ud, const char *arg)
     }
 }
 
-ER slp_tsk(void)         { return E_OK; }
-ER wup_tsk(ID tskid)     { (void)tskid; return E_OK; }
-
 /* ── Desktop session: input plane + presentation pass ────────────── */
 
 static uint32_t s_pass_panel_due, s_pass_full_due;   /* us, btron_render_perf_us() clock */
 static GDEV    *s_gui_screen;
-static int      s_task_driving;
-static int      s_in_gui_pass;   /* dly_tsk must not recurse into the compositor */
+static int      s_in_gui_pass;   /* nested compositor latch */
 
 /* ps2_cursor_input_task - the 1 ms input worker: pad, USB, key repeat, pointer. */
 static void ps2_cursor_input_task(GDEV *screen, uint32_t now_us)
@@ -444,13 +449,16 @@ static void ps2_cursor_input_task(GDEV *screen, uint32_t now_us)
     ps2_plane_charge(&s_plane_input, t0, ASYNC_INPUT_BUDGET_US);
 }
 
-/* btron_cooperative_input_pump - lets long-running apps keep the pointer live. */
+static ID s_input_tskid;
+
+/* btron_cooperative_input_pump - wake INPUT and follow the seqlock; never snd_evt. */
 void btron_cooperative_input_pump(void)
 {
     static volatile int s_in_pump;
     if (!s_gui_active || !s_gui_screen || s_in_pump) return;   /* never re-enter */
     s_in_pump = 1;
-    ps2_cursor_input_task(s_gui_screen, 0);
+    if (s_input_tskid > 0) wup_tsk(s_input_tskid);
+    ps2_pointer_follow();
     s_in_pump = 0;
 }
 
@@ -480,20 +488,20 @@ typedef struct {
 
 static ps2_comp_ctx_t   s_ps2_ctx;
 static compositor_t     s_ps2_comp;
-static const btron_plane_cfg_t s_ps2_comp_cfg;   /* all zero: no pacing of its own */
 
 static uint32_t ps2_comp_now(void *x) { (void)x; return btron_render_perf_us(); }
 
 static void ps2_comp_poll_input(void *x)
 {
-    ps2_comp_ctx_t *c = x;
-    ps2_cursor_input_task(c->screen, 0);
+    (void)x;
+    ps2_pointer_follow();
 }
 
 static int ps2_comp_drain(void *x)
 {
     ps2_comp_ctx_t *c = x;
     EVT ev;
+    int redraw = 0;
 
     c->ui_t0 = ps2_count_read();
     ps2_console_shell_poll();
@@ -501,14 +509,36 @@ static int ps2_comp_drain(void *x)
     c->force_full = 0;
     while (get_evt(&ev, 0) == E_OK) {
         workbench_process_event(c->screen, &ev);
-        if (ev.type != EV_MOUSE_MOVE) c->force_full = 1;
+        if (comp_evt_redraw(ev.type == EV_MOUSE_MOVE, ev.button,
+                            wnd_mgr_is_interacting(),
+                            global_menu_is_open() || tracker_is_menu_open())) {
+            redraw = 1;
+            if (ev.type != EV_MOUSE_MOVE) c->force_full = 1;
+        }
     }
     c->pass_mx = s_mouse_x;
     c->pass_my = s_mouse_y;
 
     orchestra_ui_tick();
     cassette_service();
-    return 1;   /* damage is decided per band in render(); GL layers are dirty every pass */
+    return redraw;
+}
+
+static int ps2_comp_detect(void *x)
+{
+    (void)x;
+    WND *lay;
+    if (s_mouse_x != s_shown_x || s_mouse_y != s_shown_y) return 1;
+    lay = wnd_gl_layer();
+    for (WND *w = get_wnd_list(); w; w = w->next) {
+        if (!w->visible || !w->paint) continue;
+        if (w->gl_layer && w == lay) {
+            if (!w->img_valid) return 1;   /* app task asked for a 3D frame */
+            continue;
+        }
+        if (!w->img_valid) return 1;
+    }
+    return 0;
 }
 
 static void ps2_comp_render(void *x, int full)
@@ -521,16 +551,10 @@ static void ps2_comp_render(void *x, int full)
     c->painted = 0;
     c->set = (ps2_bandset_t){ { { 0, 0, 0, 0 } }, 0, 0 };
 
-    {   /* GL layers refresh every pass; software GL windows take turns. */
-        static uint32_t turn;
-        WND *sw[4];
-        int n = 0;
-
-        for (WND *w = get_wnd_list(); w; w = w->next) {
-            if (!w->visible || !w->gl_surf) continue;
-            if (w == wnd_gl_layer()) inval_wnd(w); else if (n < 4) sw[n++] = w;
-        }
-        if (n > 0) inval_wnd(sw[turn++ % (uint32_t)n]);
+    {   /* 3D rate is the app task (inval_wnd + dly_tsk).  Cursor-only freezes
+         * the layer so present replays the last GIF stream. */
+        WND *lay = wnd_gl_layer();
+        if (!(lay && lay->visible && !lay->img_valid)) wnd_gl_freeze(1);
     }
 
     ps2_bands_for_pass(&c->set, c->pass_mx, c->pass_my, s_shown_x, s_shown_y);
@@ -585,6 +609,8 @@ static uint32_t ps2_comp_present(void *x)
     if (!c->painted) return 0u;
     c->painted = 0;
 
+    (void)ps2_gif_drain();
+    (void)ps2_gif_reap();
     if (c->dbl) flip_wait_us = ps2_gs_flip(c->force_full ? 1 : 0);
     if (ps2_band_is_full(&c->set.b[0])) s_pass_full_due = btron_render_perf_us();
 
@@ -599,7 +625,7 @@ static uint32_t ps2_comp_present(void *x)
 
 static const compositor_ops_t s_ps2_comp_ops = {
     .ctx = &s_ps2_ctx, .now_us = ps2_comp_now, .poll_input = ps2_comp_poll_input,
-    .drain_events = ps2_comp_drain, .detect_damage = NULL,
+    .drain_events = ps2_comp_drain, .detect_damage = ps2_comp_detect,
     .render = ps2_comp_render, .present = ps2_comp_present, .idle = NULL
 };
 
@@ -610,44 +636,71 @@ static void ps2_gui_pass(GDEV *screen)
     s_in_gui_pass = 1;
     if (s_ps2_ctx.screen != screen || !s_ps2_comp.ops) {
         s_ps2_ctx.screen = screen;
-        comp_init(&s_ps2_comp, &s_ps2_comp_ops, &s_ps2_comp_cfg, ASYNC_UI_BUDGET_US);
+        comp_init(&s_ps2_comp, &s_ps2_comp_ops, btron_planes(), ASYNC_UI_BUDGET_US);
     }
     (void)comp_pass(&s_ps2_comp);
     wnd_gl_freeze(0);          /* single release point for every exit path of a pass */
     s_in_gui_pass = 0;
 }
 
-/* ── µITRON tasks: pass-driven, bodies run on the caller's stack ─── */
+/* ── µITRON tasks: cooperative stacks + btron_ctx_switch (boot_ps2.s) ─── */
 
-#define PS2_MAX_TASKS 16
+#define PS2_MAX_TASKS       16
+#define PS2_TASK_STACK_SIZE 16384u
 
 typedef struct {
-    T_CTSK config;
-    int    active, started, holding;
+    T_CTSK   config;
+    int      active, started, runnable, sleeping;
+    uint32_t wake_count;
+    void    *sp;
 } PS2_TASK;
 
-static PS2_TASK  s_ps2_tasks[PS2_MAX_TASKS];
-static ID        s_ps2_task_at[PS2_MAX_TASKS + 1];
-static uint32_t  s_task_ms, s_task_us_rem, s_task_count_last;
-static int       s_task_clock_running;
+static uint8_t  s_ps2_task_stacks[PS2_MAX_TASKS][PS2_TASK_STACK_SIZE] __attribute__((aligned(16)));
+static PS2_TASK s_ps2_tasks[PS2_MAX_TASKS];
+static void    *s_scheduler_sp;
+static int      s_current_task_idx = -1;
+static uint32_t s_task_ms, s_task_us_rem, s_task_count_last;
+static int      s_task_clock_running;
+
+extern char _gp[];
+void btron_ctx_switch(void **old_sp, void *new_sp);
+
+static void btron_task_trampoline(void)
+{
+    int idx = s_current_task_idx;
+    if (idx >= 0 && idx < PS2_MAX_TASKS && s_ps2_tasks[idx].config.task)
+        s_ps2_tasks[idx].config.task(s_ps2_tasks[idx].config.exinf);
+    ext_tsk();
+}
 
 static PS2_TASK *ps2_task_self(void)
 {
-    ID id;
-
-    if (s_task_driving <= 0 || s_task_driving > PS2_MAX_TASKS) return NULL;
-    id = s_ps2_task_at[s_task_driving];
-    return (id > 0 && id <= PS2_MAX_TASKS) ? &s_ps2_tasks[id - 1] : NULL;
+    int idx = s_current_task_idx;
+    if (idx < 0 || idx >= PS2_MAX_TASKS) return NULL;
+    return s_ps2_tasks[idx].active ? &s_ps2_tasks[idx] : NULL;
 }
 
 ID cre_tsk(const T_CTSK *pk)
 {
     if (!pk || !pk->task) return E_PAR;
     for (int i = 0; i < PS2_MAX_TASKS; i++) {
+        uint32_t *frame;
+        uint8_t *stk_top;
+        int k;
         if (s_ps2_tasks[i].active) continue;
-        s_ps2_tasks[i].config  = *pk;
-        s_ps2_tasks[i].active  = 1;
-        s_ps2_tasks[i].started = s_ps2_tasks[i].holding = 0;
+        stk_top = s_ps2_task_stacks[i] + PS2_TASK_STACK_SIZE;
+        stk_top = (uint8_t *)((uintptr_t)stk_top & ~7u);
+        frame = (uint32_t *)(stk_top - 48);
+        for (k = 0; k < 12; k++) frame[k] = 0;
+        frame[9]  = (uint32_t)(uintptr_t)_gp;
+        frame[10] = (uint32_t)(uintptr_t)btron_task_trampoline;
+        s_ps2_tasks[i].sp       = frame;
+        s_ps2_tasks[i].config   = *pk;
+        s_ps2_tasks[i].active   = 1;
+        s_ps2_tasks[i].started  = 0;
+        s_ps2_tasks[i].runnable = 0;
+        s_ps2_tasks[i].sleeping = 0;
+        s_ps2_tasks[i].wake_count = 0;
         return i + 1;
     }
     return E_LIMIT;
@@ -659,7 +712,9 @@ ER sta_tsk(ID tskid, VW exinf)
     PS2_TASK *t = &s_ps2_tasks[tskid - 1];
     if (!t->active || !t->config.task) return E_NOEXS;
     if (exinf != 0) t->config.exinf = exinf;
-    t->started = 1;
+    t->started  = 1;
+    t->runnable = 1;
+    t->sleeping = 0;
     return E_OK;
 }
 
@@ -668,8 +723,7 @@ ER ter_tsk(ID tskid)
     if (tskid <= 0 || tskid > PS2_MAX_TASKS) return E_ID;
     PS2_TASK *t = &s_ps2_tasks[tskid - 1];
     if (!t->active) return E_NOEXS;
-    t->started = 0;
-    t->holding = 0;
+    t->started = t->runnable = t->sleeping = 0;
     return E_OK;
 }
 
@@ -678,25 +732,49 @@ ER del_tsk(ID tskid)
     if (tskid <= 0 || tskid > PS2_MAX_TASKS) return E_ID;
     PS2_TASK *t = &s_ps2_tasks[tskid - 1];
     if (!t->active) return E_NOEXS;
-    t->active  = 0;
-    t->started = 0;
-    t->holding = 0;
+    t->active = t->started = t->runnable = t->sleeping = 0;
     return E_OK;
 }
 
 void ext_tsk(void)
 {
-    PS2_TASK *t = ps2_task_self();
-    if (t) {
-        t->active  = 0;
-        t->started = 0;
-        t->holding = 0;
+    int idx = s_current_task_idx;
+    if (idx >= 0 && idx < PS2_MAX_TASKS) {
+        s_ps2_tasks[idx].active = s_ps2_tasks[idx].started = 0;
+        s_ps2_tasks[idx].runnable = s_ps2_tasks[idx].sleeping = 0;
     }
+    s_current_task_idx = -1;
+    if (s_scheduler_sp) {
+        void *dummy = NULL;
+        btron_ctx_switch(&dummy, s_scheduler_sp);
+    }
+    for (;;) { __asm__ volatile("nop"); }
 }
 
 void exd_tsk(void)
 {
     ext_tsk();
+}
+
+ER slp_tsk(void)
+{
+    PS2_TASK *t = ps2_task_self();
+    if (!t) return E_OBJ;
+    t->sleeping = 1;
+    t->runnable = 0;
+    t->wake_count = 0xFFFFFFFFu;
+    s_current_task_idx = -1;
+    if (s_scheduler_sp) btron_ctx_switch(&t->sp, s_scheduler_sp);
+    return E_OK;
+}
+
+ER wup_tsk(ID tskid)
+{
+    if (tskid <= 0 || tskid > PS2_MAX_TASKS) return E_ID;
+    if (!s_ps2_tasks[tskid - 1].active) return E_NOEXS;
+    s_ps2_tasks[tskid - 1].sleeping = 0;
+    s_ps2_tasks[tskid - 1].runnable = 1;
+    return E_OK;
 }
 
 ID   tk_cre_tsk(const T_CTSK *pk) { return cre_tsk(pk); }
@@ -725,7 +803,27 @@ static uint32_t ps2_task_ms(void)
 
 void btron_scheduler_dispatch(void)
 {
+    uint32_t now = ps2_count_read();
+    int self = s_current_task_idx;
     (void)ps2_task_ms();
+    for (int i = 0; i < PS2_MAX_TASKS; i++) {
+        if (!s_ps2_tasks[i].active || !s_ps2_tasks[i].started) continue;
+        if (i == self) continue;
+        if (s_ps2_tasks[i].sleeping) {
+            if (s_ps2_tasks[i].wake_count != 0xFFFFFFFFu &&
+                (int32_t)(now - s_ps2_tasks[i].wake_count) >= 0) {
+                s_ps2_tasks[i].sleeping = 0;
+                s_ps2_tasks[i].runnable = 1;
+            } else {
+                continue;
+            }
+        }
+        if (s_ps2_tasks[i].runnable) {
+            s_current_task_idx = i;
+            btron_ctx_switch(&s_scheduler_sp, s_ps2_tasks[i].sp);
+            s_current_task_idx = -1;
+        }
+    }
 }
 
 ER get_tim(SYSTIME *t)
@@ -735,71 +833,94 @@ ER get_tim(SYSTIME *t)
     return E_OK;
 }
 
-/* ps2_task_hold - spend ms (cap 250) polling input at tunable delay. */
-static void ps2_task_hold(uint32_t ms)
+void dly_tsk(W dlytim)
 {
-    PS2_TASK *self = ps2_task_self();
-    uint32_t start, budget, period, last;
-    const uint32_t delay_us = g_ptr_delay_us > 0u ? g_ptr_delay_us : PS2_MOUSE_DELAY_US;
-    const uint32_t tpu = btron_ee_ticks_per_us();
-
-    if (!s_timebase_ok || ms == 0) return;
-    if (ms > 250u) ms = 250u;
-    period = (delay_us > 0u ? delay_us : 250u) * tpu;
-    budget = ms * 1000u * tpu;
-    start  = last = ps2_count_read();
-
-    if (self) self->holding = 1;
-    while ((uint32_t)(ps2_count_read() - start) < budget) {
-        const uint32_t now = ps2_count_read();
-        if ((uint32_t)(now - last) >= period) {
-            last = now;
-            if (s_gui_active && s_gui_screen) {
-                ps2_cursor_input_task(s_gui_screen, 0);
-                if (delay_us <= PS2_MOUSE_COMP_MAX_US &&
-                    (s_mouse_x != s_shown_x || s_mouse_y != s_shown_y)) {
-                    break;
-                }
-            }
-        }
-        btron_scheduler_dispatch();
-        __asm__ volatile("nop" : : : "memory");
+    PS2_TASK *t = ps2_task_self();
+    (void)ps2_task_ms();
+    if (t) {
+        uint32_t tpu = btron_ee_ticks_per_us();
+        uint32_t ticks = (dlytim > 0 ? (uint32_t)dlytim : 0u) * 1000u * (tpu ? tpu : 1u);
+        t->sleeping = 1;
+        t->runnable = 0;
+        t->wake_count = ps2_count_read() + ticks;
+        s_current_task_idx = -1;
+        if (s_scheduler_sp) btron_ctx_switch(&t->sp, s_scheduler_sp);
+    } else {
+        uint32_t tpu = btron_ee_ticks_per_us();
+        uint32_t start = ps2_count_read();
+        uint32_t budget = (dlytim > 0 ? (uint32_t)dlytim : 1u) * 1000u * (tpu ? tpu : 1u);
+        while ((uint32_t)(ps2_count_read() - start) < budget)
+            __asm__ volatile("nop");
     }
-    if (self) self->holding = 0;
 }
 
-static void ps2_task_dly(W dlytim)
-{
-    if (s_gui_screen) ps2_gui_pass(s_gui_screen);
-    ps2_task_hold(dlytim > 0 ? (uint32_t)dlytim : 0u);
-}
+ER tk_dly_tsk(W dlytim) { dly_tsk(dlytim); return E_OK; }
 
-void dly_tsk(W dlytim)   { (void)ps2_task_ms(); ps2_task_dly(dlytim); }
-ER   tk_dly_tsk(W dlytim) { ps2_task_dly(dlytim); return E_OK; }
-
-/* btron_list_tasks - `ps` census: three system planes (Option B), then app bodies. */
+/* btron_list_tasks - `ps` census: live cre_tsk slots. */
 W btron_list_tasks(BTRON_TSK_ROW *out, W max)
 {
     W n = 0;
     if (!out || max <= 0) return 0;
 
-    if (n < max) { out[n] = (BTRON_TSK_ROW){ 1, "ps2_input", 1, (FP)(void *)ps2_cursor_input_task, BTRON_TSK_RUN }; n++; }
-    if (n < max) { out[n] = (BTRON_TSK_ROW){ 2, "ps2_desktop", 5, (FP)(void *)launch_ps2_desktop_session, s_gui_active ? BTRON_TSK_RUN : BTRON_TSK_SLEEP }; n++; }
-    if (n < max) { out[n] = (BTRON_TSK_ROW){ 3, "ps2_shell", 4, (FP)(void *)ps2_console_shell_poll, s_gui_active ? BTRON_TSK_SLEEP : BTRON_TSK_RUN }; n++; }
+    if (!s_gui_active && n < max) {
+        out[n] = (BTRON_TSK_ROW){ 3, "ps2_shell", 4, (FP)(void *)ps2_console_shell_poll, BTRON_TSK_RUN };
+        n++;
+    }
     for (int i = 0; i < PS2_MAX_TASKS && n < max; i++) {
         const PS2_TASK *t = &s_ps2_tasks[i];
         if (!t->active) continue;
-        out[n].tskid = (ID)(n + 1);
+        out[n].tskid = (ID)(i + 1);
         out[n].name  = t->config.name ? t->config.name : "(worker)";
         out[n].pri   = t->config.itskpri;
         out[n].entry = t->config.task;
-        out[n].state = !t->started ? BTRON_TSK_NEW : t->holding ? BTRON_TSK_SLEEP : BTRON_TSK_RUN;
+        out[n].state = !t->started ? BTRON_TSK_NEW : t->sleeping ? BTRON_TSK_SLEEP : BTRON_TSK_RUN;
         n++;
     }
     return n;
 }
 
-/* launch_ps2_desktop_session - cold paint, then run passes until Ctrl+Q. */
+static void ps2_input_entry(VW exinf)
+{
+    (void)exinf;
+    while (s_gui_active) {
+        ps2_cursor_input_task(s_gui_screen, 0);
+        dly_tsk(1);
+    }
+    ext_tsk();
+}
+
+static void ps2_ui_entry(VW exinf)
+{
+    (void)exinf;
+    while (s_gui_active) {
+        if (s_gui_screen) ps2_gui_pass(s_gui_screen);
+        dly_tsk(0);
+    }
+    ext_tsk();
+}
+
+static void ps2_spawn_planes(void)
+{
+    T_CTSK ctsk;
+    tkl_memset(&ctsk, 0, sizeof(ctsk));
+    ctsk.task = ps2_input_entry;
+    ctsk.itskpri = 1;
+    ctsk.stksz = (W)PS2_TASK_STACK_SIZE;
+    ctsk.name = "ps2_input";
+    s_input_tskid = cre_tsk(&ctsk);
+    if (s_input_tskid > 0) sta_tsk(s_input_tskid, 0);
+    tkl_memset(&ctsk, 0, sizeof(ctsk));
+    ctsk.task = ps2_ui_entry;
+    ctsk.itskpri = 1;
+    ctsk.stksz = (W)PS2_TASK_STACK_SIZE;
+    ctsk.name = "ps2_desktop";
+    {
+        ID ui = cre_tsk(&ctsk);
+        if (ui > 0) sta_tsk(ui, 0);
+    }
+}
+
+/* launch_ps2_desktop_session - cold paint, then dispatch INPUT/UI until Ctrl+Q. */
 void launch_ps2_desktop_session(void)
 {
     GDEV *screen;
@@ -809,6 +930,8 @@ void launch_ps2_desktop_session(void)
 
     screen = init_baremetal_desktop((uint32_t *)s_desktop_backbuffer, PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
     if (!screen) { ps2_kprintf("[FATAL] desktop init failed\n"); ps2_set_gui(0); return; }
+    s_gui_screen = screen;
+    ps2_spawn_planes();
     btron_desktop_note_size(PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
     workbench_init(PS2_SCREEN_WIDTH);
     open_mars_window_rect(6, 32, 392, 276);
@@ -836,7 +959,6 @@ void launch_ps2_desktop_session(void)
         s_shown_x = s_mouse_x; s_shown_y = s_mouse_y;
     }
     s_pass_panel_due = s_pass_full_due = btron_render_perf_us();
-    s_gui_screen = screen;
     { RENDER_STATS discard; btron_render_stats_take(&discard); }
     ps2_kprintf("[PS2] Desktop up. Ctrl+Q returns to the console.\n");
 #if BTRON_PS2_BENCH
@@ -845,7 +967,6 @@ void launch_ps2_desktop_session(void)
 #endif
     while (s_gui_active) {
         btron_scheduler_dispatch();
-        ps2_gui_pass(screen);
         __asm__ volatile("nop" : : : "memory");
     }
     ps2_page_double_apply(0u);

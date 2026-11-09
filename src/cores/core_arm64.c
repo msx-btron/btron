@@ -84,6 +84,7 @@ _Static_assert(HEAP_BASE == 0x02000000UL && HEAP_BASE >= BTRON_NOCACHE_END,
  * path on the Pi 400 (ASYNC.txt Tier-1). */
 #include <btron/async_rt.h>
 #include <btron/compositor.h>
+#include <btron/nexus_ring.h>
 #define ASYNC_UI_EVENT_BUDGET       16u
 #ifndef ASYNC_TELEMETRY
 #define ASYNC_TELEMETRY              1
@@ -495,6 +496,8 @@ static void fb_log_backspace(void) {
  * ═══════════════════════════════════════════════════════════════════ */
 
 static int  s_gui_active  = 0;   /* 1 = workbench is running */
+static ID   s_input_tskid;
+static compositor_t s_comp;
 static char s_cmd_buf[64];
 static int  s_cmd_pos     = 0;
 
@@ -504,6 +507,8 @@ void intercore_poll_signals(void);
 void btron_scheduler_dispatch(void);
 
 static void launch_pi4_desktop_session(uint32_t *gpu_fb);
+static void input_plane_entry(VW exinf);
+static void ui_plane_entry(VW exinf);
 
 static void pi4_shell_out(const char *text, COLOR col, void *user_data)
 {
@@ -776,22 +781,14 @@ static void poll_uart_input(uint32_t now) {
     }
 }
 
+static void pointer_follow(void);
+
 void btron_cooperative_input_pump(void) {
     static volatile int s_in_pump;
     if (!s_gui_active || s_in_pump) return;   /* never re-enter from a paint callback */
     s_in_pump = 1;
-    uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
-    if (g_use_xhci) {
-        if (!s_async_irq_active) {
-            xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
-        }
-        input_plane_task(NULL, now);
-    } else {
-        usb_poll_devices(NULL);
-    }
-    poll_uart_input(now);
-    /* Events stay queued: workbench_process_event() runs only from the compositor
-     * loop (ASYNC.txt: input plane never dispatches UI work inside a paint). */
+    if (s_input_tskid > 0) wup_tsk(s_input_tskid);
+    pointer_follow();
     s_in_pump = 0;
 }
 
@@ -809,20 +806,11 @@ static arm64_comp_ctx_t s_comp_ctx;
 
 static uint32_t arm64_comp_now(void *x) { (void)x; return *(volatile uint32_t *)(TIMER_BASE + 0x04); }
 
-/* ASYNC 1 ms input plane: USB, then the PL011 console keys. */
+/* INPUT is a peer task.  The compositor only follows the seqlock (no snd_evt). */
 static void arm64_comp_poll_input(void *x)
 {
-    arm64_comp_ctx_t *c = x;
-    uint32_t now = arm64_comp_now(x);
-
-    if (g_use_xhci) {
-        if (!s_async_irq_active) xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
-        input_plane_task(c->screen, now);
-    } else if ((now - c->last_usb_poll) >= ASYNC_INPUT_PERIOD_US) {
-        c->last_usb_poll = now;
-        usb_poll_devices(c->screen);
-    }
-    poll_uart_input(now);
+    (void)x;
+    pointer_follow();
 }
 
 static int arm64_comp_drain(void *x)
@@ -833,9 +821,9 @@ static int arm64_comp_drain(void *x)
 
     while (get_evt(&ev, 0) == E_OK) {
         workbench_process_event(c->screen, &ev);
-        if (ev.type != EV_MOUSE_MOVE || ev.button != 0 ||
-            wnd_mgr_is_interacting() || ev.pos.y <= 25 ||
-            global_menu_is_open() || tracker_is_menu_open())
+        if (comp_evt_redraw(ev.type == EV_MOUSE_MOVE, ev.button,
+                            wnd_mgr_is_interacting() || ev.pos.y <= 25,
+                            global_menu_is_open() || tracker_is_menu_open()))
             redraw = 1;
     }
     if (!s_gui_active) return -1;
@@ -843,7 +831,6 @@ static int arm64_comp_drain(void *x)
     orchestra_ui_tick();
     cassette_service();
     intercore_poll_signals();      /* non-blocking InterCore poll */
-    btron_scheduler_dispatch();
     return redraw;
 }
 
@@ -868,7 +855,13 @@ static void arm64_comp_render(void *x, int full)
     c->prev_mx = s_mouse_x;
     c->prev_my = s_mouse_y;
     workbench_render(c->screen, BTRON_SCREEN_W, BTRON_SCREEN_H);
+}
+
+static uint32_t arm64_comp_present(void *x)
+{
+    arm64_comp_ctx_t *c = x;
     blit_backbuffer_to_fb(c->gpu_fb);
+    return 0u;
 }
 
 static void arm64_comp_idle(void *x) { (void)x; __asm__ volatile("dsb sy" : : : "memory"); }
@@ -876,7 +869,7 @@ static void arm64_comp_idle(void *x) { (void)x; __asm__ volatile("dsb sy" : : : 
 static const compositor_ops_t s_comp_ops = {
     .ctx = &s_comp_ctx, .now_us = arm64_comp_now, .poll_input = arm64_comp_poll_input,
     .drain_events = arm64_comp_drain, .detect_damage = arm64_comp_detect,
-    .render = arm64_comp_render, .present = NULL, .idle = arm64_comp_idle
+    .render = arm64_comp_render, .present = arm64_comp_present, .idle = arm64_comp_idle
 };
 
 /* Stage 2: Launch full B-System Workbench desktop session. */
@@ -928,19 +921,36 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
 
     s_comp_ctx.last_usb_poll = *(volatile uint32_t *)(TIMER_BASE + 0x04);
 
-    compositor_t comp;
-    comp_init(&comp, &s_comp_ops, btron_planes(), ASYNC_UI_BUDGET_US);
-    s_comp_ctx.comp = &comp;
-    comp.pending = 0;   /* the cold paint above already presented frame 0 */
-    comp.full_pending = 0;
+    comp_init(&s_comp, &s_comp_ops, btron_planes(), ASYNC_UI_BUDGET_US);
+    s_comp_ctx.comp = &s_comp;
+    s_comp.pending = 0;   /* the cold paint above already presented frame 0 */
+    s_comp.full_pending = 0;
+
+    {
+        T_CTSK ctsk;
+        tkl_memset(&ctsk, 0, sizeof(ctsk));
+        ctsk.task = input_plane_entry;
+        ctsk.itskpri = 1;
+        ctsk.name = "pi4_input";
+        s_input_tskid = cre_tsk(&ctsk);
+        if (s_input_tskid > 0) sta_tsk(s_input_tskid, 0);
+        tkl_memset(&ctsk, 0, sizeof(ctsk));
+        ctsk.task = ui_plane_entry;
+        ctsk.itskpri = 1;
+        ctsk.name = "pi4_desktop";
+        {
+            ID ui = cre_tsk(&ctsk);
+            if (ui > 0) sta_tsk(ui, 0);
+        }
+    }
 
     /* The policy (damage, pacing, throttle, charge) is include/btron/compositor.h and is shared
-     * with the PS2 and POSIX cores; only the ops below are ARM64-specific. */
+     * with the PS2 and POSIX cores; INPUT and UI are equal-priority cre_tsk peers. */
     while (s_gui_active) {
-        (void)comp_pass(&comp);
+        btron_scheduler_dispatch();
     }
-    s_async_rt_stats.composite_us = comp.ui.last_us;
-    s_async_rt_stats.composite_max_us = comp.ui.max_us;
+    s_async_rt_stats.composite_us = s_comp.ui.last_us;
+    s_async_rt_stats.composite_max_us = s_comp.ui.max_us;
 
     s_active_gpu_fb = NULL;
     g_cursor_in_backbuffer = 1;
@@ -1136,11 +1146,8 @@ void rpi_timer_tick(void) {
  * Lock-free SPSC/MPSC ring topology with two-phase memory barrier commit.
  * ═══════════════════════════════════════════════════════════════════ */
 
-#define MAX_ARM64_TASKS         8
+#define MAX_ARM64_TASKS         16
 #define ARM64_TASK_STACK_SIZE   24576u  /* 24 KB stack per worker task */
-
-#define INTERCORE_QUEUE_CAPACITY 256u
-#define INTERCORE_QUEUE_MASK     (INTERCORE_QUEUE_CAPACITY - 1u)
 
 typedef struct {
     uint32_t type;    /* Signal/Event type (e.g. EVT_INPUT, SIG_WAKEUP, etc.) */
@@ -1151,43 +1158,20 @@ typedef struct {
     uint64_t data1;   /* Signal payload argument 1 */
 } intercore_msg_t;
 
-typedef struct {
-    intercore_msg_t   slots[INTERCORE_QUEUE_CAPACITY];
-    volatile uint32_t head;   /* Consumer read cursor */
-    volatile uint32_t tail;   /* Producer write cursor */
-    volatile uint32_t drops;  /* Drops under full capacity */
-} intercore_queue_t;
+NEXUS_RING_DEFINE(intercore_queue_t, intercore_msg_t, 256)
 
 static intercore_queue_t s_intercore_input_queue;
 static intercore_queue_t s_intercore_task_queues[MAX_ARM64_TASKS];
 
 int intercore_send(intercore_queue_t *q, const intercore_msg_t *msg) {
     if (!q || !msg) return -1;
-    uint32_t head = q->head;
-    uint32_t tail = q->tail;
-    if ((tail - head) >= INTERCORE_QUEUE_CAPACITY) {
-        q->drops++;
-        return -2; /* SNDR_FULL: non-blocking drop */
-    }
-    uint32_t idx = tail & INTERCORE_QUEUE_MASK;
-    q->slots[idx] = *msg;
-    __asm__ volatile("dmb sy" : : : "memory");
-    q->tail = tail + 1;
-    return 0; /* SNDR_OK */
+    return intercore_queue_t_snd(q, msg) == 0 ? 0 : -2;
 }
 
 int intercore_recv(intercore_queue_t *q, intercore_msg_t *out_msg) {
     if (!q || !out_msg) return -1;
-    uint32_t head = q->head;
-    uint32_t tail = q->tail;
-    if (head == tail) {
-        return 0; /* RCVR_EMPTY: non-blocking empty */
-    }
-    uint32_t idx = head & INTERCORE_QUEUE_MASK;
-    *out_msg = q->slots[idx];
-    __asm__ volatile("dmb sy" : : : "memory");
-    q->head = head + 1;
-    return 1; /* RCVR_DATA */
+    if (intercore_queue_t_len(q) == 0) return 0;
+    return intercore_queue_t_rcv(q, out_msg);
 }
 
 int intercore_signal_task(ID tskid, uint32_t sig_type, uint64_t data0, uint64_t data1) {
@@ -1377,7 +1361,7 @@ void dly_tsk(W dlytim) {
         uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
         s_arm64_tasks[idx].sleeping = 1;
         s_arm64_tasks[idx].runnable = 0;
-        s_arm64_tasks[idx].wake_us = now + (uint32_t)(dlytim > 0 ? dlytim : 1) * 1000U;
+        s_arm64_tasks[idx].wake_us = now + (uint32_t)(dlytim > 0 ? dlytim : 0) * 1000U;
         s_current_task_idx = -1;
         if (s_scheduler_sp) {
             btron_ctx_switch(&s_arm64_tasks[idx].sp, s_scheduler_sp);
@@ -1407,41 +1391,19 @@ W btron_list_tasks(BTRON_TSK_ROW *out, W max) {
     W n = 0;
     if (!out || max <= 0) return 0;
 
-    /* PID 1: Real-time Input Worker Plane */
-    if (n < max) {
-        out[n].tskid = 1;
-        out[n].name  = "pi4_input";
-        out[n].pri   = 1;
-        out[n].entry = (FP)(void *)input_plane_task;
-        out[n].state = BTRON_TSK_RUN;
-        n++;
-    }
-
-    /* PID 2: Desktop Presentation Plane */
-    if (n < max) {
-        out[n].tskid = 2;
-        out[n].name  = "pi4_desktop";
-        out[n].pri   = 5;
-        out[n].entry = (FP)(void *)launch_pi4_desktop_session;
-        out[n].state = s_gui_active ? BTRON_TSK_RUN : BTRON_TSK_SLEEP;
-        n++;
-    }
-
-    /* PID 3: Serial Console Shell Dispatcher */
-    if (n < max) {
+    if (!s_gui_active && n < max) {
         out[n].tskid = 3;
         out[n].name  = "pi4_shell";
         out[n].pri   = 4;
         out[n].entry = (FP)(void *)poll_uart_input;
-        out[n].state = s_gui_active ? BTRON_TSK_SLEEP : BTRON_TSK_RUN;
+        out[n].state = BTRON_TSK_RUN;
         n++;
     }
 
-    /* Dynamic Application Worker Tasks (PIDs 4+) */
     for (int i = 0; i < MAX_ARM64_TASKS && n < max; i++) {
         const ARM64_TASK *t = &s_arm64_tasks[i];
         if (!t->active) continue;
-        out[n].tskid = (ID)(n + 1);
+        out[n].tskid = t->tskid;
         out[n].name  = t->config.name ? t->config.name : "(worker)";
         out[n].pri   = t->config.itskpri;
         out[n].entry = t->config.task;
@@ -1461,8 +1423,10 @@ W btron_list_tasks(BTRON_TSK_ROW *out, W max) {
 
 void btron_scheduler_dispatch(void) {
     uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    int self = s_current_task_idx;
     for (int i = 0; i < MAX_ARM64_TASKS; i++) {
         if (!s_arm64_tasks[i].active || !s_arm64_tasks[i].started) continue;
+        if (i == self) continue;
         if (s_arm64_tasks[i].sleeping) {
             if (s_arm64_tasks[i].wake_us != 0xFFFFFFFFu &&
                 (int32_t)(now - s_arm64_tasks[i].wake_us) >= 0) {
@@ -1501,100 +1465,78 @@ static int32_t s_mouse_sub_y = 0;
 
 
 
-/* Subpixel residual history for Haiku OS curve */
-static float s_haiku_hist_x = 0.0f;
-static float s_haiku_hist_y = 0.0f;
+/* Subpixel residual history for Haiku OS curve, 16.16 fixed-point. */
+static int32_t s_haiku_hist_x;
+static int32_t s_haiku_hist_y;
 
 /* Acceleration Profile: 1 = RISC OS Stepped Curve, 2 = Haiku Continuous Smooth Curve (defined in input.c) */
 extern int g_mouse_accel_profile;
 
-static inline float fast_sqrtf(float val) {
-    if (val <= 0.0f) return 0.0f;
-#if defined(__aarch64__)
-    float res;
-    __asm__ volatile("fsqrt %s0, %s1" : "=w"(res) : "w"(val));
-    return res;
-#elif defined(__arm__) && defined(__ARM_FP)
-    float res;
-    __asm__ volatile("vsqrt.f32 %0, %1" : "=t"(res) : "t"(val));
-    return res;
-#else
-    float x = val;
-    float y = 0.5f * (x + 1.0f);
-    for (int i = 0; i < 6; i++) {
-        y = 0.5f * (y + x / y);
+static uint32_t isqrt_u32(uint32_t n)
+{
+    uint32_t x = n, y = 0, b = 1u << 30;
+    while (b > n) b >>= 2;
+    while (b) {
+        if (x >= y + b) { x -= y + b; y = (y >> 1) + b; }
+        else y >>= 1;
+        b >>= 2;
     }
     return y;
-#endif
 }
 
 /*
- * Haiku OS / BeOS Continuous 2D Mouse Accelerator
- * Directly replicates MouseDevice::_ComputeAcceleration from Haiku OS
- * (src/add-ons/input_server/devices/mouse/MouseInputDevice.cpp)
- *
- * - speed: 65536 = 1.0x (16.16 fixed-point)
- * - accel_factor: 65536 to 262144 (scaled by 524288.0)
- * - Uses 2D velocity magnitude sqrt(dx*dx + dy*dy) for isotropic acceleration
- * - Truncates symmetrically towards zero (floor for positive, ceil for negative)
- * - Retains signed fractional residual without directional bias
+ * Haiku OS / BeOS Continuous 2D Mouse Accelerator, 16.16 fixed-point.
+ * INPUT-plane law: no float.  speed_mult = 1.2 + step*0.4 maps to
+ * 78643 + step*26214; idle residual halves each empty sample.
  */
 void mouse_accelerate_pair_haiku(int32_t raw_x, int32_t raw_y, int32_t *out_dx, int32_t *out_dy)
 {
+    int32_t speed_mult, accel_scale, deltaX, deltaY, acc, pix_x, pix_y;
+    int32_t px, py;
+    uint32_t mag;
+
     if (raw_x == 0 && raw_y == 0) {
-        /* Idle residual decay */
-        s_haiku_hist_x *= 0.5f;
-        s_haiku_hist_y *= 0.5f;
-        if (s_haiku_hist_x > -0.05f && s_haiku_hist_x < 0.05f) s_haiku_hist_x = 0.0f;
-        if (s_haiku_hist_y > -0.05f && s_haiku_hist_y < 0.05f) s_haiku_hist_y = 0.0f;
+        s_haiku_hist_x >>= 1;
+        s_haiku_hist_y >>= 1;
+        if (s_haiku_hist_x > -3277 && s_haiku_hist_x < 3277) s_haiku_hist_x = 0;
+        if (s_haiku_hist_y > -3277 && s_haiku_hist_y < 3277) s_haiku_hist_y = 0;
         if (out_dx) *out_dx = 0;
         if (out_dy) *out_dy = 0;
         return;
     }
 
-    /* Clamp raw input bursts */
     if (raw_x > 512)  raw_x = 512;
     if (raw_x < -512) raw_x = -512;
     if (raw_y > 512)  raw_y = 512;
     if (raw_y < -512) raw_y = -512;
 
-    /* Base speed: mapped from g_mouse_step_mult (1..4 -> 1.6x .. 2.8x) */
-    float speed_mult = 1.2f + (float)g_mouse_step_mult * 0.4f;
+    speed_mult = 78643 + g_mouse_step_mult * 26214;   /* 1.2 + step*0.4 in 16.16 */
+    deltaX = raw_x * speed_mult + s_haiku_hist_x;
+    deltaY = raw_y * speed_mult + s_haiku_hist_y;
 
-    float deltaX = ((float)raw_x * speed_mult) + s_haiku_hist_x;
-    float deltaY = ((float)raw_y * speed_mult) + s_haiku_hist_y;
+    accel_scale = 3932 + g_mouse_step_mult * 1966;    /* 0.06 + step*0.03 in 16.16 */
+    px = deltaX >> 16;
+    py = deltaY >> 16;
+    mag = isqrt_u32((uint32_t)((int64_t)px * px + (int64_t)py * py));
+    acc = 65536 + (int32_t)mag * accel_scale;
+    if (acc > 294912) acc = 294912;                   /* 4.5x */
 
-    /* Haiku continuous acceleration curve */
-    float accel_scale = 0.06f + ((float)g_mouse_step_mult * 0.03f);
-    float speed_sq = (deltaX * deltaX) + (deltaY * deltaY);
-    float speed_mag = fast_sqrtf(speed_sq);
+    deltaX = (int32_t)(((int64_t)deltaX * acc) >> 16);
+    deltaY = (int32_t)(((int64_t)deltaY * acc) >> 16);
 
-    float acceleration = 1.0f + (speed_mag * accel_scale);
-    if (acceleration > 4.5f) {
-        acceleration = 4.5f;
-    }
-
-    deltaX *= acceleration;
-    deltaY *= acceleration;
-
-    /* Haiku integer quantization: floor for positive, ceil for negative */
-    int32_t pix_x = (deltaX >= 0.0f) ? (int32_t)deltaX : -(int32_t)(-deltaX);
-    int32_t pix_y = (deltaY >= 0.0f) ? (int32_t)deltaY : -(int32_t)(-deltaY);
-
-    /* Output displacement clamp */
+    pix_x = (deltaX >= 0) ? (deltaX >> 16) : -((-deltaX) >> 16);
+    pix_y = (deltaY >= 0) ? (deltaY >> 16) : -((-deltaY) >> 16);
     if (pix_x > 512)  pix_x = 512;
     if (pix_x < -512) pix_x = -512;
     if (pix_y > 512)  pix_y = 512;
     if (pix_y < -512) pix_y = -512;
 
-    s_haiku_hist_x = deltaX - (float)pix_x;
-    s_haiku_hist_y = deltaY - (float)pix_y;
-
-    /* Clamp residual within [-1.0f, +1.0f] */
-    if (s_haiku_hist_x > 1.0f) s_haiku_hist_x = 1.0f;
-    if (s_haiku_hist_x < -1.0f) s_haiku_hist_x = -1.0f;
-    if (s_haiku_hist_y > 1.0f) s_haiku_hist_y = 1.0f;
-    if (s_haiku_hist_y < -1.0f) s_haiku_hist_y = -1.0f;
+    s_haiku_hist_x = deltaX - (pix_x << 16);
+    s_haiku_hist_y = deltaY - (pix_y << 16);
+    if (s_haiku_hist_x > 65536)  s_haiku_hist_x = 65536;
+    if (s_haiku_hist_x < -65536) s_haiku_hist_x = -65536;
+    if (s_haiku_hist_y > 65536)  s_haiku_hist_y = 65536;
+    if (s_haiku_hist_y < -65536) s_haiku_hist_y = -65536;
 
     if (out_dx) *out_dx = pix_x;
     if (out_dy) *out_dy = pix_y;
@@ -1735,8 +1677,9 @@ int32_t dp_ptr_riscos(int32_t raw, int step, int32_t *carry)
     return dp_ptr_scale((raw < 0) ? -mag : mag, mult_fp, carry);
 }
 
-/* Raw HID delta batch -> accelerate -> integrate -> clamp -> gated MOVE. */
-static void mouse_motion_apply(int32_t rdx, int32_t rdy) {
+/* Raw HID delta batch -> accelerate -> integrate -> clamp.  emit=0 is the
+ * paint-pump follow path: position only, the event queue stays SPSC. */
+static void mouse_motion_apply(int32_t rdx, int32_t rdy, int emit) {
     if (rdx == 0 && rdy == 0) return;
 
     int32_t move_x = 0, move_y = 0;
@@ -1765,7 +1708,7 @@ static void mouse_motion_apply(int32_t rdx, int32_t rdy) {
     s_mouse_y = (H)ny;
     set_baremetal_mouse_pos(s_mouse_x, s_mouse_y);
 
-    if (pos_changed || move_x != 0 || move_y != 0) {
+    if (emit && (pos_changed || move_x != 0 || move_y != 0)) {
         EVT ev;
         ev.type   = EV_MOUSE_MOVE;
         ev.pos.x  = s_mouse_x;
@@ -1880,7 +1823,7 @@ static int usb_poll_devices(GDEV *screen) {
 
     if (mouse_activity) {
         mouse_buttons_apply(latest_buttons);
-        mouse_motion_apply(accum_dx, accum_dy);
+        mouse_motion_apply(accum_dx, accum_dy, 1);
         activity = 1;
     }
 
@@ -1939,7 +1882,7 @@ static void input_plane_task(GDEV *screen, uint32_t now_us) {
 
     /* 2. Coalesced motion application with current button state */
     if (snap.present && (rdx != 0 || rdy != 0))
-        mouse_motion_apply(rdx, rdy);
+        mouse_motion_apply(rdx, rdy, 1);
 
     /* Keyboard: drain the SPSC ring (ISR is the sole producer) */
     usb_kbd_report_t kbd_rep;
@@ -1947,6 +1890,61 @@ static void input_plane_task(GDEV *screen, uint32_t now_us) {
         kbd_report_to_events(&kbd_rep, now_us);
     }
     kbd_repeat_check(now_us);
+}
+
+static void pointer_follow(void)
+{
+    pointer_snapshot_t snap;
+    uint32_t s1, s2;
+    int32_t rdx, rdy;
+    if (!s_async_irq_active) return;
+    do {
+        s1 = s_pointer_slot.seq;
+        __asm__ volatile("dmb sy" : : : "memory");
+        snap.acc_dx     = s_pointer_slot.acc_dx;
+        snap.acc_dy     = s_pointer_slot.acc_dy;
+        snap.acc_wheel  = s_pointer_slot.acc_wheel;
+        snap.motion_seq = s_pointer_slot.motion_seq;
+        snap.present    = s_pointer_slot.present;
+        __asm__ volatile("dmb sy" : : : "memory");
+        s2 = s_pointer_slot.seq;
+    } while ((s1 & 1u) != 0 || s1 != s2);
+    rdx = snap.acc_dx - s_input_last.acc_dx;
+    rdy = snap.acc_dy - s_input_last.acc_dy;
+    s_input_last.acc_dx = snap.acc_dx;
+    s_input_last.acc_dy = snap.acc_dy;
+    s_input_last.acc_wheel = snap.acc_wheel;
+    s_input_last.motion_seq = snap.motion_seq;
+    if (snap.present && (rdx != 0 || rdy != 0))
+        mouse_motion_apply(rdx, rdy, 0);
+}
+
+static void input_plane_entry(VW exinf)
+{
+    (void)exinf;
+    while (s_gui_active) {
+        uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+        if (g_use_xhci) {
+            if (!s_async_irq_active) xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
+            input_plane_task(s_comp_ctx.screen, now);
+        } else if ((now - s_comp_ctx.last_usb_poll) >= ASYNC_INPUT_PERIOD_US) {
+            s_comp_ctx.last_usb_poll = now;
+            usb_poll_devices(s_comp_ctx.screen);
+        }
+        poll_uart_input(now);
+        dly_tsk(1);
+    }
+    ext_tsk();
+}
+
+static void ui_plane_entry(VW exinf)
+{
+    (void)exinf;
+    while (s_gui_active) {
+        (void)comp_pass(&s_comp);
+        dly_tsk(0);
+    }
+    ext_tsk();
 }
 
 /* ═══════════════════════════════════════════════════════════════════

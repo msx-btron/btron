@@ -379,6 +379,12 @@ void ps2_usb_poll(void);
  * The caller decides with the plane's measured verdict, not with its return value. */
 void ps2_usb_input_plane(int on);
 
+/* Seqlock consumer (INPUT task): motion since last consume plus latest buttons.
+ * Follow (paint pump): motion only, so a long paint can move the pointer without
+ * enqueueing EV_MOUSE_MOVE (the event queue is SPSC; INPUT is the producer). */
+int ps2_usb_pointer_consume(int32_t *dx, int32_t *dy, uint8_t *buttons);
+int ps2_usb_pointer_follow(int32_t *dx, int32_t *dy);
+
 /* What that split produced, since the plane took over.  `plane_reports` climbing while
  * `pass_reports` stays put is the evidence this port's deliverable asks for: the reports
  * leave the bus on the input plane rather than when a paint finishes.  `dropped` is the

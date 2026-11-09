@@ -30,6 +30,12 @@ int main(void)
     m.c = &c;
     comp_init(&c, &ops, &cfg, 4000);
 
+    CHECK(comp_evt_redraw(0, 0, 0, 0) == 1);
+    CHECK(comp_evt_redraw(1, 0, 0, 0) == 0);
+    CHECK(comp_evt_redraw(1, 1, 0, 0) == 1);
+    CHECK(comp_evt_redraw(1, 0, 1, 0) == 1);
+    CHECK(comp_evt_redraw(1, 0, 0, 1) == 1);
+
     /* first frame is owed in full, and respects the interval from init */
     m.now = 0; CHECK(comp_pass(&c) == COMP_IDLE);
     m.now = 8000; CHECK(comp_pass(&c) == COMP_PRESENTED); CHECK(m.fulls == 1);

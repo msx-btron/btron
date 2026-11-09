@@ -175,3 +175,41 @@ ps2_ee_exit_handler:
     jr      $ra
     nop
     .set pop
+
+/* void btron_ctx_switch(void **old_sp, void *new_sp)
+ * Cooperative O32 switch: callee-saved s0-s7, fp, gp, ra.  Soft-float image, so
+ * no FPRs.  The 48-byte frame is the same one cre_tsk() plants for a new task. */
+    .set push
+    .set noreorder
+    .globl  btron_ctx_switch
+    .type   btron_ctx_switch, @function
+btron_ctx_switch:
+    addiu   $sp, $sp, -48
+    sw      $s0,  0($sp)
+    sw      $s1,  4($sp)
+    sw      $s2,  8($sp)
+    sw      $s3, 12($sp)
+    sw      $s4, 16($sp)
+    sw      $s5, 20($sp)
+    sw      $s6, 24($sp)
+    sw      $s7, 28($sp)
+    sw      $fp, 32($sp)
+    sw      $gp, 36($sp)
+    sw      $ra, 40($sp)
+    sw      $sp,  0($a0)
+    move    $sp, $a1
+    lw      $s0,  0($sp)
+    lw      $s1,  4($sp)
+    lw      $s2,  8($sp)
+    lw      $s3, 12($sp)
+    lw      $s4, 16($sp)
+    lw      $s5, 20($sp)
+    lw      $s6, 24($sp)
+    lw      $s7, 28($sp)
+    lw      $fp, 32($sp)
+    lw      $gp, 36($sp)
+    lw      $ra, 40($sp)
+    addiu   $sp, $sp, 48
+    jr      $ra
+    nop
+    .set pop

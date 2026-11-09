@@ -70,6 +70,7 @@ typedef struct {
 static ITRON_TASK g_tasks[MAX_TASKS];
 static ITRON_SEM  g_sems[MAX_SEMS];
 static pthread_mutex_t g_kernel_mutex = PTHREAD_MUTEX_INITIALIZER;
+static ID s_posix_input_tskid;
 
 #include <btron/apps.h>
 #ifdef _WIN32
@@ -104,11 +105,25 @@ void btron_core_banner(void) {
         printf("[BOOT] Machine: POSIX hosted\n\n");
 }
 
+static void posix_input_sleeper(VW exinf)
+{
+    (void)exinf;
+    for (;;) slp_tsk();
+}
+
 void btron_core_init(void) {
+    T_CTSK ctsk;
     pthread_mutex_lock(&g_kernel_mutex);
     memset(g_tasks, 0, sizeof(g_tasks));
     memset(g_sems, 0, sizeof(g_sems));
     pthread_mutex_unlock(&g_kernel_mutex);
+    memset(&ctsk, 0, sizeof(ctsk));
+    ctsk.task    = posix_input_sleeper;
+    ctsk.itskpri = 1;
+    ctsk.stksz   = 8192;
+    ctsk.name    = "posix_input";
+    s_posix_input_tskid = cre_tsk(&ctsk);
+    if (s_posix_input_tskid > 0) sta_tsk(s_posix_input_tskid, 0);
     printf("[CORE] POSIX Microkernel Abstraction Engine  BTRON_POSIX\n");
 }
 
@@ -317,17 +332,7 @@ W btron_list_tasks(BTRON_TSK_ROW *out, W max) {
 
     W n = 0;
 
-    /* PID 1: Real-time Input Worker Plane */
-    if (out && n < max) {
-        out[n].tskid = 1;
-        out[n].name  = "posix_input";
-        out[n].pri   = 1;
-        out[n].entry = NULL;
-        out[n].state = BTRON_TSK_RUN;
-        n++;
-    }
-
-    /* PID 2: Desktop Presentation Plane */
+    /* PID 2: Desktop Presentation Plane (main / SDL).  posix_input is a real cre_tsk. */
     if (out && n < max) {
         out[n].tskid = 2;
         out[n].name  = "posix_desktop";
@@ -532,5 +537,10 @@ void uart_puts_raw(const char *str) {
     if (!str) return;
     fputs(str, stdout);
     fflush(stdout);
+}
+
+void btron_cooperative_input_pump(void)
+{
+    if (s_posix_input_tskid > 0) wup_tsk(s_posix_input_tskid);
 }
 

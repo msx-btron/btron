@@ -19,6 +19,11 @@ typedef struct {
     int     height;
     COLOR  *pixels;
     void   *gl_ctx;
+    /* Bound once at create.  egl_make_current() installs this backend and never
+     * re-derives it from wnd_gl_layer(): the first EEGS window is the GS layer,
+     * every later GL window is TinyGL beside it, and a switch in make_current is
+     * what made the GS stream and a CPU pixmap fight over the same page. */
+    GL_BACKEND backend;
 
     /* Debug FPS readout state, owned and advanced only by egl_swap_buffers().
      * One surface is one window, so each OpenGL window reports its own frame

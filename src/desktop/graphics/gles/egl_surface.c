@@ -192,12 +192,17 @@ EGL_SURFACE* egl_create_window_surface(WND *wnd) {
 #endif
         virgl_backend_make_current(surf->width, surf->height, surf->pixels);
     gl_init(want, surf->width, surf->height, surf->pixels);
-    /* gl_init() answers with the pipeline it could install, not with the one that was asked
-     * for, so the layer is claimed only when the GS is actually the rasteriser: an image with
-     * no TinyGL linked resolves EEGS to a software backend, and that window's pixmap is the
-     * picture and must keep being blitted. */
-    if (gl_backend_selected() == GL_BACKEND_EEGS || gl_active_backend() == GL_BACKEND_EEGS) {
-        wnd->gl_layer = TRUE;
+    /* Bind the backend to THIS surface at create.  The first EEGS window is the GS
+     * layer; every later GL window is TinyGL beside it.  make_current() will install
+     * surf->backend and never re-ask wnd_gl_layer(). */
+    surf->backend = gl_active_backend();
+    if (surf->backend == GL_BACKEND_EEGS) {
+        if (wnd_gl_layer() == NULL) {
+            wnd->gl_layer = TRUE;
+        } else {
+            wnd->gl_layer = FALSE;
+            surf->backend = GL_BACKEND_TINYGL;
+        }
     }
 
     /* And make THIS surface current before handing it back, because EGL's own contract is that
@@ -218,18 +223,15 @@ void egl_make_current(EGL_SURFACE *surf) {
     surf->pixels = surf->wnd->dev->pixels;
     surf->width  = surf->wnd->dev->width;
     surf->height = surf->wnd->dev->height;
+    gl_set_active_backend(surf->backend);
 #if defined(BTRON_GL_BACKEND_TINYGL)
-    if (gl_active_backend() == GL_BACKEND_V3D) {
+    if (surf->backend == GL_BACKEND_V3D) {
         v3d_backend_make_current(surf->width, surf->height, surf->pixels);
         tinygl_backend_make_current_ctx(&surf->gl_ctx, surf->width, surf->height,
                                         surf->pixels);
         return;
     }
-    if (gl_tinygl_pipeline()) {
-        if (gl_backend_selected() == GL_BACKEND_EEGS && surf->wnd) {
-            WND *lay = wnd_gl_layer();
-            gl_set_active_backend((!lay || surf->wnd == lay) ? GL_BACKEND_EEGS : GL_BACKEND_TINYGL);
-        }
+    if (surf->backend == GL_BACKEND_TINYGL || surf->backend == GL_BACKEND_EEGS) {
         tinygl_backend_make_current_ctx(&surf->gl_ctx, surf->width, surf->height,
                                         surf->pixels);
         return;
