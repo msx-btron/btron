@@ -481,6 +481,14 @@ static void mars_task_fn(VW exinf) {
         uint16_t cam_h = calculate_height(cam_x, cam_y, jump_h);
         s_var_0359 = cam_h;
 
+        /* Unfocused: keep the last landscape.  The voxel pass is the
+         * cost; compositor only blits.  Closing other windows then
+         * actually frees this CPU for the focused tile. */
+        if (!wnd_is_focused(s_mars_wnd)) {
+            dly_tsk(wnd_frame_ms(s_mars_wnd));
+            continue;
+        }
+
         /* 2. Render complete frame into the designated backbuffer */
         int r_idx = s_render_idx;
         uint8_t *render_target = s_landscape_buffers[r_idx];
@@ -567,6 +575,8 @@ static void mars_destroy(WND *wnd) {
     (void)wnd;
     s_mars_running = false;
     s_mars_wnd = NULL;
+    if (s_mars_tskid > 0)
+        wup_tsk(s_mars_tskid);
 }
 
 static void mars_event(WND *wnd, const EVT *evt) {

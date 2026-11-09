@@ -68,6 +68,14 @@ static RECT s_gl_cover[WND_GL_COVER_MAX];
 static int s_gl_cover_n;
 static int s_gl_cover_dropped;
 static int s_gl_cover_merged;   /* adds the list refused because an earlier rect already covered them */
+/* -1 = machine default (PS2: 1 TinyGL per composite, round-robin;
+ * hosted: unlimited).  s_gl_pick is the window this pass may rasterize;
+ * s_gl_rr_last is where the next pass resumes so closing a window
+ * advances the remaining ones instead of freezing them. */
+static int s_gl_pass_quota = -1;
+static WND *s_gl_pick;
+static WND *s_gl_rr_last;
+static int s_gl_layer_recorded; /* first EEGS stream has landed; freeze may apply */
 
 static void wnd_mgr_window_destroyed(WND *wnd);
 static void wnd_inval_rect(const RECT *r);
@@ -84,9 +92,13 @@ void wnd_set_gl_bind(WndGLBind bind) { s_gl_bind = bind; }
 static WND *s_gl_scope_owner;
 static uint32_t s_gl_nest_refused;
 uint32_t wnd_gl_nest_refused(void) { return s_gl_nest_refused; }
+WND *wnd_gl_scope_owner(void) { return s_gl_scope_owner; }
 
 ER init_wnd_mgr(GDEV *screen_dev) { if (!screen_dev) return E_PAR;
     g_screen_dev = screen_dev;
+    s_gl_pick = NULL;
+    s_gl_rr_last = NULL;
+    s_gl_layer_recorded = 0;
     /* Preserve existing windows if any were opened before screen attachment */
     return E_OK;
 }
@@ -251,7 +263,16 @@ ER cls_wnd(WND *wnd) {
     if (wnd->next) wnd->next->prev = wnd->prev;
     if (g_wnd_head == wnd) g_wnd_head = wnd->next;
 
-    if (g_wnd_head) g_wnd_head->focused = TRUE;
+    if (s_gl_rr_last == wnd) s_gl_rr_last = NULL;
+    if (s_gl_pick == wnd) s_gl_pick = NULL;
+
+    if (g_wnd_head) {
+        g_wnd_head->focused = TRUE;
+        /* Remaining top window owes a frame: the slot the closed window
+         * occupied in the round-robin is now this one's. */
+        g_wnd_head->img_valid = FALSE;
+        wnd_inval_rect(&g_wnd_head->bounds);
+    }
 
     /* The vacated rect is desktop (and possibly lower windows) from now on. */
     wnd_inval_rect(&wnd->bounds);
@@ -260,6 +281,7 @@ ER cls_wnd(WND *wnd) {
      * and a present path that still believed a stream was pending would draw it over desktop. */
     if (wnd->gl_layer) {
         s_gl_pending = FALSE;
+        s_gl_layer_recorded = 0;
         s_gl_cover_n = 0;
         s_gl_cover_dropped = 0;
         s_gl_cover_merged = 0;
@@ -301,6 +323,10 @@ ER top_wnd(WND *wnd) {
     if (g_wnd_head) g_wnd_head->prev = wnd;
     g_wnd_head = wnd;
     wnd->focused = TRUE;
+    /* New focus owes a frame; round-robin resumes at the head. */
+    wnd->img_valid = FALSE;
+    s_gl_rr_last = NULL;
+    wnd_inval_rect(&wnd->bounds);
 
     return E_OK;
 }
@@ -538,6 +564,80 @@ ER wnd_set_title(WND *wnd, const char *title) {
     return E_OK;
 }
 
+int wnd_gl_is_costly(const WND *w)
+{
+    return w && (w->gl_surf || w->gl_layer);
+}
+
+int wnd_gl_count(void)
+{
+    int n = 0;
+    for (WND *w = g_wnd_head; w; w = w->next) {
+        if (w->visible && wnd_gl_is_costly(w)) n++;
+    }
+    return n;
+}
+
+void wnd_gl_set_pass_quota(int n) { s_gl_pass_quota = n; }
+
+static int gl_quota_now(void)
+{
+    if (s_gl_pass_quota >= 0) return s_gl_pass_quota;
+#if defined(BTRON_PS2_TARGET)
+    return PS2_TILE_GL_PER_PASS;
+#else
+    return 0;
+#endif
+}
+
+/* Next visible GL window that still owes a raster, wrapping after `after`.
+ * An EEGS layer that has never recorded outranks freeze and the rotation:
+ * XMB is the first GL tile, so without this it stayed a hole until focused.
+ * The focused GL window then outranks round-robin: continuing from the last
+ * pick skipped the app in use and capped it at 60/N. */
+static WND *gl_next_owed(WND *after)
+{
+    WND *start;
+    WND *w;
+    WND *lay;
+    WND *top;
+    if (!g_wnd_head) return NULL;
+    lay = find_gl_layer();
+    if (lay && lay->visible && lay->paint && !s_gl_layer_recorded)
+        return lay;
+    top = get_top_wnd();
+    if (top && top->visible && top->paint && wnd_gl_is_costly(top)) {
+        BOOL owed;
+        if (top->gl_layer && top == lay)
+            owed = !s_gl_frozen || !s_gl_layer_recorded;
+        else
+            owed = !top->img_valid;
+        if (owed) return top;
+    }
+    start = (after && after->next) ? after->next : g_wnd_head;
+    w = start;
+    do {
+        if (w->visible && w->paint && wnd_gl_is_costly(w)) {
+            BOOL owed;
+            if (w->gl_layer && w == lay)
+                owed = !s_gl_frozen || !s_gl_layer_recorded;
+            else
+                owed = !w->img_valid;
+            if (owed) return w;
+        }
+        w = w->next ? w->next : g_wnd_head;
+    } while (w != start);
+    return NULL;
+}
+
+void wnd_gl_pass_begin(void)
+{
+    s_gl_pick = NULL;
+    if (gl_quota_now() <= 0) return;
+    s_gl_pick = gl_next_owed(s_gl_rr_last);
+    if (s_gl_pick) s_gl_rr_last = s_gl_pick;
+}
+
 /* The one place that answers "does this window's callback have to run in this composite".
  *
  * Two different facts, and conflating them is what made a paint budget do nothing.  For a pixmap
@@ -551,11 +651,27 @@ ER wnd_set_title(WND *wnd, const char *title) {
  * afford a second one (the app keeps its last picture and the desktop takes the frame).
  *
  * Nothing outside the PS2 core's paint pass ever raises the freeze, so on every other target this
- * reduces to the `!img_valid` it has always answered. */
+ * reduces to the `!img_valid` it has always answered.
+ *
+ * PS2 (quota 1): one TinyGL raster per composite.  The focused GL window
+ * is picked whenever it owes a frame; remaining slots round-robin among
+ * the other invalid GL windows.  Five TinyGL paints in one pass were
+ * ~140 ms (~7 FPS each).  Fair RR from the last pick capped the focused
+ * app at 60/N.  A skipped window stays invalid and is the next pick
+ * once the focused window is valid; closing one shortens the rotation. */
 static BOOL wnd_owes_callback(const WND *w) {
+    BOOL owes;
     if (!w->paint) return FALSE;
-    WND *lay = find_gl_layer();
-    return (w->gl_layer && w == lay) ? !s_gl_frozen : !w->img_valid;
+    {
+        WND *lay = find_gl_layer();
+        owes = (w->gl_layer && w == lay)
+            ? (!s_gl_frozen || !s_gl_layer_recorded)
+            : !w->img_valid;
+    }
+    if (!owes) return FALSE;
+    if (gl_quota_now() <= 0) return TRUE;
+    if (!wnd_gl_is_costly(w)) return TRUE;
+    return w == s_gl_pick;
 }
 
 /* TRUE when a composite over `damage` cannot be a pure pixmap blit. */
@@ -567,6 +683,13 @@ BOOL wnd_damage_needs_paint(const RECT *damage) {
             curr->bounds.bottom <= damage->top || curr->bounds.top >= damage->bottom)
             continue;
         if (wnd_owes_callback(curr)) return TRUE;
+        /* Quota deferred this GL: it still owes a later pass, so this
+         * composite cannot be blit-only or the pick never runs.  A frozen
+         * layer is the exception: its stream is the page's, not stale. */
+        if (gl_quota_now() > 0 && wnd_gl_is_costly(curr) && !curr->img_valid) {
+            if (curr->gl_layer && s_gl_frozen && s_gl_layer_recorded) continue;
+            return TRUE;
+        }
     }
     return FALSE;
 }
@@ -765,6 +888,7 @@ void redraw_all_windows(void) {
 
 void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
     if (!g_screen_dev || !damage) return;
+    wnd_gl_pass_begin();
 
     /* The row copies below are raw memory writes, so the span must already be
      * on-device: mov_wnd() does not clamp, and a window dragged past a screen
@@ -848,7 +972,9 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
          * to a pixmap nobody blits from.  Reading it here rather than spelling the two terms
          * again is what keeps this walk and `wnd_damage_needs_paint()` from disagreeing about
          * a window this band is about to draw. */
-        const BOOL must_repaint = wnd_owes_callback(wnd);
+        BOOL must_repaint = wnd_owes_callback(wnd);
+        /* Quota skipped this GL: blit the last pixmap and leave it
+         * invalid so the next pass's round-robin picks it. */
         const BOOL records = !blit_only && wnd->paint && must_repaint &&
                              wnd->dev && wnd->dev->pixels;
 
@@ -880,9 +1006,8 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
             } else {
                 s_gl_scope_owner = wnd;
                 if (s_gl_bind && wnd->gl_surf) s_gl_bind(wnd);
-                btron_cooperative_input_pump();   /* guarded against re-entry by the core */
+                btron_cooperative_input_pump();   /* once, before draw: pointer latency */
                 wnd->paint(wnd, wnd->dev);
-                btron_cooperative_input_pump();
                 s_gl_scope_owner = NULL;
                 t_paint += btron_render_perf_us() - t_mark;
                 wnd->img_valid = TRUE;
@@ -891,6 +1016,7 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
                     if (gl_client_rect(wnd, &cr)) {
                         s_gl_client = cr;
                         s_gl_pending = TRUE;
+                        s_gl_layer_recorded = 1;
                     }
                 }
             }

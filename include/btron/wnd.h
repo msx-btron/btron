@@ -91,6 +91,7 @@ typedef struct WND {
 typedef void (*WndGLBind)(WND *wnd);
 void wnd_set_gl_bind(WndGLBind bind);
 uint32_t wnd_gl_nest_refused(void);   /* nested GL paints refused by the scope */
+WND *wnd_gl_scope_owner(void);        /* window whose paint currently owns GL, else NULL */
 
 ER   init_wnd_mgr(GDEV *screen_dev);
 WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr);
@@ -207,18 +208,33 @@ WND* find_wnd_at(H x, H y);
 WND* get_top_wnd(void);
 BOOL wnd_mgr_contains(const WND *wnd);
 
-/* App animation period.  The focused/top window keeps LIVE ms (~60 Hz);
- * the others rest so the pointer plane is not buried under five GL tasks.
- * Hosted builds keep 16 ms for every window. */
+/* Visible windows with a GL surface or GS layer.  Closing one drops this
+ * count; the compositor round-robin paints 1 of N per pass so remaining
+ * windows speed up. */
+int  wnd_gl_count(void);
+int  wnd_gl_is_costly(const WND *wnd);
+/* 0 = unlimited GL paints per composite (hosted default).  1 = one TinyGL
+ * raster per pass, round-robin among invalid GL windows.  -1 = machine default. */
+void wnd_gl_set_pass_quota(int n);
+void wnd_gl_pass_begin(void);
+
+static inline int wnd_is_focused(const WND *wnd)
+{
+    return wnd && get_top_wnd() == wnd;
+}
+
+/* App animation request period.  Every live window asks at LIVE ms; the
+ * compositor is the throttle (one TinyGL per pass).  Closing a window
+ * does not change this period -- it shortens the round-robin, so each
+ * remaining window is picked more often.  Hosted builds keep 16 ms. */
 #if defined(BTRON_PS2_TARGET)
 #include <btron/ps2_tile.h>
 static inline int wnd_frame_ms(const WND *wnd)
 {
     int live = PS2_TILE_LIVE_MS;
-    int rest = PS2_TILE_REST_MS;
+    (void)wnd;
     if (live < 1) live = 16;
-    if (rest < 1) rest = 16;
-    return (wnd && get_top_wnd() == wnd) ? live : rest;
+    return live;
 }
 #else
 static inline int wnd_frame_ms(const WND *wnd)

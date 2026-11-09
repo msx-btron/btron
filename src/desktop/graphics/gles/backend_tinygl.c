@@ -320,6 +320,11 @@ void tinygl_backend_make_current_ctx(void **p_ctx, int w, int h, void *pixel_buf
     }
 
     tinygl_context_t *ctx = (tinygl_context_t *)(*p_ctx);
+    if (ctx && gl_current_context == &ctx->gl && s_zb == ctx->zb
+        && s_pixel_buf == pixel_buf && s_width == w && s_height == h
+        && ctx->zb && ctx->zb->pbuf == pixel_buf) {
+        return;
+    }
     if (!ctx) {
         ctx = (tinygl_context_t *)calloc(1, sizeof(tinygl_context_t));
         if (!ctx) {
@@ -377,19 +382,29 @@ void tinygl_backend_make_current_ctx(void **p_ctx, int w, int h, void *pixel_buf
     s_width = w;
     s_height = h;
 
-    if (!ctx->zb->pbuf || ctx->zb->pbuf != pixel_buf || ctx->w != w || ctx->h != h || ctx->pixel_buf != pixel_buf) {
-        ctx->w = w;
-        ctx->h = h;
-        ctx->pixel_buf = pixel_buf;
-        ZB_resize(ctx->zb, pixel_buf, w, h);
-        if (pixel_buf) {
-            COLOR *px = (COLOR *)pixel_buf;
-            int n = w * h;
-            for (int i = 0; i < n; i++) px[i] |= 0xFF000000u;
+    {
+        const int size_changed = (ctx->w != w || ctx->h != h);
+        const int zb_mismatch = ctx->zb && (ctx->zb->xsize != w || ctx->zb->ysize != h);
+        if (size_changed || zb_mismatch) {
+            /* Extent change: realloc the z-buffer.  Stamp alpha only when the
+             * array is new; a same-size pbuf retarget (tile GL windows) must
+             * not walk the surface — glClear already writes every pixel. */
+            ctx->w = w;
+            ctx->h = h;
+            ctx->pixel_buf = pixel_buf;
+            ZB_resize(ctx->zb, pixel_buf, w, h);
+            if (size_changed && pixel_buf) {
+                COLOR *px = (COLOR *)pixel_buf;
+                int n = w * h;
+                for (int i = 0; i < n; i++) px[i] |= 0xFF000000u;
+            }
+            glViewport(0, 0, w, h);
+        } else if (ctx->pixel_buf != pixel_buf || (ctx->zb && ctx->zb->pbuf != pixel_buf)) {
+            ctx->pixel_buf = pixel_buf;
+            if (ctx->zb) ctx->zb->pbuf = pixel_buf;
         }
-        glViewport(0, 0, w, h);
     }
-    ctx->zb->pbuf = pixel_buf;
+    if (ctx->zb) ctx->zb->pbuf = pixel_buf;
     ctx->gl.zb = ctx->zb;
 }
 

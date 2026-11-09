@@ -16,6 +16,11 @@
 #define PS2_TILE_N                8
 #define PS2_TILE_LIVE_MS          16
 #define PS2_TILE_REST_MS          100
+#define PS2_TILE_GL_PER_PASS      1
+#define PS2_TILE_UI_PACE_US       1000
+#define PS2_TILE_SKIP_WAVE        1
+#define PS2_TILE_QUAKE_ALONE_FPS  54
+#define PS2_TILE_FPS_EACH         22
 
 enum {
     PS2_TILE_TERM = 0,

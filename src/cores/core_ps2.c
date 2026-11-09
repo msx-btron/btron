@@ -36,6 +36,9 @@
 #include <btron/event.h>
 #include <btron/apps.h>
 #include <btron/ps2_tile.h>
+#ifndef PS2_TILE_UI_PACE_US
+#define PS2_TILE_UI_PACE_US 1000u
+#endif
 #include <btron/settings.h>
 #include <fs/vol_api.h>
 #include <libstr.h>
@@ -107,19 +110,25 @@ static uint32_t ps2_us_since(uint32_t start) { return (uint32_t)(ps2_count_read(
 
 /* ── Real-time planes (ASYNC Tier-1) ─────────────────────────────── */
 
+/* One TinyGL tile is ~9–18 ms.  Pace at PS2_TILE_UI_PACE_US (1 ms) so
+ * round-robin is paint-rate limited, not vsync/N.  16 ms * 4 GL was
+ * ~12 FPS each (the observed frame drop from a focused 60 Hz). */
 static const btron_plane_cfg_t s_ps2_planes = {
     .input_period_us     = 1000u,
-    .ui_period_us        = 16667u,
+    .ui_period_us        = PS2_TILE_UI_PACE_US,
     .panel_refresh_us    = 200000u,
     .full_convergence_us = 2000000u,
     .input_slices_max    = 16u,
-    .ui_period_slow_us   = 33333u,  /* 30 Hz once a paint overruns */
-    .ui_slow_paint_us    = 8000u    /* XMB tile is ~12 ms focused */
+    .ui_period_slow_us   = 0u,   /* do not drop to 30 Hz while hunting FPS */
+    .ui_slow_paint_us    = 0u
 };
+
+#define PS2_UI_BUDGET_US 15000u
 
 typedef struct { uint32_t runs, us_max, over; } ps2_plane_run_t;
 static ps2_plane_run_t s_plane_input, s_plane_ui;
 static uint32_t s_plane_ui_last, s_plane_ui_late;
+static uint32_t s_rt_log_us;
 
 static void ps2_plane_charge(ps2_plane_run_t *c, uint32_t t0, uint32_t budget_us)
 {
@@ -498,10 +507,9 @@ void btron_cooperative_input_pump(void)
  * The band set lives in this context between render and present, so the GL layer's stream,
  * the canvas upload and the flip are ordered by construction, not by who calls whom.
  *
- * Cadence is unchanged from the pre-refactor loop: the compositor is given a table with no
- * pacing of its own (periods 0), because on the PS2 the pass is paced by the GS flip wait, and
- * panel / convergence timers stay band-aware inside render (they apply only while the pointer
- * is still).  The real plane table is still what the late counter and the UI budget read. */
+ * Cadence is the plane table (PS2_TILE_UI_PACE_US, 1 ms while GL is owed).
+ * Panel / convergence timers stay band-aware inside render (they apply only while
+ * the pointer is still).  The UI task sleeps 1 ms while any GL still owes a raster. */
 typedef struct {
     GDEV          *screen;
     ps2_bandset_t  set;           /* owed bands: written by render, consumed by present */
@@ -566,6 +574,8 @@ static int ps2_comp_detect(void *x)
     lay = wnd_gl_layer();
     for (WND *w = get_wnd_list(); w; w = w->next) {
         if (!w->visible || !w->paint) continue;
+        /* Invalid GL stays dirty until the round-robin paints it.
+         * Closing one therefore shortens the rotation of the rest. */
         if (w->gl_layer && w == lay) {
             if (!w->img_valid) return 1;   /* app task asked for a 3D frame */
             continue;
@@ -585,10 +595,17 @@ static void ps2_comp_render(void *x, int full)
     c->painted = 0;
     c->set = (ps2_bandset_t){ { { 0, 0, 0, 0 } }, 0, 0 };
 
-    {   /* 3D rate is the app task (inval_wnd + dly_tsk).  Cursor-only freezes
-         * the layer so present replays the last GIF stream. */
+    {   /* 3D rate is the app task (inval_wnd + dly_tsk).  Cursor-only, and
+         * an unfocused GS layer, freeze so present replays the last stream. */
         WND *lay = wnd_gl_layer();
-        if (!(lay && lay->visible && !lay->img_valid)) wnd_gl_freeze(1);
+        WND *top = get_top_wnd();
+        /* Freeze an unfocused layer so present replays the last stream.
+         * wnd.c still paints an unrecorded layer once: XMB is the first
+         * GL tile, and freeze-before-record left a hole. */
+        if (lay && lay == top && lay->visible && !lay->img_valid)
+            wnd_gl_freeze(0);
+        else
+            wnd_gl_freeze(1);
     }
 
     ps2_bands_for_pass(&c->set, c->pass_mx, c->pass_my, s_shown_x, s_shown_y);
@@ -649,7 +666,7 @@ static uint32_t ps2_comp_present(void *x)
     if (ps2_band_is_full(&c->set.b[0])) s_pass_full_due = btron_render_perf_us();
 
     /* The flip wait is the GS scanning, not bus work: excluded from the charge. */
-    ps2_plane_charge(&s_plane_ui, c->ui_t0 + flip_wait_us * btron_ee_ticks_per_us(), ASYNC_UI_BUDGET_US);
+    ps2_plane_charge(&s_plane_ui, c->ui_t0 + flip_wait_us * btron_ee_ticks_per_us(), PS2_UI_BUDGET_US);
     ps2_plane_ui_deadline();
     s_shown_x = c->pass_mx;
     s_shown_y = c->pass_my;
@@ -670,7 +687,7 @@ static void ps2_gui_pass(GDEV *screen)
     s_in_gui_pass = 1;
     if (s_ps2_ctx.screen != screen || !s_ps2_comp.ops) {
         s_ps2_ctx.screen = screen;
-        comp_init(&s_ps2_comp, &s_ps2_comp_ops, btron_planes(), ASYNC_UI_BUDGET_US);
+        comp_init(&s_ps2_comp, &s_ps2_comp_ops, btron_planes(), PS2_UI_BUDGET_US);
     }
     (void)comp_pass(&s_ps2_comp);
     wnd_gl_freeze(0);          /* single release point for every exit path of a pass */
@@ -927,8 +944,35 @@ static void ps2_ui_entry(VW exinf)
 {
     (void)exinf;
     while (s_gui_active) {
+        uint32_t t0 = btron_render_perf_us();
+        uint32_t dt, period, sleep_ms;
         if (s_gui_screen) ps2_gui_pass(s_gui_screen);
-        dly_tsk(1);
+        dt = btron_render_perf_us() - t0;
+        period = PS2_TILE_UI_PACE_US;
+        if (s_ps2_comp.cfg) period = comp_ui_interval(&s_ps2_comp);
+        if (period < 1000u) period = 1000u;
+        /* While GL windows still owe a raster, sleep 1 ms so the round-robin
+         * is paint-rate limited, not vsync-paced (16 ms * N was 12 FPS). */
+        if (wnd_any_image_invalid() && wnd_gl_count() > 1)
+            sleep_ms = 1u;
+        else
+            sleep_ms = (dt < period) ? (period - dt) / 1000u : 1u;
+        if (sleep_ms < 1u) sleep_ms = 1u;
+        if ((uint32_t)(t0 - s_rt_log_us) >= 2000000u && s_ps2_comp.ops) {
+            unsigned last = (unsigned)s_ps2_comp.ui.last_us;
+            int ngl = wnd_gl_count();
+            unsigned fps = 0u;
+            s_rt_log_us = t0;
+            if (last > 0u && ngl > 0)
+                fps = 1000000u / last / (unsigned)ngl;
+            ps2_kprintf("[RT] gl=%d ui=%uus max=%uus fps~=%u over=%u late=%u runs=%u\n",
+                        ngl, last,
+                        (unsigned)s_ps2_comp.ui.max_us, fps,
+                        (unsigned)s_ps2_comp.ui.over,
+                        (unsigned)s_ps2_comp.ui.late,
+                        (unsigned)s_ps2_comp.ui.runs);
+        }
+        dly_tsk((W)sleep_ms);
     }
     ext_tsk();
 }

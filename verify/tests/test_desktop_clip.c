@@ -694,6 +694,108 @@ static void freeze_refuses_the_layer_not_the_pixmap(void)
     cls_wnd(plain);
 }
 
+/* Quota 1 round-robins TinyGL: one raster per pass, skipped windows stay
+ * owed, close drops the count so remaining windows are picked more often. */
+static void unfocused_gl_freezes_when_quota_one(void)
+{
+    static COLOR fb[800 * 600];
+    const RECT whole = { 0, 0, 800, 600 };
+
+    GDEV *screen = opn_dev_vram(800, 600, fb);
+    if (!screen) { printf("  [FAIL] opn_dev_vram(800,600)\n"); s_fail++; return; }
+    init_wnd_mgr(screen);
+    g_cursor_in_backbuffer = 0;
+
+    WND *bg = opn_wnd("BG GL", 40, 40, 240, 180, WND_ATTR_TITLE | WND_ATTR_BORDER);
+    WND *fg = opn_wnd("FG GL", 300, 40, 240, 180, WND_ATTR_TITLE | WND_ATTR_BORDER);
+    if (!bg || !fg) { printf("  [FAIL] opn_wnd\n"); s_fail++; return; }
+    s_tally_a = fg;
+    s_tally_b = bg;
+    fg->paint = paint_counted;
+    bg->paint = paint_counted;
+    fg->gl_surf = (void *)1;
+    bg->gl_surf = (void *)1;
+
+    CHECK(wnd_gl_count() == 2, "two visible GL surfaces");
+    CHECK(get_top_wnd() == fg, "last opened is focused");
+
+    inval_wnd(fg);
+    inval_wnd(bg);
+    s_paints_a = s_paints_b = 0;
+    wnd_gl_set_pass_quota(1);
+    redraw_baremetal_desktop_rect_paint(screen, &whole);
+    CHECK(s_paints_a == 1u, "first pass paints one GL (the head of the rotation)");
+    CHECK(s_paints_b == 0u, "quota 1 defers the other GL");
+    CHECK(bg->img_valid == FALSE, "deferred GL stays owed so a later pass paints it");
+
+    s_paints_a = s_paints_b = 0;
+    redraw_baremetal_desktop_rect_paint(screen, &whole);
+    CHECK(s_paints_a == 0u, "already-valid GL is not re-rasterized");
+    CHECK(s_paints_b == 1u, "second pass paints the deferred GL (round-robin)");
+
+    inval_wnd(fg);
+    inval_wnd(bg);
+    s_paints_a = s_paints_b = 0;
+    redraw_baremetal_desktop_rect_paint(screen, &whole);
+    CHECK(s_paints_a == 1u, "focused GL outranks round-robin when both are owed");
+    CHECK(s_paints_b == 0u, "unfocused GL waits while the focused one still owes");
+
+    cls_wnd(bg);
+    CHECK(wnd_gl_count() == 1, "close drops the GL count so remaining work speeds up");
+
+    inval_wnd(fg);
+    s_paints_a = s_paints_b = 0;
+    redraw_baremetal_desktop_rect_paint(screen, &whole);
+    CHECK(s_paints_a == 1u, "the remaining GL window still paints");
+
+    wnd_gl_set_pass_quota(-1);
+    cls_wnd(fg);
+}
+
+/* An EEGS layer that has never recorded must paint once even while frozen,
+ * otherwise the first GL tile (XMB) stays a hole until it is focused. */
+static void layer_records_once_while_frozen(void)
+{
+    static COLOR fb[800 * 600];
+    const RECT whole = { 0, 0, 800, 600 };
+
+    GDEV *screen = opn_dev_vram(800, 600, fb);
+    if (!screen) { printf("  [FAIL] opn_dev_vram(800,600)\n"); s_fail++; return; }
+    init_wnd_mgr(screen);
+    g_cursor_in_backbuffer = 0;
+
+    WND *lay = opn_wnd("Layer first", 40, 40, 240, 180, WND_ATTR_TITLE | WND_ATTR_BORDER);
+    WND *fg = opn_wnd("Focused GL", 300, 40, 240, 180, WND_ATTR_TITLE | WND_ATTR_BORDER);
+    if (!lay || !fg) { printf("  [FAIL] opn_wnd\n"); s_fail++; return; }
+    s_tally_a = lay;
+    s_tally_b = fg;
+    lay->paint = paint_counted;
+    fg->paint = paint_counted;
+    lay->gl_layer = TRUE;
+    fg->gl_surf = (void *)1;
+
+    inval_wnd(lay);
+    inval_wnd(fg);
+    s_paints_a = s_paints_b = 0;
+    wnd_gl_set_pass_quota(1);
+    wnd_gl_freeze(1);
+    redraw_baremetal_desktop_rect_paint(screen, &whole);
+    CHECK(s_paints_a == 1u, "unrecorded frozen layer still records its first stream");
+    wnd_gl_freeze(0);
+
+    inval_wnd(lay);
+    s_paints_a = s_paints_b = 0;
+    wnd_gl_freeze(1);
+    redraw_baremetal_desktop_rect_paint(screen, &whole);
+    wnd_gl_freeze(0);
+    CHECK(s_paints_a == 0u, "after the first record, freeze refuses the layer");
+
+    wnd_gl_set_pass_quota(-1);
+    lay->gl_layer = FALSE;
+    cls_wnd(lay);
+    cls_wnd(fg);
+}
+
 /* ── LANE 12i rung (ii): the tracker plate is drawn once, not twice ─────────
  *
  * The composite's named residue is this overlay block (PS2.txt LANE 12i), and
@@ -920,6 +1022,8 @@ int main(void)
     whole_canvas_reports_its_stages();
     layer_plate_yields_the_stream_rect();
     freeze_refuses_the_layer_not_the_pixmap();
+    unfocused_gl_freezes_when_quota_one();
+    layer_records_once_while_frozen();
     overlay_plate_drawn_once();
 
     /* 800x600 is the PS2's workbench.  Both halves failing here is the bug this

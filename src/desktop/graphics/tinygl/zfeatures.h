@@ -33,7 +33,11 @@ And because some systems may have float types which are incompatible with it.
 
 #define TGL_FEATURE_LIT_TEXTURES   1
 /*Enable the patternized "discard"-ing of pixels.*/
+#if defined(BTRON_PS2_TARGET)
+#define TGL_FEATURE_POLYGON_STIPPLE 0
+#else
 #define TGL_FEATURE_POLYGON_STIPPLE 1
+#endif
 /*Enable the use of GL_SELECT and GL_FEEDBACK*/
 #define TGL_FEATURE_ALT_RENDERMODES 0
 /*
@@ -72,7 +76,11 @@ transparent black.
 /*Prevent ZB_copyFrameBuffer from copying certain colors.*/
 #define TGL_FEATURE_NO_COPY_COLOR 0
 /*Don't draw (texture mapped) pixels whose color is the NO_DRAW_COLOR*/
+#if defined(BTRON_PS2_TARGET)
+#define TGL_FEATURE_NO_DRAW_COLOR 0
+#else
 #define TGL_FEATURE_NO_DRAW_COLOR 1
+#endif
 /*Regardless of the current clear color, always clear using the NO_COPY_COLOR*/
 #define TGL_FEATURE_FORCE_CLEAR_NO_COPY_COLOR 0
 #define TGL_NO_COPY_COLOR 0xff00ff
@@ -84,7 +92,11 @@ transparent black.
 
 
 
+#if defined(BTRON_PS2_TARGET)
+#define TGL_FEATURE_MULTITHREADED_DRAWPIXELS	0
+#else
 #define TGL_FEATURE_MULTITHREADED_DRAWPIXELS	1
+#endif
 
 #define TGL_FEATURE_MULTITHREADED_COPY_TEXIMAGE_2D 1
 
@@ -141,7 +153,11 @@ Optimization hint- cost of branching.
 #define ZB_POINT_T_FRAC_BITS (ZB_POINT_S_FRAC_BITS + TGL_FEATURE_TEXTURE_POW2)
 
 /*Test the compatibility of the target platform at glInit() time.*/
+#if defined(BTRON_PS2_TARGET)
+#define TGL_FEATURE_TINYGL_RUNTIME_COMPAT_TEST 0
+#else
 #define TGL_FEATURE_TINYGL_RUNTIME_COMPAT_TEST 1
+#endif
 
 #define TINYGL_VERSION 1.0
 

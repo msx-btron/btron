@@ -54,6 +54,9 @@
 #include <btron/btron.h>
 #include <btron/core.h>
 #include <btron/apps.h>
+#if defined(BTRON_PS2_TARGET)
+#include <btron/ps2_tile.h>
+#endif
 #include <btron/tronmsx.h>  /* MSX_ROM_CATALOGUE: the drawer the Games band lists */
 #include <btron/settings.h>   /* icon size, terminal settings */
 #include <btron/pmc.h>        /* window frame style           */
@@ -3013,26 +3016,21 @@ static void xb_go_back(void)
 
 /* ── Window callbacks ───────────────────────────────────────────────── */
 
+static unsigned s_xb_gen;
+
 static void xb_task(VW exinf)
 {
+    unsigned gen = s_xb_gen;
     (void)exinf;
-    SYSTIME t_prev = 0;
-    get_tim(&t_prev);
-    while (s_wnd) {
-        inval_wnd(s_wnd);
-        SYSTIME t_now = 0;
-        get_tim(&t_now);
-        W elapsed = (W)(t_now - t_prev);
-        W period = (W)wnd_frame_ms(s_wnd);
-        W sleep_ms = period - elapsed;
-        if (sleep_ms < 1)
-            sleep_ms = 1;
-        else if (sleep_ms > period)
-            sleep_ms = period;
-        dly_tsk(sleep_ms);
-        get_tim(&t_prev);
+    while (s_wnd && s_xb_gen == gen) {
+        /* Unfocused tile: keep the first GS stream.  Dirtying every LIVE
+         * ms stole a TinyGL slot and still looked empty if freeze won. */
+        if (wnd_is_focused(s_wnd))
+            inval_wnd(s_wnd);
+        dly_tsk(wnd_frame_ms(s_wnd));
     }
-    s_tsk = 0;
+    if (s_xb_gen == gen)
+        s_tsk = 0;
 }
 
 static void xb_paint(WND *wnd, GDEV *dev)
@@ -3049,6 +3047,7 @@ static void xb_paint(WND *wnd, GDEV *dev)
     static unsigned s_probe_left = 2u;
     int probing;
     unsigned canvas_px;
+    int wave;
 
     if (!wnd || !dev)
         return;
@@ -3109,7 +3108,14 @@ static void xb_paint(WND *wnd, GDEV *dev)
     s_effect_time += dt / 1600.0f;
     if (s_effect_time > 65536.0f)
         s_effect_time = 0.0f;
-    if (s_wave)
+#if defined(BTRON_PS2_TARGET) && defined(PS2_TILE_SKIP_WAVE) && PS2_TILE_SKIP_WAVE
+    /* Tile XMB: the 32x32 ribbon is the 12 ms slot.  Unfocused, skip it
+     * so the round-robin's other GL windows get the time. */
+    wave = s_wave && wnd_is_focused(wnd);
+#else
+    wave = s_wave;
+#endif
+    if (wave)
         xb_wave_step(xb_bits_f(s_effect_time), s_w, s_h);
 
     /* The sheet's motion, in the units the eye uses, for the first six paints.
@@ -3131,7 +3137,7 @@ static void xb_paint(WND *wnd, GDEV *dev)
         static unsigned long s_prev_sum;
         static int           s_prev_mid;
 
-        if (s_motion_left != 0u && s_wave) {
+        if (s_motion_left != 0u && wave) {
             char mline[112];
             unsigned long sum = 0;
             int mid, r, c;
@@ -3151,7 +3157,7 @@ static void xb_paint(WND *wnd, GDEV *dev)
             s_prev_mid = mid;
         }
     }
-    if (s_particles && s_wave)
+    if (s_particles && wave)
         xb_particles_update(dt, 1);
     if (probing) {
         char hline[96];
@@ -3185,11 +3191,11 @@ static void xb_paint(WND *wnd, GDEV *dev)
     xb_draw_bg(xb_minf(s_alpha, 0.90f));
     if (probing)
         xb_phase("f_bg", canvas_px);
-    if (s_wave)
+    if (wave)
         xb_draw_ribbon(xb_minf(s_alpha, 0.90f));
     if (probing)
         xb_phase("f_ribbon", canvas_px);
-    if (s_particles && s_wave)
+    if (s_particles && wave)
         xb_particles_draw(s_alpha);
     if (probing)
         xb_phase("f_particles", 0);
@@ -3312,8 +3318,10 @@ static void xb_destroy(WND *wnd)
     s_tex_icons = 0;
     s_tex_font  = 0;
     s_wnd      = NULL;
+    s_xb_gen++;
     if (s_tsk > 0)
         wup_tsk(s_tsk);
+    s_tsk = 0;
 }
 
 /* Initial state: every node starts transparent at its layout slot, then the
@@ -3587,7 +3595,10 @@ WND* open_xmb_window_rect(int x, int y, int w, int h)
     s_tsk = cre_tsk(&ctsk);
     if (s_tsk > 0)
         sta_tsk(s_tsk, 0);
+    else
+        uart_puts_raw("[GL] xmb: xb_task not started (cre_tsk)\n");
 
+    inval_wnd(s_wnd);
     uart_puts_raw("[GL] xmb: XrossMediaBar open\n");
     return s_wnd;
 }

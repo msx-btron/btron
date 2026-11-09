@@ -146,6 +146,7 @@ WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr)
 ER cls_wnd(WND *wnd) { (void)wnd; return 0; }
 ER top_wnd(WND *wnd) { (void)wnd; return 0; }
 ER inval_wnd(WND *wnd) { (void)wnd; return 0; }
+WND *wnd_gl_scope_owner(void) { return NULL; }
 
 BTRON_DESKTOP* get_btron_desktop(void) { return NULL; }
 

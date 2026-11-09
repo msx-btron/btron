@@ -30,6 +30,7 @@ int quake_is_running(void) { return 0; }
 /* EGL window stubs — headless capture has no windowing layer */
 #include "../../include/btron/wnd.h"
 ER   inval_wnd(WND *w){(void)w;return 0;}
+WND *wnd_gl_scope_owner(void){return 0;}
 void wnd_set_gl_bind(WndGLBind b){(void)b;}
 ER   wnd_set_title(WND *w,const char*t){(void)w;(void)t;return 0;}
 

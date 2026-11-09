@@ -340,54 +340,70 @@ static void memset_s(void* adr, GLint val, GLint count) {
 		*q++ = val;
 }
 
-/* Used in 32 bit mode*/
+/* Used in 32 bit mode.  `count` is PIXEL words. */
 static void memset_l(void* adr, GLint val, GLint count) {
-	GLint i, n, v;
+	GLint i, n;
 	GLuint* p;
+	GLuint v;
+	if (count <= 0) return;
 	p = adr;
-	v = val;
-	n = count >> 2;
-	for (i = 0; i < n; i++) {
-		p[0] = v;
-		p[1] = v;
-		p[2] = v;
-		p[3] = v;
-		p += 4;
+	v = (GLuint)val;
+	if (v == 0u) {
+		memset(p, 0, (size_t)count * sizeof(GLuint));
+		return;
 	}
-	n = count & 3;
+	n = count >> 3;
+	for (i = 0; i < n; i++) {
+		p[0] = v; p[1] = v; p[2] = v; p[3] = v;
+		p[4] = v; p[5] = v; p[6] = v; p[7] = v;
+		p += 8;
+	}
+	n = count & 7;
 	for (i = 0; i < n; i++)
-		*p++ = val;
+		*p++ = v;
 }
 
 void ZB_clear(ZBuffer* zb, GLint clear_z, GLint z, GLint clear_color, GLint r, GLint g, GLint b) {
 	GLuint color;
 	GLint y;
 	PIXEL* pp;
-	if (clear_z) {
-		memset_s(zb->zbuf, z, zb->xsize * zb->ysize);
+	if (!zb) return;
+	if (clear_z && zb->zbuf) {
+		GLint n = zb->xsize * zb->ysize;
+		if (z == 0)
+			memset(zb->zbuf, 0, (size_t)n * sizeof(GLushort));
+		else
+			memset_s(zb->zbuf, z, n);
 	}
-	if (clear_color) {
+	if (clear_color && zb->pbuf) {
+#if TGL_FEATURE_RENDER_BITS == 15 || TGL_FEATURE_RENDER_BITS == 16
+#if TGL_FEATURE_FORCE_CLEAR_NO_COPY_COLOR
+		color = TGL_NO_COPY_COLOR;
+#else
+		color = FB_PIXEL(RGB_TO_PIXEL(r, g, b));
+#endif
 		pp = zb->pbuf;
 		for (y = 0; y < zb->ysize; y++) {
-#if TGL_FEATURE_RENDER_BITS == 15 || TGL_FEATURE_RENDER_BITS == 16
-			// color = FB_PIXEL(RGB_TO_PIXEL(r, g, b));
-#if TGL_FEATURE_FORCE_CLEAR_NO_COPY_COLOR
-			color = TGL_NO_COPY_COLOR;
-#else
-			color = FB_PIXEL(RGB_TO_PIXEL(r, g, b));
-#endif
 			memset_s(pp, color, zb->xsize);
+			pp = (PIXEL*)((GLbyte*)pp + zb->linesize);
+		}
 #elif TGL_FEATURE_RENDER_BITS == 32
 #if TGL_FEATURE_FORCE_CLEAR_NO_COPY_COLOR
-			color = TGL_NO_COPY_COLOR;
+		color = TGL_NO_COPY_COLOR;
 #else
-			color = FB_PIXEL(RGB_TO_PIXEL(r, g, b));
+		color = FB_PIXEL(RGB_TO_PIXEL(r, g, b));
 #endif
-			memset_l(pp, color, zb->xsize);
+		pp = zb->pbuf;
+		if (zb->linesize == zb->xsize * (GLint)PSZB) {
+			memset_l(pp, (GLint)color, zb->xsize * zb->ysize);
+		} else {
+			for (y = 0; y < zb->ysize; y++) {
+				memset_l(pp, (GLint)color, zb->xsize);
+				pp = (PIXEL*)((GLbyte*)pp + zb->linesize);
+			}
+		}
 #else
 #error BADJUJU
 #endif
-			pp = (PIXEL*)((GLbyte*)pp + zb->linesize);
-		}
 	}
 }

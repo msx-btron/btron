@@ -869,25 +869,49 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
 19.2  Tile live/rest: the pointer plane stays first
 
   LAW.  The eight-app tile set is the RAM working set (heap 6100 KiB,
-  3x3 cells of 266x190).  The focused window paints at
-  PS2_TILE_LIVE_MS (16 ms, ~60 Hz).  The other seven rest at
-  PS2_TILE_REST_MS (100 ms, ~10 Hz) via wnd_frame_ms().  Five GL
-  tiles at 60 Hz together overran the 16.667 ms UI budget (~60 ms
-  paint) and buried the 1 kHz INPUT plane; the pointer then appeared
-  frozen.  tools/ps2_tile_budget.py models both RAM and paint-us;
-  first-OK is still 3x3 heap=6100, paint=14500 us.
+  3x3 cells of 266x190).  The compositor paints at most
+  PS2_TILE_GL_PER_PASS (1) TinyGL window per pass.  The focused
+  GL window is picked whenever it owes a frame; other invalid GL
+  windows round-robin the leftover slots.  Animation tasks request
+  a frame every PS2_TILE_LIVE_MS (16 ms).  A skipped window stays
+  invalid; closing one frees its GDEV and shortens the rotation.
+  Five GL tiles rasterizing every pass were ~140 ms (~7 FPS each).
+  Fair RR from the last pick capped the focused app at 60/N.
+  UI pace is PS2_TILE_UI_PACE_US (1000): while any GL still owes
+  a raster the UI task sleeps 1 ms.  ui_slow_paint_us is 0.
+  INPUT stays 1 ms.  One HID pump runs before the paint callback;
+  egl_swap_buffers does not inval_wnd during that paint (a second
+  full composite of every GL frame).  TinyGL same-size context
+  switches retarget pbuf without walking the surface; ZB_clear is
+  one packed fill; EEGS skips the software color clear; PS2 builds
+  drop stipple, magenta skip, and the init compat test.
+  XMB is the first GL tile and the EEGS layer; an unrecorded
+  layer still paints once while frozen, then freeze replays the
+  last stream.  Unfocused XMB skips the 32x32 ribbon (PS2_TILE_SKIP_WAVE).
+  tools/ps2_tile_budget.py and tools/ps2_fps_loop.py model RAM
+  and FPS; first-OK RAM is 3x3 heap=6100; focused Quake-alone
+  ~54 FPS (18 ms paint, NTSC cap 60).
 
-  WHY.  TinyGL is one context per process.  XMB on a tile is ~12.6 ms
-  focused.  Resting windows keep their last GDEV; the compositor
-  blits them.  SIF/CDVD waits and the compositor poll_input call
-  ps2_usb_collect() so OHCI reports still land when Timer0 is late.
-  DualShock analog is 1 ms-gated in ps2_pad_poll so compositor and
-  INPUT can both sample without doubling the stick.
+  WHY.  TinyGL is one context per process.  Focused XMB on a tile
+  is ~12.6 ms; unfocused is a gradient plus icons (~3.2 ms) or
+  the frozen GS stream.  Mars voxel stays in its task and rests
+  when unfocused (it is not TinyGL).  SIF/CDVD waits and compositor
+  poll_input call ps2_usb_collect() so OHCI reports still land
+  when Timer0 is late.  DualShock analog is 1 ms-gated in
+  ps2_pad_poll so compositor and INPUT can both sample without
+  doubling the stick.
 
-  MEASURE.  UART `[TILE] standard set 8/8` then a moving cursor
-  while the focused GL tile animates.  `[USB] IOP shadow clobbered`
-  is a skipped HID pass, not a permanent USB death.  Heap peak of
-  the eight-app set stays under 6100 KiB.
+  MEASURE.  UART `[TILE] standard set 8/8` then `[RT] gl=N ui=...
+  fps~=` every 2 s.  The focused GL title (`BTRON_GL_FPS_OVERLAY`)
+  tracks paint-rate, not 60/N.  Closing a GL window drops gl= and
+  remaining GL tiles animate faster.  `[GL] xmb: XrossMediaBar open`
+  is a live bar, not an empty layer hole.  `[USB] IOP shadow
+  clobbered` is a skipped HID pass, not a permanent USB death.
+  Heap peak of the eight-app set stays under 6100 KiB.  Host gate:
+  verify/tests/test_desktop_clip.c
+  `unfocused_gl_freezes_when_quota_one` (includes focused-outranks-RR)
+  and `layer_records_once_while_frozen`.  Also test-gl-context,
+  test-xmb-render, test-fb-order.
 
 
 20. The /SYS volume inside the executable

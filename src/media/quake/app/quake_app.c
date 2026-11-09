@@ -66,9 +66,8 @@ static void quake_task_fn(VW exinf) {
      * we exit cleanly, run shutdown, then the task returns.
      */
     while (!s_shutdown_req) {
-        if (s_quake_wnd) {
+        if (s_quake_wnd)
             inval_wnd(s_quake_wnd);
-        }
         dly_tsk(wnd_frame_ms(s_quake_wnd));
     }
 

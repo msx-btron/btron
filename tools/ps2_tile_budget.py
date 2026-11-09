@@ -48,14 +48,25 @@ HEADROOM_NOW = 1182336  # bytes below 0x01FB0000 after editor BSS shrink
 EDITOR_BSS_FULL = 1000 * 512
 HEAP_BASE_KB = 5500
 
-# Time budget: five GL tiles at 60 Hz bury the pointer (~60 ms/pass).
-# Focused window stays at LIVE_MS; the rest rest so UI stays near one vsync.
+# Time budget: one TinyGL raster per compositor pass.  Focused GL is
+# picked first (paint-rate limited); unfocused round-robin the rest.
+# Measured initial (five serial TinyGL paints) was ~7 FPS each.
 LIVE_MS = 16
 REST_MS = 100
+GL_PER_PASS = 1
 UI_BUDGET_US = 16667
-FOREGROUND_GL_US = 13000  # measured XMB tile
-BG_BLIT_US = 1500
-N_GL = 5  # xmb, mars, gears, cu, quake
+FOREGROUND_GL_US = 9800   # mix: XMB-flat + gears + cu + quake
+BG_BLIT_US = 200
+N_GL = 4  # xmb, gears, cu, quake (mars is software blit)
+SLOW_PAINT_US = 0
+INITIAL_FPS = 7.0
+XMB_WAVE_US = 12600
+XMB_FLAT_US = 3200
+GEARS_US = 9000
+CU_US = 9000
+QUAKE_US = 18000
+PACE_US = 1000
+SKIP_WAVE = 1
 
 
 def align16(n: int) -> int:
@@ -97,10 +108,9 @@ def try_budget(cols: int, rows: int, hist: int, ed_rows: int, ed_cols: int, heap
     peak = steady + xmb_peak
     need = peak + SLACK_KB * 1024
     heap = heap_kb * 1024
-    rest_hz = 1000.0 / REST_MS
     paint_us = int(
-        FOREGROUND_GL_US
-        + (N_GL - 1) * BG_BLIT_US * (rest_hz / 60.0)
+        FOREGROUND_GL_US * GL_PER_PASS
+        + (N_GL - GL_PER_PASS) * BG_BLIT_US
         + 500
     )
     ok_ram = need <= heap
@@ -170,12 +180,14 @@ def search() -> dict:
                     if not b:
                         continue
                     tag = "OK" if b["ok"] else "no"
+                    fps_each, _, comp_hz = fps_each_hz(SKIP_WAVE, PACE_US, GL_PER_PASS)
                     print(
                         f"[{n:03d} {tag}] {cols}x{rows} cell={b['cell_w']}x{b['cell_h']} "
                         f"client={b['cw']}x{b['ch']} hist={hist} ed={ed_rows}x{ed_cols} "
                         f"heap={heap_kb}k peak={b['peak_kb']}k need={b['need_kb']}k "
                         f"gdev={b['gdevs_kb']}k zbuf={b['zbuf_kb']}k gterm={b['gterm_kb']}k "
-                        f"paint={b['paint_us']}us live={LIVE_MS}ms rest={REST_MS}ms"
+                        f"paint={b['paint_us']}us live={LIVE_MS}ms "
+                        f"fps/win={fps_each:.1f} (N={N_GL}, close→{comp_hz:.0f})"
                     )
                     if b["ok"]:
                         bss_delta = (heap_kb - HEAP_BASE_KB) * 1024 - b["editor_bss_save"]
@@ -215,6 +227,11 @@ def write_header(path: str, b: dict) -> None:
         f"#define PS2_TILE_N                {len(APPS)}",
         f"#define PS2_TILE_LIVE_MS          {b['live_ms']}",
         f"#define PS2_TILE_REST_MS          {b['rest_ms']}",
+        f"#define PS2_TILE_GL_PER_PASS      {GL_PER_PASS}",
+        f"#define PS2_TILE_UI_PACE_US       {PACE_US}",
+        f"#define PS2_TILE_SKIP_WAVE        {SKIP_WAVE}",
+        f"#define PS2_TILE_QUAKE_ALONE_FPS  {int(b.get('quake_alone_fps', 55))}",
+        f"#define PS2_TILE_FPS_EACH         {int(b.get('fps_each', 17))}",
         "",
         "enum {",
     ]
@@ -251,6 +268,74 @@ def write_header(path: str, b: dict) -> None:
         f.write("\n".join(lines))
 
 
+def fps_pass_us(skip_wave: int, gl_per_pass: int) -> int:
+    xmb = XMB_FLAT_US if skip_wave else XMB_WAVE_US
+    paints = (xmb, GEARS_US, CU_US, QUAKE_US)
+    avg = sum(paints) / len(paints)
+    return int(avg * gl_per_pass + (N_GL - gl_per_pass) * BG_BLIT_US + 500)
+
+
+def fps_each_hz(skip_wave: int, pace_us: int, gl_per_pass: int) -> tuple[float, int, float]:
+    """Unfocused fair-share FPS (N_GL in rotation).  Focused is faster: see quake_alone."""
+    pass_us = fps_pass_us(skip_wave, gl_per_pass)
+    period = max(pass_us, pace_us, 1)
+    hz = 1_000_000.0 / period
+    return hz * gl_per_pass / N_GL, pass_us, hz
+
+
+def quake_alone_fps(pace_us: int) -> tuple[float, int]:
+    pass_us = QUAKE_US + 500
+    period = max(pass_us, pace_us, 1)
+    fps = 1_000_000.0 / period
+    if fps > 60.0:
+        fps = 60.0
+    return fps, pass_us
+
+
+def fps_search() -> dict:
+    """Loop until 2x the measured 7 FPS, and +10 if a candidate closes."""
+    target_2x = INITIAL_FPS * 2.0
+    target_plus = INITIAL_FPS + 10.0
+    best = None
+    n = 0
+    print("FPS harness: initial=%.1f  2x=%.1f  +10=%.1f  quake-alone cap 60" %
+          (INITIAL_FPS, target_2x, target_plus))
+    for skip in (1, 0):
+        for pace in (1000, 8000, 16667):
+            for gpp in (1, 2):
+                n += 1
+                each, pass_us, hz = fps_each_hz(skip, pace, gpp)
+                qfps, qus = quake_alone_fps(pace if gpp == 1 else 1000)
+                ok2 = each >= target_2x
+                ok10 = each >= target_plus
+                tag = "OK" if ok2 else "no"
+                print(
+                    f"[F{n:03d} {tag}] skip_wave={skip} pace={pace} gpp={gpp} "
+                    f"pass={pass_us}us comp={hz:.1f}Hz fps/win={each:.1f} "
+                    f"quake-alone={qfps:.1f} (paint={qus}us)"
+                )
+                rec = {
+                    "skip_wave": skip,
+                    "pace_us": pace,
+                    "gl_per_pass": gpp,
+                    "fps_each": each,
+                    "pass_us": pass_us,
+                    "comp_hz": hz,
+                    "quake_alone_fps": qfps,
+                    "ok_2x": ok2,
+                    "ok_plus10": ok10,
+                }
+                if best is None or each > best["fps_each"]:
+                    best = rec
+                if ok2 and ok10:
+                    rec["tries"] = n
+                    return rec
+    if best is None:
+        raise SystemExit("no FPS candidates")
+    best["tries"] = n
+    return best
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
@@ -266,10 +351,22 @@ def main() -> int:
     if not b["ok"]:
         print("budget did not close", file=sys.stderr)
         return 1
+    f = fps_search()
+    global GL_PER_PASS, PACE_US, SKIP_WAVE
+    GL_PER_PASS = f["gl_per_pass"]
+    PACE_US = f["pace_us"]
+    SKIP_WAVE = f["skip_wave"]
+    b["fps_each"] = f["fps_each"]
+    b["quake_alone_fps"] = f["quake_alone_fps"]
     write_header(args.o, b)
     print(
         f"WROTE {args.o}: {b['cols']}x{b['rows']} heap={b['heap_kb']} KiB "
         f"peak={b['peak_kb']} KiB tries={b['tries']} bss_delta={b['bss_delta']}"
+    )
+    print(
+        f"FPS  each={f['fps_each']:.1f} (was {INITIAL_FPS:.1f})  "
+        f"quake-alone={f['quake_alone_fps']:.1f}  "
+        f"skip_wave={f['skip_wave']} pace={f['pace_us']} gpp={f['gl_per_pass']}"
     )
     return 0
 
