@@ -90,17 +90,6 @@ IMPORT INT  bpk_utf8_tron( const char *s, UH *out, INT max );
 
 IMPORT INT  bpk_utf8( UINT cp, char *out );		/* bytes written, at most 4 */
 
-/* Zone B (first byte 87..ED), C and D, as bpk_jis_char holds them */
-IMPORT const UH   bpk_tron_zb[( 0xED - 0x87 + 1 ) * 94];
-IMPORT const UH   bpk_tron_zc[94 * 94];
-IMPORT const UH   bpk_tron_zd[94 * 94];
-/* A character past the BMP (the second 0), or a letter and its mark */
-IMPORT const UINT bpk_tron_multi[][2];
-IMPORT const INT  bpk_tron_nmulti;
-/* The way back for what zone A does not hold, in Unicode order: character, plane 1 code */
-IMPORT const UINT bpk_tron_rev_cp[];
-IMPORT const UH   bpk_tron_rev_code[];
-IMPORT const INT  bpk_tron_nrev;
 /* The letters with a mark that have a place of their own: letter, mark, code */
 IMPORT const UINT bpk_tron_seq[][3];
 IMPORT const INT  bpk_tron_nseq;
