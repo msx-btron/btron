@@ -37,7 +37,7 @@ static inline const ps2_tile_rect_t *ps2_tile_rect(int id)
 {
     static const ps2_tile_rect_t r[PS2_TILE_N] = {
         { 80, 28, 640, 480 }, /* quake */
-        { 80, 516, 640, 76 }, /* term */
+        { 80, 292, 640, 300 }, /* term */
     };
     if (id < 0 || id >= PS2_TILE_N) return 0;
     return &r[id];

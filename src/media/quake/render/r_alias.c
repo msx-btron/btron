@@ -18,6 +18,7 @@
 #include "../include/quakedef.h"
 #include "../include/fs_btron.h"
 #include "../include/texture.h"
+#include "../include/r_eegs.h"
 #include "gl_dispatch.h"
 
 /* ── Globals ─────────────────────────────────────────────────────────── */
@@ -303,6 +304,7 @@ int R_LoadAliasModel(const char *path) {
 /* ── Draw an alias model ─────────────────────────────────────────────── */
 void R_DrawAliasModel(int model_idx, int frame, const float *origin,
                       const float *angles, float light) {
+    if (R_EEGS_Live()) return;
     if (!g_gl) return;
     if (model_idx < 0 || model_idx >= g_num_alias_models) return;
 

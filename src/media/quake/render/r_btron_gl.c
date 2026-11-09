@@ -23,6 +23,7 @@
 #include "../include/r_part.h"
 #include "../include/mathlib.h"
 #include "../include/quake_ui.h"
+#include "../include/r_eegs.h"
 #include "gl_dispatch.h"
 
 refdef_t r_refdef;
@@ -183,6 +184,7 @@ void R_Init(int width, int height) {
 
     r_refdef.fov_x = 90.0f;
     r_refdef.fov_y = 70.0f;
+    UI_SetVideo(width, height);
 }
 
 /* Viewport-only resize — no engine reinit, no texture reload */
@@ -191,6 +193,7 @@ void R_Resize(int width, int height) {
     s_vid_height = height;
     r_refdef.fov_x = 90.0f;
     r_refdef.fov_y = (float)height / (float)width * 90.0f;
+    UI_SetVideo(width, height);
 }
 
 void Draw_Init(void) {
@@ -198,6 +201,10 @@ void Draw_Init(void) {
 }
 
 void Draw_Fill(int x, int y, int w, int h, int color) {
+    if (R_EEGS_Live()) {
+        R_EEGS_Fill(x, y, w, h, (uint32_t)color);
+        return;
+    }
     if (!g_gl) return;
 
     float r = (float)((color >> 16) & 0xFF) / 255.0f;
@@ -237,6 +244,13 @@ void Draw_Fill(int x, int y, int w, int h, int color) {
 }
 
 void Draw_Character(int x, int y, int num) {
+    if (R_EEGS_Live()) {
+        char buf[2];
+        buf[0] = (char)num;
+        buf[1] = '\0';
+        R_EEGS_String(x, y, buf, s_font8x8);
+        return;
+    }
     if (!g_gl) return;
     if (num < 32 || num > 127) num = '?';
     int glyph = num - 32;
@@ -287,6 +301,10 @@ void Draw_Character(int x, int y, int num) {
 
 void Draw_String(int x, int y, const char *str) {
     if (!str) return;
+    if (R_EEGS_Live()) {
+        R_EEGS_String(x, y, str, s_font8x8);
+        return;
+    }
     int cur_x = x;
     while (*str) {
         Draw_Character(cur_x, y, (int)*str);
@@ -305,11 +323,15 @@ void Draw_FadeScreen(void) {
 }
 
 void R_BeginFrame(void) {
-    if (!g_gl) return;
-    glClearColor(0.08f, 0.06f, 0.05f, 1.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
+    if (R_EEGS_Live()) {
+        R_EEGS_BeginFrame(s_vid_width, s_vid_height);
+    } else {
+        if (!g_gl) return;
+        glClearColor(0.08f, 0.06f, 0.05f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_LIGHTING);
+    }
 
     /* Advance lightstyle animation and turbulent surface time (~60 FPS) */
     static const float dt = 1.0f / 60.0f;
@@ -405,67 +427,103 @@ static void render_slipgate_hall(void) {
 }
 
 void R_RenderView(void) {
-    if (!g_gl) return;
+    int eegs = R_EEGS_Live();
+    if (!eegs && !g_gl) return;
 
     s_anim_angle += 1.5f;
     if (s_anim_angle >= 360.0f) s_anim_angle -= 360.0f;
 
-    /* ── Perspective 3D Camera Setup ──────────────────────────────── */
-    glViewport(0, 0, s_vid_width, s_vid_height);
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-
-    float aspect = (float)s_vid_width / (float)s_vid_height;
-    glFrustum(-0.1f * aspect, 0.1f * aspect, -0.1f, 0.1f, 0.1f, 1000.0f);
-
-    glMatrixMode(GL_MODELVIEW);
-    glLoadIdentity();
-
-    /* Quake coordinate system: X forward, Y left, Z up */
-    glRotatef(-90.0f, 1.0f, 0.0f, 0.0f); /* Z-up to Y-up */
-    glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
-    glRotatef(-r_refdef.viewangles[2], 1.0f, 0.0f, 0.0f); /* Roll */
-    glRotatef(-r_refdef.viewangles[0], 0.0f, 1.0f, 0.0f); /* Pitch */
-    glRotatef(-r_refdef.viewangles[1], 0.0f, 0.0f, 1.0f); /* Yaw */
-    glTranslatef(-r_refdef.vieworg[0], -r_refdef.vieworg[1], -r_refdef.vieworg[2]);
-
-    /* Render 3D Environment */
-    if (g_world.is_loaded) {
-        R_DrawWorld();
-
-        /* Entity pass: draw all edicts with a valid model index */
-        for (int ei = 2; ei < g_prvm.num_edicts; ei++) {
-            edict_t *ed = &g_prvm.edicts[ei];
-            if (ed->free) continue;
-            int modelindex = (int)EF(ed, F_MODELINDEX);
-            if (modelindex <= 0) continue;
-
-            float eorg[3] = { EF(ed, F_ORIGIN_X), EF(ed, F_ORIGIN_Y), EF(ed, F_ORIGIN_Z) };
-            float eang[3] = { EF(ed, F_ANGLES_X), EF(ed, F_ANGLES_Y), EF(ed, F_ANGLES_Z) };
-
-            if (modelindex >= 1000) {
-                /* Brush submodel (doors, platforms, lifts, buttons) */
-                int sub = modelindex - 1000;
-                R_DrawBModel(sub, eorg, eang);
-            } else {
-                /* Alias model (weapons, armors, health, monsters) */
-                int mi = modelindex - 1;
-                if (mi >= 0 && mi < g_num_alias_models) {
-                    float lt = R_LightForFace(NULL, eorg);
-                    R_DrawAliasModel(mi, (int)EF(ed, F_FRAME), eorg, eang, lt);
+    if (eegs) {
+        /* VU0 + GS: no TinyGL glFrustum / glBegin.  Menu already covers the
+         * client, so skip world submit while it is up. */
+        if (!g_menu_active && g_world.is_loaded) {
+            R_EEGS_SetCamera(r_refdef.vieworg, r_refdef.viewangles,
+                             s_vid_width, s_vid_height);
+            R_DrawWorld();
+            for (int ei = 2; ei < g_prvm.num_edicts; ei++) {
+                edict_t *ed = &g_prvm.edicts[ei];
+                int modelindex;
+                float eorg[3], eang[3];
+                if (ed->free) continue;
+                modelindex = (int)EF(ed, F_MODELINDEX);
+                if (modelindex <= 0) continue;
+                eorg[0] = EF(ed, F_ORIGIN_X);
+                eorg[1] = EF(ed, F_ORIGIN_Y);
+                eorg[2] = EF(ed, F_ORIGIN_Z);
+                eang[0] = EF(ed, F_ANGLES_X);
+                eang[1] = EF(ed, F_ANGLES_Y);
+                eang[2] = EF(ed, F_ANGLES_Z);
+                if (modelindex >= 1000) {
+                    R_DrawBModel(modelindex - 1000, eorg, eang);
+                } else {
+                    int mi = modelindex - 1;
+                    if (mi >= 0 && mi < g_num_alias_models) {
+                        float lt = R_LightForFace(NULL, eorg);
+                        R_DrawAliasModel(mi, (int)EF(ed, F_FRAME), eorg, eang, lt);
+                    }
                 }
             }
         }
-
-        /* Particle pass: camera-aligned billboards */
-        vec3_t vforward, vright, vup;
-        AngleVectors(r_refdef.viewangles, vforward, vright, vup);
-        R_DrawParticles(r_refdef.vieworg, vright, vup);
     } else {
-        render_slipgate_hall();
+        /* ── Perspective 3D Camera Setup ──────────────────────────────── */
+        glViewport(0, 0, s_vid_width, s_vid_height);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+
+        float aspect = (float)s_vid_width / (float)s_vid_height;
+        glFrustum(-0.1f * aspect, 0.1f * aspect, -0.1f, 0.1f, 0.1f, 1000.0f);
+
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+
+        /* Quake coordinate system: X forward, Y left, Z up */
+        glRotatef(-90.0f, 1.0f, 0.0f, 0.0f); /* Z-up to Y-up */
+        glRotatef(90.0f, 0.0f, 0.0f, 1.0f);
+        glRotatef(-r_refdef.viewangles[2], 1.0f, 0.0f, 0.0f); /* Roll */
+        glRotatef(-r_refdef.viewangles[0], 0.0f, 1.0f, 0.0f); /* Pitch */
+        glRotatef(-r_refdef.viewangles[1], 0.0f, 0.0f, 1.0f); /* Yaw */
+        glTranslatef(-r_refdef.vieworg[0], -r_refdef.vieworg[1], -r_refdef.vieworg[2]);
+
+        /* Render 3D Environment */
+        if (g_world.is_loaded) {
+            R_DrawWorld();
+
+            /* Entity pass: draw all edicts with a valid model index */
+            for (int ei = 2; ei < g_prvm.num_edicts; ei++) {
+                edict_t *ed = &g_prvm.edicts[ei];
+                if (ed->free) continue;
+                int modelindex = (int)EF(ed, F_MODELINDEX);
+                if (modelindex <= 0) continue;
+
+                float eorg[3] = { EF(ed, F_ORIGIN_X), EF(ed, F_ORIGIN_Y), EF(ed, F_ORIGIN_Z) };
+                float eang[3] = { EF(ed, F_ANGLES_X), EF(ed, F_ANGLES_Y), EF(ed, F_ANGLES_Z) };
+
+                if (modelindex >= 1000) {
+                    /* Brush submodel (doors, platforms, lifts, buttons) */
+                    int sub = modelindex - 1000;
+                    R_DrawBModel(sub, eorg, eang);
+                } else {
+                    /* Alias model (weapons, armors, health, monsters) */
+                    int mi = modelindex - 1;
+                    if (mi >= 0 && mi < g_num_alias_models) {
+                        float lt = R_LightForFace(NULL, eorg);
+                        R_DrawAliasModel(mi, (int)EF(ed, F_FRAME), eorg, eang, lt);
+                    }
+                }
+            }
+
+            /* Particle pass: camera-aligned billboards */
+            vec3_t vforward, vright, vup;
+            AngleVectors(r_refdef.viewangles, vforward, vright, vup);
+            R_DrawParticles(r_refdef.vieworg, vright, vup);
+        } else {
+            render_slipgate_hall();
+        }
     }
 
-    /* 2D Status Bar & HUD — live player stats */
+    /* 2D Status Bar & HUD — live player stats.
+     * EEGS menu already fills the client, so skip the HUD submit. */
+    if (!(eegs && g_menu_active)) {
     Draw_Fill(0, s_vid_height - 36, s_vid_width, 36, 0x1A1410);
     Draw_Fill(0, s_vid_height - 37, s_vid_width, 1, 0x4A3828);
     {
@@ -522,6 +580,7 @@ void R_RenderView(void) {
     Draw_String(s_vid_width - 175, 13, "[ESC] MENU");
     Draw_Fill(s_vid_width - 92, 8, 86, 18, g_console_active ? 0x8C2020 : 0x2A2420);
     Draw_String(s_vid_width - 88, 13, "[~] CONSOLE");
+    }
 
 #if R_DRAW_WEAPON_VIEWMODEL
     /* First-Person Viewmodel (drawn in camera space) */

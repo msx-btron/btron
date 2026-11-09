@@ -17,6 +17,7 @@
 #include "../include/quakedef.h"
 #include "../include/mathlib.h"
 #include "../include/server.h"
+#include "../include/r_eegs.h"
 #include "gl_dispatch.h"
 
 /* ── Globals ─────────────────────────────────────────────────────────── */
@@ -278,6 +279,7 @@ void P_UpdateParticles(float dt) {
 /* ── Billboard particle renderer ─────────────────────────────────────── */
 void R_DrawParticles(const float *vieworg, const float *viewright,
                      const float *viewup) {
+    if (R_EEGS_Live()) return;
     if (!g_gl || g_num_particles == 0) return;
     (void)vieworg;
 

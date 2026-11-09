@@ -12,6 +12,7 @@
 #include "world.h"
 
 void R_InitBrushRenderer(void);
+void R_BrushInvalidateTexCache(void);
 void R_DrawWorld(void);
 
 #endif /* QUAKE_R_BRUSH_H */

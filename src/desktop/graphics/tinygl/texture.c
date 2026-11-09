@@ -58,6 +58,15 @@ static GLTexture* find_texture(GLint h) {
 	return NULL;
 }
 
+const void *tinygl_texture_pixmap(unsigned int tex_id)
+{
+	GLTexture *t;
+	if (tex_id == 0u) return NULL;
+	t = find_texture((GLint)tex_id);
+	if (!t) return NULL;
+	return t->images[0].pixmap;
+}
+
 GLboolean glAreTexturesResident(GLsizei n, const GLuint* textures, GLboolean* residences) {
 #define RETVAL GL_FALSE
 	GLboolean retval = GL_TRUE;

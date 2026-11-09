@@ -870,8 +870,8 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
 
   LAW.  The boot working set is Quake at 80% of 800x600 (640x480
   at 80,28, client 632x444, above the EEGS water of 320x220) plus
-  a command-line terminal under it (640x76 at 80,516).  Heap is
-  6400 KiB.  Other apps open from the terminal or the global menu.
+  a command-line terminal of half-screen height (640x300 at 80,292).
+  Heap is 6400 KiB.  Other apps open from the terminal or the global menu.
   Closing the EEGS layer window (XMB, or Quake as the layer) drops
   the GS stream so the client body does not stay on the page, and
   the last GL surface glClose()s TinyGL so textures return to the
@@ -907,9 +907,17 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   FS_DropBSP() so the heap BSP returns to the pool.
   Live TinyGL↔EEGS switching on resize (client below 280x180 is
   TinyGL, at/above 320x220 is EEGS) is in the surface but is the
-  next debug; boot size already enables EEGS.  Gears, Cu and Quake
-  stay TinyGL.  detect() pumps HID after the flush so an OHCI burst
-  during realloc still moves the pointer.
+  next debug; boot size already enables EEGS.  Gears and Cu stay
+  TinyGL immediate-mode on EEGS.  Quake on EEGS submits through
+  VU0 `ps2_vu0_transform_batch` and `eegs_triangle` (world fans,
+  HUD fills, glyph spans); TinyGL is load-time texture upload
+  only (`glTexImage2D` → `gs_tex_register`).  Alias models and
+  particles are skipped on that path for the 30-FPS slice.
+  The in-game menu is reachable during drone replay (ESC or the
+  [ESC] MENU hit).  Window min height is 64 px; resize hits the
+  28x28 bottom-right corner plus 10 px right and bottom edges
+  below the title.  detect() pumps HID after the flush so an
+  OHCI burst during realloc still moves the pointer.
   tools/ps2_tile_budget.py and tools/ps2_fps_loop.py model RAM
   and FPS; first-OK RAM is Quake 640x480 + terminal, heap=6400;
   focused Quake-alone ~54 FPS (18 ms paint, NTSC cap 60).

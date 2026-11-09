@@ -502,7 +502,7 @@ ER wnd_resize_chrome(WND *wnd, H w, H h) {
     RECT old_r;
     if (!wnd) return E_PAR;
     if (w < 160) w = 160;
-    if (h < 100) h = 100;
+    if (h < 64) h = 64;
     old_r = wnd->bounds;
     if (old_r.right - old_r.left == w && old_r.bottom - old_r.top == h)
         return E_OK;
@@ -515,7 +515,7 @@ ER wnd_resize_chrome(WND *wnd, H w, H h) {
 ER rsz_wnd(WND *wnd, H w, H h) {
     if (!wnd) return E_PAR;
     if (w < 160) w = 160;
-    if (h < 100) h = 100;
+    if (h < 64) h = 64;
 
     RECT old_r = wnd->bounds;
     int slack = s_wnd_resizing ? 1 : 0;
@@ -1553,10 +1553,26 @@ BOOL wnd_mgr_handle_event(const EVT *ev) {
             top_wnd(clicked);
         }
 
-        /* 1. BTRON3 Bottom-Right Corner Resize Grip Check (16x16 corner) */
-        if ((clicked->attr & WND_ATTR_RESIZE) &&
-            ev->pos.x >= clicked->bounds.right - 18 && ev->pos.x <= clicked->bounds.right &&
-            ev->pos.y >= clicked->bounds.bottom - 18 && ev->pos.y <= clicked->bounds.bottom) {
+        /* 1. Resize: 28x28 bottom-right corner, plus 10 px right and bottom
+         * edges below the title so a half-screen terminal can grow up. */
+        if (clicked->attr & WND_ATTR_RESIZE) {
+            H grip_top = clicked->bounds.top;
+            int in_br, in_right, in_bottom;
+            if (clicked->attr & WND_ATTR_TITLE)
+                grip_top = (H)(clicked->bounds.top + WND_TITLE_HEIGHT);
+            in_br = (ev->pos.x >= clicked->bounds.right - 28 &&
+                     ev->pos.x <= clicked->bounds.right &&
+                     ev->pos.y >= clicked->bounds.bottom - 28 &&
+                     ev->pos.y <= clicked->bounds.bottom);
+            in_right = (ev->pos.x >= clicked->bounds.right - 10 &&
+                        ev->pos.x <= clicked->bounds.right &&
+                        ev->pos.y >= grip_top &&
+                        ev->pos.y <= clicked->bounds.bottom);
+            in_bottom = (ev->pos.y >= clicked->bounds.bottom - 10 &&
+                         ev->pos.y <= clicked->bounds.bottom &&
+                         ev->pos.x >= clicked->bounds.left &&
+                         ev->pos.x <= clicked->bounds.right);
+            if (in_br || in_right || in_bottom) {
             s_wnd_resizing = TRUE;
             s_wnd_resize_target = clicked;
             s_wnd_resize_orig_w = clicked->bounds.right - clicked->bounds.left;
@@ -1566,6 +1582,7 @@ BOOL wnd_mgr_handle_event(const EVT *ev) {
             s_wnd_resize_pending_w = s_wnd_resize_orig_w;
             s_wnd_resize_pending_h = s_wnd_resize_orig_h;
             return TRUE;
+            }
         }
 
         /* 2. Titlebar & Compact Sliding Tab Check */
@@ -1621,7 +1638,7 @@ BOOL wnd_mgr_handle_event(const EVT *ev) {
             s_wnd_resize_pending_w = s_wnd_resize_orig_w + (ev->pos.x - s_wnd_resize_start_x);
             s_wnd_resize_pending_h = s_wnd_resize_orig_h + (ev->pos.y - s_wnd_resize_start_y);
             if (s_wnd_resize_pending_w < 160) s_wnd_resize_pending_w = 160;
-            if (s_wnd_resize_pending_h < 100) s_wnd_resize_pending_h = 100;
+            if (s_wnd_resize_pending_h < 64) s_wnd_resize_pending_h = 64;
             /* Chrome follows the pointer on every report; GDEV realloc waits
              * for the compositor pass (OHCI bursts after a long GL paint
              * must not cls_dev/opn_dev per MOVE). */

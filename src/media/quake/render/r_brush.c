@@ -18,26 +18,34 @@
 #include "../include/texture.h"
 #include "../include/r_light.h"
 #include "../include/r_surf.h"
+#include "../include/r_eegs.h"
 #include "gl_dispatch.h"
 
 #define MAX_VIS_FACES 65536
 
-static uint8_t s_pvs_buffer[4096];
-static uint8_t s_face_vis[MAX_VIS_FACES / 8];
-static int     s_drawn_faces = 0;
-
-void R_InitBrushRenderer(void) {
-    memset(s_face_vis, 0, sizeof(s_face_vis));
-    s_drawn_faces = 0;
-}
-
-/* ── Surface classification ─────────────────────────────────────────── */
 typedef enum {
     SURF_SOLID   = 0,
     SURF_TURB    = 1,   /* water / slime / lava (* prefix) */
     SURF_SKY     = 2,
     SURF_LIGHT   = 3,   /* self-illuminated panels */
 } surf_class_t;
+
+static uint8_t s_pvs_buffer[4096];
+static uint8_t s_face_vis[MAX_VIS_FACES / 8];
+static int     s_drawn_faces = 0;
+static int     s_miptex_gl[MAX_MAP_TEXTURES];
+static surf_class_t s_miptex_sc[MAX_MAP_TEXTURES];
+static unsigned char s_miptex_ok[MAX_MAP_TEXTURES];
+
+void R_BrushInvalidateTexCache(void) {
+    memset(s_miptex_ok, 0, sizeof(s_miptex_ok));
+}
+
+void R_InitBrushRenderer(void) {
+    memset(s_face_vis, 0, sizeof(s_face_vis));
+    memset(s_miptex_ok, 0, sizeof(s_miptex_ok));
+    s_drawn_faces = 0;
+}
 
 static surf_class_t classify_surface(const char *name) {
     if (!name || !name[0]) return SURF_SOLID;
@@ -143,17 +151,26 @@ void R_DrawWorld(void) {
         if (face->side == 0 && cam_dist < -0.1f) continue;
         if (face->side == 1 && cam_dist >  0.1f) continue;
 
-        /* Gather texinfo */
+        /* Gather texinfo (miptex → GL index cached; no strcasecmp per face). */
         const char       *texname = "";
         const texinfo_t  *ti      = NULL;
         int               tex_w   = 64, tex_h = 64;
         int               gl_idx  = -1;
+        surf_class_t      sc      = SURF_SOLID;
+        int               mip     = -1;
 
         if (face->texinfo >= 0 && face->texinfo < g_world.numtexinfo) {
             ti = &g_world.texinfo[face->texinfo];
             if (ti->miptex >= 0 && ti->miptex < g_world.numtextures) {
-                texname = g_world.texture_names[ti->miptex];
-                gl_idx  = TEX_FindTexture(texname);
+                mip = ti->miptex;
+                texname = g_world.texture_names[mip];
+                if (!s_miptex_ok[mip]) {
+                    s_miptex_gl[mip] = TEX_FindTexture(texname);
+                    s_miptex_sc[mip] = classify_surface(texname);
+                    s_miptex_ok[mip] = 1;
+                }
+                gl_idx = s_miptex_gl[mip];
+                sc = s_miptex_sc[mip];
                 if (gl_idx >= 0) {
                     tex_w = g_gl_textures[gl_idx].width;
                     tex_h = g_gl_textures[gl_idx].height;
@@ -161,11 +178,9 @@ void R_DrawWorld(void) {
             }
         }
 
-        surf_class_t sc = classify_surface(texname);
-
-        /* Face centre (average of first 3 verts) for dlight sampling */
+        /* Face centre only when a dynamic light can use it. */
         float face_center[3] = {0,0,0};
-        {
+        if (g_num_dlights > 0) {
             int cnt = 0;
             for (int e = 0; e < face->numedges && cnt < 3; e++) {
                 int se = face->firstedge + e;
@@ -187,7 +202,46 @@ void R_DrawWorld(void) {
         }
 
         /* Lightmap brightness for this face */
-        float light = R_LightForFace(face, face_center);
+        float light = R_LightForFace(face, g_num_dlights > 0 ? face_center : NULL);
+
+        if (R_EEGS_Live()) {
+            float xyz[32 * 3], stuv[32 * 2], rgb[3];
+            int nv = 0;
+            uint32_t rgba;
+            get_surface_color(texname, sc, plane, light, rgb);
+            rgba = ((uint32_t)(rgb[0] * 255.0f) & 0xFFu)
+                 | (((uint32_t)(rgb[1] * 255.0f) & 0xFFu) << 8)
+                 | (((uint32_t)(rgb[2] * 255.0f) & 0xFFu) << 16)
+                 | 0xFF000000u;
+            for (int e = 0; e < face->numedges && nv < 32; e++) {
+                int se = face->firstedge + e;
+                int ev, abs_ev, vi;
+                const float *p;
+                if (se >= g_world.numsurfedges || se < 0) break;
+                ev = g_world.surfedges[se];
+                abs_ev = (ev >= 0) ? ev : -ev;
+                if (abs_ev >= g_world.numedges) break;
+                vi = (ev >= 0) ? g_world.edges[ev].v[0] : g_world.edges[-ev].v[1];
+                if (vi < 0 || vi >= g_world.numvertexes) break;
+                p = g_world.vertexes[vi].point;
+                xyz[nv * 3 + 0] = p[0];
+                xyz[nv * 3 + 1] = p[1];
+                xyz[nv * 3 + 2] = p[2];
+                if (ti) {
+                    float s, t;
+                    compute_uv(p, ti, tex_w, tex_h, &s, &t);
+                    stuv[nv * 2 + 0] = s * (float)tex_w;
+                    stuv[nv * 2 + 1] = t * (float)tex_h;
+                } else {
+                    stuv[nv * 2 + 0] = 0.0f;
+                    stuv[nv * 2 + 1] = 0.0f;
+                }
+                nv++;
+            }
+            R_EEGS_Poly(xyz, stuv, nv, rgba, gl_idx);
+            s_drawn_faces++;
+            continue;
+        }
 
         /* Sky — dedicated path */
         if (sc == SURF_SKY) {
@@ -251,6 +305,74 @@ void R_DrawBModel(int model_idx, const float *origin, const float *angles) {
 
     const dmodel_t *mod = &g_world.models[model_idx];
     if (mod->numfaces <= 0) return;
+
+    if (R_EEGS_Live()) {
+        (void)angles;
+        for (int f = 0; f < mod->numfaces; f++) {
+            int fi = mod->firstface + f;
+            const dface_t *face;
+            const dplane_t *plane;
+            const texinfo_t *ti = NULL;
+            const char *texname = "";
+            int tex_w = 64, tex_h = 64, gl_idx = -1, nv = 0, mip;
+            float xyz[32 * 3], stuv[32 * 2], rgb[3], light;
+            uint32_t rgba;
+            surf_class_t sc;
+            if (fi < 0 || fi >= g_world.numfaces) continue;
+            face = &g_world.faces[fi];
+            if (face->planenum < 0 || face->planenum >= g_world.numplanes) continue;
+            plane = &g_world.planes[face->planenum];
+            if (face->texinfo >= 0 && face->texinfo < g_world.numtexinfo) {
+                ti = &g_world.texinfo[face->texinfo];
+                if (ti->miptex >= 0 && ti->miptex < g_world.numtextures) {
+                    mip = ti->miptex;
+                    texname = g_world.texture_names[mip];
+                    if (!s_miptex_ok[mip]) {
+                        s_miptex_gl[mip] = TEX_FindTexture(texname);
+                        s_miptex_sc[mip] = classify_surface(texname);
+                        s_miptex_ok[mip] = 1;
+                    }
+                    gl_idx = s_miptex_gl[mip];
+                    if (gl_idx >= 0) {
+                        tex_w = g_gl_textures[gl_idx].width;
+                        tex_h = g_gl_textures[gl_idx].height;
+                    }
+                    sc = s_miptex_sc[mip];
+                } else sc = SURF_SOLID;
+            } else sc = SURF_SOLID;
+            if (sc == SURF_SKY) continue;
+            light = R_LightForFace(face, origin);
+            get_surface_color(texname, sc, plane, light, rgb);
+            rgba = ((uint32_t)(rgb[0] * 255.0f) & 0xFFu)
+                 | (((uint32_t)(rgb[1] * 255.0f) & 0xFFu) << 8)
+                 | (((uint32_t)(rgb[2] * 255.0f) & 0xFFu) << 16)
+                 | 0xFF000000u;
+            for (int e = 0; e < face->numedges && nv < 32; e++) {
+                int se = face->firstedge + e, ev, vi;
+                const float *p;
+                if (se >= g_world.numsurfedges) break;
+                ev = g_world.surfedges[se];
+                vi = (ev >= 0) ? g_world.edges[ev].v[0] : g_world.edges[-ev].v[1];
+                if (vi < 0 || vi >= g_world.numvertexes) break;
+                p = g_world.vertexes[vi].point;
+                xyz[nv * 3 + 0] = p[0] + origin[0];
+                xyz[nv * 3 + 1] = p[1] + origin[1];
+                xyz[nv * 3 + 2] = p[2] + origin[2];
+                if (ti) {
+                    float s, t;
+                    compute_uv(p, ti, tex_w, tex_h, &s, &t);
+                    stuv[nv * 2 + 0] = s * (float)tex_w;
+                    stuv[nv * 2 + 1] = t * (float)tex_h;
+                } else {
+                    stuv[nv * 2 + 0] = 0.0f;
+                    stuv[nv * 2 + 1] = 0.0f;
+                }
+                nv++;
+            }
+            R_EEGS_Poly(xyz, stuv, nv, rgba, gl_idx);
+        }
+        return;
+    }
 
     glPushMatrix();
     glTranslatef(origin[0], origin[1], origin[2]);

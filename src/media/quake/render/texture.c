@@ -87,6 +87,7 @@ static int upload_miptex(const byte *tex_lump_base, int ofs, gl_tex_t *out) {
         out->name[15] = '\0';
         out->width = w; out->height = h;
         out->tex_id = 0; out->is_uploaded = 0;
+        out->gs_plane = NULL;
         return 1;
     }
 
@@ -117,11 +118,14 @@ static int upload_miptex(const byte *tex_lump_base, int ofs, gl_tex_t *out) {
     out->height      = h;
     out->tex_id      = (unsigned int)tex_id;
     out->is_uploaded = 1;
+    out->gs_plane    = tinygl_texture_pixmap(tex_id);
     return 1;
 }
 
 /* ── Load all textures from BSP LUMP_TEXTURES data ────────────────── */
 int TEX_LoadBSPTextures(const byte *tex_lump, int lump_len) {
+    extern void R_BrushInvalidateTexCache(void);
+    R_BrushInvalidateTexCache();
     if (!tex_lump || lump_len < 4) return 0;
 
     int num_tex = *(const int *)tex_lump;

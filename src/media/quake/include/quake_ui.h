@@ -21,6 +21,7 @@ extern int g_replay_active;
 
 /* Menu & Console Lifecycle */
 void UI_Init(void);
+void UI_SetVideo(int width, int height);
 void UI_Draw(int width, int height);
 int  UI_HandleKey(UW key);
 int  UI_HandleMouse(int mx, int my, int button_down);

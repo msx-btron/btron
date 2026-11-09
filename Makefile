@@ -389,6 +389,7 @@ QUAKE_SRCS = \
     src/media/quake/sys/in_btron.c \
     src/media/quake/sys/fs_btron.c \
     src/media/quake/render/r_btron_gl.c \
+    src/media/quake/render/r_eegs.c \
     src/media/quake/render/r_brush.c \
     src/media/quake/render/r_light.c \
     src/media/quake/render/r_surf.c \
@@ -3448,7 +3449,7 @@ TEST_QUAKE_RENDER_SRCS = verify/tests/test_quake_render.c \
                          src/media/quake/core/cmd.c src/media/quake/core/cvar.c src/media/quake/core/mem.c \
                          src/media/quake/core/mathlib.c src/media/quake/core/world.c src/media/quake/core/pr_exec.c \
                          src/media/quake/core/sv_phys.c src/media/quake/core/sv_main.c \
-                         src/media/quake/render/r_brush.c src/media/quake/render/r_light.c \
+                         src/media/quake/render/r_brush.c src/media/quake/render/r_eegs.c src/media/quake/render/r_light.c \
                          src/media/quake/render/r_surf.c src/media/quake/render/r_alias.c \
                          src/media/quake/render/texture.c \
                          src/media/quake/sys/sys_btron.c src/media/quake/sys/fs_btron.c \
@@ -3746,6 +3747,7 @@ CAPTURE_QUAKE_SRCS = verify/scratch/capture_quake.c \
                      src/media/quake/sys/in_btron.c \
                      src/media/quake/sys/fs_btron.c \
                      src/media/quake/render/r_btron_gl.c \
+                     src/media/quake/render/r_eegs.c \
                      src/media/quake/render/r_brush.c \
                      src/media/quake/render/r_light.c \
                      src/media/quake/render/r_surf.c \

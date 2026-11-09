@@ -37,8 +37,8 @@ int g_noclip         = 0;
 int g_replay_active  = 0;
 static char s_replay_label[40] = "DEMO 1";
 static float g_replay_time   = 0.0f;
-static int s_ui_w            = 480;
-static int s_ui_h            = 360;
+static int s_ui_w            = 632;
+static int s_ui_h            = 444;
 
 /* ── Console State ────────────────────────────────────────────────────── */
 #define CON_MAX_LINES 32
@@ -557,7 +557,6 @@ void Replay_StartDemo(int demo_num) {
 void Replay_Stop(void) {
     Demo_Stop();
     g_replay_active = 0;
-    g_menu_active = 0;
 }
 
 /* A synthetic camera spot is legal when it sits in open space with floor
@@ -728,6 +727,11 @@ static void Cmd_Help_f(void) {
 }
 
 /* ── UI Lifecycle ─────────────────────────────────────────────────────── */
+void UI_SetVideo(int width, int height) {
+    if (width > 0) s_ui_w = width;
+    if (height > 0) s_ui_h = height;
+}
+
 void UI_Init(void) {
     Cmd_Init();
     Cmd_AddCommand("map",         Cmd_Map_f);

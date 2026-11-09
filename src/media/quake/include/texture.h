@@ -30,6 +30,7 @@ typedef struct {
     int          width;
     int          height;
     int          is_uploaded;
+    const void  *gs_plane;        /* TinyGL pixmap key for gs_tex_find (load-time) */
 } gl_tex_t;
 
 extern gl_tex_t  g_gl_textures[MAX_GL_TEXTURES];

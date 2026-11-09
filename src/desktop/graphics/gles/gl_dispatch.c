@@ -39,6 +39,12 @@ GL_BACKEND gl_active_backend(void) {
     return s_active_backend;
 }
 
+__attribute__((weak)) const void *tinygl_texture_pixmap(unsigned int tex_id)
+{
+    (void)tex_id;
+    return NULL;
+}
+
 void gl_set_active_backend(GL_BACKEND b) {
     s_active_backend = b;
 }

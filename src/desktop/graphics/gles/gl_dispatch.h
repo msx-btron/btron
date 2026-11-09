@@ -114,6 +114,10 @@ GL_BACKEND gl_active_backend(void);
 void       gl_set_active_backend(GL_BACKEND b);
 int gl_tinygl_pipeline(void);
 
+/* Load-time only: pixmap key of a TinyGL texture, for GS plane lookup.
+ * Draw-time EEGS Quake does not go through glBegin. */
+const void *tinygl_texture_pixmap(unsigned int tex_id);
+
 /* ── Fill accounting ─────────────────────────────────────────────────
  * What the rasterizer was asked to draw, not how long it took: a filled triangle costs
  * its setup once and its area per pixel, so the pair of counts separates a stage whose

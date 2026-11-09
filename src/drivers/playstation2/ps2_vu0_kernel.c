@@ -251,21 +251,23 @@ void ps2_vu0_transform_batch(const float mvp[16],
     {
         vu0_vec4_t cols[4];
         memcpy(cols, mvp, sizeof(cols));
+        __asm__ volatile(
+            "lqc2     $vf5, 0(%0)\n\t"
+            "lqc2     $vf6, 16(%0)\n\t"
+            "lqc2     $vf7, 32(%0)\n\t"
+            "lqc2     $vf8, 48(%0)\n\t"
+            : : "r"(cols) : "memory");
         for (i = 0; i < n; i++) {
             const float *v = &in[i].x;
             float *o = &out[i].x;
             __asm__ volatile(
                 "lqc2     $vf1, 0(%0)\n\t"
-                "lqc2     $vf5, 0(%2)\n\t"
-                "lqc2     $vf6, 16(%2)\n\t"
-                "lqc2     $vf7, 32(%2)\n\t"
-                "lqc2     $vf8, 48(%2)\n\t"
                 "vmulax.xyzw  ACC, $vf5, $vf1x\n\t"
                 "vmadday.xyzw ACC, $vf6, $vf1y\n\t"
                 "vmaddaz.xyzw ACC, $vf7, $vf1z\n\t"
                 "vmaddw.xyzw  $vf2, $vf8, $vf1w\n\t"
                 "sqc2     $vf2, 0(%1)\n\t"
-                : : "r"(v), "r"(o), "r"(cols) : "memory");
+                : : "r"(v), "r"(o) : "memory");
         }
     }
 #else

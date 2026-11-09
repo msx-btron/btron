@@ -212,6 +212,15 @@ int main(void) {
     assert(g_menu_active == 1);
     printf("  [PASS] Demo mode ignores gameplay keys & mouse; ESC stops demo and opens menu.\n");
 
+    demo_ok = Demo_Play("demo1.dem");
+    assert(demo_ok == 1);
+    assert(g_replay_active == 1);
+    UI_SetVideo(632, 444);
+    assert(UI_HandleMouse(632 - 150, 13, 1) == 1);
+    assert(g_replay_active == 0);
+    assert(g_menu_active == 1);
+    printf("  [PASS] [ESC] MENU click during replay opens the menu.\n");
+
     printf("\n[8/8] Testing player movement from spawn on E1M1...\n");
     World_ChangeMap("maps/e1m1.bsp");
     assert(g_world.is_loaded == 1);

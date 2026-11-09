@@ -419,7 +419,7 @@ static void test_btron3_corner_window_resizing(void) {
     /* Test Minimum Size Guard */
     rsz_wnd(w, 50, 50);
     TEST_ASSERT(w->bounds.right - w->bounds.left >= 160, "Clamped at minimum width >= 160px");
-    TEST_ASSERT(w->bounds.bottom - w->bounds.top >= 100, "Clamped at minimum height >= 100px");
+    TEST_ASSERT(w->bounds.bottom - w->bounds.top >= 64, "Clamped at minimum height >= 64px");
 
     /* Test wrsz_wnd origin & dimension update */
     RECT r = { 50, 60, 650, 480 };

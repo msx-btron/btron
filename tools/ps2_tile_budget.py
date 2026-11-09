@@ -73,7 +73,7 @@ EEGS_CLIENT_W = 320
 EEGS_CLIENT_H = 220
 QUAKE_BOOT_W = 640
 QUAKE_BOOT_H = 480
-TERM_BOOT_H = 76
+TERM_BOOT_H = 300
 MARGIN = 8
 GL_APPS = ("quake",)
 
@@ -103,9 +103,6 @@ def quake_term_rects() -> list[dict] | None:
     t_w, t_h = q_w, TERM_BOOT_H
     t_x = q_x
     t_y = SCREEN_H - MARGIN - t_h
-    if t_y < q_y + q_h:
-        t_y = q_y + q_h
-        t_h = SCREEN_H - MARGIN - t_y
     if t_h < 48:
         return None
     rects: list[dict] = []
