@@ -222,6 +222,14 @@ static void test_real_iso(void)
         s_checks++;
     }
 
+    if (!ps2_iso_find(file_read, f, "PAK0.PAK", &lba, &size))
+        fail("iso root PAK0.PAK");
+    else {
+        printf("  [OK]   iso root PAK0.PAK LBA=%u size=%u\n",
+               (unsigned)lba, (unsigned)size);
+        s_checks++;
+    }
+
     fclose(f);
 }
 

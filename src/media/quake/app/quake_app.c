@@ -235,8 +235,8 @@ WND *open_quake_window(int x, int y, int width, int height) {
                 uart_puts_raw("[QUAKE] drone1m1.dem not found (/SYS or QUAKE/)\n");
 #endif
         } else {
-            uart_puts_raw("[QUAKE] PAK not indexed (CDVD/ISO QUAKE/PAK0.PAK). "
-                          "Window is open.\n");
+            uart_puts_raw("[QUAKE] PAK not indexed (FILEIO cdrom0:QUAKE/PAK0.PAK). "
+                          "Window is the slipgate stub until the disc PAK loads.\n");
         }
         UI_Init();
         s_initialised = 1;

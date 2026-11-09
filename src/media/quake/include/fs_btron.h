@@ -61,6 +61,7 @@ extern fs_bsp_cache_t g_bsp_cache;
 
 /* ── Public API ──────────────────────────────────────────────────── */
 int   FS_Init(void);
+int   FS_PakIndexed(void);  /* 1 when maps/e1m1.bsp is in the hash */
 byte *FS_LoadFile(const char *path, int *out_len);
 void  FS_FreeFile(void *buffer);
 

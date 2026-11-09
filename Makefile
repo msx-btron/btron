@@ -25,7 +25,7 @@
 #   run-uefi      Boot x86_64 UEFI SMP in QEMU (btron-uchida.elf, aliases: run-eufi, run-uefu)
 #   run-pc98      Boot NEC PC-9801/PC-9821 VM in QEMU (btron-morris.elf)
 #   run-m68k      Boot Motorola 68040 Macintosh Quadra 800 in QEMU (btron-m68k.elf)
-#   run-ps2       Boot Sony PlayStation 2 Emotion Engine in PCSX2 (btron-ps2.elf)
+#   run-ps2       Boot Sony PlayStation 2 from btron-ps2.iso (ELF=1 for host ELF, empty tray)
 #   run-mips      Boot Bare-Metal MIPS in QEMU Malta / Magnum (btron-mips.elf)
 #   test-kernel   Test Pi 2B ELF in QEMU (raspi2b, serial-only, headless)
 #   debug-gdb     QEMU + GDB stub on Pi 2B
@@ -51,7 +51,7 @@ CXX ?= c++
 CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
 
 .PHONY: all posix qemu kernel tkernel sakamura foma uefi pc98 arm-elf arm64-elf m68k ps2 mips \
-        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 \
+        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 test-ps2-cdvd-loop \
         test-xmb-render test-xmb-render-tgl test-gl-context test-async-input \
         html2tad book2tad tad_bin test test-kernel test-yoko test-yoko4 test-m68k test-mips test-ps2 test-foma test-foma-ui foma-screens \
         segui-screens tbios-tools tbios-roms test-tbios \
@@ -1416,6 +1416,8 @@ PS2_SRCS       = $(PS2_STARTUP)           \
                  src/drivers/playstation2/ps2_usb.c \
                  src/drivers/playstation2/ps2_cdvd.c \
                  src/drivers/playstation2/ps2_iso9660.c \
+                 src/drivers/playstation2/ps2_sif.c \
+                 src/drivers/playstation2/ps2_fileio.c \
                  $(CLU_TERMIO_SRCS)       \
                  $(PS2_MSX_SRCS)          \
                  $(PS2_PW_SRCS)           \
@@ -1595,6 +1597,7 @@ $(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt
 	@cp $(PS2_TARGET) build/ps2_iso/BTRON.ELF
 	@./mkbtronfs tools/manifest.txt        -o build/ps2_iso/SYS.VOL
 	@./mkbtronfs tools/manifest_anders.txt -o build/ps2_iso/ANDERS.VOL -l ANDERS
+	@cp assets/quake/pak/pak0.pak build/ps2_iso/PAK0.PAK
 	@cp assets/quake/pak/pak0.pak build/ps2_iso/QUAKE/PAK0.PAK
 	@for f in assets/quake/drone1m*.dem; do n=$$(basename "$$f" | tr '[:lower:]' '[:upper:]'); \
 	    cp "$$f" "build/ps2_iso/QUAKE/$$n"; done
@@ -1608,6 +1611,7 @@ $(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt
 	elif command -v xorriso >/dev/null 2>&1; then \
 	    xorriso -as mkisofs -o $@ -V "BTRON3_PS2" build/ps2_iso >/dev/null 2>&1; \
 	fi
+	@python3 tools/ps2_iso_semicolons.py $@
 	@rm -rf build/ps2_iso
 	@echo "[PS2-ISO] Packaged: $@"
 	@echo "[PS2-ISO] ELF frozen: $$(shasum -a 1 $(PS2_TARGET) 2>/dev/null | cut -d' ' -f1) (link line untouched by this rule)"
@@ -1639,7 +1643,9 @@ ps2-cfg:
 	    if [ ! -e "$(PCSX2_DATA)/bios/$$n" ] && [ ! -L "$(PCSX2_DATA)/bios/$$n" ]; then \
 	        ln -s "$$f" "$(PCSX2_DATA)/bios/$$n"; fi; done
 
-run-ps2: $(PS2_TARGET) ps2-cfg
+# Default boots the ISO so CDVD/FILEIO see PAK0.PAK.  ELF=1 is host: ELF
+# with an empty tray (Quake stays on the slipgate stub).
+run-ps2: $(PS2_TARGET) $(if $(filter 1,$(ELF)),,$(PS2_ISO)) ps2-cfg
 	@echo "=========================================================="
 	@echo " Launching B-System PS2 on PCSX2 Emulator"
 	@echo " Machine  : Sony PlayStation 2 (Emotion Engine R5900)"
@@ -1647,22 +1653,20 @@ run-ps2: $(PS2_TARGET) ps2-cfg
 	@echo " RAM      : 32 MB RDRAM | VRAM: 4 MB GS eDRAM"
 	@echo " Display  : Graphics Synthesizer 800x600 @ 32-bpp RGBA (VESA)"
 	@echo " GUI Mode : $(if $(filter 1,$(AUTO_GUI)),Automatic Direct GUI,Two-Stage Console -> startx)"
-	@echo " Target   : $(if $(filter 1,$(ISO)),Disc ISO: $(PS2_ISO),Direct ELF: $(PS2_TARGET))"
+	@if [ "$(ELF)" = "1" ]; then \
+	    echo " Target   : Direct ELF: $(PS2_TARGET)  (empty tray; Quake PAK misses)"; \
+	else \
+	    echo " Target   : Disc ISO: $(PS2_ISO)"; \
+	fi
 	@echo " Emulator : $(PCSX2_BIN)"
 	@echo " Config   : $(PCSX2_DATA)/inis/PCSX2.ini"
 	@echo "=========================================================="
-	@if [ -x "$(PCSX2_BIN)" ]; then \
-	    if [ "$(ISO)" = "1" ]; then \
-	        "$(PCSX2_BIN)" -datapath "$(PCSX2_DATADIR)" -fastboot $(CURDIR)/$(PS2_ISO); \
-	    else \
-	        "$(PCSX2_BIN)" -datapath "$(PCSX2_DATADIR)" -fastboot $(CURDIR)/$(PS2_TARGET); \
-	    fi; \
+	@if [ "$(ELF)" = "1" ]; then boot="$(CURDIR)/$(PS2_TARGET)"; \
+	else boot="$(CURDIR)/$(PS2_ISO)"; fi; \
+	if [ -x "$(PCSX2_BIN)" ]; then \
+	    "$(PCSX2_BIN)" -datapath "$(PCSX2_DATADIR)" -fastboot "$$boot"; \
 	elif [ -d "/Applications/PCSX2.app" ]; then \
-	    if [ "$(ISO)" = "1" ]; then \
-	        open -a /Applications/PCSX2.app --args -datapath "$(PCSX2_DATADIR)" -fastboot $(CURDIR)/$(PS2_ISO); \
-	    else \
-	        open -a /Applications/PCSX2.app --args -datapath "$(PCSX2_DATADIR)" -fastboot $(CURDIR)/$(PS2_TARGET); \
-	    fi; \
+	    open -a /Applications/PCSX2.app --args -datapath "$(PCSX2_DATADIR)" -fastboot "$$boot"; \
 	else \
 	    echo "[ERROR] PCSX2 not found at $(PCSX2_BIN)"; \
 	    exit 1; \
@@ -1787,6 +1791,12 @@ test-ps2-iso9660: $(TEST_ISO9660_BIN)
 	@echo " Running PS2 ISO9660 finder vs synthetic PVD and disc ISO..."
 	@echo "=========================================================="
 	@./$(TEST_ISO9660_BIN)
+
+test-ps2-cdvd-loop:
+	@echo "=========================================================="
+	@echo " Running PS2 Quake CDVD UART gate loop..."
+	@echo "=========================================================="
+	@python3 tools/ps2_quake_cdvd_loop.py --self-test
 
 $(TEST_ISO9660_BIN): $(TEST_ISO9660_OBJS) src/drivers/playstation2/ps2_iso9660.c src/drivers/playstation2/ps2_iso9660.h
 	@mkdir -p ./.build
@@ -3286,7 +3296,7 @@ test-tbios: $(TEST_TBIOS_DIFF_BIN) $(TEST_TBIOS_CORE_BIN) $(TEST_TBIOS_VIDEO_BIN
 	@./$(TEST_TBIOS_DISK_BIN)
 	@./$(TEST_BMSX_CFG_BIN)
 
-test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660
+test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-ps2-cdvd-loop
 	@echo "=========================================================="
 	@echo " ALL B-SYSTEM TEST SUITES PASSED (100% SUCCESS)!"
 	@echo "=========================================================="

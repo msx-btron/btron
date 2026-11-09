@@ -812,7 +812,9 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   ps2_sio.c / .h          UART serial communication (115200 baud).
   ps2_pad.c / .h          DualShock 2 gamepad driver (SIO2 / SIF RPC).
   ps2_usb.c / .h          USB OHCI keyboard and mouse driver.
-  ps2_cdvd.c / .h         CDVD NCMD ReadCd, IOP DMA ch3, 2048-byte sectors.
+  ps2_sif.c / .h          Poll-mode SIF CMD/RPC (syscalls 0x64/0x76..0x7a).
+  ps2_fileio.c / .h       IOP FILEIO client, RPC 0x80000001, cdrom0: paths.
+  ps2_cdvd.c / .h         CDVDFSV RPC 0x80000595 NCMD READ; MMIO last-resort.
   ps2_iso9660.c / .h      ISO9660 PVD/path finder (host-testable).
   ps2_iopram.c / .h       IOP physical memory mapping and SIF DMA transfers.
   ps2_vu0_kernel.c / .h   Vector Unit 0 math and kinematic acceleration.
@@ -887,8 +889,8 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   LAW.  A retail PlayStation 2 title keeps the 700 MiB CD / 4 GiB DVD
   archive on the disc and holds only the working set in the 32 MiB of
   EE RDRAM.  BTRON does the same: btron-ps2.iso carries SYSTEM.CNF,
-  BTRON.ELF, SYS.VOL, ANDERS.VOL, and QUAKE/PAK0.PAK.  The ELF does
-  not incbin the PAK.
+  BTRON.ELF, SYS.VOL, ANDERS.VOL, PAK0.PAK (root and QUAKE/), and
+  the drone tracks.  The ELF does not incbin the PAK.
 
   WHY.  pak0.pak is 18.6 MiB and 339 files; e1m1.bsp is 1.36 MiB;
   progs.dat is 413 KiB; the Quake hunk on this target is 256 KiB.
@@ -896,22 +898,52 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   image budget.  The directory (~21 KiB) is the only piece that has
   to sit in RDRAM for O(1) name lookup.
 
-  MEASURE.  FS_Init indexes QUAKE/PAK0.PAK from disc (UART
-  `[FS] PAK disc LBA=... entries=339`).  FS_CacheBSP mallocs one
-  BSP into the heap and frees it on warp.  FS_LoadFile reads a
-  single file range, or fopen /SYS for drone1m1.dem.
+  MEASURE.  FS_Init indexes PAK0.PAK from disc (UART
+  `[FILEIO] bound 0x80000001` then `[FS] PAK fileio fd=... e1m1=1`,
+  or `[CDVD] CDVDFSV PVD ok` then `[FS] PAK disc LBA=... hashed=339`).
+  FS_CacheBSP mallocs one BSP into the heap and frees it on warp.
+  FS_LoadFile reads a single file range, or fopen /SYS for drone1m1.dem.
+  A window that paints the boxed slipgate hall (HUD tag SLIPGATE) is
+  `g_world.is_loaded == 0`: the PAK directory never landed.
 
   GATE.  verify/tests/test_ps2_iso9660.c walks a synthetic PVD and,
   when btron-ps2.iso is present, locates PAK0.PAK and DRONE1M1.DEM
   and checks the PACK magic plus maps/e1m1.bsp in the directory.
   Hardware proof is a flash of the ISO, not this host gate.
 
-  Path.  CDVD NCMD 0x06 ReadCd, 2048-byte user data (ISO is a PS2
-  CD, disk type 0x12).  IOP DMA channel 3 lands 16 sectors at a
-  time in IOP RAM at 0x001F0000; the EE copies through KSEG1
-  0xBC000000.  PVD at sector 16; the root directory record is the
-  34-byte structure at PVD offset 156 (the word at 156 is not an
-  LBA).  Names match with or without `;1`.
+  Gates.  tools/ps2_quake_cdvd_loop.py classifies a UART log:
+
+    G0 BOOT  image running
+    G1 DISC  DiskType 0x10..0x14 (PlayStation CD/DVD)
+    G2 MMODE sceCdMmode(CD)=1
+    G3 PVD   NCMD READ of LBA 16 is CD001 (xfer0 leaves 0xA5)
+    G4 PAK   maps/e1m1.bsp hashed
+    G5 BSP   FS_CacheBSP level maps/e1m1.bsp
+    G6 PLAY  World_LoadMap / Demo_Play of a real map
+
+  `make run-ps2` boots btron-ps2.iso.  `ELF=1` loads host:btron-ps2.elf
+  with an empty tray: DiskType=0, sceCdMmode(1)=0, GATE1, slipgate stub.
+  Paste the UART into the loop tool; do the printed next action.
+
+  Path.  EE-legal sector read is CDVDFSV after the Sony handshake:
+  sceCdInit RPC 0x80000592, sceCdDiskReady 0x8000059A, GetDiskType
+  SCMD 3, sceCdMmode(CD) SCMD 34 on 0x80000593 (sceCdRead0 returns 0
+  until mmode is CD or 0xFF; default is 0), then sceCdSearchFile
+  0x80000597 (`\PAK0.PAK;1`) for the LSN, then sceCdNCmdDiskReady
+  NCMD 14, then sceCdRead NCMD READ 0x80000595 (32-byte arg, rmode 1,
+  SpinNom).  DiskType=0 is an empty tray (host ELF).  RPC_END on
+  NCMD READ with ret=0 and a poison bounce on a present disc is a
+  missed sector DMA.  FILEIO 0x80000001 of
+  `cdrom0:\PAK0.PAK;1` is tried after Init so CDVDMAN's ISO cache is
+  fresh.  CdSearchFile requires a leading `\`, 8.3 names with `;1`,
+  and the ISO9660 path table.  hdiutil makehybrid omits `;1`;
+  tools/ps2_iso_semicolons.py stamps it after the hybrid is built.
+  Syscalls FlushCache 0x64, SifDmaStat 0x76, SifSetDma 0x77,
+  SifSetDChain 0x78, SifSetReg 0x79, SifGetReg 0x7a.  SIF0 is polled
+  on D_STAT; the leftover BOOT2 DMAC handler is masked.  CDVD NCMD
+  0x06 at EE 0xBF402000 is IOP-private (the real block is IOP
+  0x1F402000) and is last-resort only.  ISO is a PS2 CD, disk type
+  0x12.  PVD at sector 16.
 
 
 =====================================================================
@@ -1013,9 +1045,11 @@ PART SEVEN -- BUILDING, VERIFYING, RUNNING
   While the BTRON PlayStation 2 core provides a robust, production-grade
   operating system environment, several advanced hardware capabilities
   remain open for exploration:
-  - CDVD on hardware: the NCMD/IOP-DMA path is specified and linked;
-    whether CDVDMAN is idle after BOOT2 is a measurement on the flash,
-    not a host-side proof.
+  - Disc on hardware: CDVDFSV NCMD READ (RPC 0x80000595) is the EE
+    sector path; FILEIO (RPC 0x80000001) is tried first for named
+    files.  Direct NCMD at 0xBF402000 is the wrong bus.  Whether
+    e1m1 then leaves the slipgate stub is a measurement on the
+    flashed ISO, not a host-side proof.
   - GScube Multi-Node Cluster Scaling: Utilizing the InterCore Nexus across
     multiple interconnected EE+GS nodes via high-speed SIF networks.
   - Microcode VU1 Geometry Streaming: Shifting dynamic lighting and vertex

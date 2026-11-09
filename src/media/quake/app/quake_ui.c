@@ -432,6 +432,12 @@ void Player_FireWeapon(void) {
 /* ── Map Loader ───────────────────────────────────────────────────────── */
 int World_ChangeMap(const char *mapname) {
     if (!mapname || !mapname[0]) return 0;
+#if defined(BTRON_PS2_TARGET)
+    if (!FS_PakIndexed()) {
+        Con_Printf("[FS] PAK not indexed, retrying disc index\n");
+        FS_Init();
+    }
+#endif
 
     char fullpath[64];
     char clean[64];
@@ -504,6 +510,12 @@ int Replay_StartDemoFile(const char *demopath) {
     char msg[112];
     g_menu_active = 0;
     g_console_active = 0;
+#if defined(BTRON_PS2_TARGET)
+    if (!FS_PakIndexed()) {
+        Con_Printf("[FS] PAK not indexed, retrying disc index\n");
+        FS_Init();
+    }
+#endif
     if (!Demo_Play(demopath)) {
         snprintf(msg, sizeof(msg), "play: '%s' not found (run `make test-drone-all`)", demopath);
         Con_LogAppend(msg);
