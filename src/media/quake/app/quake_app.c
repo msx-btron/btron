@@ -190,13 +190,17 @@ WND *open_quake_window(int x, int y, int width, int height) {
         return s_quake_wnd;
     }
 
-    if (width  <= 0) width  = 480;
-    if (height <= 0) height = 360;
+    if (width <= 0 || height <= 0) {
+        x = 120;
+        y = 40;
+        if (width  <= 0) width  = 480;
+        if (height <= 0) height = 360;
+    }
 
     s_shutdown_req = 0;
 
     s_quake_wnd = opn_wnd("Quake - OpenGL ES 1.1",
-                          x > 0 ? x : 120, y > 0 ? y : 40,
+                          x, y,
                           width, height,
                           WND_ATTR_TITLE | WND_ATTR_BORDER |
                           WND_ATTR_CLOSE | WND_ATTR_RESIZE);

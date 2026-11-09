@@ -35,6 +35,7 @@
 #include <btron/tip.h>
 #include <btron/event.h>
 #include <btron/apps.h>
+#include <btron/ps2_tile.h>
 #include <btron/settings.h>
 #include <fs/vol_api.h>
 #include <libstr.h>
@@ -963,12 +964,12 @@ void launch_ps2_desktop_session(void)
     ps2_spawn_planes();
     btron_desktop_note_size(PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
     workbench_init(PS2_SCREEN_WIDTH);
-    /* Productivity windows (gterm / cabinet / editor) already opened from
-     * init_baremetal_desktop, capped for the 5.5 MiB heap.  The four demo
-     * GL surfaces used to follow here (mars/xmb/glgears/lilcu at 392x276);
-     * together they ate ~2 MiB of GDEV + TinyGL zbuf + XMB atlas and left
-     * later apps with NULL pixmaps (chrome, no client).  Launch them from
-     * Tracker or gterm. */
+    /* Eight-app tile grid.  Surfaces are the RAM working set; PAK/ROMs
+     * stay on the ISO the way a retail PS2 title keeps levels on disc. */
+    {
+        int n = ps2_tile_open_standard();
+        ps2_kprintf("[PS2] tile desktop %d/%d\n", n, PS2_TILE_N);
+    }
     btron_core_mem_log();
     ps2_heap_holders("desktop up");
 

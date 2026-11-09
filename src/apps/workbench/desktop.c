@@ -486,6 +486,10 @@ GDEV* init_baremetal_desktop(uint32_t *fb, uint32_t w, uint32_t h) {
     init_evt_sys();
     btron_desktop_note_size(w, h);
 
+#if defined(BTRON_PS2_TARGET)
+    /* Tile the eight-app set from launch_ps2_desktop_session so the
+     * 5.5 MiB heap holds one working set, with PAK/ROMs left on disc. */
+#else
     open_vobj_manager_window();
     open_t_editor_window();
     WND *w_cli = open_gterm_window();
@@ -493,6 +497,7 @@ GDEV* init_baremetal_desktop(uint32_t *fb, uint32_t w, uint32_t h) {
         top_wnd(w_cli);
         w_cli->focused = TRUE;
     }
+#endif
 
     /* Initial paint to backbuffer (caller blits to GPU VRAM after this returns) */
     redraw_baremetal_desktop(screen, w, h);

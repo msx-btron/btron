@@ -1421,7 +1421,8 @@ PS2_SRCS       = $(PS2_STARTUP)           \
                  $(PS2_GL_SRCS)           \
                  src/kernel/libstr.c      \
                  src/kernel/libint64.c    \
-                 $(COMMON_NO_SDL_SRCS)
+                 $(COMMON_NO_SDL_SRCS)    \
+                 src/apps/workbench/ps2_tile.c
 PS2_OBJS       = src/drivers/playstation2/boot_ps2.ps2.o         \
                  src/drivers/playstation2/ps2_gs_reg.ps2.o      \
                  $(PS2_SYS_VOL_OBJ)                    \
@@ -1579,7 +1580,9 @@ $(PS2_TARGET): $(PS2_OBJS) $(PS2_LD_SCRIPT)
 	@echo "[PS2-ELF] Built: $@"
 	@file $@
 
-# Package bootable ISO (SYSTEM.CNF, BTRON.ELF, SYS.VOL, ANDERS.VOL, QUAKE assets)
+# Package bootable ISO (SYSTEM.CNF, BTRON.ELF, SYS.VOL, ANDERS.VOL, QUAKE assets).
+# Retail PS2 model: the ELF is the RAM working set; PAK/ROMs live on the
+# disc (CD ~700 MiB, DVD ~4 GiB).  Do not incbin pak0 into the ELF.
 $(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt assets/quake/pak/pak0.pak $(wildcard assets/quake/drone1m*.dem)
 	@echo "=========================================================="
 	@echo " Packaging Bootable PS2 Disc ISO: $@"

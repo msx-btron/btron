@@ -1388,21 +1388,24 @@ static BOOL vobj_menu_open(WND *wnd) {
     return (g_cabinet.menu_bar.active_menu >= 0) ? TRUE : FALSE;
 }
 
-WND* open_vobj_manager_window(void) {
+WND* open_vobj_manager_window_rect(H x, H y, H w, H h) {
     if (g_cabinet.item_count == 0) {
         cabinet_init_defaults(&g_cabinet);
     }
-#if defined(BTRON_PS2_TARGET)
-    WND *wnd = opn_wnd("実身キャビネット (Cabinet Explorer)", 80, 60, 400, 240,
+    WND *wnd = opn_wnd("実身キャビネット (Cabinet Explorer)", x, y, w, h,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_RESIZE | WND_ATTR_BORDER);
-#else
-    WND *wnd = opn_wnd("実身キャビネット (Cabinet Explorer)", 80, 60, 560, 360,
-                       WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_RESIZE | WND_ATTR_BORDER);
-#endif
     if (wnd) {
         wnd->paint = paint_vobj_manager;
         wnd->event_handler = handle_vobj_manager_event;
         wnd->menu_open = vobj_menu_open;
     }
     return wnd;
+}
+
+WND* open_vobj_manager_window(void) {
+#if defined(BTRON_PS2_TARGET)
+    return open_vobj_manager_window_rect(80, 60, 400, 240);
+#else
+    return open_vobj_manager_window_rect(80, 60, 560, 360);
+#endif
 }

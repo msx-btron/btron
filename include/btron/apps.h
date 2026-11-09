@@ -26,6 +26,7 @@ __WEAK_APP BOOL  gterm_is_menu_open(WND *wnd);
 __WEAK_APP void  gterm_open_menu(WND *wnd, int menu_idx);
 __WEAK_APP void  gterm_close_menu(WND *wnd);
 __WEAK_APP WND* open_vobj_manager_window(void);
+__WEAK_APP WND* open_vobj_manager_window_rect(H x, H y, H w, H h);
 __WEAK_APP WND* open_vobj_about_window(void);
 __WEAK_APP WND* open_teditor_about_window(void);
 __WEAK_APP WND* open_tad_browser_about_window(void);

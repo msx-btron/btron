@@ -8,9 +8,16 @@
 extern "C" {
 #endif
 
+#if defined(BTRON_PS2_TARGET)
+#include <btron/ps2_tile.h>
+#define TEDITOR_MAX_ROWS  PS2_BUDGET_TEDITOR_ROWS
+#define TEDITOR_MAX_LINES PS2_BUDGET_TEDITOR_ROWS
+#define TEDITOR_MAX_COLS  PS2_BUDGET_TEDITOR_COLS
+#else
 #define TEDITOR_MAX_ROWS  1000
 #define TEDITOR_MAX_LINES 1000
 #define TEDITOR_MAX_COLS  512
+#endif
 #define TEDITOR_VIEW_ROWS 14
 #define TEDITOR_VIEW_COLS 80
 

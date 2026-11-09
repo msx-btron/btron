@@ -15,7 +15,9 @@
 
 #if defined(BTRON_PS2_MSX) && (BTRON_PS2_MSX)
 #  if defined(BTRON_PS2_QUAKE) && (BTRON_PS2_QUAKE)
-#    define PS2_HEAP_SIZE (5500 * 1024)   /* room for Quake hunk + .text */
+#    include <btron/ps2_tile.h>
+     /* Live working set only.  PAK/ROMs stay on the disc (CD/DVD). */
+#    define PS2_HEAP_SIZE (PS2_BUDGET_HEAP_KB * 1024)
 #  else
 #    define PS2_HEAP_SIZE (7500 * 1024)
 #  endif

@@ -1222,21 +1222,35 @@ static void xb_bake_textures(void)
     GLuint tex[2];
     size_t font_bytes = (size_t)XB_FONT_TEX_W * XB_FONT_TEX_H * 4;
     size_t icon_bytes = (size_t)XB_ICON_TEX * XB_ICON_TEX * 4;
-    UB *font  = (UB *)malloc(font_bytes);
-    UB *icons = (UB *)malloc(icon_bytes);
+    UB *sheet;
     int i;
 
-    if (!icons || !font) {
-        if (icons) free(icons);
-        if (font)  free(font);
+    /* One staging sheet at a time so the 576 KiB icon atlas and the
+     * 48 KiB font do not sit together on the PS2 heap. */
+    glGenTextures(2, tex);
+    s_tex_icons = tex[0];
+    s_tex_font  = tex[1];
+
+    sheet = (UB *)malloc(icon_bytes);
+    if (!sheet) {
         uart_puts_raw("[GL] xmb: no memory for the icon atlas\n");
         return;
     }
-
-    xb_fill_icon_atlas(icons);
+    xb_fill_icon_atlas(sheet);
     xb_phase("fill_atlas", XB_ICON_TEX * XB_ICON_TEX);
+    glBindTexture(GL_TEXTURE_2D, s_tex_icons);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, XB_ICON_TEX, XB_ICON_TEX, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, sheet);
+    free(sheet);
 
-    memset(font, 0, font_bytes);
+    sheet = (UB *)malloc(font_bytes);
+    if (!sheet) {
+        uart_puts_raw("[GL] xmb: no memory for the font atlas\n");
+        return;
+    }
+    memset(sheet, 0, font_bytes);
     for (i = 0; i < XB_FONT_COLS * XB_FONT_ROWS; i++) {
         int code = 32 + i;
         H gw = 8, gh = 16;
@@ -1252,37 +1266,22 @@ static void xb_bake_textures(void)
         for (gy = 0; gy < 16; gy++) {
             for (gx = 0; gx < 8; gx++) {
                 if (bmp[gy] & (0x80 >> gx))
-                    xb_put_rgba(font, XB_FONT_TEX_W, ox + gx, oy + gy,
+                    xb_put_rgba(sheet, XB_FONT_TEX_W, ox + gx, oy + gy,
                                 255, 255, 255, 255);
             }
         }
     }
     xb_phase("bake_font", XB_FONT_TEX_W * XB_FONT_TEX_H);
-
-    glGenTextures(2, tex);
-    s_tex_icons = tex[0];
-    s_tex_font  = tex[1];
-
-    glBindTexture(GL_TEXTURE_2D, s_tex_icons);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, XB_ICON_TEX, XB_ICON_TEX, 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE, icons);
-
     glBindTexture(GL_TEXTURE_2D, s_tex_font);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, XB_FONT_TEX_W, XB_FONT_TEX_H, 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE, font);
+                 GL_RGBA, GL_UNSIGNED_BYTE, sheet);
+    free(sheet);
 
     glBindTexture(GL_TEXTURE_2D, 0);
     xb_phase("upload",
              XB_ICON_TEX * XB_ICON_TEX + XB_FONT_TEX_W * XB_FONT_TEX_H);
-
-    /* Both sheets are in the backend now, and nothing bakes into them later: the
-     * icons are shipped, not computed, so the staging buffers go back. */
-    free(font);
-    free(icons);
 }
 
 /* ── Ribbon: the waving surface ─────────────────────────────────────────────────── */

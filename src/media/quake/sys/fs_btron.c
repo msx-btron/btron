@@ -339,6 +339,11 @@ int FS_Init(void) {
     memset(s_ht, 0, sizeof(s_ht));
     memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
 #if defined(BTRON_PS2_TARGET)
+    /* Optional incbin only.  The 18.6 MiB PAK lives on the ISO at
+     * QUAKE/PAK0.PAK (CD/DVD, same as a retail title).  Weak symbols
+     * without a providing object are address-non-NULL on this ABI, so
+     * the size check is the real gate.  A CDVD reader will index the
+     * directory and FS_CacheBSP will pull one BSP (~1.4 MiB). */
     if (ps2_pak0_image && ps2_pak0_image_end > ps2_pak0_image) {
         int n = (int)(ps2_pak0_image_end - ps2_pak0_image);
         if (fs_map_pak_image(ps2_pak0_image, n, "ps2_pak0_image"))

@@ -142,6 +142,11 @@ __attribute__((weak)) int btron_msx_linked(void) { return 0; }
 __attribute__((weak)) int btron_quake_linked(void) { return 0; }
 __attribute__((weak)) WND *open_mars_window(void) { return NULL; }
 __attribute__((weak)) WND *open_vobj_manager_window(void) { return NULL; }
+__attribute__((weak)) WND *open_vobj_manager_window_rect(H x, H y, H w, H h)
+{
+    (void)x; (void)y; (void)w; (void)h;
+    return NULL;
+}
 __attribute__((weak)) WND *open_t_editor_window(void) { return NULL; }
 __attribute__((weak)) WND *open_gterm_window(void) { return NULL; }
 __attribute__((weak)) WND *open_audio_player_window(void) { return NULL; }

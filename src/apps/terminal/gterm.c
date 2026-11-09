@@ -60,7 +60,12 @@ __attribute__((weak)) TvContext *tv_get_context(void) { return NULL; }
 
 #define GTERM_MAX_COLS     256
 #define GTERM_MAX_ROWS     32
+#if defined(BTRON_PS2_TARGET)
+#include <btron/ps2_tile.h>
+#define GTERM_HIST_MAX     PS2_BUDGET_GTERM_HIST
+#else
 #define GTERM_HIST_MAX     10240
+#endif
 #define GTERM_CMD_HIST_MAX 32
 
 /* ── Terminal Menu Command IDs ──────────────────────────────────────────── */
