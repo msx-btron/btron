@@ -8,6 +8,7 @@
 
 #include "ps2_vu0_kernel.h"
 #include <math.h>
+#include <string.h>
 
 void ps2_vu0_hopf_project_batch(const vu0_vec4_t *s3_pts,
                                 size_t n,
@@ -178,5 +179,103 @@ void ps2_vu0_circle_ring_batch(float r, size_t num_segments, vu0_vec4_t *out_pts
         out_pts[a].z = 0.0f;
         out_pts[a].w = 1.0f;
     }
+}
+
+void ps2_vu0_v3_normalize(float v[3])
+{
+    float length;
+    if (!v) return;
+    length = sqrtf(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (length > 0.00001f) {
+        float ilength = 1.0f / length;
+        v[0] *= ilength;
+        v[1] *= ilength;
+        v[2] *= ilength;
+    } else {
+        v[0] = v[1] = v[2] = 0.0f;
+    }
+}
+
+void ps2_vu0_v3_cross(const float a[3], const float b[3], float out[3])
+{
+    if (!a || !b || !out) return;
+    out[0] = a[1] * b[2] - a[2] * b[1];
+    out[1] = a[2] * b[0] - a[0] * b[2];
+    out[2] = a[0] * b[1] - a[1] * b[0];
+}
+
+void ps2_vu0_angle_vectors(const float angles[3],
+                           float *forward, float *right, float *up)
+{
+    float sr, sp, sy, cr, cp, cy;
+    float angle;
+
+    if (!angles) return;
+    angle = angles[1] * (float)(M_PI * 2.0 / 360.0);
+    sy = sinf(angle);
+    cy = cosf(angle);
+    angle = angles[0] * (float)(M_PI * 2.0 / 360.0);
+    sp = sinf(angle);
+    cp = cosf(angle);
+    angle = angles[2] * (float)(M_PI * 2.0 / 360.0);
+    sr = sinf(angle);
+    cr = cosf(angle);
+
+    if (forward) {
+        forward[0] = cp * cy;
+        forward[1] = cp * sy;
+        forward[2] = -sp;
+    }
+    if (right) {
+        right[0] = (-1.0f * sr * sp * cy + -1.0f * cr * -sy);
+        right[1] = (-1.0f * sr * sp * sy + -1.0f * cr * cy);
+        right[2] = -1.0f * sr * cp;
+    }
+    if (up) {
+        up[0] = (cr * sp * cy + -sr * -sy);
+        up[1] = (cr * sp * sy + -sr * cy);
+        up[2] = cr * cp;
+    }
+}
+
+void ps2_vu0_transform_batch(const float mvp[16],
+                             const vu0_vec4_t *in, size_t n, vu0_vec4_t *out)
+{
+    size_t i;
+    if (!mvp || !in || !out || n == 0) return;
+
+#if defined(__r5900__)
+    /* VU0 macro mode: one vec4 × column-major 4×4 per iteration.
+     * vf1 = vertex, vf5..vf8 = MVP columns, vf2 = result.  MVP is copied
+     * into an aligned quad so lqc2 cannot take an address exception. */
+    {
+        vu0_vec4_t cols[4];
+        memcpy(cols, mvp, sizeof(cols));
+        for (i = 0; i < n; i++) {
+            const float *v = &in[i].x;
+            float *o = &out[i].x;
+            __asm__ volatile(
+                "lqc2     $vf1, 0(%0)\n\t"
+                "lqc2     $vf5, 0(%2)\n\t"
+                "lqc2     $vf6, 16(%2)\n\t"
+                "lqc2     $vf7, 32(%2)\n\t"
+                "lqc2     $vf8, 48(%2)\n\t"
+                "vmulax.xyzw  ACC, $vf5, $vf1x\n\t"
+                "vmadday.xyzw ACC, $vf6, $vf1y\n\t"
+                "vmaddaz.xyzw ACC, $vf7, $vf1z\n\t"
+                "vmaddw.xyzw  $vf2, $vf8, $vf1w\n\t"
+                "sqc2     $vf2, 0(%1)\n\t"
+                : : "r"(v), "r"(o), "r"(cols) : "memory");
+        }
+    }
+#else
+    for (i = 0; i < n; i++) {
+        float x = in[i].x, y = in[i].y, z = in[i].z, w = in[i].w;
+        out[i].x = mvp[0] * x + mvp[4] * y + mvp[8]  * z + mvp[12] * w;
+        out[i].y = mvp[1] * x + mvp[5] * y + mvp[9]  * z + mvp[13] * w;
+        out[i].z = mvp[2] * x + mvp[6] * y + mvp[10] * z + mvp[14] * w;
+        out[i].w = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15] * w;
+    }
+#endif
 }
 

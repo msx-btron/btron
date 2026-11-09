@@ -1117,6 +1117,7 @@ static int intr_take(uint32_t dev, uint8_t out[8], uint32_t *cc_out)
 static volatile int      s_plane_collects;
 static pointer_slot_t    s_pointer_slot;
 static pointer_snapshot_t s_consumed;
+static pointer_snapshot_t s_followed;   /* visual watermark; follow never commits s_consumed */
 #define PS2_BTN_EDGE_N 64u
 static volatile uint8_t  s_btn_edge[PS2_BTN_EDGE_N];
 static volatile uint16_t s_btn_edge_h, s_btn_edge_t;
@@ -1169,6 +1170,7 @@ int ps2_usb_pointer_consume(int32_t *dx, int32_t *dy, uint8_t *buttons)
     if (dy) *dy = snap.acc_dy - s_consumed.acc_dy;
     if (buttons) *buttons = snap.buttons;
     s_consumed = snap;
+    s_followed = snap;   /* INPUT committed this snapshot; follow starts from here */
     return 1;
 }
 
@@ -1181,12 +1183,13 @@ int ps2_usb_pointer_follow(int32_t *dx, int32_t *dy)
         if (dy) *dy = 0;
         return 0;
     }
-    rdx = snap.acc_dx - s_consumed.acc_dx;
-    rdy = snap.acc_dy - s_consumed.acc_dy;
-    s_consumed.acc_dx = snap.acc_dx;
-    s_consumed.acc_dy = snap.acc_dy;
-    s_consumed.acc_wheel = snap.acc_wheel;
-    s_consumed.motion_seq = snap.motion_seq;
+    /* Peek only: a long paint tracks the pointer without stealing INPUT's MOVE. */
+    rdx = snap.acc_dx - s_followed.acc_dx;
+    rdy = snap.acc_dy - s_followed.acc_dy;
+    s_followed.acc_dx = snap.acc_dx;
+    s_followed.acc_dy = snap.acc_dy;
+    s_followed.acc_wheel = snap.acc_wheel;
+    s_followed.motion_seq = snap.motion_seq;
     if (dx) *dx = rdx;
     if (dy) *dy = rdy;
     return (rdx != 0 || rdy != 0);

@@ -11,9 +11,12 @@
 
 #if defined(_RPI_BCM283x_)
 #define HUNK_TOTAL_SIZE (64 * 1024 * 1024)
-static uint8_t *s_hunk_buffer = (uint8_t *)0x06000000UL;
+/* After /MSX at 0x05400000..0x07400000; see BTRON_RAM_QUAKE_HUNK. */
+static uint8_t *s_hunk_buffer = (uint8_t *)0x08000000UL;
 #elif defined(BTRON_PS2_TARGET)
-#define HUNK_TOTAL_SIZE (1 * 1024 * 1024)   /* 1 MiB: fits comfortably within PS2 32 MB RDRAM */
+/* Runtime arena only. One BSP (~1.4 MiB for e1m1) is loaded into a level
+ * image by FS_CacheBSP and dropped on map change — it is not this hunk. */
+#define HUNK_TOTAL_SIZE (256 * 1024)
 static uint8_t s_hunk_buffer[HUNK_TOTAL_SIZE] __attribute__((aligned(4096)));
 #else
 #define HUNK_TOTAL_SIZE (64 * 1024 * 1024)  /* 64 MiB: 18.6 MB pak + BSP + headroom */

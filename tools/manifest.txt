@@ -49,15 +49,9 @@ FILE "mars_height.bin"           BIN   assets/forth/mars_height.bin
 FILE "mars_shade.bin"            BIN   assets/forth/mars_shade.bin
 FILE "mars_sky.bin"              BIN   assets/forth/mars_sky.bin
 
-# Quake Attract-Mode Demos (drone1m1..drone1m8)
+# Quake Attract-Mode Demos.  One track stays so the 1 MiB /SYS image can
+# carry MSX2 C-BIOS + T-FW; the rest live on the host and in btron_msx.vol.
 FILE "drone1m1.dem"              BIN   assets/quake/drone1m1.dem
-FILE "drone1m2.dem"              BIN   assets/quake/drone1m2.dem
-FILE "drone1m3.dem"              BIN   assets/quake/drone1m3.dem
-FILE "drone1m4.dem"              BIN   assets/quake/drone1m4.dem
-FILE "drone1m5.dem"              BIN   assets/quake/drone1m5.dem
-FILE "drone1m6.dem"              BIN   assets/quake/drone1m6.dem
-FILE "drone1m7.dem"              BIN   assets/quake/drone1m7.dem
-FILE "drone1m8.dem"              BIN   assets/quake/drone1m8.dem
 
 # Clarity Ceremony Assets
 FILE "clarity.png"               PNG   assets/icons/clarity.png
@@ -74,7 +68,8 @@ FILE "Clarity-Sample.TAD"        TAD   -
 # 0x4000 and answers MSX_ERR_SIZE above that, so the MSX1 flat cartridges ship and BULLRUSH,
 # NIGHT_RAVEN and NEON_REVENANT wait on the banked megaROM mapper, not on room in the image.  The
 # C-BIOS pair is not optional -- the machine has no ROM of its own, and without a BIOS the window
-# opens on an empty slot and says so.
+# opens on an empty slot and says so.  MSX2 C-BIOS + sub are required for MARS, MSX_LOGO and
+# Dynamite; T-FW is the Forth shell BIOS.
 DIR "msx" -
 FILE "c0man.rom"    BIN  "assets/msx/c0man.rom"    msx
 FILE "YAZZIER.ROM"  BIN  "assets/msx/YAZZIER.ROM"  msx
@@ -86,3 +81,9 @@ FILE "xracing_v1.0.4.rom" BIN "assets/msx/xracing_v1.0.4.rom" msx
 DIR "cbios" -
 FILE "cbios_main_msx1.rom"  BIN  third_party/openMSX/Contrib/cbios/cbios_main_msx1.rom  cbios
 FILE "cbios_logo_msx1.rom"  BIN  third_party/openMSX/Contrib/cbios/cbios_logo_msx1.rom  cbios
+FILE "cbios_main_msx2.rom"  BIN  third_party/openMSX/Contrib/cbios/cbios_main_msx2.rom  cbios
+FILE "cbios_logo_msx2.rom"  BIN  third_party/openMSX/Contrib/cbios/cbios_logo_msx2.rom  cbios
+FILE "cbios_sub.rom"        BIN  third_party/openMSX/Contrib/cbios/cbios_sub.rom        cbios
+
+DIR "tbios" -
+FILE "tfw_main_msx2.rom"    BIN  assets/msx/tbios/tfw_main_msx2.rom  tbios

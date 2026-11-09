@@ -133,6 +133,13 @@ __attribute__((weak)) WND *open_xmb_window(void) { return NULL; }
 __attribute__((weak)) WND *open_glgears_window(void) { return NULL; }
 __attribute__((weak)) WND *open_lilcu64_demo_window(void) { return NULL; }
 __attribute__((weak)) WND *open_msx_window(void) { return NULL; }
+__attribute__((weak)) WND *open_msx_window_with_rom(const char *path)
+{
+    (void)path;
+    return open_msx_window();
+}
+__attribute__((weak)) int btron_msx_linked(void) { return 0; }
+__attribute__((weak)) int btron_quake_linked(void) { return 0; }
 __attribute__((weak)) WND *open_mars_window(void) { return NULL; }
 __attribute__((weak)) WND *open_vobj_manager_window(void) { return NULL; }
 __attribute__((weak)) WND *open_t_editor_window(void) { return NULL; }
@@ -158,20 +165,52 @@ void clu_quake(const char *args, ShellOutputFn out, void *ud)
     out("Quake 3D for B-System (OpenGL ES 1.1 / TinyGL & VirtIO-GPU):", COLOR_CYAN, ud);
     out("  Renderer : Dual-Backend (TinyGL Software & VirtIO 3D)", COLOR_LTGRAY, ud);
     out("  Asset    : assets/quake/pak/pak0.pak (18.6 MB, E1M1 Slipgate Complex)", COLOR_LTGRAY, ud);
+#if defined(BTRON_PS2_TARGET)
+    out("  Window   : 320x240 WND client (PS2 heap); PAK on ISO QUAKE/PAK0.PAK", COLOR_LTGRAY, ud);
+#else
     out("  Window   : 480x360 WND client surface (~60 FPS)", COLOR_LTGRAY, ud);
+#endif
     out("  Controls : WASD/Arrows = Move, Mouse Drag = Look, Space = Jump", COLOR_YELLOW, ud);
 
     WND *w = NULL;
-    if (open_quake_window) {
-        w = open_quake_window(120, 60, 480, 360);
-    }
+#if defined(BTRON_PS2_TARGET)
+    const int qw = 320, qh = 240;
+#else
+    const int qw = 480, qh = 360;
+#endif
+    if (open_quake_window)
+        w = open_quake_window(120, 60, qw, qh);
 
     if (w) {
         out("Quake 3D window launched on Workbench desktop.", COLOR_GREEN, ud);
-    } else if (open_quake_window) {
-        out("quake: failed to open window surface", COLOR_RED, ud);
+    } else if (!btron_quake_linked()) {
+        out("quake: not linked (build with PS2_QUAKE=1)", COLOR_RED, ud);
     } else {
-        out("quake: GUI subsystem not linked in headless/test build", COLOR_YELLOW, ud);
+        out("quake: window/EGL surface failed (heap or startx first)", COLOR_RED, ud);
+    }
+}
+
+void clu_msx(const char *args, ShellOutputFn out, void *ud)
+{
+    const char *rom = args ? args : "";
+    while (*rom == ' ' || *rom == '\t') rom++;
+
+    out("B-MSX Game System (MSX Cartridge Player):", COLOR_CYAN, ud);
+    if (!btron_msx_linked()) {
+        out("  not linked (rebuild with PS2_MSX=1)", COLOR_RED, ud);
+        return;
+    }
+
+    WND *w = NULL;
+    if (rom[0])
+        w = open_msx_window_with_rom(rom);
+    else
+        w = open_msx_window();
+
+    if (w) {
+        out("  Window opened on the Workbench desktop", COLOR_GREEN, ud);
+    } else {
+        out("  Window surface failed (startx first, or heap full)", COLOR_RED, ud);
     }
 }
 

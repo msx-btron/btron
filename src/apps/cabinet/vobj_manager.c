@@ -1032,8 +1032,9 @@ static void paint_vobj_manager(WND *wnd, GDEV *dev) {
 static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
     if (!wnd || !evt) return;
 
-    H rel_x = evt->pos.x - (wnd->bounds.left + 4);
-    H rel_y = evt->pos.y - (wnd->bounds.top + 26);
+    /* Screen events -> window-device pixels (paint origin is wnd->client). */
+    H rel_x = evt->pos.x - wnd->client.left;
+    H rel_y = evt->pos.y - wnd->client.top;
 
     if (evt->type == EV_MOUSE_MOVE) {
         if (app_menu_handle_mouse_move(&g_cabinet.menu_bar, rel_x, rel_y)) {
@@ -1080,12 +1081,15 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
                     if (calc < g_cabinet.item_count) idx = calc;
                 }
             }
-        } else {
+        } else if (rel_y >= start_y) {
             int row = (rel_y - start_y) / 22;
             int calc = g_cabinet.scroll_offset + row;
             if (calc >= 0 && calc < g_cabinet.item_count) idx = calc;
         }
-        g_cabinet.hovered_idx = idx;
+        if (g_cabinet.hovered_idx != idx) {
+            g_cabinet.hovered_idx = idx;
+            inval_wnd(wnd);
+        }
 
         /* Drag initiation check */
         if (s_cab_mouse_down && !btron_dnd_is_active()) {
@@ -1226,7 +1230,7 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
                 int calc = r * cols + c;
                 if (calc < g_cabinet.item_count) idx = calc;
             }
-        } else {
+        } else if (rel_y >= start_y) {
             int row = (rel_y - start_y) / 22;
             int calc = g_cabinet.scroll_offset + row;
             if (calc >= 0 && calc < g_cabinet.item_count) idx = calc;
@@ -1249,6 +1253,8 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
             BOOL is_double = (s_last_click_idx == idx && s_last_click_time != 0 && (cur_time - s_last_click_time < 500));
 
             g_cabinet.selected_idx = idx;
+            g_cabinet.hovered_idx = idx;
+            inval_wnd(wnd);
 
             if (is_double) {
                 s_last_click_idx = -1;
@@ -1386,8 +1392,13 @@ WND* open_vobj_manager_window(void) {
     if (g_cabinet.item_count == 0) {
         cabinet_init_defaults(&g_cabinet);
     }
+#if defined(BTRON_PS2_TARGET)
+    WND *wnd = opn_wnd("実身キャビネット (Cabinet Explorer)", 80, 60, 400, 240,
+                       WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_RESIZE | WND_ATTR_BORDER);
+#else
     WND *wnd = opn_wnd("実身キャビネット (Cabinet Explorer)", 80, 60, 560, 360,
                        WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_RESIZE | WND_ATTR_BORDER);
+#endif
     if (wnd) {
         wnd->paint = paint_vobj_manager;
         wnd->event_handler = handle_vobj_manager_event;

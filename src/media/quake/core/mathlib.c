@@ -6,6 +6,9 @@
  */
 
 #include "../include/mathlib.h"
+#if defined(BTRON_PS2_TARGET)
+#include "../../../drivers/playstation2/ps2_vu0_kernel.h"
+#endif
 
 vec3_t vec3_origin = {0.0f, 0.0f, 0.0f};
 
@@ -14,6 +17,10 @@ vec_t Length(const vec3_t v) {
 }
 
 void VectorNormalize(vec3_t v) {
+#if defined(BTRON_PS2_TARGET)
+    ps2_vu0_v3_normalize(v);
+    return;
+#else
     vec_t length = Length(v);
     if (length > 0.00001f) {
         vec_t ilength = 1.0f / length;
@@ -23,12 +30,18 @@ void VectorNormalize(vec3_t v) {
     } else {
         VectorClear(v);
     }
+#endif
 }
 
 void CrossProduct(const vec3_t v1, const vec3_t v2, vec3_t cross) {
+#if defined(BTRON_PS2_TARGET)
+    ps2_vu0_v3_cross(v1, v2, cross);
+    return;
+#else
     cross[0] = v1[1] * v2[2] - v1[2] * v2[1];
     cross[1] = v1[2] * v2[0] - v1[0] * v2[2];
     cross[2] = v1[0] * v2[1] - v1[1] * v2[0];
+#endif
 }
 
 void VectorInverse(vec3_t v) {
@@ -38,6 +51,10 @@ void VectorInverse(vec3_t v) {
 }
 
 void AngleVectors(const vec3_t angles, vec3_t forward, vec3_t right, vec3_t up) {
+#if defined(BTRON_PS2_TARGET)
+    ps2_vu0_angle_vectors(angles, forward, right, up);
+    return;
+#else
     float angle;
     float sr, sp, sy, cr, cp, cy;
 
@@ -68,4 +85,5 @@ void AngleVectors(const vec3_t angles, vec3_t forward, vec3_t right, vec3_t up) 
         up[1] = (cr * sp * sy + -sr * cy);
         up[2] = cr * cp;
     }
+#endif
 }

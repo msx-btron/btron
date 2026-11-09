@@ -38,10 +38,10 @@
 #else
 #define MSX_DSK_CAP         737280u
 #endif
-#if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
-#define MSX_MAPPER_RAM_SIZE 4194304u /* Up to 4 MiB (256 x 16 KiB segments) */
+#if (defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1) || defined(__aarch64__)
+#define MSX_MAPPER_RAM_SIZE 4194304u /* C-BIOS turboR / Geo3D homebrew probe 1–4 MiB */
 #else
-#define MSX_MAPPER_RAM_SIZE  524288u /* 512 KiB */
+#define MSX_MAPPER_RAM_SIZE  524288u /* PS2: 512 KiB, 32 MiB RDRAM budget */
 #endif
 #define MSX_MAPPER_MASK     ((MSX_MAPPER_RAM_SIZE >> 14) - 1)
 

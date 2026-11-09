@@ -329,7 +329,17 @@ void tinygl_backend_make_current_ctx(void **p_ctx, int w, int h, void *pixel_buf
         ctx->w = w;
         ctx->h = h;
         ctx->pixel_buf = pixel_buf;
+#if defined(BTRON_PS2_TARGET)
+        /* One zbuf for the process.  A second ZB_open is another
+         * width*height*2 on the 5.5 MiB heap, and the raster is already
+         * one context (tinygl_backend_init). */
+        if (s_zb)
+            ctx->zb = s_zb;
+        else
+            ctx->zb = ZB_open(w, h, ZB_MODE_RGBA, pixel_buf);
+#else
         ctx->zb = ZB_open(w, h, ZB_MODE_RGBA, pixel_buf);
+#endif
         if (!ctx->zb) {
             free(ctx);
             tinygl_backend_resize(w, h, pixel_buf);
@@ -398,7 +408,13 @@ void tinygl_backend_destroy_ctx(void *ctx_ptr) {
     }
     gl_close_context(&ctx->gl);
     if (ctx->zb) {
+#if defined(BTRON_PS2_TARGET)
+        /* Shared with the process zbuf — closed by tinygl_backend_shutdown. */
+        if (ctx->zb != s_zb && ctx->zb != gl_ctx.zb)
+            ZB_close(ctx->zb);
+#else
         ZB_close(ctx->zb);
+#endif
         ctx->zb = NULL;
     }
     free(ctx);

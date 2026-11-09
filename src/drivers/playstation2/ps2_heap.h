@@ -14,7 +14,13 @@
 #include <stdint.h>
 
 #if defined(BTRON_PS2_MSX) && (BTRON_PS2_MSX)
-#define PS2_HEAP_SIZE (7500 * 1024)
+#  if defined(BTRON_PS2_QUAKE) && (BTRON_PS2_QUAKE)
+#    define PS2_HEAP_SIZE (5500 * 1024)   /* room for Quake hunk + .text */
+#  else
+#    define PS2_HEAP_SIZE (7500 * 1024)
+#  endif
+#elif defined(BTRON_PS2_QUAKE) && (BTRON_PS2_QUAKE)
+#define PS2_HEAP_SIZE (9 * 1024 * 1024)
 #else
 #define PS2_HEAP_SIZE (11 * 1024 * 1024)
 #endif

@@ -2,12 +2,11 @@
  * src/quake/sys/fs_btron.c — File System, PAK & BSP Loader for B-System
  *
  * Fast-path strategy:
- *   1. FS_Init reads the entire pak0.pak into a single Hunk allocation.
- *   2. An FNV-1a open-address hash table maps filename → (offset, length)
- *      inside the image for O(1) lookup with zero per-query fseek / fread.
- *   3. FS_CacheBSP caches a named .bsp into the hunk once and exposes
- *      per-lump pointers so World_LoadMap and the texture system can
- *      work directly from memory with no further I/O.
+ *   1. FS_Init indexes pak0.pak (directory only). The archive body stays on
+ *      media — Pi maps it at 0x04000000; PS2 never slurps 18.6 MiB.
+ *   2. An FNV-1a open-address hash table maps filename → (offset, length).
+ *   3. FS_CacheBSP binds ONE .bsp (the current level) and drops it on warp.
+ *      e1m1 is 1.36 MiB; all 21 BSPs together are 10.8 MiB.
  *
  * Cleanroom C99 implementation for B-System.
  * Copyright 2026 Synrc Research Center. MIT License / GPL-2.0.
@@ -156,7 +155,9 @@ int FS_Init(void) {
 
         if (pak_sz <= 0) { fclose(f); continue; }
 
-        /* ── Allocate hunk and slurp entire PAK in ONE fread ──────── */
+        /* Hosted/Pi: one fread of the archive so FindInPak is zero-copy.
+         * PS2 does not take this path; it indexes a mapped image and loads
+         * one BSP at a time via FS_CacheBSP. */
         s_pak_image = (byte *)Hunk_AllocName((size_t)pak_sz + 1, "pak0_image");
         if (!s_pak_image) { fclose(f); continue; }
 
@@ -301,15 +302,113 @@ int FS_CacheBSP(const char *bsp_path) {
     return 1;
 }
 
-/* ── Freestanding stub ──────────────────────────────────────────── */
-#else  /* BTRON_UEFI_TARGET */
+/* ── Freestanding: PS2 maps an optional incbin; UEFI has no PAK. ── */
+#else
 
-int   FS_Init(void) { memset(s_ht,0,sizeof(s_ht)); memset(&g_bsp_cache,0,sizeof(g_bsp_cache)); return 0; }
-byte *FS_LoadFile(const char *p, int *l) { (void)p; if(l)*l=0; return NULL; }
-const byte *FS_FindInPak(const char *p, int *l) { (void)p; if(l)*l=0; return NULL; }
-int   FS_CacheBSP(const char *p) { (void)p; return 0; }
+#if defined(BTRON_PS2_TARGET)
+extern unsigned char ps2_pak0_image[] __attribute__((weak));
+extern unsigned char ps2_pak0_image_end[] __attribute__((weak));
 
-#endif  /* !BTRON_UEFI_TARGET */
+static int fs_map_pak_image(byte *img, int pak_sz, const char *path)
+{
+    const dpackheader_t *hdr;
+    const packfile_t *dir;
+    int num_entries, i;
+
+    if (!img || pak_sz < (int)sizeof(dpackheader_t)) return 0;
+    if (img[0] != 'P' || img[1] != 'A' || img[2] != 'C' || img[3] != 'K') return 0;
+    hdr = (const dpackheader_t *)img;
+    if (hdr->dirofs < 0 || hdr->dirlen < 0) return 0;
+    if (hdr->dirofs + hdr->dirlen > pak_sz) return 0;
+    s_pak_image = img;
+    s_pak_size = pak_sz;
+    s_pak_path_str = path;
+    num_entries = hdr->dirlen / (int)sizeof(packfile_t);
+    if (num_entries > FS_HT_SIZE / 2) num_entries = FS_HT_SIZE / 2;
+    dir = (const packfile_t *)(s_pak_image + hdr->dirofs);
+    for (i = 0; i < num_entries; i++) {
+        if (dir[i].filelen <= 0 || dir[i].filepos < 0) continue;
+        if (dir[i].filepos + dir[i].filelen > s_pak_size) continue;
+        ht_insert(fnv1a(dir[i].name), dir[i].filepos, dir[i].filelen, dir[i].name);
+    }
+    return 1;
+}
+#endif
+
+int FS_Init(void) {
+    memset(s_ht, 0, sizeof(s_ht));
+    memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
+#if defined(BTRON_PS2_TARGET)
+    if (ps2_pak0_image && ps2_pak0_image_end > ps2_pak0_image) {
+        int n = (int)(ps2_pak0_image_end - ps2_pak0_image);
+        if (fs_map_pak_image(ps2_pak0_image, n, "ps2_pak0_image"))
+            return 1;
+    }
+#endif
+    return 0;
+}
+byte *FS_LoadFile(const char *p, int *l) {
+#if defined(BTRON_PS2_TARGET)
+    return (byte *)FS_FindInPak(p, l);
+#else
+    (void)p; if (l) *l = 0; return NULL;
+#endif
+}
+const byte *FS_FindInPak(const char *p, int *l) {
+    const fs_ht_slot_t *slot;
+    if (!s_pak_image || !p) { if (l) *l = 0; return NULL; }
+    slot = ht_find(p);
+    if (!slot) { if (l) *l = 0; return NULL; }
+    if (l) *l = slot->length;
+    return s_pak_image + slot->offset;
+}
+
+/* Bind one BSP. A warp replaces it; the other 20 maps stay on media. */
+int FS_CacheBSP(const char *bsp_path)
+{
+    int bsp_len = 0;
+    const byte *data;
+    const dheader_t *hdr;
+    int l;
+
+    if (!bsp_path || !bsp_path[0]) return 0;
+    if (g_bsp_cache.is_ready && strcmp(g_bsp_cache.path, bsp_path) == 0)
+        return 1;
+
+    memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
+    strncpy(g_bsp_cache.path, bsp_path, sizeof(g_bsp_cache.path) - 1);
+
+    data = FS_FindInPak(bsp_path, &bsp_len);
+    if (!data || bsp_len < (int)sizeof(dheader_t)) {
+        Con_DPrintf("FS_CacheBSP: %s not found\n", bsp_path);
+        return 0;
+    }
+
+    hdr = (const dheader_t *)data;
+    if (hdr->version != BSPVERSION) {
+        Con_DPrintf("FS_CacheBSP: %s bad version %d\n", bsp_path, hdr->version);
+        return 0;
+    }
+
+    g_bsp_cache.data   = data;
+    g_bsp_cache.length = bsp_len;
+    for (l = 0; l < HEADER_LUMPS; l++) {
+        int ofs = hdr->lumps[l].fileofs;
+        int len = hdr->lumps[l].filelen;
+        if (ofs < 0 || len < 0 || ofs + len > bsp_len) {
+            g_bsp_cache.lumps[l]     = NULL;
+            g_bsp_cache.lump_lens[l] = 0;
+        } else {
+            g_bsp_cache.lumps[l]     = data + ofs;
+            g_bsp_cache.lump_lens[l] = len;
+        }
+    }
+    g_bsp_cache.is_ready = 1;
+    Con_Printf("FS_CacheBSP: level %s (%d KB)\n", bsp_path, bsp_len / 1024);
+    return 1;
+}
+
+#endif  /* !hosted / Pi */
 
 void FS_FreeFile(void *buffer) {
     /* Hunk memory — no-op (NASA JPL Rule 3 arena) */

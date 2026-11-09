@@ -64,7 +64,12 @@ static const char *s_search_dirs[] = {
 };
 #endif
 
+#if BTRON_HOSTED
 static int s_bios_mode = BMSX_BIOS_TBIOS;
+#else
+/* /SYS ships C-BIOS; T-BIOS / T-FW live on /MSX and the BIOS menu. */
+static int s_bios_mode = BMSX_BIOS_CBIOS;
+#endif
 
 int bios_get_mode(void)
 {
@@ -266,6 +271,10 @@ int bios_load(uint16_t machine, const char *dir)
         } else if (machine >= BMSX_MACHINE_MSX2_CBIOS) {
             n = read_rom(dir, "cbios_main_msx2.rom", s_main, sizeof(s_main));
         }
+    }
+    if (!n) {
+        /* Last resort on a 1 MiB /SYS that only shipped MSX1 C-BIOS. */
+        n = read_rom(dir, "cbios_main_msx1.rom", s_main, sizeof(s_main));
     }
     if (!n) return MSX_ERR_BIOS;
     if (s_bios_mode == BMSX_BIOS_TBIOS || s_bios_mode == BMSX_BIOS_TFW) {

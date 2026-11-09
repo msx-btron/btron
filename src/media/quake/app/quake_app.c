@@ -178,6 +178,11 @@ static void quake_destroy(WND *wnd) {
 
 /* ── Public API ───────────────────────────────────────────────────── */
 
+int btron_quake_linked(void)
+{
+    return 1;
+}
+
 WND *open_quake_window(int x, int y, int width, int height) {
     /* Prevent double-open */
     if (s_quake_wnd) {
@@ -214,10 +219,14 @@ WND *open_quake_window(int x, int y, int width, int height) {
 
     /* ── One-shot engine initialisation ──────────────────────────── */
     if (!s_initialised) {
-        FS_Init();
+        int pak_ok = FS_Init();
         R_Init(width, height);
-        /* Spawn all entities & start Quake server */
-        SV_SpawnServer("maps/e1m1.bsp");
+        if (pak_ok) {
+            SV_SpawnServer("maps/e1m1.bsp");
+        } else {
+            uart_puts_raw("[QUAKE] PAK not mapped (PS2: ISO has QUAKE/PAK0.PAK, "
+                          "EE has no CDVD reader yet). Window is open.\n");
+        }
         UI_Init();
         s_initialised = 1;
     }

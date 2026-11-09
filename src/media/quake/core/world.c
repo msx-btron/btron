@@ -77,9 +77,8 @@ int World_LoadMap(const char *mapname) {
     int mark = Hunk_LowMark();
 
     /*
-     * Fast-path: FS_CacheBSP slurps the entire .bsp into the hunk once
-     * (zero-copy from the PAK image) and exposes per-lump base pointers.
-     * We then cast those pointers directly — no memcpy, no extra fread.
+     * Fast-path: FS_CacheBSP binds the current .bsp only (zero-copy from a
+     * mapped PAK, or one file from media). Other maps stay off the hunk.
      */
     if (!FS_CacheBSP(mapname)) {
         Con_Printf("World_LoadMap: Could not load '%s'\n", mapname);

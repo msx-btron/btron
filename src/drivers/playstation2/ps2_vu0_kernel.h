@@ -84,6 +84,18 @@ void ps2_vu0_damp_angle_batch(float *current, const float *target, float lambda,
  */
 void ps2_vu0_circle_ring_batch(float r, size_t num_segments, vu0_vec4_t *out_pts);
 
+/*
+ * Quake Light Sport vector offload (VU0 macro mode on R5900, C elsewhere).
+ * These are the hot 3-space ops mathlib and the alias transform call every
+ * frame: normalize, cross, angle basis, and a column-major MVP batch.
+ */
+void ps2_vu0_v3_normalize(float v[3]);
+void ps2_vu0_v3_cross(const float a[3], const float b[3], float out[3]);
+void ps2_vu0_angle_vectors(const float angles[3],
+                           float *forward, float *right, float *up);
+void ps2_vu0_transform_batch(const float mvp[16],
+                             const vu0_vec4_t *in, size_t n, vu0_vec4_t *out);
+
 #ifdef __cplusplus
 }
 #endif

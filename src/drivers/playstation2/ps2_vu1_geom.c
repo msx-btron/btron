@@ -8,6 +8,7 @@
  */
 
 #include "ps2_vu1_geom.h"
+#include "ps2_vu0_kernel.h"
 #include <string.h>
 
 #if defined(BTRON_PS2_TARGET)
@@ -96,4 +97,12 @@ const float* ps2_vu1_geom_get_light_col(void)
 int ps2_vu1_geom_is_inited(void)
 {
     return s_vu1_inited;
+}
+
+void ps2_vu1_transform_batch(const float *in_xyzw, size_t n, float *out_xyzw)
+{
+    if (!in_xyzw || !out_xyzw || n == 0) return;
+    ps2_vu0_transform_batch(s_mvp,
+                            (const vu0_vec4_t *)in_xyzw, n,
+                            (vu0_vec4_t *)out_xyzw);
 }

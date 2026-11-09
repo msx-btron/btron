@@ -380,8 +380,8 @@ void ps2_usb_poll(void);
 void ps2_usb_input_plane(int on);
 
 /* Seqlock consumer (INPUT task): motion since last consume plus latest buttons.
- * Follow (paint pump): motion only, so a long paint can move the pointer without
- * enqueueing EV_MOUSE_MOVE (the event queue is SPSC; INPUT is the producer). */
+ * Follow (paint pump): motion since the visual watermark only.  Follow never
+ * advances the consume cursor, so INPUT still produces EV_MOUSE_MOVE. */
 int ps2_usb_pointer_consume(int32_t *dx, int32_t *dy, uint8_t *buttons);
 int ps2_usb_pointer_follow(int32_t *dx, int32_t *dy);
 

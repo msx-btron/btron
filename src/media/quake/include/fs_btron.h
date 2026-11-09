@@ -2,9 +2,9 @@
  * src/quake/include/fs_btron.h — File System, PAK & BSP Loader for B-System
  *
  * v2 — Fast-path PAK loading:
- *  • Entire PAK archive is read once into the hunk at FS_Init().
+ *  • Directory is indexed at FS_Init(); the archive body stays on media.
  *  • FNV-1a hash table maps path → [offset, length] in O(1).
- *  • BSP pre-cache keeps the .bsp bytes in the hunk across frames.
+ *  • FS_CacheBSP binds one .bsp (the current level) and drops it on warp.
  *
  * Cleanroom C99 implementation for B-System.
  * Copyright 2026 Synrc Research Center. MIT License / GPL-2.0.
@@ -33,7 +33,7 @@ typedef struct {
 
 /* ── Hash-table slot (open-address, power-of-2 size) ─────────────── */
 #if defined(BTRON_PS2_TARGET)
-#define FS_HT_BITS   8                /* 256 slots */
+#define FS_HT_BITS   10               /* 1024 slots, pak0 has ~339 files */
 #else
 #define FS_HT_BITS   13               /* 8192 slots, load factor ≤ 0.5 */
 #endif

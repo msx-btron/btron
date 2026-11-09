@@ -104,6 +104,43 @@ static void test_ribbon_lattice(void)
     check("all ribbon Z coordinates stay strictly within amplitude", bounded);
 }
 
+static void test_quake_vector_offload(void)
+{
+    float v[3] = {3.0f, 0.0f, 4.0f};
+    float c[3];
+    float a[3] = {1.0f, 0.0f, 0.0f};
+    float b[3] = {0.0f, 1.0f, 0.0f};
+    float fwd[3], right[3], up[3];
+    float ang[3] = {0.0f, 90.0f, 0.0f};
+    float mvp[16] = {
+        2.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 3.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 4.0f, 0.0f,
+        1.0f, 2.0f, 3.0f, 1.0f
+    };
+    vu0_vec4_t in, out;
+
+    ps2_vu0_v3_normalize(v);
+    check_float("normalize (3,0,4) x", v[0], 0.6f, 1e-5f);
+    check_float("normalize (3,0,4) z", v[2], 0.8f, 1e-5f);
+
+    ps2_vu0_v3_cross(a, b, c);
+    check_float("i × j = k x", c[0], 0.0f, 1e-6f);
+    check_float("i × j = k y", c[1], 0.0f, 1e-6f);
+    check_float("i × j = k z", c[2], 1.0f, 1e-6f);
+
+    ps2_vu0_angle_vectors(ang, fwd, right, up);
+    check_float("yaw 90 forward x", fwd[0], 0.0f, 1e-5f);
+    check_float("yaw 90 forward y", fwd[1], 1.0f, 1e-5f);
+
+    in.x = 1.0f; in.y = 1.0f; in.z = 1.0f; in.w = 1.0f;
+    ps2_vu0_transform_batch(mvp, &in, 1, &out);
+    check_float("mvp * (1,1,1,1) x", out.x, 2.0f * 1.0f + 1.0f, 1e-5f);
+    check_float("mvp * (1,1,1,1) y", out.y, 3.0f * 1.0f + 2.0f, 1e-5f);
+    check_float("mvp * (1,1,1,1) z", out.z, 4.0f * 1.0f + 3.0f, 1e-5f);
+    check_float("mvp * (1,1,1,1) w", out.w, 1.0f, 1e-5f);
+}
+
 int main(void)
 {
     printf("==========================================================\n");
@@ -112,6 +149,7 @@ int main(void)
 
     test_hopf_projection();
     test_ribbon_lattice();
+    test_quake_vector_offload();
 
     printf("  checks=%d failures=%d\n", s_checks, s_failures);
     if (s_failures == 0) {

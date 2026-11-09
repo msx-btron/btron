@@ -28,6 +28,30 @@
 #define BTRON_NOCACHE_SIZE  0x00200000UL   /*  2 MB */
 #define BTRON_NOCACHE_END   (BTRON_NOCACHE_BASE + BTRON_NOCACHE_SIZE)
 
+/*
+ * Preloaded RAM volumes (initramfs btron_payload.bin at 0x03000000, and
+ * QEMU -device loader).  Packed so the payload is ~68 MiB instead of 144:
+ *   /SYS     1 MiB at 0x03000000
+ *   /ANDERS  1 MiB at 0x03200000
+ *   pak0     ~19 MiB at 0x04000000 (ends ~0x052A0000)
+ *   /MSX    32 MiB at 0x05400000 (ends 0x07400000)
+ *   Quake hunk 64 MiB at 0x08000000 (not in the payload; zero-filled on use)
+ *   MSX mapper RAM 4 MiB at 0x0C000000 (turboR / Geo3D; not in the payload)
+ * The bump heap skips 0x03000000..0x0D000000 so none of these are overwritten.
+ */
+#define BTRON_RAM_SYS_VOL     0x03000000UL
+#define BTRON_RAM_SYS_SIZE    (1024UL * 1024UL)
+#define BTRON_RAM_ANDERS_VOL  0x03200000UL
+#define BTRON_RAM_ANDERS_SIZE (1024UL * 1024UL)
+#define BTRON_RAM_QUAKE_PAK   0x04000000UL
+#define BTRON_RAM_MSX_VOL     0x05400000UL
+#define BTRON_RAM_MSX_SIZE    (32768UL * 1024UL)
+#define BTRON_RAM_QUAKE_HUNK  0x08000000UL
+/* MSX memory-mapper RAM (4 MiB). After the 64 MiB Quake hunk; still inside
+ * the bump-heap skip 0x03000000..0x0D000000 so .bss can stay under .nocache. */
+#define BTRON_RAM_MSX_MAPPER      0x0C000000UL
+#define BTRON_RAM_MSX_MAPPER_SIZE (4096UL * 1024UL)
+
 /* Mailbox request buffers shared with the VideoCore property channel.  The
  * boot buffer carries the framebuffer-allocation and power-state requests,
  * whose *responses* are written by the VideoCore into this RAM, so it must

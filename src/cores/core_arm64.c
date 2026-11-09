@@ -97,6 +97,8 @@ static async_rt_stats_t s_async_rt_stats;
  * read-and-clear handoff in the xHCI driver. */
 static pointer_slot_t s_pointer_slot;
 static pointer_snapshot_t s_input_last;
+static pointer_snapshot_t s_input_followed; /* visual watermark; follow never commits s_input_last */
+static int s_ptr_followed;
 static uint8_t s_input_prev_buttons = 0;
 #define BUTTON_EDGE_RING_SIZE 256u
 static volatile uint8_t s_button_edge_ring[BUTTON_EDGE_RING_SIZE];
@@ -782,6 +784,8 @@ static void poll_uart_input(uint32_t now) {
 }
 
 static void pointer_follow(void);
+static void input_plane_task(GDEV *screen, uint32_t now_us);
+static int usb_poll_devices(GDEV *screen);
 
 void btron_cooperative_input_pump(void) {
     static volatile int s_in_pump;
@@ -806,11 +810,19 @@ static arm64_comp_ctx_t s_comp_ctx;
 
 static uint32_t arm64_comp_now(void *x) { (void)x; return *(volatile uint32_t *)(TIMER_BASE + 0x04); }
 
-/* INPUT is a peer task.  The compositor only follows the seqlock (no snd_evt). */
+/* INPUT is a peer task.  poll_input runs the bounded worker so MOVE is queued
+ * before drain (window drag).  The paint pump still follows without snd_evt. */
 static void arm64_comp_poll_input(void *x)
 {
-    (void)x;
-    pointer_follow();
+    arm64_comp_ctx_t *c = x;
+    uint32_t now = *(volatile uint32_t *)(TIMER_BASE + 0x04);
+    if (g_use_xhci) {
+        if (!s_async_irq_active) xhci_process_events_bounded(ASYNC_XHCI_TRB_BUDGET);
+        input_plane_task(c->screen, now);
+    } else if ((uint32_t)(now - c->last_usb_poll) >= ASYNC_INPUT_PERIOD_US) {
+        c->last_usb_poll = now;
+        usb_poll_devices(c->screen);
+    }
 }
 
 static int arm64_comp_drain(void *x)
@@ -918,6 +930,8 @@ static void launch_pi4_desktop_session(uint32_t *gpu_fb)
     s_input_last.acc_dy = s_pointer_slot.acc_dy;
     s_input_last.acc_wheel = s_pointer_slot.acc_wheel;
     s_input_last.buttons = s_pointer_slot.buttons;
+    s_input_followed = s_input_last;
+    s_ptr_followed = 0;
 
     s_comp_ctx.last_usb_poll = *(volatile uint32_t *)(TIMER_BASE + 0x04);
 
@@ -1719,6 +1733,19 @@ static void mouse_motion_apply(int32_t rdx, int32_t rdy, int emit) {
     }
 }
 
+/* Pump follow already wrote s_mouse_*; still post MOVE so drag/hover see it. */
+static void mouse_motion_emit_now(void)
+{
+    EVT ev;
+    ev.type   = EV_MOUSE_MOVE;
+    ev.pos.x  = s_mouse_x;
+    ev.pos.y  = s_mouse_y;
+    ev.button = (g_prev_mouse_btns & 1u) ? 1 : ((g_prev_mouse_btns & 2u) ? 2 : ((g_prev_mouse_btns & 4u) ? 3 : 0));
+    ev.key    = 0;
+    ev.data   = 0;
+    snd_evt(&ev);
+}
+
 /* Latest raw HID button byte -> RISC OS Select/Adjust/Menu edge events. */
 static void mouse_buttons_apply(uint8_t raw) {
     uint8_t btn_left   = (raw & 1u);
@@ -1866,6 +1893,7 @@ static void input_plane_task(GDEV *screen, uint32_t now_us) {
     int32_t rdx = snap.acc_dx - s_input_last.acc_dx;
     int32_t rdy = snap.acc_dy - s_input_last.acc_dy;
     s_input_last = snap;
+    s_input_followed = snap;
 
     /* 1. Update button state and emit edges */
     int button_edge_seen = 0;
@@ -1880,9 +1908,16 @@ static void input_plane_task(GDEV *screen, uint32_t now_us) {
         mouse_buttons_apply(snap.buttons);
     s_input_prev_buttons = snap.buttons;
 
-    /* 2. Coalesced motion application with current button state */
-    if (snap.present && (rdx != 0 || rdy != 0))
-        mouse_motion_apply(rdx, rdy, 1);
+    /* 2. Coalesced motion.  If the paint pump already applied this delta
+     * visually, post MOVE at the current position and skip a second integrate. */
+    if (snap.present && (rdx != 0 || rdy != 0)) {
+        if (s_ptr_followed) {
+            s_ptr_followed = 0;
+            mouse_motion_emit_now();
+        } else {
+            mouse_motion_apply(rdx, rdy, 1);
+        }
+    }
 
     /* Keyboard: drain the SPSC ring (ISR is the sole producer) */
     usb_kbd_report_t kbd_rep;
@@ -1909,14 +1944,16 @@ static void pointer_follow(void)
         __asm__ volatile("dmb sy" : : : "memory");
         s2 = s_pointer_slot.seq;
     } while ((s1 & 1u) != 0 || s1 != s2);
-    rdx = snap.acc_dx - s_input_last.acc_dx;
-    rdy = snap.acc_dy - s_input_last.acc_dy;
-    s_input_last.acc_dx = snap.acc_dx;
-    s_input_last.acc_dy = snap.acc_dy;
-    s_input_last.acc_wheel = snap.acc_wheel;
-    s_input_last.motion_seq = snap.motion_seq;
-    if (snap.present && (rdx != 0 || rdy != 0))
+    rdx = snap.acc_dx - s_input_followed.acc_dx;
+    rdy = snap.acc_dy - s_input_followed.acc_dy;
+    s_input_followed.acc_dx = snap.acc_dx;
+    s_input_followed.acc_dy = snap.acc_dy;
+    s_input_followed.acc_wheel = snap.acc_wheel;
+    s_input_followed.motion_seq = snap.motion_seq;
+    if (snap.present && (rdx != 0 || rdy != 0)) {
         mouse_motion_apply(rdx, rdy, 0);
+        s_ptr_followed = 1;
+    }
 }
 
 static void input_plane_entry(VW exinf)
@@ -1988,9 +2025,9 @@ void btron_core_hfds_log(void) {
 
     /* ── Mount /SYS volume ─────────────────────────────────────────── */
     if (!g_sys_vol) {
-        const uint16_t *magic_ptr = (const uint16_t *)0x03000000UL;
+        const uint16_t *magic_ptr = (const uint16_t *)BTRON_RAM_SYS_VOL;
         if (*magic_ptr == 0xFE42 || *magic_ptr == 0x42FE) {
-            BlkDev *sys_blk = blk_mem_create((void *)0x03000000UL, 1024 * 1024, 0);
+            BlkDev *sys_blk = blk_mem_create((void *)BTRON_RAM_SYS_VOL, (UW)BTRON_RAM_SYS_SIZE, 0);
             if (sys_blk) {
                 g_sys_vol = vol_mount(sys_blk);
                 if (g_sys_vol) {
@@ -2019,9 +2056,9 @@ void btron_core_hfds_log(void) {
 
     /* ── Mount /ANDERS volume ───────────────────────────────────────── */
     if (!g_anders_vol) {
-        const uint16_t *anders_magic = (const uint16_t *)0x03200000UL;
+        const uint16_t *anders_magic = (const uint16_t *)BTRON_RAM_ANDERS_VOL;
         if (*anders_magic == 0xFE42 || *anders_magic == 0x42FE) {
-            BlkDev *anders_blk = blk_mem_create((void *)0x03200000UL, 1024 * 1024, 0);
+            BlkDev *anders_blk = blk_mem_create((void *)BTRON_RAM_ANDERS_VOL, (UW)BTRON_RAM_ANDERS_SIZE, 0);
             if (anders_blk) {
                 g_anders_vol = vol_mount(anders_blk);
                 if (g_anders_vol) {
@@ -2036,18 +2073,23 @@ void btron_core_hfds_log(void) {
 
     /* ── Mount /MSX volume ─────────────────────────────────────────── */
     {
-        const uint16_t *msx_magic = (const uint16_t *)0x0A000000UL;
+        const uint16_t *msx_magic = (const uint16_t *)BTRON_RAM_MSX_VOL;
         if (*msx_magic == 0xFE42 || *msx_magic == 0x42FE) {
-            BlkDev *msx_blk = blk_mem_create((void *)0x0A000000UL, 32768 * 1024, 0);
+            BlkDev *msx_blk = blk_mem_create((void *)BTRON_RAM_MSX_VOL, (UW)BTRON_RAM_MSX_SIZE, 0);
             if (msx_blk) {
                 Volume *msx_vol = vol_mount(msx_blk);
                 if (msx_vol) {
-                    uart_puts("[FS  ] /MSX mounted from RAM 0x0A000000 (btron_msx.vol)  [OK]\n");
-                    fb_log("[FS  ] /MSX mounted from RAM 0x0A000000  [OK]\n");
+                    uart_puts("[FS  ] /MSX mounted from RAM 0x05400000 (btron_msx.vol)  [OK]\n");
+                    fb_log("[FS  ] /MSX mounted from RAM 0x05400000  [OK]\n");
                 } else {
                     blk_destroy(msx_blk);
+                    uart_puts("[FS  ] /MSX volume header rejected at 0x05400000\n");
+                    fb_log("[FS  ] /MSX header rejected\n");
                 }
             }
+        } else {
+            uart_puts("[FS  ] /MSX not present at 0x05400000 (flash btron_payload.bin)\n");
+            fb_log("[FS  ] /MSX not present at 0x05400000\n");
         }
     }
 

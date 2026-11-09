@@ -4,7 +4,7 @@
  *
  * Supports MSX1, MSX2, MSX2+ and MSX turbo R configurations with:
  * - Subslotted primary slots and 0xFFFF secondary slot registers
- * - 512 KiB internal Memory Mapper RAM
+ * - Internal Memory Mapper RAM (4 MiB hosted/Pi, 512 KiB PS2)
  * - MegaROM cartridge mapper emulation (ASCII16, ASCII8, Konami, Konami SCC, linear up to 4 MiB)
  * - Sub-ROM, Logo, MSX-MUSIC and Disk ROM loading
  */
@@ -23,6 +23,9 @@
 #include "hd64180.h"
 #include "midi.h"
 #include "msx_cfg.h"
+#if defined(__aarch64__) && !(defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1)
+#include <btron/arm64_mem.h>
+#endif
 
 #define SLOT_BIOS    0u
 #define SLOT_CART_A  1u
@@ -38,7 +41,11 @@ static uint16_t s_machine = BMSX_MACHINE_MSX;
 
 /* Memory pools */
 static uint8_t  ram[MSX_RAM_SIZE];                     /* 64 KiB for MSX1 */
+#if defined(__aarch64__) && !(defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1)
+static uint8_t *const mapper_ram = (uint8_t *)BTRON_RAM_MSX_MAPPER;
+#else
 static uint8_t  mapper_ram[MSX_MAPPER_RAM_SIZE];       /* Up to 4 MiB for MSX2/2+/TR */
+#endif
 static uint8_t  rom[MSX_ROM_SIZE + 1];                 /* cartridge (+1 spare byte lets the app tell an over-cap image from one that just fits) */
 static uint8_t  bios[MSX_BIOS_SIZE];                   /* 32-64 KiB main BIOS */
 static uint8_t  logo[MSX_LOGO_SIZE];                   /* 16 KiB logo */
@@ -191,6 +198,10 @@ static const rom_crc_entry_t k_rom_crc_db[] = {
     { 0x84C327F6, MAPPER_ASCII16 },      /* btron8.rom */
     { 0x69FCEAA9, MAPPER_ASCII16 },      /* NIGHT_RAVEN_FLIGHT_DEMO.ROM */
     { 0xCB2C9B3B, MAPPER_ASCII16 },      /* NIGHT_RAVEN_GEO3D.ROM */
+    { 0xFE2E440F, MAPPER_ASCII16 },      /* MAGICAL_HAPPY_RACE_3D_EXTERNAL_88H.rom */
+    { 0x804D0574, MAPPER_ASCII16 },      /* MAGICAL_HAPPY_RACE_3D_INTERNAL_98H.rom */
+    { 0x4F14C0F6, MAPPER_ASCII16 },      /* NICCC3D.ROM (ASCII16X header) */
+    { 0x85C69A7A, MAPPER_ASCII8 },       /* ZeroNoHoukouR-v0.4.8.rom */
 };
 
 static void cart_remap(void)
@@ -961,7 +972,7 @@ static void remap(void)
 void slots_init(void)
 {
     memset(ram, 0, sizeof(ram));
-    memset(mapper_ram, 0, sizeof(mapper_ram));
+    memset(mapper_ram, 0, MSX_MAPPER_RAM_SIZE);
     /* Note: rom buffer is intentionally preserved here; callers using msx_rom_buffer()
      * stage cartridge/bios data into rom before msx_init(), and slots_set_rom()
      * handles zero-padding/clearing. */

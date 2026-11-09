@@ -219,7 +219,10 @@ int vfs_read_blob(const char *path, void *buf, size_t cap, size_t *out_bytes)
     if (fd < 0) return -1;
 
     size_t total_read = 0;
-    for (int r = 0; r < 64 && total_read < cap; r++) {
+    /* BIN bodies from mkbtronfs are one record; a 2 MiB ASCII16 cart is one
+     * rd_rec.  The cap is a NASA bound, not a size limit: MegaROMs and disks
+     * that were split still read in full. */
+    for (int r = 0; r < 4096 && total_read < cap; r++) {
         ID rec = opn_rec(fd, (W)r, F_READ);
         if (rec < 0) break;
 

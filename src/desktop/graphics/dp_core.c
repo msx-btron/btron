@@ -20,6 +20,17 @@ GDEV* opn_dev(H w, H h) {
         free(dev);
         return NULL;
     }
+#if defined(BTRON_PS2_TARGET)
+    /* calloc leaves 0, which the compositor treats as the transparent
+     * sentinel (fused_row.h).  An opaque plate means a window whose paint
+     * has not run yet still composites as a client, not as a hole. */
+    {
+        COLOR *px = dev->pixels;
+        int n = (int)w * (int)h;
+        int i;
+        for (i = 0; i < n; i++) px[i] = COLOR_LTGRAY;
+    }
+#endif
 
     dev->clip.left = 0;
     dev->clip.top = 0;

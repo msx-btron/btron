@@ -31,6 +31,17 @@ int main(void) {
     printf(" Running T-FW (T-Firmware) Z80 OpenFirmware Verification...\n");
     printf("==========================================================\n");
 
+    /* 0. Host letters S/R/D are matrix letters, not cursor keys (Forth shell). */
+    {
+        uint8_t r, c;
+        TEST_ASSERT(msx_kbd_position('s', &r, &c) && (r != MSX_KEY_DOWN_R || c != MSX_KEY_DOWN_C),
+                    "letter S is not cursor-down");
+        TEST_ASSERT(msx_kbd_position('d', &r, &c) && (r != MSX_KEY_RIGHT_R || c != MSX_KEY_RIGHT_C),
+                    "letter D is not cursor-right");
+        TEST_ASSERT(msx_kbd_position('r', &r, &c) && r == 4u && c == 7u,
+                    "letter R is MSX matrix row 4 col 7");
+    }
+
     /* 1. Verify T-FW ROM files on disk */
     printf("[1] Verifying T-FW ROM Binary Size & Integrity...\n");
     FILE *f = fopen(".build/tbios/tfw_main_msx2.rom", "rb");

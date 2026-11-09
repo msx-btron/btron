@@ -13,6 +13,7 @@
 #define BTRON_PS2_VU1_GEOM_H
 
 #include <stdint.h>
+#include <stddef.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,6 +57,11 @@ const float* ps2_vu1_geom_get_mvp(void);
 const float* ps2_vu1_geom_get_light_dir(void);
 const float* ps2_vu1_geom_get_light_col(void);
 int          ps2_vu1_geom_is_inited(void);
+
+/* Apply the last set_mvp() to n packed XYZ W verts (column-major OpenGL).
+ * On the EE this is VU0 macro-mode; the VU1 microcode pipe uses the same
+ * uniform for GIF streaming. */
+void ps2_vu1_transform_batch(const float *in_xyzw, size_t n, float *out_xyzw);
 
 #ifdef __cplusplus
 }

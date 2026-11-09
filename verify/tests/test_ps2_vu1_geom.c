@@ -13,6 +13,7 @@
 #include <math.h>
 
 #include "../../src/drivers/playstation2/ps2_vu1_geom.h"
+#include "../../src/drivers/playstation2/ps2_vu0_kernel.c"
 #include "../../src/drivers/playstation2/ps2_vu1_geom.c"
 #include "../../src/drivers/playstation2/ps2_gs_pack.c"
 #include "../../src/drivers/playstation2/ps2_gs_rec.h"
@@ -74,6 +75,16 @@ static void test_uniforms(void)
     check_float("light ambient", dir[3], 0.25f, 1e-5f);
     check_float("light_col[0]", col[0], 0.8f, 1e-5f);
     check_float("light enabled", col[3], 1.0f, 1e-5f);
+
+    {
+        float in[4]  __attribute__((aligned(16))) = { 1.0f, 1.0f, 1.0f, 1.0f };
+        float out[4] __attribute__((aligned(16)));
+        ps2_vu1_transform_batch(in, 1, out);
+        check_float("vu1 transform x", out[0], 3.0f, 1e-5f);
+        check_float("vu1 transform y", out[1], 5.0f, 1e-5f);
+        check_float("vu1 transform z", out[2], 7.0f, 1e-5f);
+        check_float("vu1 transform w", out[3], 1.0f, 1e-5f);
+    }
 }
 
 /* 2. Test packet header structure layout */

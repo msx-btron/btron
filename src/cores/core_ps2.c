@@ -170,6 +170,7 @@ static int32_t s_mouse_rem_x, s_mouse_rem_y;
 NEXUS_RING_DEFINE(ps2_edge_ring_t, EVT, 64)
 static ps2_edge_ring_t s_edge_ring;
 static int32_t s_move_dx, s_move_dy;      /* coalesced, one EV_MOUSE_MOVE per input period */
+static int      s_ptr_followed;           /* pump already applied this motion visually */
 
 static void ps2_edge_flush(void)
 {
@@ -202,6 +203,19 @@ static void ps2_move_flush(void)
     if (snd_evt(&ev) == E_OK) s_move_dx = s_move_dy = 0;   /* MOVE may be dropped; keep accumulating */
 }
 
+/* Pump follow already wrote s_mouse_*; still post MOVE so drag/hover see it. */
+static void ps2_move_emit_now(void)
+{
+    EVT ev;
+    tkl_memset(&ev, 0, sizeof(ev));
+    ev.type   = EV_MOUSE_MOVE;
+    ev.pos.x  = (H)s_mouse_x;
+    ev.pos.y  = (H)s_mouse_y;
+    ev.button = (s_prev_mouse_btn & 1u) ? 1 : (s_prev_mouse_btn & 2u) ? 2 : (s_prev_mouse_btn & 4u) ? 3 : 0;
+    ev.data   = (VW)(((uint32_t)(uint16_t)(int16_t)s_move_dx) | ((uint32_t)(uint16_t)(int16_t)s_move_dy << 16));
+    if (snd_evt(&ev) == E_OK) s_move_dx = s_move_dy = 0;
+}
+
 static void ps2_apply_delta(int dx, int dy, int enqueue)
 {
     const int32_t gain = g_ptr_gain_fp > 0 ? g_ptr_gain_fp : PS2_MOUSE_VELOCITY_FP;
@@ -230,8 +244,10 @@ static __attribute__((noinline)) void ps2_move_mouse(int dx, int dy)
 static void ps2_pointer_follow(void)
 {
     int32_t dx = 0, dy = 0;
-    if (ps2_usb_pointer_follow(&dx, &dy))
+    if (ps2_usb_pointer_follow(&dx, &dy)) {
         ps2_apply_delta((int)dx, (int)dy, 0);
+        s_ptr_followed = 1;
+    }
 }
 
 static void ps2_click_mouse(int button, int down)
@@ -327,6 +343,11 @@ void ps2_usb_on_mouse(int dx, int dy, uint8_t buttons)
         const uint8_t bit = (uint8_t)(1u << b);
         if ((buttons & bit) && !(s_prev_mouse_btn & bit)) ps2_click_mouse(b + 1, 1);
         if (!(buttons & bit) && (s_prev_mouse_btn & bit)) ps2_click_mouse(b + 1, 0);
+    }
+    if (s_ptr_followed) {
+        s_ptr_followed = 0;
+        if (dx || dy) ps2_move_emit_now();
+        return;
     }
     ps2_move_mouse(dx, dy);
 }
@@ -494,7 +515,15 @@ static uint32_t ps2_comp_now(void *x) { (void)x; return btron_render_perf_us(); 
 static void ps2_comp_poll_input(void *x)
 {
     (void)x;
-    ps2_pointer_follow();
+    /* USB consume + flush so MOVE is in the queue before drain (window drag).
+     * Pad stays on the INPUT task: analog stick is a velocity sample, and
+     * polling it here and there would double the cursor.  USB consume is
+     * idempotent across this call and the 1 ms INPUT worker. */
+    ps2_usb_poll();
+    ps2_kbd_repeat_tick();
+    set_baremetal_mouse_pos((H)s_mouse_x, (H)s_mouse_y);
+    ps2_edge_flush();
+    ps2_move_flush();
 }
 
 static int ps2_comp_drain(void *x)
@@ -934,10 +963,14 @@ void launch_ps2_desktop_session(void)
     ps2_spawn_planes();
     btron_desktop_note_size(PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
     workbench_init(PS2_SCREEN_WIDTH);
-    open_mars_window_rect(6, 32, 392, 276);
-    open_xmb_window_rect(402, 32, 392, 276);
-    open_glgears_window_rect(6, 312, 392, 276);
-    open_lilcu64_demo_window_rect(402, 312, 392, 276);
+    /* Productivity windows (gterm / cabinet / editor) already opened from
+     * init_baremetal_desktop, capped for the 5.5 MiB heap.  The four demo
+     * GL surfaces used to follow here (mars/xmb/glgears/lilcu at 392x276);
+     * together they ate ~2 MiB of GDEV + TinyGL zbuf + XMB atlas and left
+     * later apps with NULL pixmaps (chrome, no client).  Launch them from
+     * Tracker or gterm. */
+    btron_core_mem_log();
+    ps2_heap_holders("desktop up");
 
     ps2_page_double_apply(ps2_page_double_wanted());
     ps2_rot_owe_all();

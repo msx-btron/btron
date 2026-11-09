@@ -457,6 +457,7 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
         strcmp(cmd, "./quake") == 0 || strcmp(cmd, "./bin/quake") == 0 ||
         strcmp(cmd, "/SYS/quake") == 0) {
         clu_quake(arg, out_fn, user_data);
+        if (!wnd) btron_request_gui();
         return;
     }
     if (strcmp(cmd, "mars") == 0 || strcmp(cmd, "bin/mars") == 0 ||
@@ -603,20 +604,7 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
     if (strcmp(cmd, "msx") == 0 || strcmp(cmd, "bmsx") == 0 ||
         strcmp(cmd, "bin/msx") == 0 || strcmp(cmd, "./msx") == 0 ||
         strcmp(cmd, "/SYS/msx") == 0) {
-        out_fn("B-MSX Game System (MSX Cartridge Player):", COLOR_CYAN, user_data);
-        WND *w = NULL;
-        if (arg[0] != '\0') {
-            if (open_msx_window_with_rom) w = open_msx_window_with_rom(arg);
-            else if (open_msx_window)     w = open_msx_window();
-        } else {
-            if (open_msx_window)         w = open_msx_window();
-        }
-        if (w) {
-            inval_wnd(w);
-            out_fn("  Window opened on the Workbench desktop", COLOR_GREEN, user_data);
-        } else {
-            out_fn("  Failed to open window surface", COLOR_RED, user_data);
-        }
+        clu_msx(arg, out_fn, user_data);
         if (!wnd) btron_request_gui();
         return;
     }
@@ -634,14 +622,7 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
             if (strncmp(arg, "msx ", 4) == 0) {
                 const char *rom = arg + 4;
                 while (*rom == ' ') rom++;
-                out_fn("B-MSX Game System (MSX Cartridge Player):", COLOR_CYAN, user_data);
-                WND *w = open_msx_window_with_rom ? open_msx_window_with_rom(rom) : (open_msx_window ? open_msx_window() : NULL);
-                if (w) {
-                    inval_wnd(w);
-                    out_fn("  Window opened on the Workbench desktop", COLOR_GREEN, user_data);
-                } else {
-                    out_fn("  Failed to open window surface", COLOR_RED, user_data);
-                }
+                clu_msx(rom, out_fn, user_data);
                 if (!wnd) btron_request_gui();
                 return;
             }
@@ -2014,6 +1995,15 @@ WND* open_gterm_window(void) {
         w = (H)(desk->width - 24 - step);
         h = (H)(desk->height - 64 - step);
     }
+#if defined(BTRON_PS2_TARGET)
+    /* 800x600 minus chrome is ~768x500 RGB32 ~1.5 MiB.  Three boot windows
+     * at that scale plus the four demo GL surfaces exhaust the 5.5 MiB heap
+     * and opn_dev returns NULL — chrome with an empty client. */
+    if (w > 520) w = 520;
+    if (h > 300) h = 300;
+    if (w < 400) w = 400;
+    if (h < 240) h = 240;
+#endif
 
     return open_gterm_window_rect(x, y, w, h,
                                   WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER | WND_ATTR_RESIZE);

@@ -1929,8 +1929,13 @@ WND* open_t_editor_window_rect(const char *filepath, H x, H y, H w, H h, UW attr
 }
 
 WND* open_t_editor_window_with_file(const char *filepath) {
+#if defined(BTRON_PS2_TARGET)
+    return open_t_editor_window_rect(filepath, 40, 40, 420, 260,
+                                     WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
+#else
     return open_t_editor_window_rect(filepath, 220, 50, 760, 480,
                                      WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
+#endif
 }
 
 WND* open_t_editor_window(void) {

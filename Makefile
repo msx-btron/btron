@@ -60,7 +60,7 @@ CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
         test-mars-capture \
         run-posix run-qemu run-kernel run-yoko run-yoko4 run-sakamura run-foma run-uefi run-eufi run-uefu run-pc98 run-m68k run-ps2 run-mips debug-virtio debug-gdb clean \
         ps2-cfg ps2-dials \
-        pi400 flash-pi400 fetch-pi400-fw
+        pi400 pi400-payload flash-pi400 fetch-pi400-fw
 
 QEMU_ARM     ?= qemu-system-arm
 QEMU_AARCH64 ?= qemu-system-aarch64
@@ -1365,22 +1365,23 @@ PS2_GL_SRCS    = src/desktop/graphics/gles/gl_dispatch.c     \
                  src/media/sdk/glgears.c       \
                  $(DEMO_SRCS)             \
                  $(PS2_QUAKE_SRCS)
-# PS2_MSX=1: Link B-MSX core and 7.5 MB heap (0: parked, unparks 11 MB heap for 3D)
-ifeq ($(origin PS2_MSX),undefined)
-PS2_MSX         := $(if $(filter eegs,$(PS2_GL)),0,1)
-else
+# PS2_MSX=1: Link B-MSX (7.5 MB heap).  Default on so gterm `msx` is a real
+# window, not the weak stub.  PS2_MSX=0 parks the core and restores 11 MB heap.
 PS2_MSX         ?= 1
-endif
 PS2_MSX_SRCS    = $(if $(filter 1,$(PS2_MSX)),$(MSX_SRCS) src/emulators/msx/msx_app.c,)
-# PS2_QUAKE=1: Link Quake 3D engine (0: parked to save 3.9 MB RDRAM)
-PS2_QUAKE      ?= 0
+# PS2_QUAKE=1: Link Quake Light Sport (256 KiB hunk; one BSP at a time, PAK on media).
+PS2_QUAKE      ?= 1
 PS2_QUAKE_SRCS = $(if $(filter 1,$(PS2_QUAKE)),$(QUAKE_SRCS),)
 PS2_QUAKE_STAMP = .build/ps2-quake.stamp
 PS2_QUAKE_PREV := $(shell cat $(PS2_QUAKE_STAMP) 2>/dev/null)
 ifneq ($(PS2_QUAKE_PREV),$(PS2_QUAKE))
 $(shell mkdir -p ./.build && echo '$(PS2_QUAKE)' >$(PS2_QUAKE_STAMP) && \
-        rm -f $(QUAKE_SRCS:.c=.ps2.o) $(QUAKE_SRCS:.c=.pbench.o))
+        rm -f $(QUAKE_SRCS:.c=.ps2.o) $(QUAKE_SRCS:.c=.pbench.o) \
+              src/drivers/playstation2/ps2_heap.ps2.o src/drivers/playstation2/ps2_heap.pbench.o)
 $(info [PS2] PS2_QUAKE is now $(PS2_QUAKE) (was $(if $(PS2_QUAKE_PREV),$(PS2_QUAKE_PREV),unset)) -- the Quake units will rebuild)
+endif
+ifeq ($(PS2_QUAKE),1)
+PS2_CFLAGS    += -DBTRON_PS2_QUAKE=1
 endif
 # PS2_NV=1: Include NVIDIA disassembler tables (0: parked to save 3.4 MB RDRAM)
 PS2_NV         ?= 0
@@ -2281,9 +2282,11 @@ $(ARM64_TARGET): $(ARM64_OBJS) $(BAREMETAL_LD)
 #   make fetch-pi400-fw     — download start4.elf + fixup4.dat
 # ═══════════════════════════════════════════════════════════════════
 PI400_IMG      = btron-pi400.img
-PI400_IMG_SIZE = 128
+PI400_IMG_SIZE = 192
 PI400_FW_DIR   = third_party/pi400
 PI400_CFG_DIR  = src/drivers/broadcom/pi400
+PI400_PAYLOAD  = .build/pi400/btron_payload.bin
+PI400_KERNEL8  = .build/pi400/kernel8.img
 
 LLVM_OBJCOPY  ?= $(shell for p in \
     /opt/homebrew/opt/llvm/bin/llvm-objcopy \
@@ -2316,7 +2319,23 @@ $(PI400_ARMSTUB_BIN): src/drivers/broadcom/armstub8.S
 	$(LLVM_OBJCOPY) -O binary .build/pi400/armstub8.elf $@
 	@SZ=$$(wc -c < $@ | tr -d ' '); echo "[PI400] armstub8.bin: $$SZ bytes (EL3, linked @0x0)"
 
-$(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol btron_msx.vol
+# initramfs blob at 0x03000000.  A payload that stops after pak0 (~34 MiB) leaves
+# /MSX unmapped at RAM 0x05400000 and yoko4 reports "flash btron_payload.bin".
+$(PI400_PAYLOAD): btron_sys.vol btron_msx.vol scripts/tool_mk_pi400_payload.py
+	@mkdir -p .build/pi400
+	python3 scripts/tool_mk_pi400_payload.py $@
+
+$(PI400_KERNEL8): $(ARM64_TARGET)
+	@mkdir -p .build/pi400
+	@if [ -z "$(LLVM_OBJCOPY)" ]; then \
+	    echo "[ERROR] llvm-objcopy not found. Install: brew install llvm"; exit 1; fi
+	$(LLVM_OBJCOPY) -O binary $(ARM64_TARGET) $@
+	@SZ=$$(wc -c < $@ | tr -d ' '); \
+	 echo "[PI400] kernel8.img: $$SZ bytes ($$(( $$SZ / 1024 )) KiB)"
+
+pi400-payload: $(PI400_PAYLOAD) $(PI400_KERNEL8)
+
+$(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) $(PI400_PAYLOAD) $(PI400_KERNEL8) btron_sys.vol btron_msx.vol
 	@echo "=========================================================="
 	@echo " BTRON Pi 400 — SD Card Image Builder"
 	@echo " ELF     : $(ARM64_TARGET)"
@@ -2340,11 +2359,7 @@ $(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol btron_msx.vol
 	        exit 1; \
 	    fi; \
 	fi
-	# ── 3. ELF → raw binary (kernel8.img) ─────────────────────────
-	@mkdir -p .build/pi400
-	$(LLVM_OBJCOPY) -O binary $(ARM64_TARGET) .build/pi400/kernel8.img
-	@SZ=$$(wc -c < .build/pi400/kernel8.img | tr -d ' '); \
-	 echo "[PI400] kernel8.img: $$SZ bytes ($$(( $$SZ / 1024 )) KiB)"
+	# ── 3. kernel8.img + payload come from $(PI400_KERNEL8) / $(PI400_PAYLOAD)
 	# ── 4. Create FAT32 disk image via hdiutil (macOS native) ─────
 	@rm -f $(PI400_IMG) .build/pi400/pi400_work.dmg
 	hdiutil create -size $(PI400_IMG_SIZE)m -fs MS-DOS -volname BTRON3PI4 \
@@ -2364,15 +2379,14 @@ $(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) btron_sys.vol btron_msx.vol
 	cp $(PI400_FW_DIR)/bcm2711-rpi-4-b.dtb   $$MOUNT_PT/bcm2711-rpi-4-b.dtb 2>/dev/null || true; \
 	cp $(PI400_CFG_DIR)/config.txt      $$MOUNT_PT/config.txt; \
 	cp $(PI400_CFG_DIR)/cmdline.txt     $$MOUNT_PT/cmdline.txt; \
-	cp .build/pi400/kernel8.img         $$MOUNT_PT/kernel8.img; \
+	cp $(PI400_KERNEL8)                 $$MOUNT_PT/kernel8.img; \
 	cp .build/pi400/armstub8.bin        $$MOUNT_PT/armstub8.bin; \
 	cp btron_sys.vol                    $$MOUNT_PT/btron_sys.vol; \
 	if [ -f btron_anders.vol ]; then cp btron_anders.vol $$MOUNT_PT/btron_anders.vol; fi; \
-	if [ -f btron_msx.vol ]; then cp btron_msx.vol $$MOUNT_PT/btron_msx.vol; fi; \
+	cp btron_msx.vol                    $$MOUNT_PT/btron_msx.vol; \
 	mkdir -p $$MOUNT_PT/msx; \
 	cp -f assets/msx/*.rom assets/msx/*.ROM assets/msx/*.dsk assets/msx/*.DSK $$MOUNT_PT/msx/ 2>/dev/null || true; \
-	python3 scripts/tool_mk_pi400_payload.py .build/pi400/btron_payload.bin; \
-	cp .build/pi400/btron_payload.bin   $$MOUNT_PT/btron_payload.bin; \
+	cp $(PI400_PAYLOAD)                 $$MOUNT_PT/btron_payload.bin; \
 	if [ -f assets/quake/pak/pak0.pak ]; then cp assets/quake/pak/pak0.pak $$MOUNT_PT/pak0.pak; fi; \
 	echo "[PI400] SD image contents:"; \
 	ls -lh $$MOUNT_PT/; \
@@ -2491,7 +2505,7 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	@echo " Honoring : Takanori Yokoyama (横山 孝徳) — T-Kernel Pioneer"
 	@echo " Machine  : raspi4b  |  CPU: Cortex-A72 / AArch64  |  RAM: 2G"
 	@echo " ELF      : $(ARM64_TARGET)"
-	@echo " Volumes  : btron_sys.vol (@0x03000000), btron_anders.vol (@0x03200000)"
+	@echo " Volumes  : btron_sys.vol (@0x03000000), btron_anders.vol (@0x03200000), btron_msx.vol (@0x05400000)"
 	@echo " Devices  : USB Keyboard, USB Mouse & VideoCore GPU Display"
 	@echo "=========================================================="
 	@echo " INPUT CAPTURE:"
@@ -2503,7 +2517,7 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	    $(QEMU_AARCH64) -M raspi4b -m 2G $(KERNEL_DISPLAY) \
 	        -device loader,file=btron_sys.vol,addr=0x03000000 \
 	        -device loader,file=btron_anders.vol,addr=0x03200000 \
-	        -device loader,file=btron_msx.vol,addr=0x0A000000 \
+	        -device loader,file=btron_msx.vol,addr=0x05400000 \
 	        $$(test -f assets/quake/pak/pak0.pak && echo "-device loader,file=assets/quake/pak/pak0.pak,addr=0x04000000") \
 	        -device usb-kbd -device usb-mouse \
 	        -kernel $(ARM64_TARGET) -serial stdio; \
@@ -3043,6 +3057,17 @@ $(TEST_MSX_DSK_BIN): $(TEST_MSX_DSK_OBJS)
 $(TEST_MSX_BOOT_BIN): $(TEST_MSX_BOOT_OBJS)
 	@mkdir -p ./.build
 	$(CC) $(TEST_MSX_BOOT_OBJS) -o $@ $(LDFLAGS)
+
+TEST_MSX_SURVEY_SRCS = verify/tests/test_msx_rom_survey.c $(MSX_SRCS)
+TEST_MSX_SURVEY_OBJS = $(TEST_MSX_SURVEY_SRCS:.c=.test.o)
+TEST_MSX_SURVEY_BIN  = ./.build/test_msx_rom_survey
+
+msx-survey: $(TEST_MSX_SURVEY_BIN)
+	@./$(TEST_MSX_SURVEY_BIN) $(or $(FRAMES),180)
+
+$(TEST_MSX_SURVEY_BIN): $(TEST_MSX_SURVEY_OBJS)
+	@mkdir -p ./.build
+	$(CC) $(TEST_MSX_SURVEY_OBJS) -o $@ $(LDFLAGS)
 
 TEST_MSX_AUDIO_SRCS = verify/tests/test_msx_audio.c $(MSX_SRCS)
 TEST_MSX_AUDIO_OBJS = $(TEST_MSX_AUDIO_SRCS:.c=.test.o)
