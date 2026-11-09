@@ -448,9 +448,10 @@ static int fs_name_is_demo(const char *path)
 static byte *fs_load_fio_quake(const char *path, int *out_len)
 {
     const char *base;
-    char rel[80];
-    int fd, size, n;
+    char name[64], rel[80];
+    int fd, size, n, k;
     byte *buf;
+    static const char *prefix[] = { "QUAKE/", "" };
 
     /* Loose ISO files are the drone tracks, not PAK members.  A .bsp
      * lives inside PAK0.PAK; opening QUAKE/E1M1.BSP on the disc is a miss. */
@@ -459,16 +460,23 @@ static byte *fs_load_fio_quake(const char *path, int *out_len)
     base = strrchr(path, '/');
     base = base ? base + 1 : path;
     if (!base[0]) return NULL;
-    n = snprintf(rel, sizeof(rel), "QUAKE/%s", base);
-    if (n < 0 || n >= (int)sizeof(rel)) return NULL;
-    fs_upcase(rel + 6);
-    if (!strstr(rel, ".DEM")) {
-        n = snprintf(rel, sizeof(rel), "QUAKE/%s.DEM", base);
-        if (n < 0 || n >= (int)sizeof(rel)) return NULL;
-        fs_upcase(rel + 6);
+    n = snprintf(name, sizeof(name), "%s", base);
+    if (n < 0 || n >= (int)sizeof(name)) return NULL;
+    fs_upcase(name);
+    if (!strstr(name, ".DEM")) {
+        n = snprintf(name, sizeof(name), "%s.DEM", name);
+        if (n < 0 || n >= (int)sizeof(name)) return NULL;
     }
 
-    fd = ps2_fio_open_cdrom(rel);
+    /* QUAKE\DRONE1M1.DEM first (ISO dir), then the root copy.  A missing
+     * backslash used to open cdrom0:QUAKEDRONE1M1.DEM;1. */
+    fd = -1;
+    for (k = 0; k < 2; k++) {
+        n = snprintf(rel, sizeof(rel), "%s%s", prefix[k], name);
+        if (n < 0 || n >= (int)sizeof(rel)) continue;
+        fd = ps2_fio_open_cdrom(rel);
+        if (fd >= 0) break;
+    }
     if (fd < 0) return NULL;
 
     size = ps2_fio_lseek(fd, 0, PS2_FIO_SEEK_END);
@@ -511,17 +519,18 @@ static byte *fs_load_iso_quake(const char *path, int *out_len)
     n = snprintf(iso_path, sizeof(iso_path), "QUAKE/%s", base);
     if (n < 0 || n >= (int)sizeof(iso_path)) return NULL;
     fs_upcase(iso_path + 6);
+    if (!strstr(iso_path, ".DEM") && !strstr(iso_path, ".dem")) {
+        n = snprintf(iso_path, sizeof(iso_path), "QUAKE/%s.DEM", base);
+        if (n < 0 || n >= (int)sizeof(iso_path)) return NULL;
+        fs_upcase(iso_path + 6);
+    }
 
     if (!ps2_iso_find(ps2_cdvd_iso_read, 0, iso_path, &lba, &size)) {
-        if (!strstr(iso_path, ".DEM") && !strstr(iso_path, ".dem")) {
-            n = snprintf(iso_path, sizeof(iso_path), "QUAKE/%s.DEM", base);
-            if (n < 0 || n >= (int)sizeof(iso_path)) return NULL;
-            fs_upcase(iso_path + 6);
-            if (!ps2_iso_find(ps2_cdvd_iso_read, 0, iso_path, &lba, &size))
-                return NULL;
-        } else {
+        /* Root copy of the same 8.3 name (Makefile stamps both). */
+        const char *leaf = strrchr(iso_path, '/');
+        leaf = leaf ? leaf + 1 : iso_path;
+        if (!leaf[0] || !ps2_iso_find(ps2_cdvd_iso_read, 0, leaf, &lba, &size))
             return NULL;
-        }
     }
     if (size == 0 || size > 4u * 1024u * 1024u) return NULL;
     buf = (byte *)malloc((size_t)size + 1);

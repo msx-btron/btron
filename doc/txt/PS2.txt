@@ -913,6 +913,14 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   HUD fills, glyph spans); TinyGL is load-time texture upload
   only (`glTexImage2D` → `gs_tex_register`).  Alias models and
   particles are skipped on that path for the 30-FPS slice.
+  World fans are clipped in homogeneous clip space against the
+  six frustum planes before the w-divide (Sutherland-Hodgman);
+  unclipped near-plane vertices wrapped GS 12.4 and stretched
+  walls and ceiling beams.  OPTIONS lists EEGS / TinyGL the way
+  GLQuake listed Mesa / Voodoo; live dual-backend at the 80%
+  window waits on 30 FPS EEGS.  Drone demos are FILEIO
+  `cdrom0:\QUAKE\DRONE1M1.DEM;1` and a root copy of the same 8.3
+  name.
   The in-game menu is reachable during drone replay (ESC or the
   [ESC] MENU hit).  Window min height is 64 px; resize hits the
   28x28 bottom-right corner plus 10 px right and bottom edges

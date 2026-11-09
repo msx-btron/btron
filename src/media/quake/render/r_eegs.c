@@ -56,12 +56,21 @@ void R_EEGS_Tris(const float *xyz, const float *st, int ntris,
 #else /* BTRON_PS2_TARGET */
 
 #define EEGS_MAX_VERTS 32
+#define EEGS_CLIP_MAX  40
 
 static float s_mvp[16] __attribute__((aligned(16)));
 static int   s_vp_w, s_vp_h;
 static float s_sx, s_sy, s_tx, s_ty;
 static int   s_inited;
 static int   s_logged;
+
+/* Homogeneous clip-space vertex plus texels.  Unclipped BSP faces that
+ * straddle the near plane project a vertex to infinity (GS 12.4 wrap)
+ * and stretch walls/beams across the window. */
+typedef struct {
+    float x, y, z, w;
+    float s, t;
+} clip_vert_t;
 
 static void m_ident(float *m)
 {
@@ -152,37 +161,94 @@ static const gs_tex_t *tex_of(int gl_idx)
     return gs_tex_find(plane);
 }
 
-static int clip_code(float x, float y, float z, float w)
+static float plane_dist(const clip_vert_t *v, int plane)
 {
-    int n = 0;
-    float ww = w * 1.00001f;
-    if (x < -ww) n |= 1;
-    if (x >  ww) n |= 2;
-    if (y < -ww) n |= 4;
-    if (y >  ww) n |= 8;
-    if (z < -ww) n |= 16;
-    if (z >  ww) n |= 32;
+    switch (plane) {
+    case 0: return v->w + v->x; /* x >= -w */
+    case 1: return v->w - v->x;
+    case 2: return v->w + v->y;
+    case 3: return v->w - v->y;
+    case 4: return v->w + v->z; /* near */
+    case 5: return v->w - v->z; /* far */
+    default: return 0.0f;
+    }
+}
+
+static void clip_intersect(clip_vert_t *o, const clip_vert_t *a,
+                           const clip_vert_t *b, float t, int plane)
+{
+    o->x = a->x + t * (b->x - a->x);
+    o->y = a->y + t * (b->y - a->y);
+    o->z = a->z + t * (b->z - a->z);
+    o->w = a->w + t * (b->w - a->w);
+    o->s = a->s + t * (b->s - a->s);
+    o->t = a->t + t * (b->t - a->t);
+    /* Snap the clipped coordinate onto the plane so w-divide cannot
+     * send a near-plane vertex to infinity. */
+    switch (plane) {
+    case 0: o->x = -o->w; break;
+    case 1: o->x =  o->w; break;
+    case 2: o->y = -o->w; break;
+    case 3: o->y =  o->w; break;
+    case 4: o->z = -o->w; break;
+    case 5: o->z =  o->w; break;
+    }
+}
+
+/* Sutherland-Hodgman against the six homogeneous clip planes.
+ * Returns vertex count, 0 if the polygon is gone. */
+static int clip_poly(clip_vert_t *verts, int n)
+{
+    clip_vert_t tmp[EEGS_CLIP_MAX];
+    int plane;
+    for (plane = 0; plane < 6; plane++) {
+        int i, outn = 0;
+        if (n < 3) return 0;
+        for (i = 0; i < n; i++) {
+            const clip_vert_t *a = &verts[i];
+            const clip_vert_t *b = &verts[(i + 1) % n];
+            float da = plane_dist(a, plane);
+            float db = plane_dist(b, plane);
+            int ina = da >= 0.0f;
+            int inb = db >= 0.0f;
+            if (ina) {
+                if (outn >= EEGS_CLIP_MAX) return 0;
+                tmp[outn++] = *a;
+            }
+            if (ina != inb) {
+                float den = da - db;
+                float t = (den == 0.0f) ? 0.0f : (da / den);
+                if (t < 0.0f) t = 0.0f;
+                if (t > 1.0f) t = 1.0f;
+                if (outn >= EEGS_CLIP_MAX) return 0;
+                clip_intersect(&tmp[outn], a, b, t, plane);
+                outn++;
+            }
+        }
+        memcpy(verts, tmp, (size_t)outn * sizeof(clip_vert_t));
+        n = outn;
+    }
     return n;
 }
 
-/* Returns clip code, or -1 if w is unusable.  eegs_vertex.s/t are texels;
- * emit_vertex() later divides by the live plane's power-of-two size. */
-static int map_vert(const vu0_vec4_t *pc, float s_texel, float t_texel,
-                    uint32_t rgba, eegs_vertex_t *out)
+/* eegs_vertex.s/t are texels; emit_vertex() later divides by the live
+ * plane's power-of-two size.  Returns 0, or -1 if w/coords are unusable. */
+static int map_clip_vert(const clip_vert_t *pc, uint32_t rgba, eegs_vertex_t *out)
 {
     float w = pc->w;
     float winv;
-    int cc;
-    if (w <= 1e-4f && w >= -1e-4f) return -1;
-    cc = clip_code(pc->x, pc->y, pc->z, w);
+    if (w <= 1e-4f) return -1;
     winv = 1.0f / w;
     out->x_px = (int32_t)(pc->x * winv * s_sx + s_tx);
     out->y_px = (int32_t)(pc->y * winv * s_sy + s_ty);
     out->z = 0u;
     out->rgba = rgba;
-    out->s = s_texel;
-    out->t = t_texel;
-    return cc;
+    out->s = pc->s;
+    out->t = pc->t;
+    /* GS XYZ2 is signed 12.4; pixels outside this wrap across the screen. */
+    if (out->x_px < -2047 || out->x_px > 2047) return -1;
+    if (out->y_px < -2047 || out->y_px > 2047) return -1;
+    return 0;
 }
 
 static void emit_tri(const eegs_vertex_t *a, const eegs_vertex_t *b,
@@ -256,23 +322,35 @@ void R_EEGS_SetCamera(const float org[3], const float ang[3], int width, int hei
     ps2_vu1_geom_set_mvp(s_mvp);
 }
 
-static void submit_fan(const vu0_vec4_t *pc, const float *st, int n,
-                       uint32_t rgba, const gs_tex_t *tex)
+static void submit_poly(const vu0_vec4_t *pc, const float *st, int n,
+                        uint32_t rgba, const gs_tex_t *tex)
 {
-    eegs_vertex_t vtx[EEGS_MAX_VERTS];
-    int cc[EEGS_MAX_VERTS];
+    clip_vert_t cv[EEGS_CLIP_MAX];
+    eegs_vertex_t vtx[EEGS_CLIP_MAX];
     int i, textured;
-    if (n < 3 || n > EEGS_MAX_VERTS) return;
+    if (n < 3) return;
+    if (n > EEGS_MAX_VERTS) n = EEGS_MAX_VERTS;
     textured = (tex != NULL);
     eegs_texture(tex);
     for (i = 0; i < n; i++) {
-        float ss = st ? st[i * 2 + 0] : 0.0f;
-        float tt = st ? st[i * 2 + 1] : 0.0f;
-        cc[i] = map_vert(&pc[i], ss, tt, rgba, &vtx[i]);
+        cv[i].x = pc[i].x;
+        cv[i].y = pc[i].y;
+        cv[i].z = pc[i].z;
+        cv[i].w = pc[i].w;
+        cv[i].s = st ? st[i * 2 + 0] : 0.0f;
+        cv[i].t = st ? st[i * 2 + 1] : 0.0f;
+    }
+    n = clip_poly(cv, n);
+    if (n < 3) return;
+    for (i = 0; i < n; i++) {
+        if (map_clip_vert(&cv[i], rgba, &vtx[i]) < 0) return;
     }
     for (i = 1; i < n - 1; i++) {
-        if (cc[0] < 0 || cc[i] < 0 || cc[i + 1] < 0) continue;
-        if (cc[0] & cc[i] & cc[i + 1]) continue; /* all outside the same plane */
+        int32_t ax = vtx[i].x_px - vtx[0].x_px;
+        int32_t ay = vtx[i].y_px - vtx[0].y_px;
+        int32_t bx = vtx[i + 1].x_px - vtx[0].x_px;
+        int32_t by = vtx[i + 1].y_px - vtx[0].y_px;
+        if (ax * by - bx * ay == 0) continue;
         emit_tri(&vtx[0], &vtx[i], &vtx[i + 1], textured);
     }
 }
@@ -292,7 +370,7 @@ void R_EEGS_Poly(const float *xyz, const float *st, int nverts,
         in[i].w = 1.0f;
     }
     ps2_vu0_transform_batch(s_mvp, in, (size_t)nverts, out);
-    submit_fan(out, st, nverts, rgba, tex_of(gl_tex_idx));
+    submit_poly(out, st, nverts, rgba, tex_of(gl_tex_idx));
 }
 
 void R_EEGS_Tris(const float *xyz, const float *st, int ntris,
@@ -321,17 +399,16 @@ void R_EEGS_Tris(const float *xyz, const float *st, int ntris,
         }
         ps2_vu0_transform_batch(s_mvp, in, (size_t)nv, out);
         for (t = 0; t + 2 < nv; t += 3) {
-            eegs_vertex_t v[3];
-            int a, ccv[3], reject = 0;
-            for (a = 0; a < 3; a++) {
-                float ss = st ? st[(i + t + a) * 2 + 0] : 0.0f;
-                float tt = st ? st[(i + t + a) * 2 + 1] : 0.0f;
-                ccv[a] = map_vert(&out[t + a], ss, tt, rgba, &v[a]);
-                if (ccv[a] < 0) reject = 1;
+            float tri_st[6];
+            const float *stp = NULL;
+            if (st) {
+                for (k = 0; k < 3; k++) {
+                    tri_st[k * 2 + 0] = st[(i + t + k) * 2 + 0];
+                    tri_st[k * 2 + 1] = st[(i + t + k) * 2 + 1];
+                }
+                stp = tri_st;
             }
-            if (reject) continue;
-            if (ccv[0] & ccv[1] & ccv[2]) continue;
-            emit_tri(&v[0], &v[1], &v[2], tex != NULL);
+            submit_poly(&out[t], stp, 3, rgba, tex);
         }
         i += nv;
     }

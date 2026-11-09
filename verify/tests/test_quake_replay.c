@@ -153,6 +153,20 @@ int main(void) {
     assert(strcmp(g_world.name, "maps/e1m1.bsp") == 0);
     printf("  [PASS] Menu selected map maps/e1m1.bsp successfully!\n");
 
+    /* OPTIONS: Mesa / Voodoo-style renderer line.  '4' on main opens it;
+     * '2' selects TinyGL pref, '1' selects EEGS.  Live switch stays EEGS
+     * at the 80% window until 30 FPS. */
+    g_menu_active = 1;
+    UI_HandleKey(27); /* back to MAIN if still on MAPS */
+    g_menu_active = 1;
+    UI_HandleKey('4');
+    UI_HandleKey('2');
+    assert(UI_OptionsRenderer() == 1);
+    UI_HandleKey('1');
+    assert(UI_OptionsRenderer() == 0);
+    UI_HandleKey('0');
+    printf("  [PASS] OPTIONS renderer line cycles TINYGL / EEGS (Mesa / Voodoo).\n");
+
     /* 6. Test Loading ALL 9 Episode 1 Maps via World_ChangeMap */
     printf("\n[6/8] Testing full loading & server initialization of all Episode 1 maps...\n");
     int map_faces[9];

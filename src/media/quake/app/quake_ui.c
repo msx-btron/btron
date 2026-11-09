@@ -80,11 +80,17 @@ typedef enum {
     MENU_MAIN     = 0,
     MENU_MAPS     = 1,
     MENU_DEMOS    = 2,
-    MENU_CONTROLS = 3
+    MENU_OPTIONS  = 3,
+    MENU_CONTROLS = 4
 } menu_page_t;
 
 static menu_page_t s_menu_page = MENU_MAIN;
 static int s_menu_cursor = 0;
+/* 0 EEGS (GS / VU0), 1 TinyGL (Mesa-like).  Displayed like GLQuake's
+ * Mesa / Voodoo line.  Live switch at this window size is after 30 FPS. */
+static int s_renderer_pref = 0;
+
+int UI_OptionsRenderer(void) { return s_renderer_pref; }
 
 static const char *s_map_list[] = {
     "start", "e1m1", "e1m2", "e1m3", "e1m4", "e1m5", "e1m6", "e1m7", "e1m8"
@@ -854,14 +860,14 @@ int UI_HandleKey(UW key) {
     if (g_menu_active) {
         if (s_menu_page == MENU_MAIN) {
             if (key == 0xFF52 || key == BTRON_KEY_UP || key == 'w' || key == 'W') { /* Up */
-                s_menu_cursor = (s_menu_cursor + 7) % 8;
+                s_menu_cursor = (s_menu_cursor + 8) % 9;
                 return 1;
             }
             if (key == 0xFF54 || key == BTRON_KEY_DOWN || key == 's' || key == 'S') { /* Down */
-                s_menu_cursor = (s_menu_cursor + 1) % 8;
+                s_menu_cursor = (s_menu_cursor + 1) % 9;
                 return 1;
             }
-            if (key >= '1' && key <= '8') { s_menu_cursor = key - '1'; key = '\r'; }
+            if (key >= '1' && key <= '9') { s_menu_cursor = key - '1'; key = '\r'; }
 
             if (key == '\r' || key == '\n' || key == ' ' || key == BTRON_KEY_RETURN || key == BTRON_KEY_KP_ENTER) {
                 switch (s_menu_cursor) {
@@ -878,22 +884,26 @@ int UI_HandleKey(UW key) {
                     s_menu_page = MENU_DEMOS;
                     s_menu_cursor = 0;
                     break;
-                case 3: /* Controls */
+                case 3: /* Options (Mesa / Voodoo renderer line) */
+                    s_menu_page = MENU_OPTIONS;
+                    s_menu_cursor = s_renderer_pref;
+                    break;
+                case 4: /* Controls */
                     s_menu_page = MENU_CONTROLS;
                     break;
-                case 4: /* Developer Console */
+                case 5: /* Developer Console */
                     g_console_active = 1;
                     g_menu_active = 0;
                     break;
-                case 5: /* Restart Map */
+                case 6: /* Restart Map */
                     g_replay_active = 0;
                     Cmd_Restart_f();
                     g_menu_active = 0;
                     break;
-                case 6: /* Resume */
+                case 7: /* Resume */
                     g_menu_active = 0;
                     break;
-                case 7: /* Quit */
+                case 8: /* Quit */
                     close_quake_window();
                     break;
                 }
@@ -957,11 +967,37 @@ int UI_HandleKey(UW key) {
                 }
                 return 1;
             }
+        } else if (s_menu_page == MENU_OPTIONS) {
+            /* Rows 0..1 are EEGS / TinyGL, row 2 is return. */
+            if (key == 0xFF52 || key == BTRON_KEY_UP || key == 'w' || key == 'W') {
+                s_menu_cursor = (s_menu_cursor + 2) % 3;
+                return 1;
+            }
+            if (key == 0xFF54 || key == BTRON_KEY_DOWN || key == 's' || key == 'S') {
+                s_menu_cursor = (s_menu_cursor + 1) % 3;
+                return 1;
+            }
+            if (key == '1') { s_menu_cursor = 0; key = '\r'; }
+            if (key == '2') { s_menu_cursor = 1; key = '\r'; }
+            if (key == '0') { s_menu_cursor = 2; key = '\r'; }
+            if (key == '\r' || key == '\n' || key == ' ' || key == BTRON_KEY_RETURN || key == BTRON_KEY_KP_ENTER) {
+                if (s_menu_cursor == 0) {
+                    s_renderer_pref = 0;
+                    Con_LogAppend("renderer: EEGS (PlayStation 2 GS / VU0)");
+                } else if (s_menu_cursor == 1) {
+                    s_renderer_pref = 1;
+                    Con_LogAppend("renderer: TINYGL (Mesa-like) -- live switch after 30 FPS EEGS");
+                } else {
+                    s_menu_page = MENU_MAIN;
+                    s_menu_cursor = 3;
+                }
+                return 1;
+            }
         } else if (s_menu_page == MENU_CONTROLS) {
             if (key == '\r' || key == '\n' || key == ' ' || key == 0x1B || key == 27 ||
                 key == BTRON_KEY_RETURN || key == BTRON_KEY_ESCAPE) {
                 s_menu_page = MENU_MAIN;
-                s_menu_cursor = 3;
+                s_menu_cursor = 4;
                 return 1;
             }
         }
@@ -1008,9 +1044,9 @@ int UI_HandleMouse(int mx, int my, int button_down) {
     if (g_menu_active) {
         if (s_menu_page == MENU_MAIN) {
             int cx = s_ui_w / 2 - 120;
-            int cy = s_ui_h / 2 - 105;
+            int cy = s_ui_h / 2 - 115;
             if (mx >= cx - 20 && mx <= cx + 260) {
-                for (int i = 0; i < 8; i++) {
+                for (int i = 0; i < 9; i++) {
                     int item_y = cy + 36 + i * 20;
                     if (my >= item_y - 2 && my <= item_y + 16) {
                         s_menu_cursor = i;
@@ -1053,6 +1089,25 @@ int UI_HandleMouse(int mx, int my, int button_down) {
                 int back_y = cy + 24 + NUM_DEMOS * 16 + 6;
                 if (my >= back_y - 2 && my <= back_y + 14) {
                     s_menu_cursor = NUM_DEMOS;
+                    UI_HandleKey('\r');
+                    return 1;
+                }
+            }
+        } else if (s_menu_page == MENU_OPTIONS) {
+            int cx = s_ui_w / 2 - 140;
+            int cy = s_ui_h / 2 - 80;
+            if (mx >= cx - 20 && mx <= cx + 300) {
+                int i;
+                for (i = 0; i < 2; i++) {
+                    int item_y = cy + 48 + i * 20;
+                    if (my >= item_y - 2 && my <= item_y + 16) {
+                        s_menu_cursor = i;
+                        UI_HandleKey('\r');
+                        return 1;
+                    }
+                }
+                if (my >= cy + 100 && my <= cy + 118) {
+                    s_menu_cursor = 2;
                     UI_HandleKey('\r');
                     return 1;
                 }
@@ -1111,7 +1166,7 @@ void UI_Draw(int width, int height) {
 
         if (s_menu_page == MENU_MAIN) {
             int cx = width / 2 - 120;
-            int cy = height / 2 - 105;
+            int cy = height / 2 - 115;
 
             Draw_String(cx + 40, cy, "Q U A K E");
             Draw_Fill(cx, cy + 18, 240, 2, 0x8C2020);
@@ -1120,14 +1175,15 @@ void UI_Draw(int width, int height) {
                 "1. NEW GAME (E1M1)",
                 "2. SELECT MISSION LEVEL",
                 "3. PLAY REPLAY / DEMO",
-                "4. CONTROLS & COMMANDS",
-                "5. DEVELOPER CONSOLE",
-                "6. RESTART CURRENT MAP",
-                "7. RESUME GAME",
-                "8. QUIT TO DESKTOP"
+                "4. OPTIONS",
+                "5. CONTROLS & COMMANDS",
+                "6. DEVELOPER CONSOLE",
+                "7. RESTART CURRENT MAP",
+                "8. RESUME GAME",
+                "9. QUIT TO DESKTOP"
             };
 
-            for (int i = 0; i < 8; i++) {
+            for (int i = 0; i < 9; i++) {
                 int item_y = cy + 36 + i * 20;
                 if (i == s_menu_cursor) {
                     Draw_Fill(cx - 16, item_y - 2, 272, 16, 0x3A2814);
@@ -1139,7 +1195,7 @@ void UI_Draw(int width, int height) {
                 }
             }
 
-            Draw_String(cx - 10, cy + 205, "[UP/DOWN/W/S] SELECT  [ENTER] CONFIRM");
+            Draw_String(cx - 10, cy + 225, "[UP/DOWN/W/S] SELECT  [ENTER] CONFIRM");
         } else if (s_menu_page == MENU_MAPS) {
             int cx = width / 2 - 140;
             int cy = height / 2 - 110;
@@ -1187,6 +1243,44 @@ void UI_Draw(int width, int height) {
                 Draw_String(cx, back_y, "0. RETURN TO MAIN MENU");
             } else {
                 Draw_String(cx, back_y, "0. RETURN TO MAIN MENU");
+            }
+        } else if (s_menu_page == MENU_OPTIONS) {
+            int cx = width / 2 - 140;
+            int cy = height / 2 - 80;
+            const char *rows[2] = {
+                "1. EEGS      PLAYSTATION 2 GS / VU0",
+                "2. TINYGL    MESA SOFTWARE"
+            };
+            char live[64];
+
+            Draw_String(cx + 40, cy, "3D ACCELERATOR");
+            Draw_Fill(cx, cy + 18, 280, 2, 0x8C2020);
+            Draw_String(cx, cy + 28, "LIKE MESA / VOODOO IN GLQUAKE");
+
+            for (int i = 0; i < 2; i++) {
+                int item_y = cy + 48 + i * 20;
+                char buf[72];
+                int mark = (s_renderer_pref == i);
+                if (i == s_menu_cursor) {
+                    Draw_Fill(cx - 12, item_y - 2, 304, 16, 0x3A2814);
+                }
+                if (mark)
+                    snprintf(buf, sizeof(buf), "* %s", rows[i]);
+                else
+                    snprintf(buf, sizeof(buf), "  %s", rows[i]);
+                Draw_String(cx, item_y, buf);
+            }
+
+            snprintf(live, sizeof(live), "LIVE: EEGS AT 80%% WINDOW (TINYGL AFTER 30 FPS)");
+            Draw_String(cx, cy + 92, live);
+            {
+                int back_y = cy + 112;
+                if (s_menu_cursor == 2) {
+                    Draw_Fill(cx - 12, back_y - 2, 304, 15, 0x3A2814);
+                    Draw_String(cx, back_y, "0. RETURN TO MAIN MENU");
+                } else {
+                    Draw_String(cx, back_y, "0. RETURN TO MAIN MENU");
+                }
             }
         } else if (s_menu_page == MENU_CONTROLS) {
             int cx = width / 2 - 160;

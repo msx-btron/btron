@@ -25,6 +25,9 @@ void UI_SetVideo(int width, int height);
 void UI_Draw(int width, int height);
 int  UI_HandleKey(UW key);
 int  UI_HandleMouse(int mx, int my, int button_down);
+/* OPTIONS 3D accelerator: 0 = EEGS (GS), 1 = TinyGL (Mesa-like).
+ * Live dual-backend at the 80% window waits on 30 FPS EEGS. */
+int  UI_OptionsRenderer(void);
 
 /* Demo & Replay Playback */
 void Replay_StartDemo(int demo_num);
