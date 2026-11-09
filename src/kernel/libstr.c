@@ -474,61 +474,328 @@ char* strstr(const char *haystack, const char *needle) __attribute__((weak, alia
 int     atoi(const char *nptr) __attribute__((weak, alias("tkl_atoi")));
 #endif
 
-/* Minimal standalone vsnprintf / snprintf */
-__attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *format, va_list ap) {
-    if (!str || size == 0) return 0;
-    char *out = str;
-    char *end = str + size - 1;
+/* ── binary32 formatter (LAW 6.1) ───────────────────────────────── */
 
-    while (*format && out < end) {
+typedef struct {
+    char   *str;
+    size_t  size;
+    size_t  len;
+} tkl_sn_t;
+
+static void sn_putc(tkl_sn_t *o, char c)
+{
+    if (o->str && o->size > 0u && o->len + 1u < o->size)
+        o->str[o->len] = c;
+    o->len++;
+}
+
+static void sn_puts(tkl_sn_t *o, const char *s)
+{
+    if (!s) s = "(null)";
+    while (*s) sn_putc(o, *s++);
+}
+
+static void sn_pad(tkl_sn_t *o, int n, char p)
+{
+    while (n-- > 0) sn_putc(o, p);
+}
+
+/* rev[0] is the least-significant digit.  %02u / %9d / %-8x. */
+static void sn_put_rev(tkl_sn_t *o, const char *rev, int n, int width, int left, int zpad, char signc)
+{
+    int sign_len = signc ? 1 : 0;
+    int pad = width - n - sign_len;
+    if (pad < 0) pad = 0;
+    if (!left && !zpad)
+        sn_pad(o, pad, ' ');
+    if (signc) sn_putc(o, signc);
+    if (zpad && !left)
+        sn_pad(o, pad, '0');
+    while (n > 0) sn_putc(o, rev[--n]);
+    if (left)
+        sn_pad(o, pad, ' ');
+}
+
+static void sn_put_str(tkl_sn_t *o, const char *s, int width, int left)
+{
+    int slen;
+    if (!s) s = "(null)";
+    slen = (int)tkl_strlen(s);
+    if (!left && width > slen)
+        sn_pad(o, width - slen, ' ');
+    sn_puts(o, s);
+    if (left && width > slen)
+        sn_pad(o, width - slen, ' ');
+}
+
+static unsigned tkl_f32_bits(float x)
+{
+    union { float f; unsigned u; } b;
+    b.f = x;
+    return b.u;
+}
+
+static float tkl_f32_from_bits(unsigned u)
+{
+    union { float f; unsigned u; } b;
+    b.u = u;
+    return b.f;
+}
+
+/* Reduce IEEE binary64 bits to binary32 without a libgcc double helper. */
+static float tkl_f32_from_f64bits(unsigned long long bits)
+{
+    unsigned sign = (unsigned)(bits >> 63);
+    int exp = (int)((bits >> 52) & 0x7ffu);
+    unsigned long long frac = bits & 0x000fffffffffffffULL;
+    unsigned fbits;
+    int e2;
+
+    if (exp == 0x7ff) {
+        fbits = (sign << 31) | 0x7f800000u | (unsigned)(frac >> 29);
+        return tkl_f32_from_bits(fbits);
+    }
+    if (exp == 0) {
+        return tkl_f32_from_bits(sign << 31);
+    }
+    e2 = exp - 1023 + 127;
+    if (e2 >= 255) {
+        return tkl_f32_from_bits((sign << 31) | 0x7f800000u);
+    }
+    if (e2 <= 0) {
+        return tkl_f32_from_bits(sign << 31);
+    }
+    {
+        unsigned long long keep = frac >> 29;
+        unsigned long long rest = frac & ((1ULL << 29) - 1ULL);
+        if (rest > (1ULL << 28) || (rest == (1ULL << 28) && (keep & 1u)))
+            keep++;
+        if (keep == (1u << 23)) {
+            keep = 0;
+            e2++;
+            if (e2 >= 255)
+                return tkl_f32_from_bits((sign << 31) | 0x7f800000u);
+        }
+        fbits = (sign << 31) | ((unsigned)e2 << 23) | (unsigned)keep;
+        return tkl_f32_from_bits(fbits);
+    }
+}
+
+static int tkl_fmt_f32_into(char *tmp, float x, int prec, int conv)
+{
+    unsigned bits = tkl_f32_bits(x);
+    unsigned absu = bits & 0x7fffffffu;
+    int neg = (int)(bits >> 31);
+    int uppercase = (conv == 'F' || conv == 'E' || conv == 'G');
+    char kind = (char)(uppercase ? conv + ('a' - 'A') : conv);
+    int n = 0;
+    int i;
+
+    if (prec < 0) prec = 6;
+    if (prec > 12) prec = 12;
+
+    if (absu > 0x7f800000u) {
+        const char *s = uppercase ? "NAN" : "nan";
+        if (neg) tmp[n++] = '-';
+        tmp[n++] = s[0]; tmp[n++] = s[1]; tmp[n++] = s[2];
+        tmp[n] = '\0';
+        return n;
+    }
+    if (absu == 0x7f800000u) {
+        const char *s = uppercase ? "INF" : "inf";
+        if (neg) tmp[n++] = '-';
+        tmp[n++] = s[0]; tmp[n++] = s[1]; tmp[n++] = s[2];
+        tmp[n] = '\0';
+        return n;
+    }
+
+    x = tkl_f32_from_bits(absu);
+
+    if (kind == 'e' || (kind == 'g' && x != 0.0f && (x >= 1.0e6f || x < 1.0e-4f))) {
+        int exp10 = 0;
+        int guard = 0;
+        float m = x;
+        if (m != 0.0f) {
+            while (m >= 10.0f && guard < 40) { m *= 0.1f; exp10++; guard++; }
+            guard = 0;
+            while (m < 1.0f && guard < 40) { m *= 10.0f; exp10--; guard++; }
+        }
+        n = tkl_fmt_f32_into(tmp, neg ? tkl_f32_from_bits(tkl_f32_bits(m) | 0x80000000u) : m,
+                             (kind == 'g' && prec > 0) ? prec - 1 : prec, uppercase ? 'F' : 'f');
+        tmp[n++] = uppercase ? 'E' : 'e';
+        if (exp10 < 0) { tmp[n++] = '-'; exp10 = -exp10; }
+        else tmp[n++] = '+';
+        tmp[n++] = (char)('0' + (exp10 / 10));
+        tmp[n++] = (char)('0' + (exp10 % 10));
+        tmp[n] = '\0';
+        return n;
+    }
+
+    /* %f / ordinary %g.  Round by adding 0.5 ulp at the last printed digit. */
+    {
+        float rnd = 0.5f;
+        unsigned ip;
+        float frac;
+        char digits[16];
+        int nd = 0;
+
+        for (i = 0; i < prec; i++) rnd *= 0.1f;
+        x += rnd;
+        if (x >= 4294967296.0f) {
+            return tkl_fmt_f32_into(tmp, neg ? -x : x, prec, uppercase ? 'E' : 'e');
+        }
+        ip = (unsigned)x;
+        frac = x - (float)ip;
+        if (neg) tmp[n++] = '-';
+        if (ip == 0u) digits[nd++] = '0';
+        else {
+            while (ip > 0u && nd < 16) {
+                digits[nd++] = (char)('0' + (ip % 10u));
+                ip /= 10u;
+            }
+        }
+        while (nd > 0) tmp[n++] = digits[--nd];
+        if (kind == 'g' && prec == 0) prec = 6;
+        if (prec > 0) {
+            int start = n;
+            tmp[n++] = '.';
+            for (i = 0; i < prec; i++) {
+                frac *= 10.0f;
+                {
+                    int d = (int)frac;
+                    if (d > 9) d = 9;
+                    if (d < 0) d = 0;
+                    tmp[n++] = (char)('0' + d);
+                    frac -= (float)d;
+                }
+            }
+            if (kind == 'g') {
+                while (n > start + 1 && tmp[n - 1] == '0') n--;
+                if (tmp[n - 1] == '.') n--;
+            }
+        }
+        tmp[n] = '\0';
+        return n;
+    }
+}
+
+__attribute__((weak)) int tkl_fmt_f32(char *str, size_t size, float x, int prec, int conv)
+{
+    char tmp[64];
+    int n = tkl_fmt_f32_into(tmp, x, prec, conv);
+    int i;
+    if (str && size > 0u) {
+        size_t cap = size - 1u;
+        for (i = 0; i < n && (size_t)i < cap; i++)
+            str[i] = tmp[i];
+        str[(size_t)i < cap ? (size_t)i : cap] = '\0';
+        if ((size_t)n < size) str[n] = '\0';
+        else str[size - 1u] = '\0';
+    }
+    return n;
+}
+
+static float tkl_va_f32(va_list *ap, int is_half)
+{
+    if (is_half) {
+        return tkl_f32_from_bits(va_arg(*ap, unsigned));
+    }
+#if defined(BTRON_PS2_TARGET)
+    {
+        unsigned long long bits = va_arg(*ap, unsigned long long);
+        return tkl_f32_from_f64bits(bits);
+    }
+#else
+    {
+        union { double d; unsigned long long ull; } w;
+        w.d = va_arg(*ap, double);
+        return tkl_f32_from_f64bits(w.ull);
+    }
+#endif
+}
+
+/* Minimal standalone vsnprintf / snprintf.
+ * C99: vsnprintf(NULL, 0, fmt, ...) returns the would-be length. */
+__attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *format, va_list ap) {
+    tkl_sn_t o;
+    o.str = str;
+    o.size = size;
+    o.len = 0;
+
+    if (!format) {
+        if (str && size) str[0] = '\0';
+        return 0;
+    }
+
+    while (*format) {
         if (*format != '%') {
-            *out++ = *format++;
+            sn_putc(&o, *format++);
             continue;
         }
         format++;
         if (*format == '\0') break;
 
-        /* Skip width / formatting flags like %-18s, %02d, %d, %s, %x, %p, %.1f */
         int width = 0;
         int left_align = 0;
-        if (*format == '-') { left_align = 1; format++; }
-        while (*format >= '0' && *format <= '9') {
-            width = width * 10 + (*format - '0');
+        int zero_pad = 0;
+        int plus = 0;
+        int space = 0;
+        for (;;) {
+            if (*format == '-') { left_align = 1; format++; continue; }
+            if (*format == '0') { zero_pad = 1; format++; continue; }
+            if (*format == '+') { plus = 1; format++; continue; }
+            if (*format == ' ') { space = 1; format++; continue; }
+            if (*format == '#') { format++; continue; }
+            break;
+        }
+        if (*format == '*') {
+            width = va_arg(ap, int);
+            if (width < 0) { left_align = 1; width = -width; }
             format++;
+        } else {
+            while (*format >= '0' && *format <= '9') {
+                width = width * 10 + (*format - '0');
+                format++;
+            }
         }
         int prec = -1;
         if (*format == '.') {
             format++;
             prec = 0;
-            while (*format >= '0' && *format <= '9') {
-                prec = prec * 10 + (*format - '0');
+            if (*format == '*') {
+                prec = va_arg(ap, int);
+                if (prec < 0) prec = -1;
                 format++;
+            } else {
+                while (*format >= '0' && *format <= '9') {
+                    prec = prec * 10 + (*format - '0');
+                    format++;
+                }
             }
         }
         int is_long_long = 0;
         int is_long = 0;
-        while (*format == 'l' || *format == 'z') {
+        int is_half = 0;
+        while (*format == 'l' || *format == 'z' || *format == 'h' || *format == 'L') {
             if (*format == 'l') {
                 if (is_long) is_long_long = 1;
                 else is_long = 1;
             } else if (*format == 'z') {
                 is_long = 1;
+            } else if (*format == 'h') {
+                is_half = 1;
             }
             format++;
         }
 
         if (*format == 's') {
             const char *s = va_arg(ap, const char *);
-            if (!s) s = "(null)";
-            int slen = (int)tkl_strlen(s);
-            while (*s && out < end) *out++ = *s++;
-            if (left_align && width > slen) {
-                for (int pad = 0; pad < width - slen && out < end; pad++) *out++ = ' ';
-            }
+            sn_put_str(&o, s, width, left_align);
         } else if (*format == 'd' || *format == 'i' || *format == 'u') {
             unsigned long long uval = 0;
             char tmp[32];
             int p = 0;
+            char signc = 0;
             if (*format == 'u') {
                 if (is_long_long) {
                     uval = va_arg(ap, unsigned long long);
@@ -547,10 +814,12 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
                     sval = (long long)va_arg(ap, int);
                 }
                 if (sval < 0) {
-                    if (out < end) *out++ = '-';
+                    signc = '-';
                     uval = (unsigned long long)(-sval);
                 } else {
                     uval = (unsigned long long)sval;
+                    if (plus) signc = '+';
+                    else if (space) signc = ' ';
                 }
             }
             if (uval == 0) tmp[p++] = '0';
@@ -560,7 +829,7 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
                     uval /= 10;
                 }
             }
-            while (p > 0 && out < end) *out++ = tmp[--p];
+            sn_put_rev(&o, tmp, p, width, left_align, zero_pad, signc);
         } else if (*format == 'x' || *format == 'X' || *format == 'p') {
             unsigned long long uval = 0;
             if (*format == 'p') {
@@ -583,48 +852,27 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
                     uval >>= 4;
                 }
             }
-            while (p > 0 && out < end) *out++ = tmp[--p];
+            sn_put_rev(&o, tmp, p, width, left_align, zero_pad, 0);
         } else if (*format == 'c') {
             char c = (char)va_arg(ap, int);
-            *out++ = c;
-        } else if (*format == 'f') {
-            double fval = va_arg(ap, double);
-            if (fval < 0.0) {
-                if (out < end) *out++ = '-';
-                fval = -fval;
-            }
-            if (prec < 0) prec = 6;
-            unsigned long long ipart = (unsigned long long)fval;
-            double fpart = fval - (double)ipart;
-            char tmp[32];
-            int p = 0;
-            if (ipart == 0) tmp[p++] = '0';
-            else {
-                while (ipart > 0) {
-                    tmp[p++] = (char)('0' + (ipart % 10));
-                    ipart /= 10;
-                }
-            }
-            while (p > 0 && out < end) *out++ = tmp[--p];
-            if (prec > 0 && out < end) {
-                *out++ = '.';
-                for (int i = 0; i < prec && out < end; i++) {
-                    fpart *= 10.0;
-                    int d = (int)fpart;
-                    if (d > 9) d = 9;
-                    if (d < 0) d = 0;
-                    *out++ = (char)('0' + d);
-                    fpart -= (double)d;
-                }
-            }
+            sn_putc(&o, c);
+        } else if (*format == 'f' || *format == 'F' || *format == 'e' || *format == 'E'
+                   || *format == 'g' || *format == 'G') {
+            float fv = tkl_va_f32(&ap, is_half);
+            char tmp[64];
+            tkl_fmt_f32_into(tmp, fv, prec, *format);
+            sn_puts(&o, tmp);
         } else if (*format == '%') {
-            *out++ = '%';
+            sn_putc(&o, '%');
         }
         format++;
     }
 
-    *out = '\0';
-    return (int)(out - str);
+    if (o.str && o.size > 0u) {
+        size_t term = (o.len < o.size) ? o.len : o.size - 1u;
+        o.str[term] = '\0';
+    }
+    return (int)o.len;
 }
 
 __attribute__((weak)) int tkl_snprintf(char *str, size_t size, const char *format, ...) {

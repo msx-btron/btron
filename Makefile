@@ -51,7 +51,7 @@ CXX ?= c++
 CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
 
 .PHONY: all posix qemu kernel tkernel sakamura foma uefi pc98 arm-elf arm64-elf m68k ps2 mips \
-        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 test-ps2-cdvd-loop \
+        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop \
         test-xmb-render test-xmb-render-tgl test-gl-context test-async-input \
         html2tad book2tad tad_bin test test-kernel test-yoko test-yoko4 test-m68k test-mips test-ps2 test-foma test-foma-ui foma-screens \
         segui-screens tbios-tools tbios-roms test-tbios \
@@ -1794,6 +1794,34 @@ test-ps2-iso9660: $(TEST_ISO9660_BIN)
 	@echo "=========================================================="
 	@./$(TEST_ISO9660_BIN)
 
+TEST_DEMOPATH_SRCS = verify/tests/test_demo_paths.c
+TEST_DEMOPATH_OBJS = $(TEST_DEMOPATH_SRCS:.c=.test.o)
+TEST_DEMOPATH_BIN  = ./.build/test_demo_paths
+
+test-demo-paths: $(TEST_DEMOPATH_BIN) btron_sys.vol
+	@echo "=========================================================="
+	@echo " Running Demo_Play path list vs SYS.VOL..."
+	@echo "=========================================================="
+	@./$(TEST_DEMOPATH_BIN)
+
+$(TEST_DEMOPATH_BIN): $(TEST_DEMOPATH_OBJS) src/media/quake/include/cl_demo_paths.h
+	@mkdir -p ./.build
+	$(CC) $(TEST_DEMOPATH_OBJS) -o $@ $(LDFLAGS)
+
+TEST_PRINTFF_SRCS = verify/tests/test_printf_float.c
+TEST_PRINTFF_OBJS = $(TEST_PRINTFF_SRCS:.c=.test.o)
+TEST_PRINTFF_BIN  = ./.build/test_printf_float
+
+test-printf-float: $(TEST_PRINTFF_BIN)
+	@echo "=========================================================="
+	@echo " Running tkl_vsnprintf binary32 / C99 (NULL, 0)..."
+	@echo "=========================================================="
+	@./$(TEST_PRINTFF_BIN)
+
+$(TEST_PRINTFF_BIN): $(TEST_PRINTFF_OBJS) src/kernel/libstr.c include/libstr.h
+	@mkdir -p ./.build
+	$(CC) $(TEST_PRINTFF_OBJS) -o $@ $(LDFLAGS)
+
 test-ps2-cdvd-loop:
 	@echo "=========================================================="
 	@echo " Running PS2 Quake CDVD UART gate loop..."
@@ -3314,7 +3342,7 @@ test-tbios: $(TEST_TBIOS_DIFF_BIN) $(TEST_TBIOS_CORE_BIN) $(TEST_TBIOS_VIDEO_BIN
 	@./$(TEST_TBIOS_DISK_BIN)
 	@./$(TEST_BMSX_CFG_BIN)
 
-test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-ps2-cdvd-loop
+test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop
 	@echo "=========================================================="
 	@echo " ALL B-SYSTEM TEST SUITES PASSED (100% SUCCESS)!"
 	@echo "=========================================================="

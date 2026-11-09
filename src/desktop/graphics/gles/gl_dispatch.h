@@ -117,6 +117,10 @@ int gl_tinygl_pipeline(void);
 /* Load-time only: pixmap key of a TinyGL texture, for GS plane lookup.
  * Draw-time EEGS Quake does not go through glBegin. */
 const void *tinygl_texture_pixmap(unsigned int tex_id);
+/* Re-register the plane after an in-place fill (glTexImage2D with NULL
+ * pixels, then CPU writes into the pixmap), and after gs_tex_evict_all
+ * on an EEGS layer steal.  No-op off PS2. */
+void tinygl_texture_commit(unsigned int tex_id);
 
 /* ── Fill accounting ─────────────────────────────────────────────────
  * What the rasterizer was asked to draw, not how long it took: a filled triangle costs

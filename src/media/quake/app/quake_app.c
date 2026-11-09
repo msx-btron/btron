@@ -38,6 +38,11 @@ static EGL_SURFACE *s_surf         = NULL;
 static ID           s_quake_tskid  = 0;
 static int          s_initialised  = 0;  /* FS_Init / R_Init guard */
 static int          s_shutdown_req = 0;  /* Set by quake_destroy, read by task */
+static char         s_parked_map[64];    /* map to reload after XMB parks BSP */
+#if defined(BTRON_PS2_TARGET)
+static int          s_park_skip;         /* 1: last reload missed; wait for gl_count change */
+static int          s_park_gln = -1;
+#endif
 
 /* ── Proper engine shutdown ───────────────────────────────────────── */
 static void Quake_Shutdown(void) {
@@ -54,7 +59,29 @@ static void Quake_Shutdown(void) {
     s_initialised  = 0;
     s_shutdown_req = 0;
 
+    s_parked_map[0] = 0;
+#if defined(BTRON_PS2_TARGET)
+    s_park_skip = 0;
+    s_park_gln  = -1;
+#endif
     uart_puts_raw("[QUAKE] Engine shutdown complete\n");
+}
+
+void quake_release_level(void)
+{
+#if defined(BTRON_PS2_TARGET)
+    if (g_world.is_loaded && g_world.name[0])
+        snprintf(s_parked_map, sizeof(s_parked_map), "%s", g_world.name);
+    else if (!s_parked_map[0])
+        snprintf(s_parked_map, sizeof(s_parked_map), "maps/e1m1.bsp");
+    World_UnloadMap();
+    FS_DropBSP();
+    s_park_skip = 0;
+    s_park_gln  = -1;
+    uart_puts_raw("[QUAKE] level parked (heap for another GL window)\n");
+#else
+    (void)s_parked_map;
+#endif
 }
 
 /* ── T-Kernel animation task ──────────────────────────────────────── */
@@ -89,6 +116,22 @@ static void quake_paint(WND *wnd, GDEV *dev) {
     if (!surf) return;
 
     egl_make_current(surf);
+
+#if defined(BTRON_PS2_TARGET)
+    /* Reload a parked BSP only when this window is focused.  An unfocused
+     * reload would steal the heap XMB just claimed.  XMB's atlas still
+     * occupies ~1.4 MiB, so e1m1 often cannot come back until that
+     * window closes: try once, then wait for wnd_gl_count() to drop. */
+    if (!g_world.is_loaded && s_parked_map[0] && wnd_is_focused(wnd)
+        && FS_PakIndexed()) {
+        int gln = wnd_gl_count();
+        if (!(s_park_skip && gln == s_park_gln)) {
+            s_park_gln = gln;
+            uart_puts_raw("[QUAKE] reloading parked level\n");
+            s_park_skip = World_LoadMap(s_parked_map) ? 0 : 1;
+        }
+    }
+#endif
 
     static int s_quake_w = 0, s_quake_h = 0;
     if (s_quake_w != dev->width || s_quake_h != dev->height || surf->width != dev->width || surf->height != dev->height) {

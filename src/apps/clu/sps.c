@@ -17,7 +17,10 @@ static int sps_fprintf(FILE *out, const char *fmt, ...) {
     int n = vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     if (n > 0) {
-        fwrite(buf, 1, (size_t)n, out);
+        size_t w = (size_t)n;
+        if (w >= sizeof(buf))
+            w = sizeof(buf) - 1;
+        fwrite(buf, 1, w, out);
     }
     return n;
 }

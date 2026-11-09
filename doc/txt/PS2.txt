@@ -480,6 +480,19 @@ PART TWO -- THE LINK -- LAWS THAT MAKE THE IMAGE LEGAL
   precision variables (double) are strictly forbidden in kernel and graphics
   paths.
 
+  LAW 6.1 (printf family is binary32).
+  tkl_vsnprintf / tkl_snprintf / sprintf format %f %e %g %F %E %G from
+  IEEE-754 binary32.  C varargs still promote float to an 8-byte slot;
+  the formatter consumes that slot as binary64 bits and reduces them to
+  binary32 with integer ops (no libgcc double helper in the formatter).
+  %hf consumes one GPR of binary32 bits (no promote).  tkl_fmt_f32 is
+  the non-vararg path; B-System apps (be disassemblers, sps, ps_vm)
+  must call it or pass a preformatted string, not concat("%f", float).
+  vsnprintf(NULL, 0, ...) returns the C99 would-be length so be concat
+  and nv aprintf can size the line.  Width and zero-pad (%02u, %-*s,
+  %02x) are required for sc's Date/Time column and header bar, and for
+  be's hex dump.
+
 
 7. One canvas, one byte order, one alpha
 ---------------------------------------
@@ -899,12 +912,30 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   size steals the layer: the previous holder is demoted to
   TinyGL immediately (its EGL_SURFACE.backend is TinyGL before
   the new window records, so it cannot write the new GS page).
-  Unfocused TinyGL framedrop is expected (REST_MS, quota 1
-  TinyGL raster per composite).  Closing the layer window
-  leaves the layer vacant; the remaining focused GL window
-  takes it on its next paint.  Size hysteresis numbers are
-  unchanged; live resize TinyGL↔EEGS on one window is still
-  the next debug.
+  The GS texture registry (GS_TEX_MAX 8) belongs to the layer
+  holder.  Claiming EEGS runs gs_tex_evict_all() so the previous
+  holder's planes free their VRAM; the new holder re-registers
+  on commit / find-miss (XMB xb_gs_heal, Quake tex_of, TinyGL
+  clip.c).  Leaving Quake's eight load-time planes in the
+  registry made XMB's atlas gs_tex_find miss and the GS drew
+  vertex colour (solid white icon and glyph rectangles).
+  gs_tex_register still refuses a 9th live plane (no silent
+  LRU inside register).  Unfocused TinyGL framedrop is expected
+  (REST_MS, quota 1 TinyGL raster per composite).  Closing the
+  layer window leaves the layer vacant; the remaining focused
+  GL window takes it on its next paint.  Size hysteresis
+  numbers are unchanged; live resize TinyGL↔EEGS on one window
+  is still the next debug.
+  XMB from gterm while Quake is live parks the current BSP
+  (`quake_release_level`: World_UnloadMap + FS_DropBSP) so the
+  400×280 GDEV plus 512² atlas fit leftover heap.  Focusing
+  Quake reloads the parked map when the heap hole fits e1m1
+  (~1.4 MiB); with XMB still open the malloc misses, UART logs
+  once, and the next try waits until wnd_gl_count() drops
+  (close XMB).  A stale FILEIO PAK fd is reopened on a short
+  read (`hashed=339` is a live index, not a hash miss).  EEGS icon/font ST uses uploaded px, not
+  the padded plane (a 384 atlas in 512 with u=1 is 384 texels);
+  a NULL GS tex after heal still fails closed so TinyGL IM can draw.
   Quake is the boot GL window and the EEGS layer while focused;
   an unrecorded layer still paints once while frozen, then freeze
   replays the last stream only while that window is still the
@@ -1013,7 +1044,11 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   `[FILEIO] bound 0x80000001` then `[FS] PAK fileio fd=... e1m1=1`,
   or `[CDVD] CDVDFSV PVD ok` then `[FS] PAK disc LBA=... hashed=339`).
   FS_CacheBSP mallocs one BSP into the heap and frees it on warp.
-  FS_LoadFile reads a single file range, or fopen /SYS for drone1m1.dem.
+  FS_LoadFile for a demo tries FILEIO `cdrom0:\QUAKE\DRONE1M1.DEM;1`
+  (parking the PAK fd if IOP is one-fd), then CDVD, then fopen
+  `/SYS/drone1m1.dem`.  A 32 KiB static store holds the track when
+  malloc misses at peak heap.  Demo_Play's search list is
+  `cl_demo_paths.h` (host gate `make test-demo-paths`).
   A window that paints the boxed slipgate hall (HUD tag SLIPGATE) is
   `g_world.is_loaded == 0`: the PAK directory never landed.
 

@@ -8,6 +8,18 @@
 #include "utils.h"
 #include "strext.h"
 
+/* Binary32 immediate → decimal without float→double vararg promotion.
+ * PS2 tkl_vsnprintf %f still consumes an 8-byte slot; concat("%f", immf)
+ * is the disassembler double the FPU law forbids. */
+static void fmt_immf(char *dst, size_t n, float x)
+{
+#if defined(BTRON_PS2_TARGET)
+    tkl_fmt_f32(dst, n, x, 6, 'g');
+#else
+    snprintf(dst, n, "%g", x);
+#endif
+}
+
 static int DisassembleCryptographicAESInstr(struct instruction *i,
         struct ad_insn *out){
     unsigned size = bits(i->opcode, 22, 23);
@@ -2799,7 +2811,7 @@ static int DisassembleAdvancedSIMDModifiedImmediateInstr(struct instruction *i,
     unsigned imm8 = (a << 7) | (b << 6) | (c << 5) | (d << 4) | (e << 3) |
         (f << 2) | (g << 1) | h;
 
-    unsigned long imm = 0;
+    unsigned long long imm = 0;
     float immf = 0.0f;
 
     if(instr_id == AD_INSTR_FMOV){
@@ -2866,10 +2878,14 @@ static int DisassembleAdvancedSIMDModifiedImmediateInstr(struct instruction *i,
             }
         }
 
-        imm = (replicate(a, 1, 8) << 56) | (replicate(b, 1, 8) << 48) |
-            (replicate(c, 1, 8) << 40) | (replicate(d, 1, 8) << 32) |
-            (replicate(e, 1, 8) << 24) | (replicate(f, 1, 8) << 16) |
-            (replicate(g, 1, 8) << 8) | replicate(h, 1, 8);
+        imm = ((unsigned long long)replicate(a, 1, 8) << 56) |
+            ((unsigned long long)replicate(b, 1, 8) << 48) |
+            ((unsigned long long)replicate(c, 1, 8) << 40) |
+            ((unsigned long long)replicate(d, 1, 8) << 32) |
+            ((unsigned long long)replicate(e, 1, 8) << 24) |
+            ((unsigned long long)replicate(f, 1, 8) << 16) |
+            ((unsigned long long)replicate(g, 1, 8) << 8) |
+            (unsigned long long)replicate(h, 1, 8);
     }
 
     if(!Rd_Rtbl)
@@ -2892,7 +2908,11 @@ static int DisassembleAdvancedSIMDModifiedImmediateInstr(struct instruction *i,
     if(instr_id == AD_INSTR_FMOV){
         ADD_IMM_OPERAND(out, AD_IMM_FLOAT, *(unsigned *)&immf);
 
-        concat(&DECODE_STR(out), ", #%f", immf);
+        {
+            char fbuf[32];
+            fmt_immf(fbuf, sizeof(fbuf), immf);
+            concat(&DECODE_STR(out), ", #%s", fbuf);
+        }
 
         /* done constructing decode string for FMOV */
         SET_INSTR_ID(out, instr_id);
@@ -4817,7 +4837,11 @@ static int DisassembleFloatingPointImmediateInstr(struct instruction *i,
     float immf = *(float *)&imm;
     ADD_IMM_OPERAND(out, AD_IMM_FLOAT, imm);
 
-    concat(&DECODE_STR(out), "fmov %s, #%f", Rd_s, immf);
+    {
+        char fbuf[32];
+        fmt_immf(fbuf, sizeof(fbuf), immf);
+        concat(&DECODE_STR(out), "fmov %s, #%s", Rd_s, fbuf);
+    }
 
     SET_INSTR_ID(out, AD_INSTR_FMOV);
 

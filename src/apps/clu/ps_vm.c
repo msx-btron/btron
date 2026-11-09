@@ -45,18 +45,18 @@ static BOOL ps_parse_number(const char *tok, PSValue *out_val) {
         }
         return FALSE;
     } else {
-        double val = 0.0;
+        float val = 0.0f;
         const char *digits = p;
         while (*p >= '0' && *p <= '9') {
-            val = val * 10.0 + (*p - '0');
+            val = val * 10.0f + (float)(*p - '0');
             p++;
         }
         if (*p == '.') {
             p++;
-            double frac = 0.1;
+            float frac = 0.1f;
             while (*p >= '0' && *p <= '9') {
-                val += (*p - '0') * frac;
-                frac *= 0.1;
+                val += (float)(*p - '0') * frac;
+                frac *= 0.1f;
                 p++;
             }
         }
@@ -73,13 +73,13 @@ static BOOL ps_parse_number(const char *tok, PSValue *out_val) {
                 p++;
             }
             if (p == exp_start) return FALSE;
-            double factor = 1.0;
-            for (int i = 0; i < exp; i++) factor *= 10.0;
+            float factor = 1.0f;
+            for (int i = 0; i < exp; i++) factor *= 10.0f;
             if (exp_sign < 0) val /= factor;
             else val *= factor;
         }
         if (*p == '\0') {
-            *out_val = ps_val_real((float)(val * sign));
+            *out_val = ps_val_real(val * (float)sign);
             return TRUE;
         }
         return FALSE;

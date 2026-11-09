@@ -25,6 +25,11 @@ void quake_frame_step(void);
 /* Check if Quake engine is currently running */
 int quake_is_running(void);
 
+/* PS2: unload the current BSP so another GL window (XMB) can fit.
+ * Next focused Quake paint reloads s_parked_map when the heap can
+ * take it (usually after the other GL window closes). */
+void quake_release_level(void);
+
 #ifdef __cplusplus
 }
 #endif

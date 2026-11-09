@@ -115,6 +115,16 @@ uint32_t gs_tex_vram_left(void);
 /* Free a registered plane's VRAM allocation. Returns 0 on success, -1 if not found. */
 int gs_tex_free(const void *plane);
 
+/* Release every live plane's VRAM span and slot.  The GS texture
+ * registry belongs to the EEGS layer holder: claiming the layer
+ * evicts the previous holder's planes so the new holder can
+ * register.  TinyGL pixmaps stay alive; the next commit / bind /
+ * find-miss re-plans them.  Does not call gs_tex_init() (that would
+ * drop the DMA sink).  gs_tex_register still refuses a 9th live
+ * plane -- this is the explicit handoff, not an LRU inside register.
+ * Returns how many live planes were dropped. */
+uint32_t gs_tex_evict_all(void);
+
 /* Compact texture memory and reclaim unused trailing VRAM spans. Returns bytes reclaimed. */
 uint32_t gs_tex_compact(void);
 

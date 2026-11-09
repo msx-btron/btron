@@ -585,7 +585,8 @@ int eegs_tex_quads(const tgl_tex_map_t *m, const tgl_tex_pt_t *pts, int nquads)
     }
     s_grid_over += over;
 
-    /* Bind texture plane for the quad batch */
+    /* Bind texture plane for the quad batch.  A miss demotes to untextured
+     * inside eegs_triangle (need_plane); XMB refuses earlier via xb_tex_ask. */
     eegs_texture(gs_tex_find(m->pixmap));
 
     st.smooth   = m->g.smooth ? 1u : 0u;

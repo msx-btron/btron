@@ -45,6 +45,11 @@ __attribute__((weak)) const void *tinygl_texture_pixmap(unsigned int tex_id)
     return NULL;
 }
 
+__attribute__((weak)) void tinygl_texture_commit(unsigned int tex_id)
+{
+    (void)tex_id;
+}
+
 void gl_set_active_backend(GL_BACKEND b) {
     s_active_backend = b;
 }

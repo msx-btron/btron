@@ -256,6 +256,22 @@ int gs_tex_free(const void *plane)
     return -1;
 }
 
+uint32_t gs_tex_evict_all(void)
+{
+    uint32_t i, n = 0u;
+
+    for (i = 0u; i < s_n; i++) {
+        if (s_reg[i].plane == 0) continue;
+        gs_vram_free(&s_vram, s_reg[i].byte);
+        s_reg[i].plane = 0;
+        s_reg[i].pending = 0;
+        s_reg[i].byte = 0;
+        n++;
+    }
+    gs_tex_compact();
+    return n;
+}
+
 uint32_t gs_tex_compact(void)
 {
     while (s_n > 0 && s_reg[s_n - 1].plane == 0) {

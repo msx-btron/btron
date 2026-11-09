@@ -16,6 +16,9 @@
 #include <btron/dp.h>        /* btron_render_perf_us(), the overlay's clock */
 #include <stdlib.h>
 #include <string.h>
+#if defined(BTRON_PS2_TARGET)
+#include "../../../drivers/playstation2/ps2_gs_tex.h"
+#endif
 
 extern void uart_puts_raw(const char *s);
 
@@ -246,6 +249,21 @@ static void egl_live_log(GL_BACKEND b)
 #endif
 }
 
+/* Drop a stale FPS caption so a demoted window does not keep the
+ * previous holder's EEGS rate in its title until it next swaps. */
+static void egl_fps_restore_base(EGL_SURFACE *surf)
+{
+#if BTRON_GL_FPS_OVERLAY
+    if (!surf || !surf->wnd || !surf->fps_open) return;
+    surf->fps_frames = 0u;
+    surf->fps_shown  = 0u;
+    surf->fps_last[0] = '\0';
+    wnd_set_title(surf->wnd, surf->fps_base);
+#else
+    (void)surf;
+#endif
+}
+
 /* Demote the current GS-layer surface so a focused window can claim it.
  * Updates the previous holder's EGL_SURFACE immediately: leaving it at
  * EEGS would record into the new window's GS page. */
@@ -259,9 +277,21 @@ static void egl_yield_other_layer(WND *keep)
     if (held && held->backend == GL_BACKEND_EEGS) {
         held->backend = GL_BACKEND_TINYGL;
         held->layer_home = 0;
+        egl_fps_restore_base(held);
         egl_live_log(GL_BACKEND_TINYGL);
     }
 }
+
+#if defined(BTRON_PS2_TARGET)
+/* The GS tex registry (GS_TEX_MAX 8) belongs to the layer holder.
+ * Quake fills it at BSP upload; without this XMB's atlas commit
+ * returns 0 and the GS draws vertex colour (solid white icons). */
+static void egl_gs_tex_handoff(void)
+{
+    if (gs_tex_evict_all() == 0u) return;
+    uart_puts_raw("[GL] gs tex evict\n");
+}
+#endif
 
 void egl_surface_apply_live_backend(EGL_SURFACE *surf)
 {
@@ -287,6 +317,9 @@ void egl_surface_apply_live_backend(EGL_SURFACE *surf)
         }
         surf->backend = GL_BACKEND_EEGS;
         surf->layer_home = 1;
+#if defined(BTRON_PS2_TARGET)
+        egl_gs_tex_handoff();
+#endif
     } else {
         wnd_gl_layer_release(wnd);
         surf->backend = GL_BACKEND_TINYGL;

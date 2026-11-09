@@ -65,9 +65,16 @@ void eegs_geom_line_loop(const eegs_vertex_t *v, int n, eegs_tri_state_t st);
 int eegs_geom_grid_px(const float *xs, const float *ys, const float *bri,
                       int rows, int cols, int vp_w, int vp_h, int brighten);
 
-/* Pixel-space textured quads.  us/vs are 0..1; converted to texels via tex.
+/* GL 0..1 → GS ST in texels of the *uploaded* extent (px), never the
+ * padded plane.  A 384×384 atlas in a 512×512 plane maps u=1 to 384. */
+static inline float eegs_geom_uv_to_st(float uv, uint32_t px)
+{
+    return uv * (float)(px ? px : 1u);
+}
+
+/* Pixel-space textured quads.  us/vs are 0..1; converted to texels via tex->px.
  * cols is interleaved RGBA floats (4 per vertex, 16 per quad).
- * Returns triangles submitted, or -1. */
+ * Returns triangles submitted, or -1 (NULL tex, bad args). */
 int eegs_geom_tex_quads_px(const gs_tex_t *tex,
                            const float *xs, const float *ys,
                            const float *us, const float *vs,

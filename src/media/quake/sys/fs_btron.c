@@ -22,6 +22,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+size_t ps2_heap_largest_hole(void);
+void   ps2_heap_holders(const char *why);
 #endif
 
 #if !defined(BTRON_PS2_TARGET)
@@ -336,6 +338,11 @@ extern unsigned char ps2_pak0_image_end[] __attribute__((weak));
 static uint32_t s_pak_lba;          /* ISO LBA of QUAKE/PAK0.PAK (CDVD fallback) */
 static int      s_pak_fd = -1;      /* FILEIO fd of cdrom0:QUAKE/PAK0.PAK */
 static byte    *s_level_image;      /* one heap BSP; replaced on warp */
+/* Drone tracks are 23 KiB.  After e1m1 is cached the first-fit heap may
+ * refuse a 23 KiB malloc even with hundreds of KiB free in smaller holes.
+ * One static store, one demo at a time. */
+#define FS_DEMO_STORE 32768
+static byte     s_demo_store[FS_DEMO_STORE];
 
 void FS_DropBSP(void)
 {
@@ -394,6 +401,28 @@ static void fs_upcase(char *s)
     }
 }
 
+static int fs_name_is_demo(const char *path)
+{
+    const char *p = path ? path : "";
+    if (strstr(p, ".dem") || strstr(p, ".DEM")) return 1;
+    if (strstr(p, "drone") || strstr(p, "DRONE")) return 1;
+    if (strstr(p, "demo") || strstr(p, "DEMO")) return 1;
+    return 0;
+}
+
+static byte *fs_alloc_loose(int size, const char *path)
+{
+    byte *p;
+    if (size <= 0) return NULL;
+    p = (byte *)malloc((size_t)size + 1);
+    if (p) return p;
+    if (fs_name_is_demo(path) && size + 1 <= (int)sizeof s_demo_store) {
+        uart_puts_raw("[FS] demo static store (malloc missed)\n");
+        return s_demo_store;
+    }
+    return NULL;
+}
+
 static byte *fs_load_stdio(const char *path, int *out_len)
 {
     FILE *f;
@@ -423,7 +452,7 @@ static byte *fs_load_stdio(const char *path, int *out_len)
     size = (int)ftell(f);
     if (size <= 0) { fclose(f); return NULL; }
     if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return NULL; }
-    buf = (byte *)malloc((size_t)size + 1);
+    buf = fs_alloc_loose(size, path);
     if (!buf) { fclose(f); return NULL; }
     if ((int)fread(buf, 1, (size_t)size, f) != size) {
         free(buf);
@@ -436,20 +465,26 @@ static byte *fs_load_stdio(const char *path, int *out_len)
     return buf;
 }
 
-static int fs_name_is_demo(const char *path)
+static int fs_pak_reopen(void)
 {
-    const char *p = path ? path : "";
-    if (strstr(p, ".dem") || strstr(p, ".DEM")) return 1;
-    if (strstr(p, "drone") || strstr(p, "DRONE")) return 1;
-    if (strstr(p, "demo") || strstr(p, "DEMO")) return 1;
-    return 0;
+    int fd;
+    if (s_pak_fd >= 0) return 1;
+    if (!s_pak_path_str || !s_pak_path_str[0]) return 0;
+    fd = ps2_fio_open_cdrom(s_pak_path_str);
+    if (fd < 0) {
+        uart_puts_raw("[FS] FILEIO PAK reopen missed\n");
+        return 0;
+    }
+    s_pak_fd = fd;
+    uart_puts_raw("[FS] FILEIO PAK fd restored\n");
+    return 1;
 }
 
 static byte *fs_load_fio_quake(const char *path, int *out_len)
 {
     const char *base;
     char name[64], rel[80];
-    int fd, size, n, k;
+    int fd, size, n, k, parked;
     byte *buf;
     static const char *prefix[] = { "QUAKE/", "" };
 
@@ -469,30 +504,51 @@ static byte *fs_load_fio_quake(const char *path, int *out_len)
     }
 
     /* QUAKE\DRONE1M1.DEM first (ISO dir), then the root copy.  A missing
-     * backslash used to open cdrom0:QUAKEDRONE1M1.DEM;1. */
+     * backslash used to open cdrom0:QUAKEDRONE1M1.DEM;1.  IOP FILEIO
+     * often holds one cdrom0 fd: if PAK0.PAK is still open, park it,
+     * read the demo, restore the PAK fd. */
     fd = -1;
+    parked = 0;
     for (k = 0; k < 2; k++) {
         n = snprintf(rel, sizeof(rel), "%s%s", prefix[k], name);
         if (n < 0 || n >= (int)sizeof(rel)) continue;
         fd = ps2_fio_open_cdrom(rel);
         if (fd >= 0) break;
     }
-    if (fd < 0) return NULL;
+    if (fd < 0 && s_pak_fd >= 0) {
+        uart_puts_raw("[FS] FILEIO demo: parking PAK fd\n");
+        ps2_fio_close(s_pak_fd);
+        s_pak_fd = -1;
+        parked = 1;
+        for (k = 0; k < 2; k++) {
+            n = snprintf(rel, sizeof(rel), "%s%s", prefix[k], name);
+            if (n < 0 || n >= (int)sizeof(rel)) continue;
+            fd = ps2_fio_open_cdrom(rel);
+            if (fd >= 0) break;
+        }
+    }
+    if (fd < 0) {
+        if (parked) (void)fs_pak_reopen();
+        return NULL;
+    }
 
     size = ps2_fio_lseek(fd, 0, PS2_FIO_SEEK_END);
     if (size <= 0 || size > 4 * 1024 * 1024) {
         ps2_fio_close(fd);
+        if (parked) (void)fs_pak_reopen();
         return NULL;
     }
-    buf = (byte *)malloc((size_t)size + 1);
+    buf = fs_alloc_loose(size, path);
     if (!buf) {
         ps2_fio_close(fd);
+        if (parked) (void)fs_pak_reopen();
         return NULL;
     }
     n = ps2_fio_read_at(fd, 0, buf, size);
     ps2_fio_close(fd);
+    if (parked) (void)fs_pak_reopen();
     if (n != size) {
-        free(buf);
+        if (buf != s_demo_store) free(buf);
         return NULL;
     }
     buf[size] = 0;
@@ -533,10 +589,10 @@ static byte *fs_load_iso_quake(const char *path, int *out_len)
             return NULL;
     }
     if (size == 0 || size > 4u * 1024u * 1024u) return NULL;
-    buf = (byte *)malloc((size_t)size + 1);
+    buf = fs_alloc_loose((int)size, path);
     if (!buf) return NULL;
     if (!ps2_cdvd_read_bytes(lba, 0, size, buf)) {
-        free(buf);
+        if (buf != s_demo_store) free(buf);
         return NULL;
     }
     buf[size] = 0;
@@ -756,15 +812,49 @@ byte *FS_LoadFile(const char *p, int *l) {
         uart_puts_raw(miss);
     }
     if (slot) {
+        size_t need;
+        size_t hole;
+        char msg[120];
+        int nread;
+
         if (s_pak_image) {
             if (l) *l = slot->length;
             return s_pak_image + slot->offset;
         }
-        buf = (byte *)malloc((size_t)slot->length + 1);
-        if (!buf) { if (l) *l = 0; return NULL; }
+        need = (size_t)slot->length + 1u;
+        hole = ps2_heap_largest_hole();
+        if (hole < need) {
+            snprintf(msg, sizeof(msg),
+                     "[FS] %s needs %d kB, hole %d kB\n",
+                     p, (int)(need / 1024u), (int)(hole / 1024u));
+            uart_puts_raw(msg);
+            if (l) *l = 0;
+            return NULL;
+        }
+        buf = (byte *)malloc(need);
+        if (!buf) {
+            snprintf(msg, sizeof(msg),
+                     "[FS] %s malloc %d kB failed (hole %d kB)\n",
+                     p, (int)(need / 1024u),
+                     (int)(ps2_heap_largest_hole() / 1024u));
+            uart_puts_raw(msg);
+            ps2_heap_holders("bsp");
+            if (l) *l = 0;
+            return NULL;
+        }
         if (s_pak_fd >= 0) {
-            if (ps2_fio_read_at(s_pak_fd, slot->offset, buf, slot->length)
-                != slot->length) {
+            nread = ps2_fio_read_at(s_pak_fd, slot->offset, buf, slot->length);
+            if (nread != slot->length) {
+                uart_puts_raw("[FS] PAK FILEIO read missed, reopening\n");
+                ps2_fio_close(s_pak_fd);
+                s_pak_fd = -1;
+                nread = -1;
+                if (fs_pak_reopen())
+                    nread = ps2_fio_read_at(s_pak_fd, slot->offset, buf,
+                                            slot->length);
+            }
+            if (nread != slot->length) {
+                uart_puts_raw("[FS] PAK FILEIO read failed\n");
                 free(buf);
                 if (l) *l = 0;
                 return NULL;
@@ -780,10 +870,20 @@ byte *FS_LoadFile(const char *p, int *l) {
         return buf;
     }
 
-    buf = fs_load_stdio(p, l);
-    if (buf) return buf;
-    buf = fs_load_iso_quake(p, l);
-    if (buf) return buf;
+    /* Drone tracks are not in PAK0.PAK.  Try disc FILEIO/CDVD first so a
+     * peak-heap fopen Imalloc(8 KiB) miss does not hide QUAKE/DRONE1M1.DEM.
+     * /SYS (embedded volume) is the stdio fallback. */
+    if (fs_name_is_demo(p)) {
+        buf = fs_load_iso_quake(p, l);
+        if (buf) return buf;
+        buf = fs_load_stdio(p, l);
+        if (buf) return buf;
+    } else {
+        buf = fs_load_stdio(p, l);
+        if (buf) return buf;
+        buf = fs_load_iso_quake(p, l);
+        if (buf) return buf;
+    }
     if (l) *l = 0;
     return NULL;
 #else
@@ -827,7 +927,7 @@ int FS_CacheBSP(const char *bsp_path)
 #endif
     if (!data || bsp_len < (int)sizeof(dheader_t)) {
 #if defined(BTRON_PS2_TARGET)
-        Con_Printf("FS_CacheBSP: %s not found (hashed=%d lba=%u fd=%d)\n",
+        Con_Printf("FS_CacheBSP: %s load failed (hashed=%d lba=%u fd=%d)\n",
                    bsp_path, s_ht_hashed, (unsigned)s_pak_lba, s_pak_fd);
 #else
         Con_DPrintf("FS_CacheBSP: %s not found\n", bsp_path);

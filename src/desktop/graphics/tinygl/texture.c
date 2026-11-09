@@ -67,6 +67,17 @@ const void *tinygl_texture_pixmap(unsigned int tex_id)
 	return t->images[0].pixmap;
 }
 
+void tinygl_texture_commit(unsigned int tex_id)
+{
+	GLTexture *t;
+	if (tex_id == 0u) return;
+	t = find_texture((GLint)tex_id);
+	if (!t || t->images[0].pixmap == NULL) return;
+	/* Also the EEGS-steal heal: gs_tex_evict_all dropped the GS
+	 * slot, the pixmap is still this image, register re-plans it. */
+	gl_tex_plane_publish(&t->images[0]);
+}
+
 GLboolean glAreTexturesResident(GLsizei n, const GLuint* textures, GLboolean* residences) {
 #define RETVAL GL_FALSE
 	GLboolean retval = GL_TRUE;
@@ -509,7 +520,12 @@ void glopTexImage2D(GLParam* p) {
 		gl_fatal_error("GL_OUT_OF_MEMORY");
 #endif
 	}
-	gl_image_store(im, (const GLubyte*)pixels, nch);
+	/* NULL pixels: allocate and zero the padded plane (XMB in-place bake
+	 * fills the pixmap next, then tinygl_texture_commit republishes). */
+	if (pixels)
+		gl_image_store(im, (const GLubyte*)pixels, nch);
+	else
+		gl_tex_plane_publish(im);
 }
 
 /* TODO: not all tests are done */

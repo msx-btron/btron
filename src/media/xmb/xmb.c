@@ -66,6 +66,9 @@
 #include <math.h>
 
 __attribute__((weak)) void btron_cooperative_input_pump(void) {}
+/* PS2: park Quake's heap BSP so XMB's GDEV+atlas fit.  Strong symbol in
+ * quake_app.c when PS2_QUAKE=1. */
+__attribute__((weak)) void quake_release_level(void) {}
 #include "xmb_wave.h"   /* the sheet's lattice: xb_wave_step(), xb_rib_*, the far-tier trig */
 
 #if defined(BTRON_PS2_TARGET) && BTRON_PS2_GS_IDENT
@@ -1188,6 +1191,7 @@ static void xb_set_selection(int v)
 
 /* ── Texture baking ─────────────────────────────────────────────────── */
 
+#if !defined(BTRON_PS2_TARGET)
 static void xb_put_rgba(UB *px, int texw, int cx, int cy,
                         UB r, UB g, UB b, UB a)
 {
@@ -1197,6 +1201,7 @@ static void xb_put_rgba(UB *px, int texw, int cx, int cy,
     px[o + 2] = b;
     px[o + 3] = a;
 }
+#endif
 
 /* The icons are not arithmetic in this file any more.  Their signed-distance
  * geometry is evaluated once, on the host, by verify/tests/gen_xmb_atlas.c, and the
@@ -1205,6 +1210,7 @@ static void xb_put_rgba(UB *px, int texw, int cx, int cy,
  * was 2.8 s of the 3.9 s it took to open the bar, paid a second time on every band
  * change.  Expanding the plane is now one pass over 147,456 texels, on the rule the
  * bake itself followed: no coverage means no ink in any channel. */
+#if !defined(BTRON_PS2_TARGET)
 static void xb_fill_icon_atlas(UB *icons)
 {
     int i;
@@ -1219,21 +1225,110 @@ static void xb_fill_icon_atlas(UB *icons)
         p[3] = a;
     }
 }
+#endif
+
+#if defined(BTRON_PS2_TARGET)
+/* TinyGL pads each axis to a power of two.  384→512, 96→128. */
+#define XB_ICON_PAD  512
+#define XB_FONT_PAD  128
+
+static uint32_t xb_pack_rgba(UB r, UB g, UB b, UB a)
+{
+    /* Same word as gl_convert_row_to_8A8R8G8B on this target: A top,
+     * R in the low byte, B at 16. */
+    return ((uint32_t)a << 24) | ((uint32_t)b << 16) |
+           ((uint32_t)g << 8) | (uint32_t)r;
+}
+
+static void xb_fill_icon_plane(uint32_t *pm, int pad_w)
+{
+    int x, y;
+    for (y = 0; y < XB_ICON_TEX; y++) {
+        for (x = 0; x < XB_ICON_TEX; x++) {
+            unsigned char a = xb_icon_alpha[y * XB_ICON_TEX + x];
+            pm[y * pad_w + x] = xb_pack_rgba(a ? 248 : 0, a ? 250 : 0,
+                                             a ? 255 : 0, a);
+        }
+    }
+}
+
+static void xb_fill_font_plane(uint32_t *pm, int pad_w)
+{
+    int i;
+    for (i = 0; i < XB_FONT_COLS * XB_FONT_ROWS; i++) {
+        int code = 32 + i;
+        H gw = 8, gh = 16;
+        const UB *bmp;
+        int gx, gy, ox, oy;
+        if (code > 126)
+            break;
+        bmp = get_glyph_bitmap((TC)code, &gw, &gh);
+        if (!bmp || gw != 8 || gh != 16)
+            continue;
+        ox = (i % XB_FONT_COLS) * 8;
+        oy = (i / XB_FONT_COLS) * 16;
+        for (gy = 0; gy < 16; gy++) {
+            for (gx = 0; gx < 8; gx++) {
+                if (bmp[gy] & (0x80 >> gx))
+                    pm[(oy + gy) * pad_w + (ox + gx)] =
+                        xb_pack_rgba(255, 255, 255, 255);
+            }
+        }
+    }
+}
+#endif
 
 static void xb_bake_textures(void)
 {
     GLuint tex[2];
+#if !defined(BTRON_PS2_TARGET)
     size_t font_bytes = (size_t)XB_FONT_TEX_W * XB_FONT_TEX_H * 4;
     size_t icon_bytes = (size_t)XB_ICON_TEX * XB_ICON_TEX * 4;
     UB *sheet;
     int i;
+#endif
 
-    /* One staging sheet at a time so the 576 KiB icon atlas and the
-     * 48 KiB font do not sit together on the PS2 heap. */
     glGenTextures(2, tex);
     s_tex_icons = tex[0];
     s_tex_font  = tex[1];
 
+#if defined(BTRON_PS2_TARGET)
+    /* In-place: TinyGL allocates the padded plane, we ink it, commit
+     * to the GS registry.  No 576 KiB staging sheet on the heap. */
+    {
+        uint32_t *pm;
+
+        glBindTexture(GL_TEXTURE_2D, s_tex_icons);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, XB_ICON_TEX, XB_ICON_TEX, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        pm = (uint32_t *)tinygl_texture_pixmap(s_tex_icons);
+        if (!pm) {
+            uart_puts_raw("[GL] xmb: no memory for the icon atlas\n");
+        } else {
+            xb_fill_icon_plane(pm, XB_ICON_PAD);
+            tinygl_texture_commit(s_tex_icons);
+        }
+        xb_phase("fill_atlas", XB_ICON_TEX * XB_ICON_TEX);
+
+        glBindTexture(GL_TEXTURE_2D, s_tex_font);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, XB_FONT_TEX_W, XB_FONT_TEX_H, 0,
+                     GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+        pm = (uint32_t *)tinygl_texture_pixmap(s_tex_font);
+        if (!pm) {
+            uart_puts_raw("[GL] xmb: no memory for the font atlas\n");
+        } else {
+            xb_fill_font_plane(pm, XB_FONT_PAD);
+            tinygl_texture_commit(s_tex_font);
+        }
+        xb_phase("bake_font", XB_FONT_TEX_W * XB_FONT_TEX_H);
+    }
+#else
+    /* One staging sheet at a time so the 576 KiB icon atlas and the
+     * 48 KiB font do not sit together on a tight heap. */
     sheet = (UB *)malloc(icon_bytes);
     if (!sheet) {
         uart_puts_raw("[GL] xmb: no memory for the icon atlas\n");
@@ -1281,6 +1376,7 @@ static void xb_bake_textures(void)
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, XB_FONT_TEX_W, XB_FONT_TEX_H, 0,
                  GL_RGBA, GL_UNSIGNED_BYTE, sheet);
     free(sheet);
+#endif
 
     glBindTexture(GL_TEXTURE_2D, 0);
     xb_phase("upload",
@@ -1378,10 +1474,28 @@ static void xb_tex_fill_quad(int base, float x0, float y0, float x1, float y1,
     s_tex_cols[base * 4 + 14] = b;  s_tex_cols[base * 4 + 15] = a;
 }
 
+/* After an EEGS steal the previous holder's GS slots are gone.
+ * TinyGL pixmaps are still alive; re-commit so this frame samples. */
+static void xb_gs_heal(void)
+{
+    if (!xb_eegs_live()) return;
+    if (s_tex_icons && !xb_gs_tex(s_tex_icons))
+        tinygl_texture_commit(s_tex_icons);
+    if (s_tex_font && !xb_gs_tex(s_tex_font))
+        tinygl_texture_commit(s_tex_font);
+}
+
 static int xb_tex_ask(int nquads, GLuint name)
 {
+    const gs_tex_t *tex;
     if (!xb_eegs_live()) return 0;
-    return eegs_geom_tex_quads_px(xb_gs_tex(name),
+    tex = xb_gs_tex(name);
+    if (!tex) {
+        tinygl_texture_commit(name);
+        tex = xb_gs_tex(name);
+    }
+    if (!tex) return 0;
+    return eegs_geom_tex_quads_px(tex,
                                   s_tex_xs, s_tex_ys, s_tex_us, s_tex_vs,
                                   s_tex_cols, nquads, s_w, s_h, 1, 0) >= 0;
 }
@@ -1527,14 +1641,24 @@ static void xb_particles_draw(float alpha)
                              1.00f * s_brightness, a);
             nq++;
         }
-        if (nq > 0)
-            (void)eegs_geom_tex_quads_px(xb_gs_tex(s_tex_icons),
-                                         s_tex_xs, s_tex_ys, s_tex_us, s_tex_vs,
-                                         s_tex_cols, nq, s_w, s_h, 1, 0);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDisable(GL_TEXTURE_2D);
-        glBindTexture(GL_TEXTURE_2D, 0);
-        return;
+        if (nq > 0) {
+            const gs_tex_t *tex = xb_gs_tex(s_tex_icons);
+            if (tex &&
+                eegs_geom_tex_quads_px(tex, s_tex_xs, s_tex_ys, s_tex_us,
+                                       s_tex_vs, s_tex_cols, nq, s_w, s_h,
+                                       1, 0) >= 0) {
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glDisable(GL_TEXTURE_2D);
+                glBindTexture(GL_TEXTURE_2D, 0);
+                return;
+            }
+            /* tex miss: TinyGL IM below */
+        } else {
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glDisable(GL_TEXTURE_2D);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            return;
+        }
     }
 #endif
 
@@ -3115,6 +3239,9 @@ static void xb_paint(WND *wnd, GDEV *dev)
     if (!surf) return;
 
     egl_make_current(surf);
+#if defined(BTRON_PS2_TARGET)
+    xb_gs_heal();
+#endif
 
     probing = (s_probe_left != 0u);
     if (probing)
@@ -3600,7 +3727,11 @@ WND* open_xmb_window_rect(int x, int y, int w, int h)
     }
 
     if (w <= 0 || h <= 0) {
-#if defined(BTRON_PS2_TARGET) || defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
+#if defined(BTRON_PS2_TARGET)
+        /* EEGS-eligible (above 320×220) and small enough that GDEV+atlas
+         * fit after parking Quake's 1.4 MiB BSP: 400×280×4 + 512²×4 ≈ 1.5 MiB. */
+        x = 40; y = 40; w = 400; h = 280;
+#elif defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
         x = 20; y = 34; w = 520; h = 360;
 #else
         x = 16; y = 16; w = 960; h = 600;
@@ -3617,6 +3748,11 @@ WND* open_xmb_window_rect(int x, int y, int w, int h)
     }
 
     s_phase_t0 = btron_render_perf_us();
+
+#if defined(BTRON_PS2_TARGET)
+    /* Drop the live BSP before GDEV so leftover ~300 KiB is not the cap. */
+    quake_release_level();
+#endif
 
     s_wnd = opn_wnd("Cross Media Bar", x, y, w, h,
                     WND_ATTR_TITLE | WND_ATTR_BORDER | WND_ATTR_CLOSE |
@@ -3635,6 +3771,11 @@ WND* open_xmb_window_rect(int x, int y, int w, int h)
     s_wnd->destroy       = xb_destroy;
 
     s_surf = egl_create_window_surface(s_wnd);
+    if (!s_surf) {
+        uart_puts_raw("[GL] xmb: surface missed, parking Quake level and retrying\n");
+        quake_release_level();
+        s_surf = egl_create_window_surface(s_wnd);
+    }
     if (!s_surf) {
         uart_puts_raw("[GL] ERROR: xmb: egl_create_window_surface failed\n");
         cls_wnd(s_wnd);

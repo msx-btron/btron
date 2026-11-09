@@ -556,6 +556,46 @@ static void test_plane_span(void)
               4194304u - 1998848u - 32768u);
 }
 
+/* SPEC: the GS tex registry follows the EEGS layer holder.  Claiming
+ * the layer evicts every live plane so the incoming window can
+ * register; gs_tex_register still refuses a 9th while the cap is
+ * full.  gs_tex_init is not this path (it would drop the DMA sink). */
+static void test_evict_all(void)
+{
+    uint32_t i, left0, n;
+    const gs_tex_t *atlas, *font;
+
+    gs_tex_init();
+    left0 = gs_tex_vram_left();
+    for (i = 0u; i < GS_TEX_MAX; i++)
+        if (gs_tex_register(plane_of((int)i), 64u, 64u, 64u, 64u) == 0) break;
+    check("the registry fills to its cap without complaint", i == GS_TEX_MAX);
+    check("a plane past the cap is still refused",
+          gs_tex_register(plane_of((int)GS_TEX_MAX), 64u, 64u, 64u, 64u) == 0);
+
+    n = gs_tex_evict_all();
+    check_num("evict-all drops every live plane", n, GS_TEX_MAX);
+    check_num("the registry is empty", gs_tex_count(), 0u);
+    check_num("and the VRAM cursor is home", gs_tex_vram_left(), left0);
+    check("old keys no longer answer a draw call",
+          gs_tex_find(plane_of(0)) == 0 && gs_tex_find(plane_of(7)) == 0);
+    check_num("an empty evict is zero", gs_tex_evict_all(), 0u);
+
+    /* Incoming layer (XMB) lands both sheets after a full Quake fill. */
+    atlas = gs_tex_register(plane_of(0), 384u, 384u, 512u, 512u);
+    font  = gs_tex_register(plane_of(1), 128u, 96u, 128u, 128u);
+    check("the incoming atlas and font both land", atlas != 0 && font != 0);
+    check_num("two slots, not nine", gs_tex_count(), 2u);
+    check("the old third Quake plane is gone", gs_tex_find(plane_of(2)) == 0);
+
+    /* Cap-refuse law still holds after a new fill of 8. */
+    gs_tex_init();
+    for (i = 0u; i < GS_TEX_MAX; i++)
+        (void)gs_tex_register(plane_of((int)i), 64u, 64u, 64u, 64u);
+    check("a 9th is still refused after a later fill",
+          gs_tex_register(plane_of((int)GS_TEX_MAX), 64u, 64u, 64u, 64u) == 0);
+}
+
 int main(void)
 {
     printf("==========================================================\n");
@@ -569,6 +609,7 @@ int main(void)
     test_cap_and_exhaustion();
     test_release_and_reuse();
     test_plane_span();
+    test_evict_all();
 
     printf("  checks=%d failures=%d\n", s_checks, s_failures);
     if (s_failures == 0) {

@@ -56,7 +56,8 @@ typedef struct {
 
 /* Client-pixel hysteresis for the live TinyGL↔EEGS switch.  Tile XMB
  * (266×190 window, ~258×154 client) sits below the low water.  Default
- * 520×360 XMB sits above the high water.  The band between keeps the
+ * PS2 XMB is 400×280 (EEGS-eligible, fits after parking Quake's BSP).
+ * Hosted 960×600 sits above the high water.  The band between keeps the
  * current backend so a drag across 280×180 does not flicker. */
 #define EGL_LIVE_TINYGL_W  280
 #define EGL_LIVE_TINYGL_H  180
@@ -71,6 +72,9 @@ void         egl_swap_buffers(EGL_SURFACE *surf);
 void         egl_destroy_surface(EGL_SURFACE *surf);
 /* Apply focus+size TinyGL↔EEGS.  The focused GL window of EEGS size
  * takes the GS layer; the previous holder is demoted to TinyGL.
+ * On PS2 a claim also gs_tex_evict_all()s so the new holder can
+ * register (Quake's 8 load-time planes otherwise fill GS_TEX_MAX
+ * and XMB icons draw as vertex-colour rectangles).
  * Cheap if the backend is already the one focus and client size want. */
 void         egl_surface_apply_live_backend(EGL_SURFACE *surf);
 

@@ -69,6 +69,9 @@ extern char* tkl_strpbrk( const char *s, const char *accept );
 extern int tkl_snprintf( char *str, size_t size, const char *format, ... );
 #include <stdarg.h>
 extern int tkl_vsnprintf( char *str, size_t size, const char *format, va_list ap );
+/* Format a binary32 without going through varargs (no float→double promote).
+ * conv is 'f', 'e', or 'g' (uppercase allowed). C99 length, excluding NUL. */
+extern int tkl_fmt_f32( char *str, size_t size, float x, int prec, int conv );
 
 extern unsigned long int tkl_strtoul( const char *nptr, char **endptr, int base );
 extern unsigned long long tkl_strtoull( const char *nptr, char **endptr, int base );

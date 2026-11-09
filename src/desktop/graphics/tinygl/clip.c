@@ -805,7 +805,16 @@ void gl_draw_triangle_fill(GLVertex* p0, GLVertex* p1, GLVertex* p2) {
 		 * plane that is missing -- an upload the registry could not place -- reaches the stage as
 		 * 0, which clears `TME` and counts the primitive instead of sampling the page `TEX0`
 		 * happens to hold. */
-		eegs_texture(textured ? gs_tex_find(im->pixmap) : NULL);
+		if (textured) {
+			const gs_tex_t *tex = gs_tex_find(im->pixmap);
+			if (!tex)
+				tex = gs_tex_register(im->pixmap,
+				                      (uint32_t)im->xsize, (uint32_t)im->ysize,
+				                      (uint32_t)im->xsize_pad, (uint32_t)im->ysize_pad);
+			eegs_texture(tex);
+		} else {
+			eegs_texture(NULL);
+		}
 
 		gs_vertex(&v[0], &p0->zp, flat, textured);
 		gs_vertex(&v[1], &p1->zp, flat, textured);

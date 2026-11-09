@@ -71,10 +71,15 @@ static uint32_t rgb_to_rgba(uint32_t color)
 static const gs_tex_t *tex_of(int gl_idx)
 {
     const void *plane;
+    const gs_tex_t *tex;
     if (gl_idx < 0 || gl_idx >= g_num_gl_textures) return NULL;
     if (!g_gl_textures[gl_idx].is_uploaded) return NULL;
     plane = g_gl_textures[gl_idx].gs_plane;
     if (!plane) return NULL;
+    tex = gs_tex_find(plane);
+    if (tex) return tex;
+    /* Layer steal evicted the GS slots; the TinyGL pixmap is still here. */
+    tinygl_texture_commit(g_gl_textures[gl_idx].tex_id);
     return gs_tex_find(plane);
 }
 

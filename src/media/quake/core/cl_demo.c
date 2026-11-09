@@ -11,6 +11,7 @@
 #include <math.h>
 
 #include "../include/cl_demo.h"
+#include "../include/cl_demo_paths.h"
 #include "../include/quakedef.h"
 #include "../include/server.h"
 #include "../include/world.h"
@@ -128,24 +129,24 @@ void Demo_Stop(void) {
 }
 
 int Demo_Play(const char *demoname) {
+    char paths[DEMO_PATH_MAX][DEMO_PATH_LEN];
+    int npaths, pi, file_len = 0;
+    byte *data = NULL;
+
     if (!demoname || !demoname[0]) demoname = "e1m1.dem";
 
-    char path[128];
-    snprintf(path, sizeof(path), "%s", demoname);
-
-    int file_len = 0;
-    byte *data = (byte *)FS_LoadFile(path, &file_len);
-    if (!data && !strstr(path, ".dem")) {
-        snprintf(path, sizeof(path), "%s.dem", demoname);
-        data = (byte *)FS_LoadFile(path, &file_len);
-    }
-    if (!data && strncmp(path, "assets/quake/", 13) != 0) {
-        snprintf(path, sizeof(path), "assets/quake/%s", demoname);
-        data = (byte *)FS_LoadFile(path, &file_len);
-        if (!data && !strstr(path, ".dem")) {
-            snprintf(path, sizeof(path), "assets/quake/%s.dem", demoname);
-            data = (byte *)FS_LoadFile(path, &file_len);
+    npaths = Demo_PathCandidates(demoname, paths, DEMO_PATH_MAX);
+    for (pi = 0; pi < npaths && !data; pi++) {
+        int got = 0;
+        data = (byte *)FS_LoadFile(paths[pi], &got);
+        if (data && got > 16) {
+            file_len = got;
+            Con_Printf("Demo_Play: loaded '%s' via %s (%d bytes)\n",
+                       demoname, paths[pi], file_len);
+            break;
         }
+        data = NULL;
+        file_len = 0;
     }
 
     if (!data || file_len <= 16) {

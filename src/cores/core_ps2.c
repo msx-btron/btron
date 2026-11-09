@@ -436,7 +436,10 @@ void btron_core_hfds_log(void)
         g_sys_vol = vol_mount(dev);
         if (!g_sys_vol) {
             blk_destroy(dev);
-            ps2_kprintf("[FS] /SYS not mounted: bad volume header\n");
+            ps2_kprintf("[FS] /SYS not mounted: bad volume header (bytes=%ld magic=%02x%02x%02x%02x)\n",
+                        bytes,
+                        (unsigned)ps2_sys_vol_image[0], (unsigned)ps2_sys_vol_image[1],
+                        (unsigned)ps2_sys_vol_image[2], (unsigned)ps2_sys_vol_image[3]);
             return;
         }
     }

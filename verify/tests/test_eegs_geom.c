@@ -92,6 +92,27 @@ int main(void)
     check("fill_rect recorded GIF bytes", s_n > 0);
     check("fill_rect submitted two triangles", eegs_prims() == 2);
 
+    /* GL 0..1 maps onto the uploaded extent, not the padded plane.
+     * A 384×384 atlas in 512×512 with u=1 must be 384 texels. */
+    check("uv 1 of 384-in-512 is 384 texels",
+          eegs_geom_uv_to_st(1.0f, 384u) == 384.0f);
+    check("uv 0 is 0", eegs_geom_uv_to_st(0.0f, 384u) == 0.0f);
+    check("pad_w 512 is the wrong converter",
+          eegs_geom_uv_to_st(1.0f, 512u) == 512.0f);
+
+    {
+        float xs[4] = {0, 10, 10, 0};
+        float ys[4] = {0, 0, 10, 10};
+        float us[4] = {0, 1, 1, 0};
+        float vs[4] = {0, 0, 1, 1};
+        float cols[16];
+        int k, rc;
+        for (k = 0; k < 16; k++) cols[k] = 1.0f;
+        rc = eegs_geom_tex_quads_px(NULL, xs, ys, us, vs, cols, 1,
+                                    64, 64, 0, 0);
+        check("NULL tex is refused (TinyGL IM fallback)", rc == -1);
+    }
+
     printf("%d checks, %d failed\n", s_checks, s_fail);
     return s_fail ? 1 : 0;
 }
