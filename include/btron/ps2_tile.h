@@ -4,15 +4,15 @@
 #ifndef BTRON_PS2_TILE_H
 #define BTRON_PS2_TILE_H
 
-#define PS2_BUDGET_HEAP_KB        5500
+#define PS2_BUDGET_HEAP_KB        6100
 #define PS2_BUDGET_GTERM_HIST     512
 #define PS2_BUDGET_TEDITOR_ROWS   200
 #define PS2_BUDGET_TEDITOR_COLS   128
 #define PS2_TILE_SCREEN_W         800
 #define PS2_TILE_SCREEN_H         600
 #define PS2_TILE_PANEL            28
-#define PS2_TILE_COLS             4
-#define PS2_TILE_ROWS             2
+#define PS2_TILE_COLS             3
+#define PS2_TILE_ROWS             3
 #define PS2_TILE_N                8
 
 enum {
@@ -31,14 +31,14 @@ typedef struct { int x, y, w, h; } ps2_tile_rect_t;
 static inline const ps2_tile_rect_t *ps2_tile_rect(int id)
 {
     static const ps2_tile_rect_t r[PS2_TILE_N] = {
-        { 0, 28, 200, 286 }, /* term */
-        { 200, 28, 200, 286 }, /* cabinet */
-        { 400, 28, 200, 286 }, /* editor */
-        { 600, 28, 200, 286 }, /* xmb */
-        { 0, 314, 200, 286 }, /* mars */
-        { 200, 314, 200, 286 }, /* gears */
-        { 400, 314, 200, 286 }, /* cu */
-        { 600, 314, 200, 286 }, /* quake */
+        { 0, 28, 266, 190 }, /* term */
+        { 266, 28, 266, 190 }, /* cabinet */
+        { 532, 28, 266, 190 }, /* editor */
+        { 0, 218, 266, 190 }, /* xmb */
+        { 266, 218, 266, 190 }, /* mars */
+        { 532, 218, 266, 190 }, /* gears */
+        { 0, 408, 266, 190 }, /* cu */
+        { 266, 408, 266, 190 }, /* quake */
     };
     if (id < 0 || id >= PS2_TILE_N) return 0;
     return &r[id];

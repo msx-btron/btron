@@ -21,6 +21,7 @@
 #include "../include/r_light.h"
 #include "../include/r_alias.h"
 #include "../include/fs_btron.h"
+#include "../include/cl_demo.h"
 #include "gl_dispatch.h"
 #include "egl_surface.h"
 
@@ -227,9 +228,15 @@ WND *open_quake_window(int x, int y, int width, int height) {
         R_Init(width, height);
         if (pak_ok) {
             SV_SpawnServer("maps/e1m1.bsp");
+#if defined(BTRON_PS2_TARGET)
+            if (Demo_Play("drone1m1"))
+                uart_puts_raw("[QUAKE] drone1m1 flight simulation playing\n");
+            else
+                uart_puts_raw("[QUAKE] drone1m1.dem not found (/SYS or QUAKE/)\n");
+#endif
         } else {
-            uart_puts_raw("[QUAKE] PAK not mapped (PS2: ISO has QUAKE/PAK0.PAK, "
-                          "EE has no CDVD reader yet). Window is open.\n");
+            uart_puts_raw("[QUAKE] PAK not indexed (CDVD/ISO QUAKE/PAK0.PAK). "
+                          "Window is open.\n");
         }
         UI_Init();
         s_initialised = 1;

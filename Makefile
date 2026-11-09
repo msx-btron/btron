@@ -51,7 +51,7 @@ CXX ?= c++
 CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
 
 .PHONY: all posix qemu kernel tkernel sakamura foma uefi pc98 arm-elf arm64-elf m68k ps2 mips \
-        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing \
+        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 \
         test-xmb-render test-xmb-render-tgl test-gl-context test-async-input \
         html2tad book2tad tad_bin test test-kernel test-yoko test-yoko4 test-m68k test-mips test-ps2 test-foma test-foma-ui foma-screens \
         segui-screens tbios-tools tbios-roms test-tbios \
@@ -1414,6 +1414,8 @@ PS2_SRCS       = $(PS2_STARTUP)           \
                  src/drivers/playstation2/ps2_iopram.c \
                  src/drivers/playstation2/ps2_irq.c \
                  src/drivers/playstation2/ps2_usb.c \
+                 src/drivers/playstation2/ps2_cdvd.c \
+                 src/drivers/playstation2/ps2_iso9660.c \
                  $(CLU_TERMIO_SRCS)       \
                  $(PS2_MSX_SRCS)          \
                  $(PS2_PW_SRCS)           \
@@ -1774,6 +1776,21 @@ test-ps2-gs-pack: $(TEST_GSPACK_BIN)
 $(TEST_GSPACK_BIN): $(TEST_GSPACK_OBJS) src/drivers/playstation2/ps2_gs_pack.c src/drivers/playstation2/ps2_gs_pack.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSPACK_OBJS) -o $@ $(LDFLAGS)
+
+# ISO9660 finder: synthetic PVD plus btron-ps2.iso when present.
+TEST_ISO9660_SRCS = verify/tests/test_ps2_iso9660.c
+TEST_ISO9660_OBJS = $(TEST_ISO9660_SRCS:.c=.test.o)
+TEST_ISO9660_BIN  = ./.build/test_ps2_iso9660
+
+test-ps2-iso9660: $(TEST_ISO9660_BIN)
+	@echo "=========================================================="
+	@echo " Running PS2 ISO9660 finder vs synthetic PVD and disc ISO..."
+	@echo "=========================================================="
+	@./$(TEST_ISO9660_BIN)
+
+$(TEST_ISO9660_BIN): $(TEST_ISO9660_OBJS) src/drivers/playstation2/ps2_iso9660.c src/drivers/playstation2/ps2_iso9660.h
+	@mkdir -p ./.build
+	$(CC) $(TEST_ISO9660_OBJS) -o $@ $(LDFLAGS)
 
 # Increment 3: GS drawing environment registers and VRAM page base arithmetic.
 TEST_GSENV_SRCS = verify/tests/test_ps2_gs_env.c
@@ -3269,7 +3286,7 @@ test-tbios: $(TEST_TBIOS_DIFF_BIN) $(TEST_TBIOS_CORE_BIN) $(TEST_TBIOS_VIDEO_BIN
 	@./$(TEST_TBIOS_DISK_BIN)
 	@./$(TEST_BMSX_CFG_BIN)
 
-test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor
+test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660
 	@echo "=========================================================="
 	@echo " ALL B-SYSTEM TEST SUITES PASSED (100% SUCCESS)!"
 	@echo "=========================================================="

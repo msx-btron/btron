@@ -14,6 +14,14 @@
 
 #include "../include/fs_btron.h"
 
+#if defined(BTRON_PS2_TARGET)
+#include "ps2_cdvd.h"
+#include "ps2_iso9660.h"
+#include "ps2_console.h"
+#include <stdlib.h>
+#endif
+
+#if !defined(BTRON_PS2_TARGET)
 /* ── Search paths for pak0.pak ─────────────────────────────────── */
 static const char *s_search_paths[] = {
     "assets/quake/pak/pak0.pak",
@@ -24,6 +32,7 @@ static const char *s_search_paths[] = {
     "/CHOKANJI/PAK0.PAK",
     NULL
 };
+#endif
 
 /* ── PAK on-disk header ─────────────────────────────────────────── */
 typedef struct {
@@ -302,18 +311,33 @@ int FS_CacheBSP(const char *bsp_path) {
     return 1;
 }
 
-/* ── Freestanding: PS2 maps an optional incbin; UEFI has no PAK. ── */
+/* ── Freestanding: PS2 streams PAK from CDVD; UEFI has no PAK. ── */
 #else
 
 #if defined(BTRON_PS2_TARGET)
 extern unsigned char ps2_pak0_image[] __attribute__((weak));
 extern unsigned char ps2_pak0_image_end[] __attribute__((weak));
 
+static uint32_t s_pak_lba;          /* ISO LBA of QUAKE/PAK0.PAK */
+static byte    *s_level_image;      /* one heap BSP; replaced on warp */
+
+static int fs_index_dir(const packfile_t *dir, int num_entries, int pak_sz)
+{
+    int i;
+    if (num_entries > FS_HT_SIZE / 2) num_entries = FS_HT_SIZE / 2;
+    for (i = 0; i < num_entries; i++) {
+        if (dir[i].filelen <= 0 || dir[i].filepos < 0) continue;
+        if (dir[i].filepos + dir[i].filelen > pak_sz) continue;
+        ht_insert(fnv1a(dir[i].name), dir[i].filepos, dir[i].filelen, dir[i].name);
+    }
+    return num_entries;
+}
+
 static int fs_map_pak_image(byte *img, int pak_sz, const char *path)
 {
     const dpackheader_t *hdr;
     const packfile_t *dir;
-    int num_entries, i;
+    int num_entries;
 
     if (!img || pak_sz < (int)sizeof(dpackheader_t)) return 0;
     if (img[0] != 'P' || img[1] != 'A' || img[2] != 'C' || img[3] != 'K') return 0;
@@ -323,42 +347,152 @@ static int fs_map_pak_image(byte *img, int pak_sz, const char *path)
     s_pak_image = img;
     s_pak_size = pak_sz;
     s_pak_path_str = path;
+    s_pak_lba = 0;
     num_entries = hdr->dirlen / (int)sizeof(packfile_t);
-    if (num_entries > FS_HT_SIZE / 2) num_entries = FS_HT_SIZE / 2;
     dir = (const packfile_t *)(s_pak_image + hdr->dirofs);
-    for (i = 0; i < num_entries; i++) {
-        if (dir[i].filelen <= 0 || dir[i].filepos < 0) continue;
-        if (dir[i].filepos + dir[i].filelen > s_pak_size) continue;
-        ht_insert(fnv1a(dir[i].name), dir[i].filepos, dir[i].filelen, dir[i].name);
-    }
+    fs_index_dir(dir, num_entries, pak_sz);
     return 1;
 }
-#endif
+
+static void fs_upcase(char *s)
+{
+    while (*s) {
+        if (*s >= 'a' && *s <= 'z') *s = (char)(*s - ('a' - 'A'));
+        if (*s == '\\') *s = '/';
+        s++;
+    }
+}
+
+static byte *fs_load_stdio(const char *path, int *out_len)
+{
+    FILE *f;
+    int size;
+    byte *buf;
+
+    f = fopen(path, "rb");
+    if (!f) return NULL;
+    if (fseek(f, 0, SEEK_END) != 0) { fclose(f); return NULL; }
+    size = (int)ftell(f);
+    if (size <= 0) { fclose(f); return NULL; }
+    if (fseek(f, 0, SEEK_SET) != 0) { fclose(f); return NULL; }
+    buf = (byte *)malloc((size_t)size + 1);
+    if (!buf) { fclose(f); return NULL; }
+    if ((int)fread(buf, 1, (size_t)size, f) != size) {
+        free(buf);
+        fclose(f);
+        return NULL;
+    }
+    fclose(f);
+    buf[size] = 0;
+    if (out_len) *out_len = size;
+    return buf;
+}
+
+static byte *fs_load_iso_quake(const char *path, int *out_len)
+{
+    const char *base;
+    char iso_path[80];
+    uint32_t lba = 0, size = 0;
+    byte *buf;
+    int n;
+
+    if (!ps2_cdvd_ready() && !ps2_cdvd_init()) return NULL;
+    base = strrchr(path, '/');
+    base = base ? base + 1 : path;
+    if (!base[0]) return NULL;
+
+    n = snprintf(iso_path, sizeof(iso_path), "QUAKE/%s", base);
+    if (n < 0 || n >= (int)sizeof(iso_path)) return NULL;
+    fs_upcase(iso_path + 6);
+
+    if (!ps2_iso_find(ps2_cdvd_iso_read, 0, iso_path, &lba, &size)) {
+        if (!strstr(iso_path, ".DEM") && !strstr(iso_path, ".dem")) {
+            n = snprintf(iso_path, sizeof(iso_path), "QUAKE/%s.DEM", base);
+            if (n < 0 || n >= (int)sizeof(iso_path)) return NULL;
+            fs_upcase(iso_path + 6);
+            if (!ps2_iso_find(ps2_cdvd_iso_read, 0, iso_path, &lba, &size))
+                return NULL;
+        } else {
+            return NULL;
+        }
+    }
+    if (size == 0 || size > 4u * 1024u * 1024u) return NULL;
+    buf = (byte *)malloc((size_t)size + 1);
+    if (!buf) return NULL;
+    if (!ps2_cdvd_read_bytes(lba, 0, size, buf)) {
+        free(buf);
+        return NULL;
+    }
+    buf[size] = 0;
+    if (out_len) *out_len = (int)size;
+    return buf;
+}
+
+static int fs_init_cdvd_pak(void)
+{
+    uint32_t lba = 0, size = 0;
+    dpackheader_t hdr;
+    packfile_t *dir;
+    int num_entries;
+    char msg[96];
+
+    if (!ps2_cdvd_init()) return 0;
+    if (!ps2_iso_find(ps2_cdvd_iso_read, 0, "QUAKE/PAK0.PAK", &lba, &size)) {
+        uart_puts_raw("[FS] ISO has no QUAKE/PAK0.PAK\n");
+        return 0;
+    }
+    if (size < sizeof(hdr)) return 0;
+    if (!ps2_cdvd_read_bytes(lba, 0, sizeof(hdr), &hdr)) return 0;
+    if (memcmp(hdr.id, "PACK", 4) != 0) {
+        uart_puts_raw("[FS] PAK0.PAK is not a PACK archive\n");
+        return 0;
+    }
+    if (hdr.dirofs < 0 || hdr.dirlen <= 0) return 0;
+    if (hdr.dirofs + hdr.dirlen > (int)size) return 0;
+
+    dir = (packfile_t *)malloc((size_t)hdr.dirlen);
+    if (!dir) return 0;
+    if (!ps2_cdvd_read_bytes(lba, (uint32_t)hdr.dirofs,
+                             (uint32_t)hdr.dirlen, dir)) {
+        free(dir);
+        return 0;
+    }
+
+    s_pak_image    = NULL;          /* body stays on the disc */
+    s_pak_size     = (int)size;
+    s_pak_lba      = lba;
+    s_pak_path_str = "cdvd:QUAKE/PAK0.PAK";
+    num_entries    = hdr.dirlen / (int)sizeof(packfile_t);
+    fs_index_dir(dir, num_entries, (int)size);
+    free(dir);
+
+    snprintf(msg, sizeof(msg),
+             "[FS] PAK disc LBA=%u size=%u entries=%d\n",
+             (unsigned)lba, (unsigned)size, num_entries);
+    uart_puts_raw(msg);
+    return 1;
+}
+#endif /* BTRON_PS2_TARGET */
 
 int FS_Init(void) {
     memset(s_ht, 0, sizeof(s_ht));
     memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
 #if defined(BTRON_PS2_TARGET)
-    /* Optional incbin only.  The 18.6 MiB PAK lives on the ISO at
-     * QUAKE/PAK0.PAK (CD/DVD, same as a retail title).  Weak symbols
-     * without a providing object are address-non-NULL on this ABI, so
-     * the size check is the real gate.  A CDVD reader will index the
-     * directory and FS_CacheBSP will pull one BSP (~1.4 MiB). */
+    /* Retail disc model: index the PAK directory (~21 KiB) from
+     * QUAKE/PAK0.PAK; never slurp the 18.6 MiB body.  Weak incbin is
+     * a last-resort ELF-side image for images built without an ISO. */
+    if (fs_init_cdvd_pak())
+        return 1;
     if (ps2_pak0_image && ps2_pak0_image_end > ps2_pak0_image) {
         int n = (int)(ps2_pak0_image_end - ps2_pak0_image);
         if (fs_map_pak_image(ps2_pak0_image, n, "ps2_pak0_image"))
             return 1;
     }
+    uart_puts_raw("[FS] no PAK (CDVD/ISO QUAKE/PAK0.PAK)\n");
 #endif
     return 0;
 }
-byte *FS_LoadFile(const char *p, int *l) {
-#if defined(BTRON_PS2_TARGET)
-    return (byte *)FS_FindInPak(p, l);
-#else
-    (void)p; if (l) *l = 0; return NULL;
-#endif
-}
+
 const byte *FS_FindInPak(const char *p, int *l) {
     const fs_ht_slot_t *slot;
     if (!s_pak_image || !p) { if (l) *l = 0; return NULL; }
@@ -368,22 +502,77 @@ const byte *FS_FindInPak(const char *p, int *l) {
     return s_pak_image + slot->offset;
 }
 
+byte *FS_LoadFile(const char *p, int *l) {
+#if defined(BTRON_PS2_TARGET)
+    const fs_ht_slot_t *slot;
+    byte *buf;
+
+    if (!p) { if (l) *l = 0; return NULL; }
+
+    slot = ht_find(p);
+    if (slot) {
+        if (s_pak_image) {
+            if (l) *l = slot->length;
+            return s_pak_image + slot->offset;
+        }
+        buf = (byte *)malloc((size_t)slot->length + 1);
+        if (!buf) { if (l) *l = 0; return NULL; }
+        if (!ps2_cdvd_read_bytes(s_pak_lba, (uint32_t)slot->offset,
+                                 (uint32_t)slot->length, buf)) {
+            free(buf);
+            if (l) *l = 0;
+            return NULL;
+        }
+        buf[slot->length] = 0;
+        if (l) *l = slot->length;
+        return buf;
+    }
+
+    buf = fs_load_stdio(p, l);
+    if (buf) return buf;
+    buf = fs_load_iso_quake(p, l);
+    if (buf) return buf;
+    if (l) *l = 0;
+    return NULL;
+#else
+    (void)p; if (l) *l = 0; return NULL;
+#endif
+}
+
 /* Bind one BSP. A warp replaces it; the other 20 maps stay on media. */
 int FS_CacheBSP(const char *bsp_path)
 {
     int bsp_len = 0;
-    const byte *data;
+    byte *data;
     const dheader_t *hdr;
-    int l;
+    int i;
+#if defined(BTRON_PS2_TARGET)
+    int from_heap = 0;
+#endif
 
     if (!bsp_path || !bsp_path[0]) return 0;
     if (g_bsp_cache.is_ready && strcmp(g_bsp_cache.path, bsp_path) == 0)
         return 1;
 
+#if defined(BTRON_PS2_TARGET)
+    if (s_level_image) {
+        free(s_level_image);
+        s_level_image = NULL;
+    }
+#endif
     memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
     strncpy(g_bsp_cache.path, bsp_path, sizeof(g_bsp_cache.path) - 1);
 
-    data = FS_FindInPak(bsp_path, &bsp_len);
+#if defined(BTRON_PS2_TARGET)
+    if (s_pak_image) {
+        data = (byte *)FS_FindInPak(bsp_path, &bsp_len);
+    } else {
+        data = FS_LoadFile(bsp_path, &bsp_len);
+        from_heap = 1;
+    }
+#else
+    data = (byte *)FS_FindInPak(bsp_path, &bsp_len);
+#endif
     if (!data || bsp_len < (int)sizeof(dheader_t)) {
         Con_DPrintf("FS_CacheBSP: %s not found\n", bsp_path);
         return 0;
@@ -392,20 +581,26 @@ int FS_CacheBSP(const char *bsp_path)
     hdr = (const dheader_t *)data;
     if (hdr->version != BSPVERSION) {
         Con_DPrintf("FS_CacheBSP: %s bad version %d\n", bsp_path, hdr->version);
+#if defined(BTRON_PS2_TARGET)
+        if (from_heap) free(data);
+#endif
         return 0;
     }
 
+#if defined(BTRON_PS2_TARGET)
+    if (from_heap) s_level_image = data;
+#endif
     g_bsp_cache.data   = data;
     g_bsp_cache.length = bsp_len;
-    for (l = 0; l < HEADER_LUMPS; l++) {
-        int ofs = hdr->lumps[l].fileofs;
-        int len = hdr->lumps[l].filelen;
+    for (i = 0; i < HEADER_LUMPS; i++) {
+        int ofs = hdr->lumps[i].fileofs;
+        int len = hdr->lumps[i].filelen;
         if (ofs < 0 || len < 0 || ofs + len > bsp_len) {
-            g_bsp_cache.lumps[l]     = NULL;
-            g_bsp_cache.lump_lens[l] = 0;
+            g_bsp_cache.lumps[i]     = NULL;
+            g_bsp_cache.lump_lens[i] = 0;
         } else {
-            g_bsp_cache.lumps[l]     = data + ofs;
-            g_bsp_cache.lump_lens[l] = len;
+            g_bsp_cache.lumps[i]     = data + ofs;
+            g_bsp_cache.lump_lens[i] = len;
         }
     }
     g_bsp_cache.is_ready = 1;

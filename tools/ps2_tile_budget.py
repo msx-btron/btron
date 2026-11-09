@@ -25,6 +25,9 @@ BORDER = 4
 # GTermState (2.68 MiB) and TEditor (512 KiB) are removed from the model.
 MISC_KB = 1024
 SLACK_KB = 256
+# One BSP (e1m1 1333 KiB) + progs.dat (403 KiB) + a couple of MDLs.
+# The rest of pak0 stays on the disc.
+LEVEL_KB = 2100
 
 # XMB atlas (resident in TinyGL after upload).  Staging is one sheet at a time.
 XMB_ATLAS = 384 * 384 * 4
@@ -41,7 +44,7 @@ APPS = (
     "quake",
 )
 
-HEADROOM_NOW = 691840  # bytes below 0x01FB0000 on the current ELF
+HEADROOM_NOW = 1182336  # bytes below 0x01FB0000 after editor BSS shrink
 EDITOR_BSS_FULL = 1000 * 512
 HEAP_BASE_KB = 5500
 
@@ -81,7 +84,7 @@ def try_budget(cols: int, rows: int, hist: int, ed_rows: int, ed_cols: int, heap
     editor = editor_bytes(ed_rows, ed_cols)
     xmb_res = XMB_ATLAS + XMB_FONT
     xmb_peak = XMB_ATLAS  # sequential bake: one staging sheet
-    steady = gdevs + zbuf + gterm + editor + xmb_res + MISC_KB * 1024
+    steady = gdevs + zbuf + gterm + editor + xmb_res + (MISC_KB + LEVEL_KB) * 1024
     peak = steady + xmb_peak
     need = peak + SLACK_KB * 1024
     heap = heap_kb * 1024
@@ -132,7 +135,7 @@ def search() -> dict:
     hists = (512, 256, 128)
     editors = ((200, 128), (120, 96), (80, 80))
     # Heap steps: keep 5500 if it closes; else spend ELF headroom + editor BSS save.
-    heap_steps = (5500, 5800, 6100, 6400)
+    heap_steps = (5500, 5800, 6100, 6400, 6500, 7000)
 
     n = 0
     best_fail = None

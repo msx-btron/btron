@@ -1,14 +1,11 @@
 /*
  * ps2_sys_vol.s -- the /SYS volume, carried inside the image's .data
  *
- * The B-System filesystem layer needs a block device before anything in it can be opened, and
- * on this target there is no disc to read: the CDVD is an IOP peripheral, so an EE-side read
- * would be a module loader and an RPC client for a second processor (doc/txt/PS2.txt, "Why not the
- * disc").  What this port does instead is ship the bytes.  They are the host tool's output and
- * nothing else -- `mkbtronfs` writes btron_sys.vol from src/tools/manifest.txt, the same image the
- * hosted targets mount and `make test-fs` reads -- so this file names one path and describes no
- * record, no size and no name; a second description of that content is a second thing to keep in
- * step, which is what it is here to avoid.
+ * The B-System filesystem layer needs a block device before anything in it can be opened.
+ * /SYS is the instant RAM volume (fonts, C-BIOS, drone1m1.dem): mkbtronfs writes
+ * btron_sys.vol from tools/manifest.txt, the same image the hosted targets mount.
+ * Large payloads (QUAKE/PAK0.PAK, maps) stay on the ISO and stream through CDVD
+ * (doc/txt/PS2.txt §20.2).  This file names one path and describes no record.
  *
  * Two details are load-bearing and neither is a style choice.
  *
