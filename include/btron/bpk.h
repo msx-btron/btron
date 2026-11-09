@@ -90,14 +90,6 @@ IMPORT INT  bpk_utf8_tron( const char *s, UH *out, INT max );
 
 IMPORT INT  bpk_utf8( UINT cp, char *out );		/* bytes written, at most 4 */
 
-/*
- * Plane 1's A zone: row and cell from 1, at [(row - 1) * 94 + cell - 1];
- * 0 none, 0xD800 + n the character(s) of bpk_tron_multi[n]
- */
-IMPORT const UH   bpk_jis_char[94 * 94];
-/* Its characters of the BMP in Unicode order: (character << 16) | (row << 8) | cell */
-IMPORT const UINT bpk_jis_rev[];
-IMPORT const INT  bpk_jis_nrev;
 /* Zone B (first byte 87..ED), C and D, as bpk_jis_char holds them */
 IMPORT const UH   bpk_tron_zb[( 0xED - 0x87 + 1 ) * 94];
 IMPORT const UH   bpk_tron_zc[94 * 94];

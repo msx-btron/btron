@@ -548,7 +548,8 @@ ER wnd_set_title(WND *wnd, const char *title) {
  * reduces to the `!img_valid` it has always answered. */
 static BOOL wnd_owes_callback(const WND *w) {
     if (!w->paint) return FALSE;
-    return w->gl_layer ? !s_gl_frozen : !w->img_valid;
+    WND *lay = find_gl_layer();
+    return (w->gl_layer && w == lay) ? !s_gl_frozen : !w->img_valid;
 }
 
 /* TRUE when a composite over `damage` cannot be a pure pixmap blit. */
@@ -575,17 +576,19 @@ int  wnd_gl_is_frozen(void) { return s_gl_frozen ? 1 : 0; }
  * the pixmap, and a band that overlaps it has to re-record the stream or it uploads a canvas
  * over a region nothing draws into. */
 BOOL wnd_any_image_invalid(void) {
+    WND *lay = find_gl_layer();
     for (WND *curr = g_wnd_head; curr; curr = curr->next)
-        if (curr->visible && curr->paint && (!curr->img_valid || curr->gl_layer)) return TRUE;
+        if (curr->visible && curr->paint && (!curr->img_valid || (curr->gl_layer && curr == lay))) return TRUE;
     return FALSE;
 }
 
 void wnd_get_invalid_image_bounds(RECT *out) {
     if (!out) return;
+    WND *lay = find_gl_layer();
     RECT u = { 0, 0, 0, 0 };
     for (WND *curr = g_wnd_head; curr; curr = curr->next) {
         if (!curr->visible || !curr->paint) continue;
-        if (curr->img_valid && !curr->gl_layer) continue;
+        if (curr->img_valid && (!curr->gl_layer || curr != lay)) continue;
         if (u.right <= u.left || u.bottom <= u.top) { u = curr->bounds; continue; }
         if (curr->bounds.left < u.left)   u.left = curr->bounds.left;
         if (curr->bounds.top < u.top)     u.top = curr->bounds.top;

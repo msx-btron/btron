@@ -454,7 +454,7 @@ static void ps2_gui_pass(GDEV *screen)
 
         for (WND *w = get_wnd_list(); w; w = w->next) {
             if (!w->visible || !w->gl_surf) continue;
-            if (w->gl_layer) inval_wnd(w); else if (n < 4) sw[n++] = w;
+            if (w == wnd_gl_layer()) inval_wnd(w); else if (n < 4) sw[n++] = w;
         }
         if (n > 0) inval_wnd(sw[turn++ % (uint32_t)n]);
     }
@@ -666,6 +666,10 @@ void launch_ps2_desktop_session(void)
     if (!screen) { ps2_kprintf("[FATAL] desktop init failed\n"); ps2_set_gui(0); return; }
     btron_desktop_note_size(PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
     workbench_init(PS2_SCREEN_WIDTH);
+    open_mars_window_rect(6, 32, 392, 276);
+    open_xmb_window_rect(402, 32, 392, 276);
+    open_glgears_window_rect(6, 312, 392, 276);
+    open_lilcu64_demo_window_rect(402, 312, 392, 276);
 
     ps2_page_double_apply(ps2_page_double_wanted());
     ps2_rot_owe_all();
