@@ -32,6 +32,8 @@ int quake_is_running(void) { return 0; }
 ER   inval_wnd(WND *w){(void)w;return 0;}
 WND *wnd_gl_scope_owner(void){return 0;}
 void wnd_set_gl_bind(WndGLBind b){(void)b;}
+int  wnd_gl_layer_claim(WND *w){ if (w) w->gl_layer = 1; return 1; }
+void wnd_gl_layer_release(WND *w){ if (w) w->gl_layer = 0; }
 ER   wnd_set_title(WND *w,const char*t){(void)w;(void)t;return 0;}
 
 

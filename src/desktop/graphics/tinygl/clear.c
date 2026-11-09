@@ -41,8 +41,9 @@ void glopClear(GLParam* p) {
 			if (w > 0 && h > 0)
 				eegs_clear(0, 0, w, h, rgba);
 		}
-		if (mask & GL_DEPTH_BUFFER_BIT)
-			ZB_clear(c->zb, 1, z, 0, r, g, b);
+		/* GS Z is the layer's depth; the shared TinyGL zbuf is for the
+		 * software windows and must not be walked on an EEGS clear. */
+		(void)z; (void)r; (void)g; (void)b;
 		return;
 	}
 #endif

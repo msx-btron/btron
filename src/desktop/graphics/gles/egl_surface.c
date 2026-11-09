@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include <string.h>
 
+extern void uart_puts_raw(const char *s);
+
 /* A per-window frames-per-second readout written into the TITLE BAR of every
  * OpenGL window -- XMB, Lil Cu, glgears, Quake, and any future GL client -- at
  * the one seam they all share: egl_swap_buffers().  It is a debugging
@@ -193,15 +195,17 @@ EGL_SURFACE* egl_create_window_surface(WND *wnd) {
         virgl_backend_make_current(surf->width, surf->height, surf->pixels);
     gl_init(want, surf->width, surf->height, surf->pixels);
     /* Bind the backend to THIS surface at create.  The first EEGS window is the GS
-     * layer; every later GL window is TinyGL beside it.  make_current() will install
-     * surf->backend and never re-ask wnd_gl_layer(). */
+     * layer (layer_home); every later GL window is TinyGL beside it and never
+     * steals the layer.  make_current() may then switch a layer_home surface
+     * TinyGL↔EEGS from client size, without gl_init. */
     surf->backend = gl_active_backend();
     if (surf->backend == GL_BACKEND_EEGS) {
-        if (wnd_gl_layer() == NULL) {
-            wnd->gl_layer = TRUE;
+        if (wnd_gl_layer_claim(wnd)) {
+            surf->layer_home = 1;
         } else {
             wnd->gl_layer = FALSE;
             surf->backend = GL_BACKEND_TINYGL;
+            surf->layer_home = 0;
         }
     }
 
@@ -218,8 +222,51 @@ EGL_SURFACE* egl_create_window_surface(WND *wnd) {
     return surf;
 }
 
+static GL_BACKEND egl_live_want(const EGL_SURFACE *surf, int w, int h)
+{
+    GL_BACKEND cur = surf->backend;
+    if (!surf->layer_home) return cur;
+    if (w < EGL_LIVE_TINYGL_W || h < EGL_LIVE_TINYGL_H)
+        return GL_BACKEND_TINYGL;
+    if (w >= EGL_LIVE_EEGS_W && h >= EGL_LIVE_EEGS_H) {
+#if defined(BTRON_GL_BACKEND_TINYGL)
+        return GL_BACKEND_EEGS;
+#else
+        return cur;
+#endif
+    }
+    return cur;
+}
+
+void egl_surface_apply_live_backend(EGL_SURFACE *surf)
+{
+    GL_BACKEND want;
+    WND *wnd;
+    if (!surf || !surf->wnd || !surf->wnd->dev) return;
+    wnd = surf->wnd;
+    surf->pixels = wnd->dev->pixels;
+    surf->width  = wnd->dev->width;
+    surf->height = wnd->dev->height;
+    want = egl_live_want(surf, surf->width, surf->height);
+    if (want == surf->backend) return;
+    if (want == GL_BACKEND_EEGS) {
+        if (!wnd_gl_layer_claim(wnd)) return;
+        surf->backend = GL_BACKEND_EEGS;
+    } else {
+        wnd_gl_layer_release(wnd);
+        surf->backend = GL_BACKEND_TINYGL;
+    }
+    gl_set_active_backend(surf->backend);
+#if defined(BTRON_PS2_TARGET)
+    uart_puts_raw("[GL] live ");
+    uart_puts_raw(gl_backend_name(surf->backend));
+    uart_puts_raw("\n");
+#endif
+}
+
 void egl_make_current(EGL_SURFACE *surf) {
     if (!surf || !surf->wnd || !surf->wnd->dev) return;
+    egl_surface_apply_live_backend(surf);
     surf->pixels = surf->wnd->dev->pixels;
     surf->width  = surf->wnd->dev->width;
     surf->height = surf->wnd->dev->height;
@@ -282,6 +329,8 @@ void egl_destroy_surface(EGL_SURFACE *surf) {
     /* Detach before freeing: the compositor reads wnd->gl_surf on every paint pass, and a
      * window that outlives its surface must look like a software window, not like a GL
      * window holding a freed context. */
+    if (surf->layer_home && surf->wnd)
+        wnd_gl_layer_release(surf->wnd);
     if (surf->wnd && surf->wnd->gl_surf == surf) surf->wnd->gl_surf = NULL;
 #if defined(BTRON_GL_BACKEND_TINYGL)
     if (gl_tinygl_pipeline()) {

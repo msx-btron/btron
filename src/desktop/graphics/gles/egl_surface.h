@@ -19,11 +19,14 @@ typedef struct {
     int     height;
     COLOR  *pixels;
     void   *gl_ctx;
-    /* Bound once at create.  egl_make_current() installs this backend and never
-     * re-derives it from wnd_gl_layer(): the first EEGS window is the GS layer,
-     * every later GL window is TinyGL beside it, and a switch in make_current is
-     * what made the GS stream and a CPU pixmap fight over the same page. */
+    /* The name this surface draws under.  Create still binds the first EEGS
+     * window as the GS layer and every later GL window as TinyGL beside it.
+     * A layer_home surface may then switch TinyGL↔EEGS live on resize
+     * (small client → TinyGL pixmap, normal client → GS stream) without
+     * gl_init: both names share the TinyGL pipeline.  Gears/Cu/Quake keep
+     * TinyGL; they are not layer_home and never steal the layer. */
     GL_BACKEND backend;
+    unsigned char layer_home;
 
     /* Debug FPS readout state, owned and advanced only by egl_swap_buffers().
      * One surface is one window, so each OpenGL window reports its own frame
@@ -52,11 +55,23 @@ typedef struct {
     char     fps_last[64];
 } EGL_SURFACE;
 
+/* Client-pixel hysteresis for the live TinyGL↔EEGS switch.  Tile XMB
+ * (266×190 window, ~258×154 client) sits below the low water.  Default
+ * 520×360 XMB sits above the high water.  The band between keeps the
+ * current backend so a drag across 280×180 does not flicker. */
+#define EGL_LIVE_TINYGL_W  280
+#define EGL_LIVE_TINYGL_H  180
+#define EGL_LIVE_EEGS_W    320
+#define EGL_LIVE_EEGS_H    220
+
 /* Bind or create GL surface for window */
 EGL_SURFACE* egl_create_window_surface(WND *wnd);
 void         egl_make_current(EGL_SURFACE *surf);
 void         egl_surface_resize(EGL_SURFACE *surf, int width, int height);
 void         egl_swap_buffers(EGL_SURFACE *surf);
 void         egl_destroy_surface(EGL_SURFACE *surf);
+/* Apply size-hysteresis TinyGL↔EEGS on a layer_home surface.  Cheap if
+ * the backend is already the one the client size wants. */
+void         egl_surface_apply_live_backend(EGL_SURFACE *surf);
 
 #endif /* BTRON_EGL_SURFACE_H */

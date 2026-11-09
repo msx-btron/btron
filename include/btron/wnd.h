@@ -100,6 +100,9 @@ ER   top_wnd(WND *wnd);
 ER   mov_wnd(WND *wnd, H x, H y);
 ER   rsz_wnd(WND *wnd, H w, H h);
 ER   wrsz_wnd(WND *wnd, const RECT *r);
+/* Chrome only: bounds/client follow the pointer, GDEV stays until
+ * wnd_mgr_flush_resize() (once per compositor pass, and on button-up). */
+ER   wnd_resize_chrome(WND *wnd, H w, H h);
 ER   inval_wnd(WND *wnd);
 
 /* Replace a window's caption at run time.  Copies `title` into the 64-byte
@@ -156,6 +159,11 @@ typedef struct {
 WND* wnd_gl_layer(void);
 BOOL wnd_gl_layer_rect(RECT *client_out);
 BOOL wnd_gl_layer_take(RECT *client_out);
+/* Live TinyGL↔EEGS: demote clears the layer so the compositor blits the
+ * pixmap again; claim succeeds only when the layer is vacant (or already
+ * this window).  No gl_init — EEGS is a name on the shared TinyGL pipeline. */
+int  wnd_gl_layer_claim(WND *wnd);
+void wnd_gl_layer_release(WND *wnd);
 
 /* Task #165: the layer's one-paint-per-pass latch.  `wnd_gl_freeze(1)` says "this pass has already
  * put the layer's frame on the page", and the walk then treats a layer exactly like a window whose
@@ -213,6 +221,7 @@ BOOL wnd_mgr_contains(const WND *wnd);
  * windows speed up. */
 int  wnd_gl_count(void);
 int  wnd_gl_is_costly(const WND *wnd);
+int  wnd_gl_focused_owes(void);        /* focused GL window still needs a raster */
 /* 0 = unlimited GL paints per composite (hosted default).  1 = one TinyGL
  * raster per pass, round-robin among invalid GL windows.  -1 = machine default. */
 void wnd_gl_set_pass_quota(int n);
@@ -223,17 +232,19 @@ static inline int wnd_is_focused(const WND *wnd)
     return wnd && get_top_wnd() == wnd;
 }
 
-/* App animation request period.  Every live window asks at LIVE ms; the
- * compositor is the throttle (one TinyGL per pass).  Closing a window
- * does not change this period -- it shortens the round-robin, so each
- * remaining window is picked more often.  Hosted builds keep 16 ms. */
+/* App animation request period.  The focused GL window asks at LIVE ms;
+ * unfocused windows rest so their tasks do not steal the raster.  The
+ * compositor still paints at most one TinyGL per pass (focused first).
+ * Hosted builds keep 16 ms. */
 #if defined(BTRON_PS2_TARGET)
 #include <btron/ps2_tile.h>
 static inline int wnd_frame_ms(const WND *wnd)
 {
     int live = PS2_TILE_LIVE_MS;
-    (void)wnd;
+    int rest = PS2_TILE_REST_MS;
     if (live < 1) live = 16;
+    if (rest < live) rest = live;
+    if (wnd && !wnd_is_focused(wnd)) return rest;
     return live;
 }
 #else

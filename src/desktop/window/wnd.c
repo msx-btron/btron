@@ -76,6 +76,10 @@ static int s_gl_pass_quota = -1;
 static WND *s_gl_pick;
 static WND *s_gl_rr_last;
 static int s_gl_layer_recorded; /* first EEGS stream has landed; freeze may apply */
+/* Grip-held resize: chrome updates per MOVE, GDEV realloc waits for flush.
+ * Declared here because rsz_wnd (above the event dispatcher) reads it to
+ * decide GDEV slack. */
+static BOOL s_wnd_resizing = FALSE;
 
 static void wnd_mgr_window_destroyed(WND *wnd);
 static void wnd_inval_rect(const RECT *r);
@@ -355,13 +359,44 @@ ER mov_wnd(WND *wnd, H x, H y) {
     return E_OK;
 }
 
-ER rsz_wnd(WND *wnd, H w, H h) {
-    if (!wnd) return E_PAR;
-    if (w < 160) w = 160;
-    if (h < 100) h = 100;
+static H gdev_cap_w(const GDEV *d)
+{
+    return (d && d->cap_w > 0) ? d->cap_w : (d ? d->width : 0);
+}
+static H gdev_cap_h(const GDEV *d)
+{
+    return (d && d->cap_h > 0) ? d->cap_h : (d ? d->height : 0);
+}
+static void gdev_set_view(GDEV *d, H w, H h)
+{
+    if (!d) return;
+    d->width = w;
+    d->height = h;
+    d->clip.left = 0;
+    d->clip.top = 0;
+    d->clip.right = w;
+    d->clip.bottom = h;
+}
+/* Grow with 64-pixel slack while the grip is held so OHCI MOVE bursts do
+ * not realloc the pixmap every report.  Button-up flushes exact. */
+static GDEV *gdev_acquire(H need_w, H need_h, int grow_slack)
+{
+    H cap_w = need_w, cap_h = need_h;
+    GDEV *d;
+    if (grow_slack) {
+        cap_w = (H)((need_w + 63) & ~63);
+        cap_h = (H)((need_h + 63) & ~63);
+        if (cap_w < need_w) cap_w = need_w;
+        if (cap_h < need_h) cap_h = need_h;
+    }
+    d = opn_dev(cap_w, cap_h);
+    if (!d) return NULL;
+    gdev_set_view(d, need_w, need_h);
+    return d;
+}
 
-    RECT old_r = wnd->bounds;
-
+static void wnd_apply_chrome(WND *wnd, H w, H h)
+{
     wnd->bounds.right = wnd->bounds.left + w;
     wnd->bounds.bottom = wnd->bounds.top + h;
 
@@ -371,25 +406,58 @@ ER rsz_wnd(WND *wnd, H w, H h) {
     wnd->client.top = wnd->bounds.top + title_h + border;
     wnd->client.right = wnd->bounds.left + w - border;
     wnd->client.bottom = wnd->bounds.top + h - border;
-
-    /* The title tab keeps its text-derived width across resize; only the
-     * sliding offset is re-clamped into the new window width (wget_tab_rect
-     * draws the tab at full width when it exceeds the window). */
     wset_tab_offset(wnd, wnd->tab_offset_x);
+}
 
+ER wnd_resize_chrome(WND *wnd, H w, H h) {
+    RECT old_r;
+    if (!wnd) return E_PAR;
+    if (w < 160) w = 160;
+    if (h < 100) h = 100;
+    old_r = wnd->bounds;
+    if (old_r.right - old_r.left == w && old_r.bottom - old_r.top == h)
+        return E_OK;
+    wnd_apply_chrome(wnd, w, h);
+    wnd_inval_rect(&old_r);
+    wnd_inval_rect(&wnd->bounds);
+    return E_OK;
+}
+
+ER rsz_wnd(WND *wnd, H w, H h) {
+    if (!wnd) return E_PAR;
+    if (w < 160) w = 160;
+    if (h < 100) h = 100;
+
+    RECT old_r = wnd->bounds;
+    int slack = s_wnd_resizing ? 1 : 0;
+
+    wnd_apply_chrome(wnd, w, h);
+
+    H title_h = (wnd->attr & WND_ATTR_TITLE) ? WND_TITLE_HEIGHT : 0;
+    H border = (wnd->attr & WND_ATTR_BORDER) ? 4 : 0;
     H new_dev_w = (w - border * 2) & ~3;
     H new_dev_h = h - title_h - border * 2;
     if (new_dev_w < 10) new_dev_w = 10;
     if (new_dev_h < 10) new_dev_h = 10;
 
     if (wnd->dev) {
-        if (wnd->dev->width != new_dev_w || wnd->dev->height != new_dev_h) {
+        H cap_w = gdev_cap_w(wnd->dev);
+        H cap_h = gdev_cap_h(wnd->dev);
+        int fits = (new_dev_w <= cap_w && new_dev_h <= cap_h);
+        int exact = (cap_w == new_dev_w && cap_h == new_dev_h);
+        if (wnd->dev->width == new_dev_w && wnd->dev->height == new_dev_h &&
+            (slack || exact)) {
+            /* view already matches; keep slack until button-up */
+        } else if (fits && (slack || exact)) {
+            gdev_set_view(wnd->dev, new_dev_w, new_dev_h);
+            wnd->img_valid = FALSE;
+        } else {
             cls_dev(wnd->dev);
-            wnd->dev = opn_dev(new_dev_w, new_dev_h);
+            wnd->dev = gdev_acquire(new_dev_w, new_dev_h, slack);
             wnd->img_valid = FALSE;
         }
     } else {
-        wnd->dev = opn_dev(new_dev_w, new_dev_h);
+        wnd->dev = gdev_acquire(new_dev_w, new_dev_h, slack);
         wnd->img_valid = FALSE;
     }
 
@@ -441,6 +509,27 @@ static WND *find_gl_layer(void) {
 }
 
 WND* wnd_gl_layer(void) { return find_gl_layer(); }
+
+int wnd_gl_layer_claim(WND *wnd)
+{
+    WND *cur;
+    if (!wnd) return 0;
+    cur = find_gl_layer();
+    if (cur && cur != wnd) return 0;
+    wnd->gl_layer = TRUE;
+    s_gl_layer_recorded = 0;
+    s_gl_pending = FALSE;
+    return 1;
+}
+
+void wnd_gl_layer_release(WND *wnd)
+{
+    if (!wnd || !wnd->gl_layer) return;
+    wnd->gl_layer = FALSE;
+    s_gl_pending = FALSE;
+    s_gl_layer_recorded = 0;
+    if (s_gl_rect_last_wnd == wnd) s_gl_rect_last_wnd = NULL;
+}
 
 /* The screen rect a layer window's client covers -- the one rect the GS owns.  It is computed
  * from the window the way the composite computes it, in one place, because the present path has
@@ -576,6 +665,18 @@ int wnd_gl_count(void)
         if (w->visible && wnd_gl_is_costly(w)) n++;
     }
     return n;
+}
+
+int wnd_gl_focused_owes(void)
+{
+    WND *top = get_top_wnd();
+    WND *lay;
+    if (!top || !top->visible || !top->paint) return 0;
+    if (!wnd_gl_is_costly(top)) return 0;
+    lay = find_gl_layer();
+    if (top->gl_layer && top == lay)
+        return (!s_gl_frozen || !s_gl_layer_recorded) ? 1 : 0;
+    return top->img_valid ? 0 : 1;
 }
 
 void wnd_gl_set_pass_quota(int n) { s_gl_pass_quota = n; }
@@ -1257,7 +1358,6 @@ static WND *s_wnd_slide_target = NULL;
 static H    s_wnd_slide_start_x = 0;
 static H    s_wnd_slide_orig_off = 0;
 
-static BOOL s_wnd_resizing = FALSE;
 static WND *s_wnd_resize_target = NULL;
 static H    s_wnd_resize_orig_w = 0;
 static H    s_wnd_resize_orig_h = 0;
@@ -1305,11 +1405,29 @@ WND* wnd_mgr_get_interaction(int *kind) {
 BOOL wnd_mgr_flush_resize(void) {
     WND *target = s_wnd_resize_target;
     BOOL changed = FALSE;
+    H need_w, need_h, title_h, border, dev_w, dev_h;
+    int slack;
 
     if (!target) return FALSE;
-    if (target->bounds.right - target->bounds.left != s_wnd_resize_pending_w ||
-        target->bounds.bottom - target->bounds.top != s_wnd_resize_pending_h) {
-        rsz_wnd(target, s_wnd_resize_pending_w, s_wnd_resize_pending_h);
+    need_w = s_wnd_resize_pending_w;
+    need_h = s_wnd_resize_pending_h;
+    title_h = (target->attr & WND_ATTR_TITLE) ? WND_TITLE_HEIGHT : 0;
+    border = (target->attr & WND_ATTR_BORDER) ? 4 : 0;
+    dev_w = (need_w - border * 2) & ~3;
+    dev_h = need_h - title_h - border * 2;
+    if (dev_w < 10) dev_w = 10;
+    if (dev_h < 10) dev_h = 10;
+    slack = s_wnd_resizing ? 1 : 0;
+
+    /* Chrome may already match (MOVE applied it); GDEV still owes a
+     * realloc or a view, and button-up drops slack to the exact size. */
+    if (target->bounds.right - target->bounds.left != need_w ||
+        target->bounds.bottom - target->bounds.top != need_h ||
+        !target->dev ||
+        target->dev->width != dev_w || target->dev->height != dev_h ||
+        (!slack && (gdev_cap_w(target->dev) != dev_w ||
+                    gdev_cap_h(target->dev) != dev_h))) {
+        rsz_wnd(target, need_w, need_h);
         changed = TRUE;
     }
     if (!s_wnd_resizing)
@@ -1399,7 +1517,11 @@ BOOL wnd_mgr_handle_event(const EVT *ev) {
             s_wnd_resize_pending_h = s_wnd_resize_orig_h + (ev->pos.y - s_wnd_resize_start_y);
             if (s_wnd_resize_pending_w < 160) s_wnd_resize_pending_w = 160;
             if (s_wnd_resize_pending_h < 100) s_wnd_resize_pending_h = 100;
-            wnd_mgr_flush_resize();
+            /* Chrome follows the pointer on every report; GDEV realloc waits
+             * for the compositor pass (OHCI bursts after a long GL paint
+             * must not cls_dev/opn_dev per MOVE). */
+            wnd_resize_chrome(s_wnd_resize_target,
+                              s_wnd_resize_pending_w, s_wnd_resize_pending_h);
             return TRUE;
         }
         if (s_wnd_dragging && s_wnd_drag_target) {

@@ -872,22 +872,34 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   3x3 cells of 266x190).  The compositor paints at most
   PS2_TILE_GL_PER_PASS (1) TinyGL window per pass.  The focused
   GL window is picked whenever it owes a frame; other invalid GL
-  windows round-robin the leftover slots.  Animation tasks request
-  a frame every PS2_TILE_LIVE_MS (16 ms).  A skipped window stays
-  invalid; closing one frees its GDEV and shortens the rotation.
-  Five GL tiles rasterizing every pass were ~140 ms (~7 FPS each).
-  Fair RR from the last pick capped the focused app at 60/N.
-  UI pace is PS2_TILE_UI_PACE_US (1000): while any GL still owes
-  a raster the UI task sleeps 1 ms.  ui_slow_paint_us is 0.
-  INPUT stays 1 ms.  One HID pump runs before the paint callback;
-  egl_swap_buffers does not inval_wnd during that paint (a second
-  full composite of every GL frame).  TinyGL same-size context
-  switches retarget pbuf without walking the surface; ZB_clear is
-  one packed fill; EEGS skips the software color clear; PS2 builds
-  drop stipple, magenta skip, and the init compat test.
+  windows round-robin the leftover slots.  The focused app's task
+  asks every PS2_TILE_LIVE_MS (16 ms); unfocused tasks rest at
+  PS2_TILE_REST_MS (100 ms) so they do not steal the raster.
+  Closing a window frees its GDEV and its task.  Five GL tiles
+  rasterizing every pass were ~140 ms (~7 FPS each).  Fair RR
+  from the last pick capped the focused app at 60/N.
+  UI sleeps 1 ms while the focused GL still owes or the pointer
+  moved; otherwise one NTSC frame (16.667 ms).  ui_slow_paint_us
+  is 0.  INPUT stays 1 ms.  One HID pump runs before the paint
+  callback; egl_swap_buffers does not inval_wnd during that paint
+  (a second full composite of every GL frame).  TinyGL same-size
+  context switches retarget pbuf without walking the surface;
+  ZB_clear is one packed fill (64-bit stores on EE); EEGS skips
+  the software color and depth fills; PS2 builds drop stipple,
+  magenta skip, OpenMP tex copy, and the init compat test.
   XMB is the first GL tile and the EEGS layer; an unrecorded
   layer still paints once while frozen, then freeze replays the
   last stream.  Unfocused XMB skips the 32x32 ribbon (PS2_TILE_SKIP_WAVE).
+  A resize MOVE updates chrome immediately so the frame follows the
+  pointer; GDEV realloc and TinyGL ZB_resize wait for one
+  wnd_mgr_flush_resize() per compositor pass (and button-up).  Held
+  grows keep 64-pixel slack; button-up shrinks to the exact client.
+  The layer_home surface (XMB) switches live: client below 280x180
+  is TinyGL (pixmap blit), at/above 320x220 is EEGS (GS stream);
+  the band between keeps the current backend.  Demote clears the
+  layer so blit resumes; promote claims only if vacant.  Gears, Cu
+  and Quake stay TinyGL.  detect() pumps HID after the flush so an
+  OHCI burst during realloc still moves the pointer.
   tools/ps2_tile_budget.py and tools/ps2_fps_loop.py model RAM
   and FPS; first-OK RAM is 3x3 heap=6100; focused Quake-alone
   ~54 FPS (18 ms paint, NTSC cap 60).
@@ -905,13 +917,17 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   fps~=` every 2 s.  The focused GL title (`BTRON_GL_FPS_OVERLAY`)
   tracks paint-rate, not 60/N.  Closing a GL window drops gl= and
   remaining GL tiles animate faster.  `[GL] xmb: XrossMediaBar open`
-  is a live bar, not an empty layer hole.  `[USB] IOP shadow
+  is a live bar, not an empty layer hole.  `[GL] live tinygl` /
+  `[GL] live eegs` is a live TinyGL↔EEGS switch on the layer_home
+  window (XMB) as the client crosses 280x180 / 320x220.  `[USB] IOP shadow
   clobbered` is a skipped HID pass, not a permanent USB death.
   Heap peak of the eight-app set stays under 6100 KiB.  Host gate:
   verify/tests/test_desktop_clip.c
-  `unfocused_gl_freezes_when_quota_one` (includes focused-outranks-RR)
-  and `layer_records_once_while_frozen`.  Also test-gl-context,
-  test-xmb-render, test-fb-order.
+  `unfocused_gl_freezes_when_quota_one` (includes focused-outranks-RR),
+  `layer_records_once_while_frozen`, and
+  `coalesced_resize_follows_chrome`.  Also test-gl-context,
+  test-xmb-render (`test_live_backend_switch` on the TinyGL image),
+  test-ps2-fb-order.
 
 
 20. The /SYS volume inside the executable

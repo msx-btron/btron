@@ -735,10 +735,12 @@ static void unfocused_gl_freezes_when_quota_one(void)
 
     inval_wnd(fg);
     inval_wnd(bg);
+    CHECK(wnd_gl_focused_owes() == 1, "focused GL owes after inval");
     s_paints_a = s_paints_b = 0;
     redraw_baremetal_desktop_rect_paint(screen, &whole);
     CHECK(s_paints_a == 1u, "focused GL outranks round-robin when both are owed");
     CHECK(s_paints_b == 0u, "unfocused GL waits while the focused one still owes");
+    CHECK(wnd_gl_focused_owes() == 0, "focused GL is valid after its paint");
 
     cls_wnd(bg);
     CHECK(wnd_gl_count() == 1, "close drops the GL count so remaining work speeds up");
@@ -794,6 +796,67 @@ static void layer_records_once_while_frozen(void)
     lay->gl_layer = FALSE;
     cls_wnd(lay);
     cls_wnd(fg);
+}
+
+/* Chrome follows the pointer on every MOVE; GDEV realloc waits for
+ * wnd_mgr_flush_resize() so an OHCI burst does not cls_dev per report. */
+static void coalesced_resize_follows_chrome(void)
+{
+    static COLOR fb[800 * 600];
+    GDEV *screen = opn_dev_vram(800, 600, fb);
+    WND *w;
+    EVT ev;
+    H orig_w, orig_h, orig_dev_w, orig_dev_h;
+    COLOR *orig_px;
+
+    if (!screen) { printf("  [FAIL] opn_dev_vram(800,600)\n"); s_fail++; return; }
+    init_wnd_mgr(screen);
+    g_cursor_in_backbuffer = 0;
+
+    w = opn_wnd("Resize me", 40, 40, 240, 180, WND_ATTR_TITLE | WND_ATTR_BORDER);
+    if (!w || !w->dev) { printf("  [FAIL] opn_wnd\n"); s_fail++; return; }
+    orig_w = w->bounds.right - w->bounds.left;
+    orig_h = w->bounds.bottom - w->bounds.top;
+    orig_dev_w = w->dev->width;
+    orig_dev_h = w->dev->height;
+    orig_px = w->dev->pixels;
+
+    memset(&ev, 0, sizeof ev);
+    ev.type = EV_BUT_DOWN;
+    ev.pos.x = w->bounds.right - 4;
+    ev.pos.y = w->bounds.bottom - 4;
+    CHECK(wnd_mgr_handle_event(&ev) == TRUE, "grip click starts a resize");
+    CHECK(wnd_mgr_is_interacting() == TRUE, "resize is an interaction");
+
+    ev.type = EV_MOUSE_MOVE;
+    ev.pos.x = w->bounds.right - 4 + 80;
+    ev.pos.y = w->bounds.bottom - 4 + 40;
+    CHECK(wnd_mgr_handle_event(&ev) == TRUE, "MOVE during resize is consumed");
+    CHECK(w->bounds.right - w->bounds.left == orig_w + 80,
+          "chrome width follows the pointer on MOVE");
+    CHECK(w->bounds.bottom - w->bounds.top == orig_h + 40,
+          "chrome height follows the pointer on MOVE");
+    CHECK(w->dev->width == orig_dev_w && w->dev->height == orig_dev_h,
+          "GDEV size is unchanged on MOVE");
+    CHECK(w->dev->pixels == orig_px, "GDEV pixmap is not reallocated on MOVE");
+
+    CHECK(wnd_mgr_flush_resize() == TRUE, "flush applies the pending GDEV size");
+    CHECK(w->dev->width != orig_dev_w || w->dev->height != orig_dev_h,
+          "flush grows the client pixmap");
+    CHECK(w->dev->cap_w >= w->dev->width && w->dev->cap_h >= w->dev->height,
+          "held resize grows GDEV with slack");
+    orig_px = w->dev->pixels;
+    CHECK(w->dev->cap_w > w->dev->width || w->dev->cap_h > w->dev->height,
+          "slack is strictly larger than the live view while the grip is held");
+
+    ev.type = EV_BUT_UP;
+    wnd_mgr_handle_event(&ev);
+    CHECK(wnd_mgr_is_interacting() == FALSE, "button-up ends the resize");
+    CHECK(w->dev->cap_w == w->dev->width && w->dev->cap_h == w->dev->height,
+          "button-up shrinks slack to the exact client size");
+    (void)orig_px;
+
+    cls_wnd(w);
 }
 
 /* ── LANE 12i rung (ii): the tracker plate is drawn once, not twice ─────────
@@ -1024,6 +1087,7 @@ int main(void)
     freeze_refuses_the_layer_not_the_pixmap();
     unfocused_gl_freezes_when_quota_one();
     layer_records_once_while_frozen();
+    coalesced_resize_follows_chrome();
     overlay_plate_drawn_once();
 
     /* 800x600 is the PS2's workbench.  Both halves failing here is the bug this

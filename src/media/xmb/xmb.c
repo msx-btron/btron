@@ -3056,7 +3056,6 @@ static void xb_paint(WND *wnd, GDEV *dev)
     if (!surf) surf = s_surf;
     if (!surf) return;
 
-    btron_cooperative_input_pump();
     egl_make_current(surf);
 
     probing = (s_probe_left != 0u);

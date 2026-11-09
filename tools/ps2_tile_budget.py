@@ -49,8 +49,9 @@ EDITOR_BSS_FULL = 1000 * 512
 HEAP_BASE_KB = 5500
 
 # Time budget: one TinyGL raster per compositor pass.  Focused GL is
-# picked first (paint-rate limited); unfocused round-robin the rest.
-# Measured initial (five serial TinyGL paints) was ~7 FPS each.
+# picked first (paint-rate limited); unfocused tasks rest (REST_MS)
+# and round-robin leftover slots.  Measured initial (five serial
+# TinyGL paints) was ~7 FPS each.
 LIVE_MS = 16
 REST_MS = 100
 GL_PER_PASS = 1

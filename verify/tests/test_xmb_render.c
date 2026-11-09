@@ -146,6 +146,19 @@ WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr)
 ER cls_wnd(WND *wnd) { (void)wnd; return 0; }
 ER top_wnd(WND *wnd) { (void)wnd; return 0; }
 ER inval_wnd(WND *wnd) { (void)wnd; return 0; }
+WND *get_top_wnd(void) { return &g_wnd; }
+WND *wnd_gl_layer(void) { return g_wnd.gl_layer ? &g_wnd : NULL; }
+int wnd_gl_layer_claim(WND *wnd)
+{
+    if (!wnd) return 0;
+    if (g_wnd.gl_layer && wnd != &g_wnd) return 0;
+    wnd->gl_layer = TRUE;
+    return 1;
+}
+void wnd_gl_layer_release(WND *wnd)
+{
+    if (wnd) wnd->gl_layer = FALSE;
+}
 WND *wnd_gl_scope_owner(void) { return NULL; }
 
 BTRON_DESKTOP* get_btron_desktop(void) { return NULL; }
@@ -1982,6 +1995,61 @@ static void test_backend_choice_round_trip(void)
           "the choice round-trips back to the build default");
 }
 
+/* Live TinyGL↔EEGS on the GS-layer candidate: small client demotes to a
+ * software pixmap, normal client promotes back, hysteresis holds the band. */
+static void test_live_backend_switch(void)
+{
+    EGL_SURFACE *surf;
+    GL_BACKEND prev;
+    H ow, oh;
+
+    printf("\n[live TinyGL↔EEGS]\n");
+    prev = gl_backend_selected();
+    gl_backend_select(GL_BACKEND_EEGS);
+    (void)opn_wnd("live-xmb", 0, 0, XW, XH, WND_ATTR_TITLE | WND_ATTR_BORDER);
+    surf = egl_create_window_surface(&g_wnd);
+    CHECK(surf != NULL, "layer-home surface opens");
+    if (!surf) {
+        gl_backend_select(prev);
+        return;
+    }
+#if defined(BTRON_GL_BACKEND_TINYGL)
+    CHECK(surf->layer_home == 1, "first EEGS window is the layer candidate");
+    CHECK(surf->backend == GL_BACKEND_EEGS, "960x600 client stays EEGS");
+    CHECK(g_wnd.gl_layer == TRUE, "GS layer claimed at create");
+
+    ow = g_dev.width;
+    oh = g_dev.height;
+    g_dev.width = 200;
+    g_dev.height = 120;
+    egl_surface_apply_live_backend(surf);
+    CHECK(surf->backend == GL_BACKEND_TINYGL, "small client demotes to TinyGL");
+    CHECK(g_wnd.gl_layer == FALSE, "demote releases the layer so pixmap blit resumes");
+
+    g_dev.width = 400;
+    g_dev.height = 300;
+    egl_surface_apply_live_backend(surf);
+    CHECK(surf->backend == GL_BACKEND_EEGS, "large client promotes to EEGS");
+    CHECK(g_wnd.gl_layer == TRUE, "promote reclaims the vacant layer");
+
+    g_dev.width = 300;
+    g_dev.height = 200;
+    egl_surface_apply_live_backend(surf);
+    CHECK(surf->backend == GL_BACKEND_EEGS,
+          "band between 280x180 and 320x220 keeps EEGS");
+
+    g_dev.width = ow;
+    g_dev.height = oh;
+#else
+    CHECK(surf->layer_home == 0, "an image with no TinyGL pipeline is not a GS layer");
+    (void)ow; (void)oh;
+#endif
+    egl_destroy_surface(surf);
+    g_wnd.gl_surf = NULL;
+    g_wnd.gl_layer = FALSE;
+    gl_backend_select(prev);
+}
+
 int main(void)
 {
     printf("==========================================================\n");
@@ -2006,6 +2074,7 @@ int main(void)
     test_system_bindings();
     test_discs_band();
     test_games_band();
+    test_live_backend_switch();
 
     printf("\n==========================================================\n");
     printf(" XMB RENDER TEST RESULTS: %d / %d passed\n", g_total - g_failed, g_total);

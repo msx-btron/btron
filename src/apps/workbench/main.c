@@ -172,6 +172,11 @@ static int posix_comp_drain(void *x) {
                 }
             } /* end else of tracker_handle_mouse_down */
         } else if (ev.type == EV_BUT_UP) {
+            if (s_resizing && s_resize_wnd) {
+                H w = s_resize_wnd->bounds.right - s_resize_wnd->bounds.left;
+                H h = s_resize_wnd->bounds.bottom - s_resize_wnd->bounds.top;
+                rsz_wnd(s_resize_wnd, w, h);
+            }
             s_dragging = FALSE;
             s_drag_wnd = NULL;
             s_sliding_tab = FALSE;
@@ -205,7 +210,7 @@ static int posix_comp_drain(void *x) {
             } else if (s_resizing && s_resize_wnd) {
                 H new_w = s_resize_orig_w + (ev.pos.x - s_resize_start_x);
                 H new_h = s_resize_orig_h + (ev.pos.y - s_resize_start_y);
-                rsz_wnd(s_resize_wnd, new_w, new_h);
+                wnd_resize_chrome(s_resize_wnd, new_w, new_h);
             } else if (s_dragging && s_drag_wnd) {
                 mov_wnd(s_drag_wnd, ev.pos.x - s_drag_off_x, ev.pos.y - s_drag_off_y);
             } else {
@@ -244,6 +249,13 @@ static int posix_comp_detect(void *x) {
     H mx = 0, my = 0;
     uint32_t now = posix_comp_now(x);
     get_baremetal_mouse_pos(&mx, &my);
+    if (wnd_mgr_flush_resize()) d = 1;
+    if (s_resizing && s_resize_wnd) {
+        H w = s_resize_wnd->bounds.right - s_resize_wnd->bounds.left;
+        H h = s_resize_wnd->bounds.bottom - s_resize_wnd->bounds.top;
+        rsz_wnd(s_resize_wnd, w, h);
+        d = 1;
+    }
     if (wnd_any_image_invalid()) d = 1;
     if (about_is_animating()) d = 1;
     if (mx != s_posix_prev_mx || my != s_posix_prev_my) d = 1;

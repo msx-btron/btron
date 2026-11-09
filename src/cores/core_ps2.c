@@ -110,9 +110,9 @@ static uint32_t ps2_us_since(uint32_t start) { return (uint32_t)(ps2_count_read(
 
 /* ── Real-time planes (ASYNC Tier-1) ─────────────────────────────── */
 
-/* One TinyGL tile is ~9–18 ms.  Pace at PS2_TILE_UI_PACE_US (1 ms) so
- * round-robin is paint-rate limited, not vsync/N.  16 ms * 4 GL was
- * ~12 FPS each (the observed frame drop from a focused 60 Hz). */
+/* Focused TinyGL is paint-rate limited (1 ms UI while it owes).  Idle
+ * compositor sleeps a vsync so empty passes do not steal the raster.
+ * 16 ms * 4 GL fair-share was ~12 FPS each (the observed frame drop). */
 static const btron_plane_cfg_t s_ps2_planes = {
     .input_period_us     = 1000u,
     .ui_period_us        = PS2_TILE_UI_PACE_US,
@@ -507,9 +507,9 @@ void btron_cooperative_input_pump(void)
  * The band set lives in this context between render and present, so the GL layer's stream,
  * the canvas upload and the flip are ordered by construction, not by who calls whom.
  *
- * Cadence is the plane table (PS2_TILE_UI_PACE_US, 1 ms while GL is owed).
- * Panel / convergence timers stay band-aware inside render (they apply only while
- * the pointer is still).  The UI task sleeps 1 ms while any GL still owes a raster. */
+ * Cadence is 1 ms while the focused GL owes or the pointer moved, else one
+ * NTSC frame.  Panel / convergence timers stay band-aware inside render
+ * (they apply only while the pointer is still). */
 typedef struct {
     GDEV          *screen;
     ps2_bandset_t  set;           /* owed bands: written by render, consumed by present */
@@ -570,6 +570,13 @@ static int ps2_comp_detect(void *x)
 {
     (void)x;
     WND *lay;
+    /* One GDEV realloc per pass, after OHCI MOVE bursts have coalesced
+     * into chrome.  Pump HID right after so a long cls_dev/opn_dev/ZB_resize
+     * does not leave the pointer frozen until the next NTSC frame. */
+    if (wnd_mgr_flush_resize()) {
+        btron_cooperative_input_pump();
+        return 1;
+    }
     if (s_mouse_x != s_shown_x || s_mouse_y != s_shown_y) return 1;
     lay = wnd_gl_layer();
     for (WND *w = get_wnd_list(); w; w = w->next) {
@@ -951,10 +958,13 @@ static void ps2_ui_entry(VW exinf)
         period = PS2_TILE_UI_PACE_US;
         if (s_ps2_comp.cfg) period = comp_ui_interval(&s_ps2_comp);
         if (period < 1000u) period = 1000u;
-        /* While GL windows still owe a raster, sleep 1 ms so the round-robin
-         * is paint-rate limited, not vsync-paced (16 ms * N was 12 FPS). */
-        if (wnd_any_image_invalid() && wnd_gl_count() > 1)
+        /* 1 ms only while the focused GL still owes, or the pointer moved.
+         * Unfocused GL rests (wnd_frame_ms); spinning the compositor at 1 kHz
+         * for their stale img_valid stole the raster from the app in use. */
+        if (wnd_gl_focused_owes() || s_mouse_x != s_shown_x || s_mouse_y != s_shown_y)
             sleep_ms = 1u;
+        else if (dt < 16667u)
+            sleep_ms = (16667u - dt) / 1000u;
         else
             sleep_ms = (dt < period) ? (period - dt) / 1000u : 1u;
         if (sleep_ms < 1u) sleep_ms = 1u;

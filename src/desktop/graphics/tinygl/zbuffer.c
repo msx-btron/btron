@@ -6,6 +6,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
 
 #include "zbuffer.h"
 #include "msghandling.h"
@@ -119,7 +120,10 @@ void ZB_resize(ZBuffer* zb, void* frame_buffer, GLint xsize, GLint ysize) {
 #endif
 
 static void ZB_copyBuffer(ZBuffer* zb, void* buf, GLint linesize) {
-	GLint y, i;
+	GLint y;
+#if TGL_FEATURE_NO_COPY_COLOR == 1
+	GLint i;
+#endif
 #if TGL_FEATURE_MULTITHREADED_ZB_COPYBUFFER == 1
 #ifdef _OPENMP
 #pragma omp parallel for
@@ -321,9 +325,27 @@ static void memset_s(void* adr, GLint val, GLint count) {
 	GLint i, n, v;
 	GLuint* p;
 	GLushort* q;
+	if (count <= 0) return;
+	if (val == 0) {
+		memset(adr, 0, (size_t)count * sizeof(GLushort));
+		return;
+	}
 
 	p = adr;
 	v = val | (val << 16);
+#if defined(BTRON_PS2_TARGET)
+	if ((((uintptr_t)p) & 7u) == 0u) {
+		uint64_t vv = ((uint64_t)(GLuint)v << 32) | (uint64_t)(GLuint)v;
+		uint64_t *w = (uint64_t *)p;
+		n = count >> 4; /* 16 ushorts = 32 bytes */
+		for (i = 0; i < n; i++) {
+			w[0] = vv; w[1] = vv; w[2] = vv; w[3] = vv;
+			w += 4;
+		}
+		p = (GLuint *)w;
+		count &= 15;
+	}
+#endif
 
 	n = count >> 3;
 	for (i = 0; i < n; i++) {
@@ -352,6 +374,20 @@ static void memset_l(void* adr, GLint val, GLint count) {
 		memset(p, 0, (size_t)count * sizeof(GLuint));
 		return;
 	}
+#if defined(BTRON_PS2_TARGET)
+	/* Same 32-byte rung as fused_row: EE splits a 64-bit store into two words. */
+	if ((((uintptr_t)p) & 7u) == 0u) {
+		uint64_t vv = ((uint64_t)v << 32) | (uint64_t)v;
+		uint64_t *w = (uint64_t *)p;
+		n = count >> 3; /* 8 pixels = 32 bytes */
+		for (i = 0; i < n; i++) {
+			w[0] = vv; w[1] = vv; w[2] = vv; w[3] = vv;
+			w += 4;
+		}
+		p = (GLuint *)w;
+		count &= 7;
+	}
+#endif
 	n = count >> 3;
 	for (i = 0; i < n; i++) {
 		p[0] = v; p[1] = v; p[2] = v; p[3] = v;

@@ -52,6 +52,10 @@ typedef struct {
     UW is_vram;
     COLOR *pixels;
     RECT clip;
+    /* Allocated pixmap size.  width/height are the live view (≤ cap).
+     * 0 means "capacity is width/height" so stack GDEVs in tests stay valid. */
+    H cap_w;
+    H cap_h;
 } GDEV;
 
 /* Display Primitive Operations */
