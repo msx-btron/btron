@@ -23,6 +23,7 @@ extern void ps2_usb_on_mouse(int dx, int dy, uint8_t buttons);
 
 /* EE wall clock helpers, implemented in boot_ps2.s */
 extern uint32_t ps2_count_read(void);
+extern void ps2_kprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 /* Hardware presence flag */
 static volatile int s_usb_available = 0;
@@ -1195,14 +1196,21 @@ int ps2_usb_pointer_follow(int32_t *dx, int32_t *dy)
     return (rdx != 0 || rdy != 0);
 }
 
-static void ps2_usb_input_tick(uint32_t tick)
+/* One collector: Timer0 ISR and the poll/pump path share it.  A long
+ * compositor or SIF wait used to only consume the seqlock, so if the
+ * 1 kHz hook was late the pointer froze.  Collecting here fills the
+ * seqlock even when the handler is not the caller.  The latch keeps
+ * the ISR from nesting into a thread-context drain. */
+static volatile int s_collecting;
+
+static void ps2_usb_collect_rings(void)
 {
     uint8_t report[8];
     uint32_t cc;
-    (void)tick;
 
     if (!s_usb_available || !s_host_up || !s_plane_collects) return;
-    s_plane_stats.plane_periods++;
+    if (s_collecting) return;
+    s_collecting = 1;
 
     for (uint32_t dev = 0; dev < DEV_SLOTS; dev++) {
         ps2_usb_dev_t *d = &s_devs[dev];
@@ -1234,6 +1242,19 @@ static void ps2_usb_input_tick(uint32_t tick)
             }
         }
     }
+    s_collecting = 0;
+}
+
+static void ps2_usb_input_tick(uint32_t tick)
+{
+    (void)tick;
+    s_plane_stats.plane_periods++;
+    ps2_usb_collect_rings();
+}
+
+void ps2_usb_collect(void)
+{
+    ps2_usb_collect_rings();
 }
 
 /* Drain one device's OHCI hardware interrupt ring directly, coalescing
@@ -1286,14 +1307,21 @@ void ps2_usb_poll(void)
     if (!s_usb_available) return;
 
     if (!ps2_iopram_shadow_intact()) {
-        s_shadow_lost = 1;
-        s_usb_available = 0;
-        s_host_up = 0;
+        if (!s_shadow_lost) {
+            s_shadow_lost = 1;
+            ps2_kprintf("[USB] IOP shadow clobbered @%u; HID skip this pass\n",
+                        (unsigned)ps2_iopram_clobbered_at());
+        }
         return;
     }
+    s_shadow_lost = 0;
     if (!s_host_up) return;
 
     if (s_plane_collects) {
+        /* Drain OHCI into the seqlock first: Timer0 may be late during a
+         * SIF/CDVD wait or a 3D paint, and consume of an empty slot is a
+         * frozen mouse. */
+        ps2_usb_collect_rings();
         while (s_isr_kbd_r != s_isr_kbd_w) {
             uint8_t kb[8];
             uint32_t r = s_isr_kbd_r;
@@ -1523,8 +1551,6 @@ void ps2_usb_inject_mouse(uint8_t buttons, int8_t dx, int8_t dy)
 {
     ps2_usb_on_mouse((int)dx, (int)dy, buttons);
 }
-
-extern void ps2_kprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
 void ps2_usb_log_tx(const ps2_usb_tx_t *t)
 {

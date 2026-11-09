@@ -366,15 +366,18 @@ enum {
 
 void ps2_usb_init(void);
 void ps2_usb_poll(void);
+/* Drain OHCI into the seqlock without consuming.  The paint pump follows
+ * after this; INPUT still owns EV_MOUSE_MOVE. */
+void ps2_usb_collect(void);
 
 /* Move the periodic collection onto the INPUT plane (src/drivers/ps2/ps2_irq.h).
  *
- * With `on` non-zero, the plane's handler reads the interrupt rings once per period and
- * hands the reports over through a queue, and ps2_usb_poll() delivers what the plane
- * collected instead of touching the controller at all.  With `on` zero the rings are polled
- * by whichever pass calls ps2_usb_poll(), which is what this port did before it had a
- * clock -- and what it still has to do on a machine whose [ASYNC] row says DEAD, because a
- * queue nobody fills is a keyboard that types nothing.
+ * With `on` non-zero, the plane's handler reads the interrupt rings once per
+ * period into the seqlock.  ps2_usb_poll() also collects (so a late Timer0
+ * during SIF/CDVD or a 3D paint does not freeze the pointer) and then
+ * consumes.  With `on` zero the rings are drained directly by poll, which is
+ * what this port did before it had a clock -- and what it still has to do on
+ * a machine whose [ASYNC] row says DEAD.
  *
  * The caller decides with the plane's measured verdict, not with its return value. */
 void ps2_usb_input_plane(int on);

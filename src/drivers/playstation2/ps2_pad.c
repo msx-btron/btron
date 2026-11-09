@@ -11,9 +11,13 @@
  */
 
 #include "ps2_pad.h"
+#include "ps2_irq.h"
+
+extern uint32_t ps2_count_read(void);
 
 static ps2_pad_status_t s_current_pad;
 static uint16_t s_last_btns = 0xFFFF;
+static uint32_t s_pad_t0;
 
 /* External hooks implemented in core_ps2.c */
 extern void ps2_pad_on_move(int dx, int dy);
@@ -47,6 +51,17 @@ void ps2_pad_set_state(uint16_t btns, uint8_t lx, uint8_t ly, uint8_t rx, uint8_
 
 void ps2_pad_poll(void)
 {
+    /* Analog is velocity per sample.  INPUT (1 kHz) and the compositor
+     * both call this; skip a second sample in the same millisecond so
+     * the stick does not double when both run. */
+    {
+        uint32_t tpu = btron_ee_ticks_per_us();
+        uint32_t now = ps2_count_read();
+        if (tpu && s_pad_t0 && (uint32_t)(now - s_pad_t0) < tpu * 1000u)
+            return;
+        s_pad_t0 = now;
+    }
+
     /* 1. Left Analog Stick -> Cursor Velocity (dx, dy) */
     int lx = (int)s_current_pad.ljoy_h - 128;
     int ly = (int)s_current_pad.ljoy_v - 128;

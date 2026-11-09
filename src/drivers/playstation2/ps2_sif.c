@@ -14,6 +14,7 @@
 #include "ps2_sif.h"
 #include "ps2_irq.h"
 #include "ps2_console.h"
+#include "ps2_usb.h"
 
 #include <libstr.h>
 #include <stdio.h>
@@ -176,6 +177,7 @@ static int dma_wait(int32_t id, uint32_t timeout_us)
     for (;;) {
         int32_t st = ps2_ee_syscall3(EE_SYS_SIF_DMA_STAT, id, 0, 0);
         if (st < 0) return 1;
+        if ((spins & 2047u) == 0u) ps2_usb_poll();
         if (wait_budget(start, timeout_us, ++spins)) return 0;
     }
 }
@@ -271,6 +273,7 @@ static int sif_pump(uint32_t timeout_us)
             }
             sif_set_dchain();
         }
+        if ((spins & 2047u) == 0u) ps2_usb_poll();
         if (wait_budget(start, timeout_us, ++spins)) return 0;
     }
 }

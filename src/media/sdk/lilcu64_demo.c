@@ -1775,7 +1775,7 @@ static void demo_task_fn(VW exinf) {
     while (s_demo_wnd) {
         lilcu64_synth_pump_virtio(0);
         inval_wnd(s_demo_wnd);
-        dly_tsk(16); /* ~60 FPS */
+        dly_tsk(wnd_frame_ms(s_demo_wnd));
     }
     s_demo_tskid = 0;
 }

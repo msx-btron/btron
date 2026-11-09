@@ -14,6 +14,8 @@
 #define PS2_TILE_COLS             3
 #define PS2_TILE_ROWS             3
 #define PS2_TILE_N                8
+#define PS2_TILE_LIVE_MS          16
+#define PS2_TILE_REST_MS          100
 
 enum {
     PS2_TILE_TERM = 0,

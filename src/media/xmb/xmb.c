@@ -3023,11 +3023,12 @@ static void xb_task(VW exinf)
         SYSTIME t_now = 0;
         get_tim(&t_now);
         W elapsed = (W)(t_now - t_prev);
-        W sleep_ms = s_frame_ms - elapsed;
+        W period = (W)wnd_frame_ms(s_wnd);
+        W sleep_ms = period - elapsed;
         if (sleep_ms < 1)
             sleep_ms = 1;
-        else if (sleep_ms > s_frame_ms)
-            sleep_ms = s_frame_ms;
+        else if (sleep_ms > period)
+            sleep_ms = period;
         dly_tsk(sleep_ms);
         get_tim(&t_prev);
     }

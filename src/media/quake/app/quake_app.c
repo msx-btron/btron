@@ -69,7 +69,7 @@ static void quake_task_fn(VW exinf) {
         if (s_quake_wnd) {
             inval_wnd(s_quake_wnd);
         }
-        dly_tsk(16);  /* ~60 FPS */
+        dly_tsk(wnd_frame_ms(s_quake_wnd));
     }
 
     /* Window is gone — safe to tear down engine state here */

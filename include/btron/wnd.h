@@ -207,6 +207,27 @@ WND* find_wnd_at(H x, H y);
 WND* get_top_wnd(void);
 BOOL wnd_mgr_contains(const WND *wnd);
 
+/* App animation period.  The focused/top window keeps LIVE ms (~60 Hz);
+ * the others rest so the pointer plane is not buried under five GL tasks.
+ * Hosted builds keep 16 ms for every window. */
+#if defined(BTRON_PS2_TARGET)
+#include <btron/ps2_tile.h>
+static inline int wnd_frame_ms(const WND *wnd)
+{
+    int live = PS2_TILE_LIVE_MS;
+    int rest = PS2_TILE_REST_MS;
+    if (live < 1) live = 16;
+    if (rest < 1) rest = 16;
+    return (wnd && get_top_wnd() == wnd) ? live : rest;
+}
+#else
+static inline int wnd_frame_ms(const WND *wnd)
+{
+    (void)wnd;
+    return 16;
+}
+#endif
+
 /* Union of all visible window bounds; empty rect (0,0,0,0) when none. */
 void wnd_get_union_bounds(RECT *out);
 WND* get_wnd_list(void);

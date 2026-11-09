@@ -10,6 +10,7 @@
 #include <btron/apps.h>
 #include <btron/wnd.h>
 #include "ps2_console.h"
+#include "ps2_usb.h"
 
 static const UW k_tile_attr =
     WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER | WND_ATTR_RESIZE;
@@ -17,6 +18,7 @@ static const UW k_tile_attr =
 static int tile_got(int id, const WND *wnd)
 {
     const ps2_tile_rect_t *r = ps2_tile_rect(id);
+    ps2_usb_poll();
     if (wnd)
         return 1;
     if (r)

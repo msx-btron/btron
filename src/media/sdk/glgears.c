@@ -175,7 +175,7 @@ static void glgears_task_fn(VW exinf) {
     (void)exinf;
     while (s_glgears_wnd) {
         inval_wnd(s_glgears_wnd);
-        dly_tsk(16); /* ~60 FPS driven by Local APIC timer */
+        dly_tsk(wnd_frame_ms(s_glgears_wnd));
     }
     s_glgears_tskid = 0;
 }

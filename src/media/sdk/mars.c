@@ -501,7 +501,7 @@ static void mars_task_fn(VW exinf) {
 
         /* 5. Invalidate window to schedule compositor presentation */
         inval_wnd(s_mars_wnd);
-        dly_tsk(16); /* ~60 FPS */
+        dly_tsk(wnd_frame_ms(s_mars_wnd));
     }
     s_mars_tskid = 0;
 }

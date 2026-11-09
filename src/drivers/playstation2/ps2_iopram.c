@@ -133,12 +133,15 @@ int ps2_iopram_claim(ps2_iopram_t *out)
 #if PS2_IOP_SHADOW_OFF != 0u
     p.off = PS2_IOP_SHADOW_OFF;
 #else
-    /* Highest untouched 1 KB first: the IOP kernel keeps its own stacks and
-     * data at the very top of the 2 MB, so stop 16 KB short of it and walk
-     * down until a granule reads as never having been written. */
+    /* Walk down from just below the CDVD bounce (0x1F0000).  The IOP
+     * kernel stacks sit at the very top; FILEIO's 16 KiB xfer and the
+     * CDVD sector pad live in 0x1F0000..0x1F7FFF.  A USB HCCA there
+     * dies on the first PAK read and the pointer freezes. */
     p.off = 0;
-    for (uint32_t cand = 0x1FC000u; cand >= 0x100000u; cand -= PS2_IOP_SHADOW_SIZE) {
+    for (uint32_t cand = 0x1E8000u; cand >= 0x100000u; cand -= PS2_IOP_SHADOW_SIZE) {
         p.granules++;
+        if (cand < 0x1F8000u && cand + PS2_IOP_SHADOW_SIZE > 0x1F0000u)
+            continue;
         if (block_is_zero(cand)) { p.off = cand; break; }
         if (cand < PS2_IOP_SHADOW_SIZE) break;
     }

@@ -866,6 +866,29 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
       Start Button      : Open system workbench launcher.
       Select Button     : Cycle active windows.
 
+19.2  Tile live/rest: the pointer plane stays first
+
+  LAW.  The eight-app tile set is the RAM working set (heap 6100 KiB,
+  3x3 cells of 266x190).  The focused window paints at
+  PS2_TILE_LIVE_MS (16 ms, ~60 Hz).  The other seven rest at
+  PS2_TILE_REST_MS (100 ms, ~10 Hz) via wnd_frame_ms().  Five GL
+  tiles at 60 Hz together overran the 16.667 ms UI budget (~60 ms
+  paint) and buried the 1 kHz INPUT plane; the pointer then appeared
+  frozen.  tools/ps2_tile_budget.py models both RAM and paint-us;
+  first-OK is still 3x3 heap=6100, paint=14500 us.
+
+  WHY.  TinyGL is one context per process.  XMB on a tile is ~12.6 ms
+  focused.  Resting windows keep their last GDEV; the compositor
+  blits them.  SIF/CDVD waits and the compositor poll_input call
+  ps2_usb_collect() so OHCI reports still land when Timer0 is late.
+  DualShock analog is 1 ms-gated in ps2_pad_poll so compositor and
+  INPUT can both sample without doubling the stick.
+
+  MEASURE.  UART `[TILE] standard set 8/8` then a moving cursor
+  while the focused GL tile animates.  `[USB] IOP shadow clobbered`
+  is a skipped HID pass, not a permanent USB death.  Heap peak of
+  the eight-app set stays under 6100 KiB.
+
 
 20. The /SYS volume inside the executable
 -----------------------------------------

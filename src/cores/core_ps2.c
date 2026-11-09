@@ -112,7 +112,9 @@ static const btron_plane_cfg_t s_ps2_planes = {
     .ui_period_us        = 16667u,
     .panel_refresh_us    = 200000u,
     .full_convergence_us = 2000000u,
-    .input_slices_max    = 16u
+    .input_slices_max    = 16u,
+    .ui_period_slow_us   = 33333u,  /* 30 Hz once a paint overruns */
+    .ui_slow_paint_us    = 8000u    /* XMB tile is ~12 ms focused */
 };
 
 typedef struct { uint32_t runs, us_max, over; } ps2_plane_run_t;
@@ -473,12 +475,14 @@ static void ps2_cursor_input_task(GDEV *screen, uint32_t now_us)
 
 static ID s_input_tskid;
 
-/* btron_cooperative_input_pump - wake INPUT and follow the seqlock; never snd_evt. */
+/* btron_cooperative_input_pump - collect HID, follow the seqlock, wake INPUT.
+ * Follow never snd_evt; INPUT still produces MOVE. */
 void btron_cooperative_input_pump(void)
 {
     static volatile int s_in_pump;
     if (!s_gui_active || !s_gui_screen || s_in_pump) return;   /* never re-enter */
     s_in_pump = 1;
+    ps2_usb_collect();
     if (s_input_tskid > 0) wup_tsk(s_input_tskid);
     ps2_pointer_follow();
     s_in_pump = 0;
@@ -516,11 +520,11 @@ static uint32_t ps2_comp_now(void *x) { (void)x; return btron_render_perf_us(); 
 static void ps2_comp_poll_input(void *x)
 {
     (void)x;
-    /* USB consume + flush so MOVE is in the queue before drain (window drag).
-     * Pad stays on the INPUT task: analog stick is a velocity sample, and
-     * polling it here and there would double the cursor.  USB consume is
-     * idempotent across this call and the 1 ms INPUT worker. */
+    /* USB collect+consume so MOVE is in the queue before drain (window drag).
+     * Pad is 1 ms gated in ps2_pad_poll, so compositor and INPUT can both
+     * call it without doubling the stick. */
     ps2_usb_poll();
+    ps2_pad_poll();
     ps2_kbd_repeat_tick();
     set_baremetal_mouse_pos((H)s_mouse_x, (H)s_mouse_y);
     ps2_edge_flush();
@@ -924,7 +928,7 @@ static void ps2_ui_entry(VW exinf)
     (void)exinf;
     while (s_gui_active) {
         if (s_gui_screen) ps2_gui_pass(s_gui_screen);
-        dly_tsk(0);
+        dly_tsk(1);
     }
     ext_tsk();
 }

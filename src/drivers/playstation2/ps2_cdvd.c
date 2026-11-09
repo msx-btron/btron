@@ -18,6 +18,7 @@
 #include "ps2_irq.h"
 #include "ps2_console.h"
 #include "ps2_sif.h"
+#include "ps2_usb.h"
 
 #include <libstr.h>
 #include <stddef.h>
@@ -174,6 +175,7 @@ static void wait_us(uint32_t us)
         uint32_t spins = 0;
         while ((uint32_t)(ps2_count_read() - start) < budget) {
             if (++spins > 20000000u) break;
+            if ((spins & 2047u) == 0u) ps2_usb_poll();
         }
     }
 }

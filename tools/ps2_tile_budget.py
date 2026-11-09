@@ -48,6 +48,15 @@ HEADROOM_NOW = 1182336  # bytes below 0x01FB0000 after editor BSS shrink
 EDITOR_BSS_FULL = 1000 * 512
 HEAP_BASE_KB = 5500
 
+# Time budget: five GL tiles at 60 Hz bury the pointer (~60 ms/pass).
+# Focused window stays at LIVE_MS; the rest rest so UI stays near one vsync.
+LIVE_MS = 16
+REST_MS = 100
+UI_BUDGET_US = 16667
+FOREGROUND_GL_US = 13000  # measured XMB tile
+BG_BLIT_US = 1500
+N_GL = 5  # xmb, mars, gears, cu, quake
+
 
 def align16(n: int) -> int:
     return (n + 15) & ~15
@@ -88,7 +97,15 @@ def try_budget(cols: int, rows: int, hist: int, ed_rows: int, ed_cols: int, heap
     peak = steady + xmb_peak
     need = peak + SLACK_KB * 1024
     heap = heap_kb * 1024
-    ok = need <= heap
+    rest_hz = 1000.0 / REST_MS
+    paint_us = int(
+        FOREGROUND_GL_US
+        + (N_GL - 1) * BG_BLIT_US * (rest_hz / 60.0)
+        + 500
+    )
+    ok_ram = need <= heap
+    ok_time = paint_us <= UI_BUDGET_US
+    ok = ok_ram and ok_time
     rects = []
     for i, name in enumerate(APPS):
         c, r = i % cols, i // cols
@@ -105,6 +122,11 @@ def try_budget(cols: int, rows: int, hist: int, ed_rows: int, ed_cols: int, heap
         )
     return {
         "ok": ok,
+        "ok_ram": ok_ram,
+        "ok_time": ok_time,
+        "paint_us": paint_us,
+        "live_ms": LIVE_MS,
+        "rest_ms": REST_MS,
         "cols": cols,
         "rows": rows,
         "cell_w": cell_w,
@@ -152,7 +174,8 @@ def search() -> dict:
                         f"[{n:03d} {tag}] {cols}x{rows} cell={b['cell_w']}x{b['cell_h']} "
                         f"client={b['cw']}x{b['ch']} hist={hist} ed={ed_rows}x{ed_cols} "
                         f"heap={heap_kb}k peak={b['peak_kb']}k need={b['need_kb']}k "
-                        f"gdev={b['gdevs_kb']}k zbuf={b['zbuf_kb']}k gterm={b['gterm_kb']}k"
+                        f"gdev={b['gdevs_kb']}k zbuf={b['zbuf_kb']}k gterm={b['gterm_kb']}k "
+                        f"paint={b['paint_us']}us live={LIVE_MS}ms rest={REST_MS}ms"
                     )
                     if b["ok"]:
                         bss_delta = (heap_kb - HEAP_BASE_KB) * 1024 - b["editor_bss_save"]
@@ -190,6 +213,8 @@ def write_header(path: str, b: dict) -> None:
         f"#define PS2_TILE_COLS             {b['cols']}",
         f"#define PS2_TILE_ROWS             {b['rows']}",
         f"#define PS2_TILE_N                {len(APPS)}",
+        f"#define PS2_TILE_LIVE_MS          {b['live_ms']}",
+        f"#define PS2_TILE_REST_MS          {b['rest_ms']}",
         "",
         "enum {",
     ]
