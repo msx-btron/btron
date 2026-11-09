@@ -487,8 +487,7 @@ GDEV* init_baremetal_desktop(uint32_t *fb, uint32_t w, uint32_t h) {
     btron_desktop_note_size(w, h);
 
 #if defined(BTRON_PS2_TARGET)
-    /* Tile the eight-app set from launch_ps2_desktop_session so the
-     * 5.5 MiB heap holds one working set, with PAK/ROMs left on disc. */
+    /* Boot set (Quake 80% + terminal) opens from launch_ps2_desktop_session. */
 #else
     open_vobj_manager_window();
     open_t_editor_window();

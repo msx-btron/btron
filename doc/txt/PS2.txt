@@ -868,14 +868,14 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
 
 19.2  Tile live/rest: the pointer plane stays first
 
-  LAW.  The eight-app set is the RAM working set (heap 6400 KiB).
-  Boot placement is a same-y compact-tab cascade (y=PANEL, x
-  stepped 40 px) so the title tabs form a horizontal click-strip;
-  XMB is flush-right at 520x360 (client 512x324, above the EEGS
-  water of 320x220) and is raised after open so the GS layer is
-  the visible window.  The other seven windows stay 266x190 and
-  peek from the left — a short horizontal mouse move switches any
-  of them.  The compositor paints at most PS2_TILE_GL_PER_PASS (1)
+  LAW.  The boot working set is Quake at 80% of 800x600 (640x480
+  at 80,28, client 632x444, above the EEGS water of 320x220) plus
+  a command-line terminal under it (640x76 at 80,516).  Heap is
+  6400 KiB.  Other apps open from the terminal or the global menu.
+  Closing the EEGS layer window (XMB, or Quake as the layer) drops
+  the GS stream so the client body does not stay on the page, and
+  the last GL surface glClose()s TinyGL so textures return to the
+  heap.  The compositor paints at most PS2_TILE_GL_PER_PASS (1)
   TinyGL window per pass.  The focused GL window is picked whenever
   it owes a frame; other invalid GL windows round-robin the leftover
   slots.  The focused app's task asks every PS2_TILE_LIVE_MS (16 ms);
@@ -892,9 +892,11 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   ZB_clear is one packed fill (64-bit stores on EE); EEGS skips
   the software color and depth fills; PS2 builds drop stipple,
   magenta skip, OpenMP tex copy, and the init compat test.
-  XMB is the first GL window and the EEGS layer; an unrecorded
-  layer still paints once while frozen, then freeze replays the
-  last stream.  Unfocused XMB skips the 32x32 ribbon (PS2_TILE_SKIP_WAVE).
+  Quake is the first GL window and the EEGS layer at boot; an
+  unrecorded layer still paints once while frozen, then freeze
+  replays the last stream only while that window is still the
+  layer.  Closing it clears the plated hole.  Unfocused XMB
+  skips the 32x32 ribbon (PS2_TILE_SKIP_WAVE).
   A resize MOVE updates chrome immediately so the frame follows the
   pointer; GDEV realloc and TinyGL ZB_resize wait for one
   wnd_mgr_flush_resize() per compositor pass (and button-up).  Held
@@ -909,7 +911,7 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   stay TinyGL.  detect() pumps HID after the flush so an OHCI burst
   during realloc still moves the pointer.
   tools/ps2_tile_budget.py and tools/ps2_fps_loop.py model RAM
-  and FPS; first-OK RAM is cascade heap=6400, XMB 520x360;
+  and FPS; first-OK RAM is Quake 640x480 + terminal, heap=6400;
   focused Quake-alone ~54 FPS (18 ms paint, NTSC cap 60).
 
   WHY.  TinyGL is one context per process.  Focused XMB on a tile
@@ -921,15 +923,15 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   ps2_pad_poll so compositor and INPUT can both sample without
   doubling the stick.
 
-  MEASURE.  UART `[TILE] standard set 8/8` then `[RT] gl=N ui=...
-  fps~=` every 2 s.  The focused GL title (`BTRON_GL_FPS_OVERLAY`)
-  tracks paint-rate, not 60/N.  Closing a GL window drops gl= and
-  remaining GL tiles animate faster.  `[GL] xmb: XrossMediaBar open`
-  is a live bar, not an empty layer hole.  Boot XMB logs
-  `[GL] live eegs` (client 512x324).  `[GL] live tinygl` /
-  `[GL] live eegs` on resize is the later switch debug.  `[USB] IOP shadow
-  clobbered` is a skipped HID pass, not a permanent USB death.
-  Heap peak of the eight-app set stays under 6400 KiB.  Host gate:
+  MEASURE.  UART `[TILE] standard set 2/2` then `[RT] gl=1 ui=...
+  fps~=` every 2 s.  Boot Quake logs `[GL] live eegs` (client
+  632x444).  Closing the last GL window logs
+  `[GL] TinyGL: last window surface closed -- context and textures
+  freed` and used= drops (BSP + textures).  Closing XMB (opened
+  later) must not leave the GS body on the desktop.  `[GL] live
+  tinygl` / `[GL] live eegs` on resize is the later switch debug.
+  `[USB] IOP shadow clobbered` is a skipped HID pass, not a
+  permanent USB death.  Host gate:
   verify/tests/test_desktop_clip.c
   `unfocused_gl_freezes_when_quota_one` (includes focused-outranks-RR),
   `layer_records_once_while_frozen`, and

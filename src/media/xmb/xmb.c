@@ -3302,20 +3302,28 @@ static void xb_event(WND *wnd, const EVT *evt)
 static void xb_destroy(WND *wnd)
 {
     (void)wnd;
+    /* Drop this window's atlases while the surface is still current so a
+     * close with other GL windows live does not leave 576 kB of icon
+     * planes in the shared TinyGL table.  Last-surface destroy_ctx then
+     * glClose()s the rest. */
+    if (s_surf)
+        egl_make_current(s_surf);
+#if defined(BTRON_GL_BACKEND_TINYGL)
+    if (s_tex_icons) {
+        GLuint t = s_tex_icons;
+        glDeleteTextures(1, &t);
+        s_tex_icons = 0;
+    }
+    if (s_tex_font) {
+        GLuint t = s_tex_font;
+        glDeleteTextures(1, &t);
+        s_tex_font = 0;
+    }
+#endif
     if (s_surf) {
         egl_destroy_surface(s_surf);
         s_surf = NULL;
     }
-    /* The two atlases belong to this window's GL context, and the surface teardown above
-     * closes that context, which is where a texture's padded plane is freed with its node
-     * (`gl_texture_node_destroy()`, reached from glClose()'s shared-state end).  Until the
-     * 2026-10-15 fix that path freed only the node, so this window's 1 MB icon atlas and
-     * 64 kB font sheet stayed in the pool on every close and a third `xmb` at the prompt
-     * had no hole left to ask from -- the ledger in core_ps2.c measures it.  Only the names
-     * need dropping here; the sheets they were uploaded from were this file's own and are
-     * already back. */
-    s_tex_icons = 0;
-    s_tex_font  = 0;
     s_wnd      = NULL;
     s_xb_gen++;
     if (s_tsk > 0)

@@ -346,11 +346,15 @@ void ps2_paint_region(GDEV *screen, int x0, int y0, int x1, int y1, int full,
     if (gs_took && !gs_paints) s_gs_empty_stream++;
 
     if (!gs_paints) {
-        if (!wnd_gl_is_frozen()) s_20y_plated = 0u;
+        /* Closing the layer window (XMB chrome gone) must not keep
+         * replaying the last GIF into the vacated client: that is the
+         * body still sitting on the GS after cls_wnd.  No layer means
+         * 2D canvas owns the rect. */
+        if (!wnd_gl_is_frozen() || !wnd_gl_layer()) s_20y_plated = 0u;
         if (wnd_gl_layer_rect(&gl_hole)) {
             gl_hole_live = TRUE;
             gl_why = PS2_WHY_CUT;
-        } else if (wnd_gl_is_frozen() && s_20y_plated) {
+        } else if (wnd_gl_layer() && wnd_gl_is_frozen() && s_20y_plated) {
             gl_hole = s_20y_rect;
             gl_hole_live = TRUE;
             gl_why = PS2_WHY_CUT;

@@ -55,6 +55,7 @@ static int      s_height    = 0;
  * window is normal (XMB plus an app), so the count is the row that says whether a texture name
  * still means what it meant when it was minted. */
 static int      s_surfaces  = 0;
+static int      s_ctx_live  = 0; /* tinygl_context_t objects from make_current_ctx */
 
 /* ── Forward declarations ─────────────────────────────────────────── */
 static void   tgl_begin       (GLenum mode);
@@ -304,6 +305,8 @@ int tinygl_backend_shutdown(void) {
     }
 
     s_surfaces  = 0;
+    s_ctx_live  = 0;
+    uart_puts_raw("[GL] TinyGL: last window surface closed -- context and textures freed\n");
     glClose();
     ZB_close(s_zb);
     s_zb        = NULL;
@@ -373,6 +376,7 @@ void tinygl_backend_make_current_ctx(void **p_ctx, int w, int h, void *pixel_buf
         }
 
         *p_ctx = ctx;
+        s_ctx_live++;
     }
 
     /* Switch active context and raster buffer */
@@ -433,9 +437,22 @@ void tinygl_backend_destroy_ctx(void *ctx_ptr) {
         ctx->zb = NULL;
     }
     free(ctx);
-    if (s_surfaces > 1) {
-        s_surfaces--;
+    if (s_ctx_live > 0) s_ctx_live--;
+    if (s_surfaces > 0) s_surfaces--;
+    /* Last EGL surface AND last per-window ctx: close the process
+     * context so textures, lists, and the z-buffer return to the heap.
+     * Closing XMB used to leave s_zb live, so the next open logged
+     * "second window surface joins" and the atlas/BSP planes stayed. */
+    if (s_ctx_live > 0 || s_surfaces > 0) {
+        if (s_zb) s_zb->pbuf = NULL;
+        s_pixel_buf = NULL;
+        s_width = 0;
+        s_height = 0;
+        uart_puts_raw("[GL] TinyGL: one window surface closed with others still live -- context "
+                      "kept, raster detached until the next bind\n");
+        return;
     }
+    (void)tinygl_backend_shutdown();
 }
 
 /* ── TinyGL GL wrappers ───────────────────────────────────────────── */

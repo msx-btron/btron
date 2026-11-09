@@ -55,7 +55,7 @@
  * the keep row once per non-final close. */
 static char  s_log[4096];
 static int   s_log_n;
-static int   s_n_join, s_n_keep;
+static int   s_n_join, s_n_keep, s_n_last;
 
 void uart_puts_raw(const char *s)
 {
@@ -64,6 +64,7 @@ void uart_puts_raw(const char *s)
     s_log[s_log_n] = '\0';
     if (strstr(s, "joins the one context"))      s_n_join++;
     if (strstr(s, "others still live"))          s_n_keep++;
+    if (strstr(s, "last window surface closed")) s_n_last++;
 }
 
 unsigned btron_render_perf_us(void) { return 0u; }
@@ -393,6 +394,7 @@ int main(void)
     CHECK(texture_of(s_tex) == NULL,
           "last surface closed: the context is torn down and its names die with it (%d nodes)",
           texture_count());
+    CHECK(s_n_last == 1, "the last-surface close was announced once (%d rows)", s_n_last);
 
     /* Re-opening after a full close must give a working pipeline again -- the refcount may not
      * strand the process with a dead context. */
@@ -497,8 +499,15 @@ int main(void)
 
         /* Clean up contexts */
         tinygl_backend_destroy_ctx(ctx1);
+        CHECK(texture_of(s_tex) != NULL,
+              "first destroy_ctx with others live: shared textures stay");
         tinygl_backend_destroy_ctx(ctx2);
+        CHECK(texture_of(s_tex) != NULL,
+              "second destroy_ctx with one ctx live: shared textures stay");
         tinygl_backend_destroy_ctx(ctx3);
+        CHECK(texture_of(s_tex) == NULL,
+              "last destroy_ctx closed the process context (%d nodes)",
+              texture_count());
 
         free(tiled_buf1);
         free(tiled_buf2);

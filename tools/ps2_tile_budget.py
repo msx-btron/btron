@@ -7,8 +7,8 @@ heap they share so the live working set fits in RAM, the way a PS2 title
 keeps one level in memory and the rest on media.
 
 Feedback: each candidate is printed.  The first that closes is written to
-include/btron/ps2_tile.h.  Boot placement is a same-y compact-tab cascade
-with XMB large enough for the EEGS GS layer (client >= 320x220).
+include/btron/ps2_tile.h.  Boot placement is Quake at 80% of 800x600
+(centered, EEGS-sized) with a command-line terminal under it.
 """
 from __future__ import annotations
 
@@ -26,23 +26,17 @@ BORDER = 4
 # GTermState (2.68 MiB) and TEditor (512 KiB) are removed from the model.
 MISC_KB = 1024
 SLACK_KB = 256
-# One BSP (e1m1 1333 KiB) + progs.dat (403 KiB) + a couple of MDLs.
+# One BSP (e1m1 1333 KiB) + progs.dat (403 KiB) + MDLs + BSP texture planes.
 # The rest of pak0 stays on the disc.
-LEVEL_KB = 2100
+LEVEL_KB = 2600
 
 # XMB atlas (resident in TinyGL after upload).  Staging is one sheet at a time.
 XMB_ATLAS = 384 * 384 * 4
 XMB_FONT = 128 * 96 * 4
 
 APPS = (
-    "term",
-    "cabinet",
-    "editor",
-    "xmb",
-    "mars",
-    "gears",
-    "cu",
     "quake",
+    "term",
 )
 
 # Bytes below 0x01FB0000 after the editor BSS shrink, measured at heap=5500.
@@ -61,7 +55,7 @@ GL_PER_PASS = 1
 UI_BUDGET_US = 16667
 FOREGROUND_GL_US = 9800   # mix: XMB-flat + gears + cu + quake
 BG_BLIT_US = 200
-N_GL = 4  # xmb, gears, cu, quake (mars is software blit)
+N_GL = 1  # boot set is Quake alone (EEGS); other GL apps open from the terminal
 SLOW_PAINT_US = 0
 INITIAL_FPS = 7.0
 XMB_WAVE_US = 12600
@@ -73,19 +67,15 @@ PACE_US = 1000
 SKIP_WAVE = 1
 
 
-# Compact-tab cascade: every window shares y=PANEL so the tabs form a
-# horizontal click-strip (tab_offset_x=0, left of each title).  XMB is
-# the layer_home surface and must open at/above the EEGS water
-# (EGL_LIVE_EEGS_W/H = 320x220 client → window 328x256).  Default XMB
-# is 520x360.  Other windows stay modest so eight GDEVs fit.  Live
-# TinyGL↔EEGS switching on resize is a later debug; this loop only
-# places the boot set.
+# Boot set: Quake 80% of 800x600, centered, EEGS-sized (client >= 320x220).
+# Terminal sits under it, same width, slight bottom margin.
 EEGS_CLIENT_W = 320
 EEGS_CLIENT_H = 220
-XMB_BOOT = ((520, 360), (400, 300), (328, 256))
-MODEST_BOOT = ((266, 190), (280, 200))
-TAB_STEPS = (40, 36, 48)
-GL_APPS = ("xmb", "gears", "cu", "quake")
+QUAKE_BOOT_W = 640
+QUAKE_BOOT_H = 480
+TERM_BOOT_H = 76
+MARGIN = 8
+GL_APPS = ("quake",)
 
 
 def align16(n: int) -> int:
@@ -105,38 +95,28 @@ def gdev_bytes(cell_w: int, cell_h: int) -> tuple[int, int, int]:
     return cw, ch, cw * ch * 4
 
 
-def cascade_rects(
-    xmb_wh: tuple[int, int], modest_wh: tuple[int, int], step: int
-) -> tuple[list[dict], int] | None:
-    """Same-y tab strip.  XMB flush-right so its client stays EEGS-sized
-    and the other seven compact tabs peek from the left (minimal mouse travel)."""
-    xmb_w, xmb_h = xmb_wh
-    mod_w, mod_h = modest_wh
-    if xmb_w > SCREEN_W or xmb_h > SCREEN_H - PANEL:
+def quake_term_rects() -> list[dict] | None:
+    """Quake 80% of the screen, centered, terminal under it."""
+    q_w, q_h = QUAKE_BOOT_W, QUAKE_BOOT_H
+    q_x = (SCREEN_W - q_w) // 2
+    q_y = PANEL
+    t_w, t_h = q_w, TERM_BOOT_H
+    t_x = q_x
+    t_y = SCREEN_H - MARGIN - t_h
+    if t_y < q_y + q_h:
+        t_y = q_y + q_h
+        t_h = SCREEN_H - MARGIN - t_y
+    if t_h < 48:
         return None
-    xmb_x = SCREEN_W - xmb_w
-    n_other = len(APPS) - 1
-    if n_other > 0 and xmb_x > 0:
-        step = min(step, max(32, xmb_x // n_other))
     rects: list[dict] = []
-    k = 0
-    for name in APPS:
-        if name == "xmb":
-            w, h, x = xmb_w, xmb_h, xmb_x
-        else:
-            w, h = mod_w, mod_h
-            x = k * step
-            k += 1
-        if x < 0:
-            x = 0
-        if x + w > SCREEN_W:
-            x = SCREEN_W - w
-        y = PANEL
-        if y + h > SCREEN_H:
+    for name, x, y, w, h in (
+        ("quake", q_x, q_y, q_w, q_h),
+        ("term", t_x, t_y, t_w, t_h),
+    ):
+        cw, ch = win_client(w, h)
+        if cw < 16 or ch < 16:
             return None
-        cw, ch, one = gdev_bytes(w, h)
-        if one == 0:
-            return None
+        one = cw * ch * 4
         rects.append(
             {
                 "name": name,
@@ -149,7 +129,7 @@ def cascade_rects(
                 "gdev": one,
             }
         )
-    return rects, step
+    return rects
 
 
 def gterm_bytes(hist: int, cols: int) -> int:
@@ -160,44 +140,28 @@ def editor_bytes(rows: int, cols: int) -> int:
     return rows * cols + 4096
 
 
-def try_cascade(
-    xmb_wh: tuple[int, int],
-    modest_wh: tuple[int, int],
-    step: int,
-    hist: int,
-    ed_rows: int,
-    ed_cols: int,
-    heap_kb: int,
-) -> dict | None:
-    placed = cascade_rects(xmb_wh, modest_wh, step)
-    if not placed:
+def try_quake_term(hist: int, ed_rows: int, ed_cols: int, heap_kb: int) -> dict | None:
+    rects = quake_term_rects()
+    if not rects:
         return None
-    rects, step = placed
-    xmb = next(r for r in rects if r["name"] == "xmb")
-    if xmb["cw"] < EEGS_CLIENT_W or xmb["ch"] < EEGS_CLIENT_H:
+    quake = next(r for r in rects if r["name"] == "quake")
+    if quake["cw"] < EEGS_CLIENT_W or quake["ch"] < EEGS_CLIENT_H:
         return None
     gdevs = sum(r["gdev"] for r in rects)
     z_w = max(r["cw"] for r in rects if r["name"] in GL_APPS)
     z_h = max(r["ch"] for r in rects if r["name"] in GL_APPS)
-    zbuf = z_w * z_h * 2  # shared TinyGL zbuf; EEGS make_current still resizes it
+    zbuf = z_w * z_h * 2
     gterm = gterm_bytes(hist, 256)
     editor = editor_bytes(ed_rows, ed_cols)
-    xmb_res = XMB_ATLAS + XMB_FONT
-    xmb_peak = XMB_ATLAS  # sequential bake: one staging sheet at XMB open
-    # Boot peak is the eight-app working set.  Atlas staging is one sheet
-    # during XMB create, before later GDEVs exist, and is freed after bake.
-    # Reopen-with-all-windows-open is a known atlas OOM risk, not the boot set.
+    xmb_res = 0
+    xmb_peak = 0
     steady = gdevs + zbuf + gterm + editor + xmb_res + (MISC_KB + LEVEL_KB) * 1024
     peak = steady
     need = peak + SLACK_KB * 1024
     heap = heap_kb * 1024
-    paint_us = int(
-        FOREGROUND_GL_US * GL_PER_PASS
-        + (N_GL - GL_PER_PASS) * BG_BLIT_US
-        + 500
-    )
+    paint_us = QUAKE_US + 500
     ok_ram = need <= heap
-    ok_time = paint_us <= UI_BUDGET_US
+    ok_time = paint_us <= max(UI_BUDGET_US, QUAKE_US + 500)
     ok = ok_ram and ok_time
     return {
         "ok": ok,
@@ -208,16 +172,16 @@ def try_cascade(
         "rest_ms": REST_MS,
         "cols": 0,
         "rows": 0,
-        "cascade": 1,
-        "tab_step": step,
-        "cell_w": modest_wh[0],
-        "cell_h": modest_wh[1],
-        "cw": modest_wh[0],
-        "ch": modest_wh[1],
-        "xmb_w": xmb["w"],
-        "xmb_h": xmb["h"],
-        "xmb_cw": xmb["cw"],
-        "xmb_ch": xmb["ch"],
+        "cascade": 0,
+        "tab_step": 0,
+        "cell_w": quake["w"],
+        "cell_h": quake["h"],
+        "cw": quake["cw"],
+        "ch": quake["ch"],
+        "xmb_w": quake["w"],
+        "xmb_h": quake["h"],
+        "xmb_cw": quake["cw"],
+        "xmb_ch": quake["ch"],
         "hist": hist,
         "ed_rows": ed_rows,
         "ed_cols": ed_cols,
@@ -227,7 +191,7 @@ def try_cascade(
         "zbuf_kb": zbuf // 1024,
         "gterm_kb": gterm // 1024,
         "editor_kb": editor // 1024,
-        "xmb_res_kb": xmb_res // 1024,
+        "xmb_res_kb": 0,
         "peak_kb": peak // 1024,
         "need_kb": need // 1024,
         "steady_kb": steady // 1024,
@@ -238,51 +202,43 @@ def try_cascade(
 
 
 def search() -> dict:
-    """Place an EEGS-sized XMB in a tab-strip cascade, then grow heap until it fits."""
+    """Place EEGS-sized Quake at 80% plus a terminal, then grow heap until it fits."""
     hists = (512, 256, 128)
     editors = ((200, 128), (120, 96), (80, 80))
-    # Heap steps: keep 5500 if it closes; else spend ELF headroom + editor BSS save.
-    heap_steps = (5500, 5800, 6100, 6400, 6500, 7000)
+    heap_steps = (6400, 6500, 7000)
 
     n = 0
     best_fail = None
-    for xmb_wh in XMB_BOOT:
-        for modest_wh in MODEST_BOOT:
-            for step in TAB_STEPS:
-                for heap_kb in heap_steps:
-                    for hist in hists:
-                        for ed_rows, ed_cols in editors:
-                            n += 1
-                            b = try_cascade(
-                                xmb_wh, modest_wh, step, hist, ed_rows, ed_cols, heap_kb
-                            )
-                            if not b:
-                                continue
-                            tag = "OK" if b["ok"] else "no"
-                            fps_each, _, comp_hz = fps_each_hz(SKIP_WAVE, PACE_US, GL_PER_PASS)
-                            print(
-                                f"[{n:03d} {tag}] cascade xmb={b['xmb_w']}x{b['xmb_h']}"
-                                f" client={b['xmb_cw']}x{b['xmb_ch']} "
-                                f"modest={b['cell_w']}x{b['cell_h']} step={b['tab_step']} "
-                                f"hist={hist} ed={ed_rows}x{ed_cols} "
-                                f"heap={heap_kb}k peak={b['peak_kb']}k need={b['need_kb']}k "
-                                f"gdev={b['gdevs_kb']}k zbuf={b['zbuf_kb']}k "
-                                f"paint={b['paint_us']}us "
-                                f"fps/win={fps_each:.1f} (N={N_GL}, close→{comp_hz:.0f})"
-                            )
-                            if b["ok"]:
-                                # Editor shrink is already in HEADROOM_NOW.
-                                bss_delta = (heap_kb - HEAP_BASE_KB) * 1024
-                                if bss_delta > HEADROOM_NOW - 65536:
-                                    print(
-                                        f"    skip: BSS delta {bss_delta} exceeds ELF headroom "
-                                        f"{HEADROOM_NOW}"
-                                    )
-                                    continue
-                                b["tries"] = n
-                                b["bss_delta"] = bss_delta
-                                return b
-                            best_fail = b
+    for heap_kb in heap_steps:
+        for hist in hists:
+            for ed_rows, ed_cols in editors:
+                n += 1
+                b = try_quake_term(hist, ed_rows, ed_cols, heap_kb)
+                if not b:
+                    continue
+                tag = "OK" if b["ok"] else "no"
+                fps_each, _, comp_hz = fps_each_hz(SKIP_WAVE, PACE_US, GL_PER_PASS)
+                print(
+                    f"[{n:03d} {tag}] quake={b['xmb_w']}x{b['xmb_h']}"
+                    f" client={b['xmb_cw']}x{b['xmb_ch']} "
+                    f"hist={hist} ed={ed_rows}x{ed_cols} "
+                    f"heap={heap_kb}k peak={b['peak_kb']}k need={b['need_kb']}k "
+                    f"gdev={b['gdevs_kb']}k zbuf={b['zbuf_kb']}k "
+                    f"paint={b['paint_us']}us "
+                    f"fps/win={fps_each:.1f} (N={N_GL}, close→{comp_hz:.0f})"
+                )
+                if b["ok"]:
+                    bss_delta = (heap_kb - HEAP_BASE_KB) * 1024
+                    if bss_delta > HEADROOM_NOW - 65536:
+                        print(
+                            f"    skip: BSS delta {bss_delta} exceeds ELF headroom "
+                            f"{HEADROOM_NOW}"
+                        )
+                        continue
+                    b["tries"] = n
+                    b["bss_delta"] = bss_delta
+                    return b
+                best_fail = b
     if best_fail:
         print("FAILED: no candidate closed the budget", file=sys.stderr)
         return best_fail
@@ -292,7 +248,11 @@ def search() -> dict:
 def write_header(path: str, b: dict) -> None:
     lines = [
         "/* Generated by tools/ps2_tile_budget.py — RAM working set for the",
-        " * eight-app PS2 desktop.  Game payloads (PAK, ROMs) stay on the disc.",
+        " * PS2 desktop.  Game payloads (PAK, ROMs) stay on the disc.",
+        " *",
+        " * Boot set is Quake at 80% of 800x600, centered, with a command-line",
+        " * terminal under it (slight margin).  Other apps open from the terminal",
+        " * or the global menu.",
         " */",
         "#ifndef BTRON_PS2_TILE_H",
         "#define BTRON_PS2_TILE_H",
@@ -351,10 +311,8 @@ def write_header(path: str, b: dict) -> None:
 
 
 def fps_pass_us(skip_wave: int, gl_per_pass: int) -> int:
-    xmb = XMB_FLAT_US if skip_wave else XMB_WAVE_US
-    paints = (xmb, GEARS_US, CU_US, QUAKE_US)
-    avg = sum(paints) / len(paints)
-    return int(avg * gl_per_pass + (N_GL - gl_per_pass) * BG_BLIT_US + 500)
+    paint = QUAKE_US if skip_wave else QUAKE_US
+    return int(paint * gl_per_pass + max(0, N_GL - gl_per_pass) * BG_BLIT_US + 500)
 
 
 def fps_each_hz(skip_wave: int, pace_us: int, gl_per_pass: int) -> tuple[float, int, float]:
@@ -442,8 +400,8 @@ def main() -> int:
     b["quake_alone_fps"] = f["quake_alone_fps"]
     write_header(args.o, b)
     print(
-        f"WROTE {args.o}: cascade xmb={b.get('xmb_w')}x{b.get('xmb_h')} "
-        f"modest={b['cell_w']}x{b['cell_h']} step={b.get('tab_step')} "
+        f"WROTE {args.o}: quake={b.get('xmb_w')}x{b.get('xmb_h')} "
+        f"client={b.get('xmb_cw')}x{b.get('xmb_ch')} "
         f"heap={b['heap_kb']} KiB peak={b['peak_kb']} KiB "
         f"tries={b['tries']} bss_delta={b['bss_delta']}"
     )

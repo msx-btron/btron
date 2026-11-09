@@ -609,7 +609,9 @@ static void ps2_comp_render(void *x, int full)
         /* Freeze an unfocused layer so present replays the last stream.
          * wnd.c still paints an unrecorded layer once: XMB is the first
          * GL tile, and freeze-before-record left a hole. */
-        if (lay && lay == top && lay->visible && !lay->img_valid)
+        if (!lay)
+            wnd_gl_freeze(0);
+        else if (lay == top && lay->visible && !lay->img_valid)
             wnd_gl_freeze(0);
         else
             wnd_gl_freeze(1);
@@ -1022,9 +1024,8 @@ void launch_ps2_desktop_session(void)
     ps2_spawn_planes();
     btron_desktop_note_size(PS2_SCREEN_WIDTH, PS2_SCREEN_HEIGHT);
     workbench_init(PS2_SCREEN_WIDTH);
-    /* Eight-app tab-strip cascade.  Surfaces are the RAM working set;
-     * PAK/ROMs stay on the ISO the way a retail PS2 title keeps levels
-     * on disc.  XMB is EEGS-sized; the other tabs peek from the left. */
+    /* Quake 80% of the screen plus a command-line terminal under it.
+     * Surfaces are the RAM working set; PAK/ROMs stay on the ISO. */
     {
         int n = ps2_tile_open_standard();
         ps2_kprintf("[PS2] tile desktop %d/%d\n", n, PS2_TILE_N);
