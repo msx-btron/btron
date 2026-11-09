@@ -123,6 +123,10 @@ ER wnd_set_title(WND *wnd, const char *title)
 static WndGLBind g_gl_bind;
 void wnd_set_gl_bind(WndGLBind bind) { g_gl_bind = bind; }
 
+/* Focus + GS-layer stubs must sit above opn_wnd: setup assigns them. */
+static WND *s_focus_wnd;
+static WND *s_layer_wnd;
+
 WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr)
 {
     (void)x; (void)y; (void)attr;
@@ -140,24 +144,28 @@ WND* opn_wnd(const char *title, H x, H y, H w, H h, UW attr)
     g_wnd.client.bottom = (H)h;
     g_wnd.dev     = &g_dev;
     g_wnd.visible = TRUE;
+    s_focus_wnd = &g_wnd;
+    s_layer_wnd = NULL;
     return &g_wnd;
 }
 
 ER cls_wnd(WND *wnd) { (void)wnd; return 0; }
-ER top_wnd(WND *wnd) { (void)wnd; return 0; }
+ER top_wnd(WND *wnd) { s_focus_wnd = wnd; return 0; }
 ER inval_wnd(WND *wnd) { (void)wnd; return 0; }
-WND *get_top_wnd(void) { return &g_wnd; }
-WND *wnd_gl_layer(void) { return g_wnd.gl_layer ? &g_wnd : NULL; }
+WND *get_top_wnd(void) { return s_focus_wnd ? s_focus_wnd : &g_wnd; }
+WND *wnd_gl_layer(void) { return s_layer_wnd; }
 int wnd_gl_layer_claim(WND *wnd)
 {
     if (!wnd) return 0;
-    if (g_wnd.gl_layer && wnd != &g_wnd) return 0;
+    if (s_layer_wnd && s_layer_wnd != wnd) return 0;
     wnd->gl_layer = TRUE;
+    s_layer_wnd = wnd;
     return 1;
 }
 void wnd_gl_layer_release(WND *wnd)
 {
     if (wnd) wnd->gl_layer = FALSE;
+    if (s_layer_wnd == wnd) s_layer_wnd = NULL;
 }
 WND *wnd_gl_scope_owner(void) { return NULL; }
 
@@ -2014,7 +2022,7 @@ static void test_live_backend_switch(void)
         return;
     }
 #if defined(BTRON_GL_BACKEND_TINYGL)
-    CHECK(surf->layer_home == 1, "first EEGS window is the layer candidate");
+    CHECK(surf->layer_home == 1, "focused EEGS window is the GS layer");
     CHECK(surf->backend == GL_BACKEND_EEGS, "960x600 client stays EEGS");
     CHECK(g_wnd.gl_layer == TRUE, "GS layer claimed at create");
 
@@ -2040,6 +2048,46 @@ static void test_live_backend_switch(void)
 
     g_dev.width = ow;
     g_dev.height = oh;
+
+    /* SPEC: focused GL of EEGS size steals the layer; the previous
+     * holder is demoted to TinyGL (expected framedrop). */
+    {
+        static WND  w2;
+        static GDEV d2;
+        static COLOR fb2[400 * 300];
+        EGL_SURFACE *s2;
+
+        memset(&w2, 0, sizeof w2);
+        memset(&d2, 0, sizeof d2);
+        d2.width = 400;
+        d2.height = 300;
+        d2.pixels = fb2;
+        w2.dev = &d2;
+        w2.visible = TRUE;
+        strncpy(w2.title, "live-cu", sizeof w2.title - 1);
+        s_focus_wnd = &w2;
+        s2 = egl_create_window_surface(&w2);
+        CHECK(s2 != NULL, "second focused GL surface opens");
+        if (s2) {
+            CHECK(s2->layer_home == 1, "focused second window steals the GS layer");
+            CHECK(s2->backend == GL_BACKEND_EEGS, "focused second window is EEGS");
+            CHECK(w2.gl_layer == TRUE, "second window holds gl_layer");
+            CHECK(surf->backend == GL_BACKEND_TINYGL,
+                  "previous layer holder is demoted to TinyGL");
+            CHECK(surf->layer_home == 0, "demoted surface is not layer_home");
+            CHECK(g_wnd.gl_layer == FALSE, "first window released the layer");
+            s_focus_wnd = &g_wnd;
+            egl_surface_apply_live_backend(surf);
+            CHECK(surf->backend == GL_BACKEND_EEGS,
+                  "refocused first window takes EEGS back");
+            CHECK(s2->backend == GL_BACKEND_TINYGL,
+                  "unfocused second window is TinyGL");
+            egl_destroy_surface(s2);
+            w2.gl_surf = NULL;
+            w2.gl_layer = FALSE;
+        }
+        s_focus_wnd = &g_wnd;
+    }
 #else
     CHECK(surf->layer_home == 0, "an image with no TinyGL pipeline is not a GS layer");
     (void)ow; (void)oh;
@@ -2047,6 +2095,7 @@ static void test_live_backend_switch(void)
     egl_destroy_surface(surf);
     g_wnd.gl_surf = NULL;
     g_wnd.gl_layer = FALSE;
+    s_layer_wnd = NULL;
     gl_backend_select(prev);
 }
 

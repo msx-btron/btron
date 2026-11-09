@@ -291,7 +291,7 @@ BOOL clu_launch_app(const char *verb, ShellOutputFn out, void *ud)
         }
         WND *w = a->open();
         if (w) out("  Window opened on the Workbench desktop", COLOR_GREEN, ud);
-        else   out("  Failed to open window surface", COLOR_RED, ud);
+        else   out("  Failed to open window surface (heap, or startx first)", COLOR_RED, ud);
         return TRUE;
     }
     return FALSE;

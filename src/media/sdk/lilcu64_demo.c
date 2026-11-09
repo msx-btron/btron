@@ -1789,7 +1789,11 @@ WND* open_lilcu64_demo_window_rect(int x, int y, int w, int h) {
     }
 
     if (w <= 0 || h <= 0) {
+#if defined(BTRON_PS2_TARGET)
+        x = 80; y = 40; w = 400; h = 300;
+#else
         x = 180; y = 40; w = 720; h = 540;
+#endif
     }
 
     s_demo_wnd = opn_wnd("Lil Cu 64",

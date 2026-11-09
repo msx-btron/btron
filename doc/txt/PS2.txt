@@ -892,8 +892,21 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   ZB_clear is one packed fill (64-bit stores on EE); EEGS skips
   the software color and depth fills; PS2 builds drop stipple,
   magenta skip, OpenMP tex copy, and the init compat test.
-  Quake is the first GL window and the EEGS layer at boot; an
-  unrecorded layer still paints once while frozen, then freeze
+  SPEC.  One EEGS GS layer at a time.  The focused (active, top)
+  OpenGL window that meets EEGS size water (client at/above
+  320x220, TinyGL below 280x180, hysteresis in the band) owns
+  that layer.  Opening or focusing another GL window of EEGS
+  size steals the layer: the previous holder is demoted to
+  TinyGL immediately (its EGL_SURFACE.backend is TinyGL before
+  the new window records, so it cannot write the new GS page).
+  Unfocused TinyGL framedrop is expected (REST_MS, quota 1
+  TinyGL raster per composite).  Closing the layer window
+  leaves the layer vacant; the remaining focused GL window
+  takes it on its next paint.  Size hysteresis numbers are
+  unchanged; live resize TinyGL↔EEGS on one window is still
+  the next debug.
+  Quake is the boot GL window and the EEGS layer while focused;
+  an unrecorded layer still paints once while frozen, then freeze
   replays the last stream only while that window is still the
   layer.  Closing it clears the plated hole.  Unfocused XMB
   skips the 32x32 ribbon (PS2_TILE_SKIP_WAVE).
@@ -907,11 +920,20 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   FS_DropBSP() so the heap BSP returns to the pool.
   Live TinyGL↔EEGS switching on resize (client below 280x180 is
   TinyGL, at/above 320x220 is EEGS) is in the surface but is the
-  next debug; boot size already enables EEGS.  Gears and Cu stay
-  TinyGL immediate-mode on EEGS.  Quake on EEGS submits through
-  VU0 `ps2_vu0_transform_batch` and `eegs_triangle` (world fans,
-  HUD fills, glyph spans); TinyGL is load-time texture upload
-  only (`glTexImage2D` → `gs_tex_register`).  Alias models and
+  next debug; boot size already enables EEGS.  Shared native geom lives in `src/desktop/graphics/eegs/eegs_geom.c`
+  (clip, viewport, VU0/scalar MVP, 2D fill/quad/line, pixel-space
+  ribbon and textured quads).  Quake `r_eegs.c` is the camera and
+  texture adapter.  XMB on EEGS submits ribbon, icons, type,
+  particles, gradient and message box through that geom and does
+  not walk TinyGL immediate mode.  Gears and Cu stay TinyGL
+  immediate-mode on EEGS (clip.c → eegs_triangle); Cu may later
+  call `eegs_geom_world_tris` for the Hopf field.  Quake on EEGS
+  submits through VU0 `ps2_vu0_transform_batch` and `eegs_triangle`
+  (world fans, HUD fills, glyph spans); TinyGL is load-time
+  texture upload only (`glTexImage2D` → `gs_tex_register`).  gterm
+  verbs `xmb`, `cu`, `lilcu`, `lilcu64` are linked in the PS2
+  core (`clu_launch_app`); focusing them takes the EEGS layer
+  from Quake.  Alias models and
   particles are skipped on that path for the 30-FPS slice.
   World fans are clipped in homogeneous clip space against the
   six frustum planes before the w-divide (Sutherland-Hodgman);

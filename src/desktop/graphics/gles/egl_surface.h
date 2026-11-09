@@ -19,12 +19,11 @@ typedef struct {
     int     height;
     COLOR  *pixels;
     void   *gl_ctx;
-    /* The name this surface draws under.  Create still binds the first EEGS
-     * window as the GS layer and every later GL window as TinyGL beside it.
-     * A layer_home surface may then switch TinyGL↔EEGS live on resize
-     * (small client → TinyGL pixmap, normal client → GS stream) without
-     * gl_init: both names share the TinyGL pipeline.  Gears/Cu/Quake keep
-     * TinyGL; they are not layer_home and never steal the layer. */
+    /* The name this surface draws under.  SPEC (doc/txt/PS2.txt §19.2):
+     * one GS layer at a time, owned by the focused GL window that meets
+     * EEGS size water.  layer_home is 1 while this surface holds that
+     * layer.  An unfocused GL window is TinyGL (expected framedrop).
+     * Size hysteresis (EGL_LIVE_*) still applies to the focused window. */
     GL_BACKEND backend;
     unsigned char layer_home;
 
@@ -70,8 +69,9 @@ void         egl_make_current(EGL_SURFACE *surf);
 void         egl_surface_resize(EGL_SURFACE *surf, int width, int height);
 void         egl_swap_buffers(EGL_SURFACE *surf);
 void         egl_destroy_surface(EGL_SURFACE *surf);
-/* Apply size-hysteresis TinyGL↔EEGS on a layer_home surface.  Cheap if
- * the backend is already the one the client size wants. */
+/* Apply focus+size TinyGL↔EEGS.  The focused GL window of EEGS size
+ * takes the GS layer; the previous holder is demoted to TinyGL.
+ * Cheap if the backend is already the one focus and client size want. */
 void         egl_surface_apply_live_backend(EGL_SURFACE *surf);
 
 #endif /* BTRON_EGL_SURFACE_H */

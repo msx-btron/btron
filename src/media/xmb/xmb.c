@@ -1324,47 +1324,36 @@ uint32_t xb_cosf_far_u32(uint32_t x_bits)
 }
 
 #if defined(BTRON_PS2_TARGET)
-/* Retained Ribbon Strip Batching:
- * The background ribbon geometry is precomputed each frame into floating-point arrays:
- * `xb_rib_px`, `xb_rib_py`, and `xb_rib_bri` (32x32 floats, updated by `xmb_wave.c`).
- *
- * Fast-path optimization:
- * Rather than walking 1,984 vertices through immediate-mode `glVertex2f` calls, lifts the
- * viewport transformation matrix once via `tgl_grid_map()`, transforms points via
- * `tgl_grid_map_points()`, and submits the strip directly to the GS hardware via `eegs_grid_strip()`.
- *
- * Falls back transparently to immediate-mode rendering if coordinates exceed hardware limits
- * or if the transformation matrix cannot be mapped.
- */
+/* EEGS native 2D: pixel-space ribbon, icons and type.  TinyGL IM is the
+ * fallback when this window is not the GS layer. */
 #include "../../desktop/graphics/gles/grid_map.h"
 #include "../../desktop/graphics/eegs/backend_eegs.h"
+#include "../../desktop/graphics/eegs/eegs_geom.h"
+#include "../../drivers/playstation2/ps2_gs_tex.h"
 
-static tgl_grid_pt_t s_rib_pts[XB_RIBBON_ROWS * XB_RIBBON_COLS];
+static int xb_eegs_live(void)
+{
+    return gl_active_backend() == GL_BACKEND_EEGS;
+}
+
+static const gs_tex_t *xb_gs_tex(GLuint name)
+{
+    const void *plane = tinygl_texture_pixmap(name);
+    if (!plane) return NULL;
+    return gs_tex_find(plane);
+}
 
 static int xb_ribbon_batched(void)
 {
-    tgl_grid_map_t gm;
-
-    if (gl_active_backend() != GL_BACKEND_EEGS) return 0;
-
-    memset(&gm, 0, sizeof gm);
-    (void)tgl_grid_map(&gm);
-    tgl_grid_map_points(&gm, &xb_rib_px[0][0], &xb_rib_py[0][0], &xb_rib_bri[0][0],
-                        XB_RIBBON_ROWS * XB_RIBBON_COLS, s_rib_pts);
-    return eegs_grid_strip(&gm, s_rib_pts, XB_RIBBON_ROWS, XB_RIBBON_COLS) >= 0;
+    if (!xb_eegs_live()) return 0;
+    return eegs_geom_grid_px(&xb_rib_px[0][0], &xb_rib_py[0][0], &xb_rib_bri[0][0],
+                             XB_RIBBON_ROWS, XB_RIBBON_COLS, s_w, s_h, 1) >= 0;
 }
 
-/* Retained Textured Quad Batching (Icons and Typography):
- * Batches textured UI quads into a single submission, avoiding per-quad immediate-mode overhead.
- *
- * Uses `tgl_grid_map_tex()` to map screen-space coordinates and texture coordinates (ST)
- * directly into GS integer rasterizer structures, submitting via `eegs_tex_quads()`.
- */
 #define XB_TEX_QUAD_CAP 64           /* Maximum quads per batch (64 glyphs or icons) */
 static float s_tex_xs[XB_TEX_QUAD_CAP * 4], s_tex_ys[XB_TEX_QUAD_CAP * 4];
 static float s_tex_us[XB_TEX_QUAD_CAP * 4], s_tex_vs[XB_TEX_QUAD_CAP * 4];
 static float s_tex_cols[XB_TEX_QUAD_CAP * 16];
-static tgl_tex_pt_t s_tex_pts[XB_TEX_QUAD_CAP * 4];
 
 /* Packs one quad's four vertices in GL_QUADS order: (x0,y0), (x1,y0), (x1,y1), (x0,y1) */
 static void xb_tex_fill_quad(int base, float x0, float y0, float x1, float y1,
@@ -1389,18 +1378,12 @@ static void xb_tex_fill_quad(int base, float x0, float y0, float x1, float y1,
     s_tex_cols[base * 4 + 14] = b;  s_tex_cols[base * 4 + 15] = a;
 }
 
-/* Query textured batch submission: called inside active `glBegin` */
-static int xb_tex_ask(int nquads)
+static int xb_tex_ask(int nquads, GLuint name)
 {
-    tgl_tex_map_t tm;
-
-    if (gl_active_backend() != GL_BACKEND_EEGS) return 0;
-
-    memset(&tm, 0, sizeof tm);
-    (void)tgl_grid_map_tex(&tm);
-    tgl_grid_map_tex_points(&tm, s_tex_xs, s_tex_ys, s_tex_us, s_tex_vs, s_tex_cols,
-                            nquads * 4, s_tex_pts);
-    return eegs_tex_quads(&tm, s_tex_pts, nquads) >= 0;
+    if (!xb_eegs_live()) return 0;
+    return eegs_geom_tex_quads_px(xb_gs_tex(name),
+                                  s_tex_xs, s_tex_ys, s_tex_us, s_tex_vs,
+                                  s_tex_cols, nquads, s_w, s_h, 1, 0) >= 0;
 }
 #endif /* BTRON_PS2_TARGET */
 
@@ -1417,19 +1400,13 @@ static void xb_draw_ribbon(float alpha)
 
     glBlendFunc(GL_DST_COLOR, GL_ONE);
     glDisable(GL_TEXTURE_2D);
-    glBegin(GL_TRIANGLE_STRIP);
 #if defined(BTRON_PS2_TARGET)
-    /* Matrix Refresh Timing:
-     * Queried inside `glBegin` because TinyGL recomputes the concatenated modelview-projection
-     * matrix stack at `glBegin`. If fast-path batching succeeds, ends the primitive and returns.
-     */
-    glColor4f(0.5f, 0.5f, 0.5f, 1.0f);   /* the alpha the map lifts; every vertex of the mesh's is 1 */
     if (xb_ribbon_batched()) {
-        glEnd();
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         return;
     }
 #endif
+    glBegin(GL_TRIANGLE_STRIP);
     float last_b = -1.0f;
     for (r = 0; r < XB_RIBBON_ROWS - 1; r++) {
         for (c = 0; c < XB_RIBBON_COLS; c++) {
@@ -1532,6 +1509,35 @@ static void xb_particles_draw(float alpha)
      * source keeps the soft edge the baked alpha carries. */
     glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
+#if defined(BTRON_PS2_TARGET)
+    if (xb_eegs_live()) {
+        int nq = 0;
+        for (i = 0; i < XB_PARTICLES; i++) {
+            xb_particle_t *p = &s_parts[i];
+            float a, s;
+            if (p->ttl <= 0.0f) continue;
+            a = alpha * (p->ttl / p->life);
+            a = a * a;
+            if (a < 0.01f) continue;
+            s = p->size * (0.6f + 0.4f * (p->ttl / p->life));
+            if (nq >= XB_TEX_QUAD_CAP) break;
+            xb_tex_fill_quad(nq * 4, p->x - s, p->y - s, p->x + s, p->y + s,
+                             u0, v0, u1, v1,
+                             0.55f * s_brightness, 0.72f * s_brightness,
+                             1.00f * s_brightness, a);
+            nq++;
+        }
+        if (nq > 0)
+            (void)eegs_geom_tex_quads_px(xb_gs_tex(s_tex_icons),
+                                         s_tex_xs, s_tex_ys, s_tex_us, s_tex_vs,
+                                         s_tex_cols, nq, s_w, s_h, 1, 0);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDisable(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        return;
+    }
+#endif
+
     glBegin(GL_QUADS);
     for (i = 0; i < XB_PARTICLES; i++) {
         xb_particle_t *p = &s_parts[i];
@@ -1593,7 +1599,7 @@ static void xb_draw_icon(int cell, float cx, float cy, float size,
                          cx + w + s_shadow_offset, cy + h + s_shadow_offset,
                          u0, v0, u1, v1,
                          0.0f, 0.0f, 0.0f, alpha * XB_SHADOW_ALPHA * 0.75f);
-        if (!xb_tex_ask(1))
+        if (!xb_tex_ask(1, s_tex_icons))
 #endif
         {
             glTexCoord2f(u0, v0); glVertex2f(cx - w + s_shadow_offset, cy - h + s_shadow_offset);
@@ -1609,7 +1615,7 @@ static void xb_draw_icon(int cell, float cx, float cy, float size,
 #if defined(BTRON_PS2_TARGET)
     xb_tex_fill_quad(0, cx - w, cy - h, cx + w, cy + h,
                      u0, v0, u1, v1, br, br, br, alpha);
-    if (!xb_tex_ask(1))
+    if (!xb_tex_ask(1, s_tex_icons))
 #endif
     {
         glTexCoord2f(u0, v0); glVertex2f(cx - w, cy - h);
@@ -1675,7 +1681,7 @@ static void xb_draw_text_run(const char *str, float x, float y, float h,
                                  u0, v0, u1, v1, r, g, b, a);
                 gx += step;
             }
-            if (xb_tex_ask(n)) {
+            if (xb_tex_ask(n, s_tex_font)) {
                 glEnd();
                 return;
             }
@@ -1794,6 +1800,33 @@ static void xb_draw_bg(float alpha)
      * needs the blend back. */
     glDisable(GL_BLEND);
 
+#if defined(BTRON_PS2_TARGET)
+    if (xb_eegs_live()) {
+        eegs_vertex_t v[4];
+        eegs_tri_state_t st;
+        int k;
+        memset(&st, 0, sizeof st);
+        st.smooth = 1u;
+        eegs_texture(NULL);
+        for (k = 0; k < 4; k++) {
+            v[k].z = 0u;
+            v[k].s = 0.0f;
+            v[k].t = 0.0f;
+        }
+        v[0].x_px = 0;    v[0].y_px = 0;
+        v[1].x_px = s_w;  v[1].y_px = 0;
+        v[2].x_px = s_w;  v[2].y_px = s_h;
+        v[3].x_px = 0;    v[3].y_px = s_h;
+        v[0].rgba = eegs_geom_rgba(g[2][0] * a, g[2][1] * a, g[2][2] * a, 1.0f);
+        v[1].rgba = eegs_geom_rgba(g[3][0] * a, g[3][1] * a, g[3][2] * a, 1.0f);
+        v[2].rgba = eegs_geom_rgba(g[1][0] * a, g[1][1] * a, g[1][2] * a, 1.0f);
+        v[3].rgba = eegs_geom_rgba(g[0][0] * a, g[0][1] * a, g[0][2] * a, 1.0f);
+        eegs_geom_fill_quad(v, st);
+        glEnable(GL_BLEND);
+        return;
+    }
+#endif
+
     glBegin(GL_QUADS);
     glColor4f(g[2][0] * a, g[2][1] * a, g[2][2] * a, 1.0f); glVertex2f(0.0f, 0.0f);
     glColor4f(g[3][0] * a, g[3][1] * a, g[3][2] * a, 1.0f); glVertex2f((float)s_w, 0.0f);
@@ -1870,19 +1903,44 @@ static void xb_draw_message(void)
     a  = s_msg_alpha * s_alpha;
 
     glDisable(GL_TEXTURE_2D);
-    glColor4f(0.0f, 0.0f, 0.0f, 0.82f * a);
-    glBegin(GL_QUADS);
-    glVertex2f(x, y); glVertex2f(x + w, y); glVertex2f(x + w, y + h);
-    glVertex2f(x, y + h);
-    glEnd();
+#if defined(BTRON_PS2_TARGET)
+    if (xb_eegs_live()) {
+        eegs_vertex_t lv[4];
+        eegs_tri_state_t st;
+        int k;
+        memset(&st, 0, sizeof st);
+        st.blended = 1u;
+        eegs_texture(NULL);
+        eegs_geom_fill_rect((int)x, (int)y, (int)w, (int)h,
+                            eegs_geom_rgba(0.0f, 0.0f, 0.0f, 0.82f * a));
+        for (k = 0; k < 4; k++) {
+            lv[k].z = 0u;
+            lv[k].s = 0.0f;
+            lv[k].t = 0.0f;
+            lv[k].rgba = eegs_geom_rgba(0.35f, 0.55f, 0.85f, 0.55f * a);
+        }
+        lv[0].x_px = (int)(x + 1.0f);     lv[0].y_px = (int)(y + 1.0f);
+        lv[1].x_px = (int)(x + w - 1.0f); lv[1].y_px = (int)(y + 1.0f);
+        lv[2].x_px = (int)(x + w - 1.0f); lv[2].y_px = (int)(y + h - 1.0f);
+        lv[3].x_px = (int)(x + 1.0f);     lv[3].y_px = (int)(y + h - 1.0f);
+        eegs_geom_line_loop(lv, 4, st);
+    } else
+#endif
+    {
+        glColor4f(0.0f, 0.0f, 0.0f, 0.82f * a);
+        glBegin(GL_QUADS);
+        glVertex2f(x, y); glVertex2f(x + w, y); glVertex2f(x + w, y + h);
+        glVertex2f(x, y + h);
+        glEnd();
 
-    glColor4f(0.35f, 0.55f, 0.85f, 0.55f * a);
-    glBegin(GL_LINE_LOOP);
-    glVertex2f(x + 1.0f, y + 1.0f);
-    glVertex2f(x + w - 1.0f, y + 1.0f);
-    glVertex2f(x + w - 1.0f, y + h - 1.0f);
-    glVertex2f(x + 1.0f, y + h - 1.0f);
-    glEnd();
+        glColor4f(0.35f, 0.55f, 0.85f, 0.55f * a);
+        glBegin(GL_LINE_LOOP);
+        glVertex2f(x + 1.0f, y + 1.0f);
+        glVertex2f(x + w - 1.0f, y + 1.0f);
+        glVertex2f(x + w - 1.0f, y + h - 1.0f);
+        glVertex2f(x + 1.0f, y + h - 1.0f);
+        glEnd();
+    }
 
     for (i = 0; i < s_msg_lines; i++)
         xb_draw_text(s_msg[i], x + s_dialog_margin,

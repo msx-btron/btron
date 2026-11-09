@@ -194,20 +194,11 @@ EGL_SURFACE* egl_create_window_surface(WND *wnd) {
 #endif
         virgl_backend_make_current(surf->width, surf->height, surf->pixels);
     gl_init(want, surf->width, surf->height, surf->pixels);
-    /* Bind the backend to THIS surface at create.  The first EEGS window is the GS
-     * layer (layer_home); every later GL window is TinyGL beside it and never
-     * steals the layer.  make_current() may then switch a layer_home surface
-     * TinyGL↔EEGS from client size, without gl_init. */
+    /* Bind the backend to THIS surface at create.  SPEC: the focused GL
+     * window of EEGS size takes the GS layer; an unfocused window is
+     * TinyGL.  make_current() applies that (and may demote the previous
+     * layer holder) without gl_init. */
     surf->backend = gl_active_backend();
-    if (surf->backend == GL_BACKEND_EEGS) {
-        if (wnd_gl_layer_claim(wnd)) {
-            surf->layer_home = 1;
-        } else {
-            wnd->gl_layer = FALSE;
-            surf->backend = GL_BACKEND_TINYGL;
-            surf->layer_home = 0;
-        }
-    }
 
     /* And make THIS surface current before handing it back, because EGL's own contract is that
      * no GL command is legal until a surface is current, and the apps honour it by uploading
@@ -219,32 +210,57 @@ EGL_SURFACE* egl_create_window_surface(WND *wnd) {
      * each glyph comes out a solid rectangle.  On the TinyGL/GS path there is one context and
      * this is the resize the compositor was about to do anyway. */
     egl_make_current(surf);
-#if defined(BTRON_PS2_TARGET)
-    /* apply_live logs only on a switch.  Boot size that already matches
-     * still needs a line so EEGS-at-open is visible on UART. */
-    if (surf->layer_home) {
-        uart_puts_raw("[GL] live ");
-        uart_puts_raw(gl_backend_name(surf->backend));
-        uart_puts_raw("\n");
-    }
-#endif
     return surf;
 }
 
+/* SPEC: one EEGS GS layer, owned by the focused GL window.  Unfocused
+ * GL is TinyGL (framedrop is the unfocused REST_MS / quota law).  Size
+ * hysteresis on the focused window is unchanged (280×180 / 320×220). */
 static GL_BACKEND egl_live_want(const EGL_SURFACE *surf, int w, int h)
 {
     GL_BACKEND cur = surf->backend;
-    if (!surf->layer_home) return cur;
+#if !defined(BTRON_GL_BACKEND_TINYGL)
+    (void)w; (void)h;
+    return cur;
+#else
+    if (gl_backend_selected() != GL_BACKEND_EEGS)
+        return GL_BACKEND_TINYGL;
+    if (!wnd_is_focused(surf->wnd))
+        return GL_BACKEND_TINYGL;
     if (w < EGL_LIVE_TINYGL_W || h < EGL_LIVE_TINYGL_H)
         return GL_BACKEND_TINYGL;
-    if (w >= EGL_LIVE_EEGS_W && h >= EGL_LIVE_EEGS_H) {
-#if defined(BTRON_GL_BACKEND_TINYGL)
+    if (w >= EGL_LIVE_EEGS_W && h >= EGL_LIVE_EEGS_H)
         return GL_BACKEND_EEGS;
-#else
-        return cur;
-#endif
-    }
     return cur;
+#endif
+}
+
+static void egl_live_log(GL_BACKEND b)
+{
+#if defined(BTRON_PS2_TARGET)
+    uart_puts_raw("[GL] live ");
+    uart_puts_raw(gl_backend_name(b));
+    uart_puts_raw("\n");
+#else
+    (void)b;
+#endif
+}
+
+/* Demote the current GS-layer surface so a focused window can claim it.
+ * Updates the previous holder's EGL_SURFACE immediately: leaving it at
+ * EEGS would record into the new window's GS page. */
+static void egl_yield_other_layer(WND *keep)
+{
+    WND *cur = wnd_gl_layer();
+    EGL_SURFACE *held;
+    if (!cur || cur == keep) return;
+    held = (EGL_SURFACE *)cur->gl_surf;
+    wnd_gl_layer_release(cur);
+    if (held && held->backend == GL_BACKEND_EEGS) {
+        held->backend = GL_BACKEND_TINYGL;
+        held->layer_home = 0;
+        egl_live_log(GL_BACKEND_TINYGL);
+    }
 }
 
 void egl_surface_apply_live_backend(EGL_SURFACE *surf)
@@ -257,20 +273,27 @@ void egl_surface_apply_live_backend(EGL_SURFACE *surf)
     surf->width  = wnd->dev->width;
     surf->height = wnd->dev->height;
     want = egl_live_want(surf, surf->width, surf->height);
-    if (want == surf->backend) return;
+    if (want == GL_BACKEND_EEGS && want == surf->backend && surf->layer_home)
+        return;
+    if (want == surf->backend && want != GL_BACKEND_EEGS)
+        return;
     if (want == GL_BACKEND_EEGS) {
-        if (!wnd_gl_layer_claim(wnd)) return;
+        egl_yield_other_layer(wnd);
+        if (!wnd_gl_layer_claim(wnd)) {
+            surf->backend = GL_BACKEND_TINYGL;
+            surf->layer_home = 0;
+            gl_set_active_backend(surf->backend);
+            return;
+        }
         surf->backend = GL_BACKEND_EEGS;
+        surf->layer_home = 1;
     } else {
         wnd_gl_layer_release(wnd);
         surf->backend = GL_BACKEND_TINYGL;
+        surf->layer_home = 0;
     }
     gl_set_active_backend(surf->backend);
-#if defined(BTRON_PS2_TARGET)
-    uart_puts_raw("[GL] live ");
-    uart_puts_raw(gl_backend_name(surf->backend));
-    uart_puts_raw("\n");
-#endif
+    egl_live_log(surf->backend);
 }
 
 void egl_make_current(EGL_SURFACE *surf) {
@@ -338,7 +361,7 @@ void egl_destroy_surface(EGL_SURFACE *surf) {
     /* Detach before freeing: the compositor reads wnd->gl_surf on every paint pass, and a
      * window that outlives its surface must look like a software window, not like a GL
      * window holding a freed context. */
-    if (surf->layer_home && surf->wnd)
+    if (surf->wnd && surf->wnd->gl_layer)
         wnd_gl_layer_release(surf->wnd);
     if (surf->wnd && surf->wnd->gl_surf == surf) surf->wnd->gl_surf = NULL;
 #if defined(BTRON_GL_BACKEND_TINYGL)

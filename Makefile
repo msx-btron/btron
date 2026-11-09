@@ -51,7 +51,7 @@ CXX ?= c++
 CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
 
 .PHONY: all posix qemu kernel tkernel sakamura foma uefi pc98 arm-elf arm64-elf m68k ps2 mips \
-        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 test-ps2-cdvd-loop \
+        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 test-ps2-cdvd-loop \
         test-xmb-render test-xmb-render-tgl test-gl-context test-async-input \
         html2tad book2tad tad_bin test test-kernel test-yoko test-yoko4 test-m68k test-mips test-ps2 test-foma test-foma-ui foma-screens \
         segui-screens tbios-tools tbios-roms test-tbios \
@@ -1358,6 +1358,7 @@ PS2_GL_SRCS    = src/desktop/graphics/gles/gl_dispatch.c     \
                  src/desktop/graphics/gles/backend_tinygl.c  \
                  src/desktop/graphics/virgl/backend_virgl.c   \
                  src/desktop/graphics/eegs/backend_eegs.c    \
+                 src/desktop/graphics/eegs/eegs_geom.c       \
                  src/desktop/graphics/eegs/eegs_present.c    \
                  src/desktop/graphics/eegs/gscube_nexus.c    \
                  src/drivers/playstation2/ps2_vu1_geom.c \
@@ -2018,6 +2019,22 @@ $(TEST_EEGSR_BIN): $(TEST_EEGSR_OBJS) src/desktop/graphics/eegs/backend_eegs.c s
                    verify/tests/gs_group_view.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_EEGSR_OBJS) -o $@ $(LDFLAGS)
+
+TEST_EEGSG_SRCS = verify/tests/test_eegs_geom.c src/desktop/graphics/eegs/eegs_geom.c \
+                  src/desktop/graphics/eegs/backend_eegs.c \
+                  src/drivers/playstation2/ps2_gs_rec.c src/drivers/playstation2/ps2_gs_pack.c
+TEST_EEGSG_OBJS = $(TEST_EEGSG_SRCS:.c=.test.o)
+TEST_EEGSG_BIN  = ./.build/test_eegs_geom
+
+test-eegs-geom: $(TEST_EEGSG_BIN)
+	@echo "=========================================================="
+	@echo " Running EEGS shared geom (clip, viewport, 2D submit)..."
+	@echo "=========================================================="
+	@./$(TEST_EEGSG_BIN)
+
+$(TEST_EEGSG_BIN): $(TEST_EEGSG_OBJS) src/desktop/graphics/eegs/eegs_geom.h src/desktop/graphics/eegs/backend_eegs.h
+	@mkdir -p ./.build
+	$(CC) $(TEST_EEGSG_OBJS) -o $@ $(LDFLAGS) -lm
 
 # LANE 12f gate (a): batch grid map projection bit-identical check vs TinyGL vertex walk.
 TEST_GRIDMAP_SRCS = verify/tests/test_grid_map.c src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/backend_tinygl.c \
@@ -3297,7 +3314,7 @@ test-tbios: $(TEST_TBIOS_DIFF_BIN) $(TEST_TBIOS_CORE_BIN) $(TEST_TBIOS_VIDEO_BIN
 	@./$(TEST_TBIOS_DISK_BIN)
 	@./$(TEST_BMSX_CFG_BIN)
 
-test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-ps2-cdvd-loop
+test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-ps2-cdvd-loop
 	@echo "=========================================================="
 	@echo " ALL B-SYSTEM TEST SUITES PASSED (100% SUCCESS)!"
 	@echo "=========================================================="

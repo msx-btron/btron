@@ -682,7 +682,7 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
         out_fn("  mars                - Launch MARS 1993 Voxel Landscape (NASA JPL C99)", COLOR_YELLOW, user_data);
         out_fn("  xmb                 - Launch 横断メディアメニュー (XMB)", COLOR_YELLOW, user_data);
         out_fn("  glgears, gears      - Launch GLGears 3D (OpenGL ES 1.1)", COLOR_YELLOW, user_data);
-        out_fn("  lilcu, lilcu64      - Launch Lil Cu 64 Demoscene (Hopf field)", COLOR_YELLOW, user_data);
+        out_fn("  cu, lilcu, lilcu64  - Launch Lil Cu 64 Demoscene (Hopf field)", COLOR_YELLOW, user_data);
         out_fn("  msx [rom]           - Launch B-MSX Cartridge Player", COLOR_YELLOW, user_data);
         out_fn("  edit, editor        - Launch Editor instance", COLOR_LTGRAY, user_data);
         out_fn("  tad, browser        - Launch TAD Browser instance", COLOR_LTGRAY, user_data);

@@ -5,7 +5,8 @@
  * Same rule as a retail PS2 game: the disc holds PAK/ROMs; RDRAM holds
  * the live working set.  Rects come from include/btron/ps2_tile.h.
  * Quake is the first GL window and is EEGS-sized (client 632x444), so
- * the GS layer is live from the first paint.
+ * the GS layer is live from the first paint while it stays focused.
+ * Focusing another EEGS-sized GL window (xmb, cu) steals the layer.
  */
 #include <stddef.h>
 #include <btron/ps2_tile.h>

@@ -163,6 +163,19 @@ static void test_gterm_app_execution(void)
     s_shell_buf[0] = '\0';
     BOOL p2_ok = clu_launch_app("bin/lilcu", shell_test_out, NULL);
     check("clu_launch_app('bin/lilcu') normalizes prefix and returns TRUE", p2_ok == TRUE);
+
+    /* 1.5: gterm verbs for xmb and cu (clu_launch_app table) */
+    s_shell_buf[0] = '\0';
+    BOOL xmb_ok = clu_launch_app("xmb", shell_test_out, NULL);
+    check("clu_launch_app('xmb') returns TRUE", xmb_ok == TRUE);
+    check("clu_launch_app('xmb') prints XMB title",
+          strstr(s_shell_buf, "Cross Media Bar") != NULL);
+
+    s_shell_buf[0] = '\0';
+    BOOL cu_ok = clu_launch_app("cu", shell_test_out, NULL);
+    check("clu_launch_app('cu') returns TRUE", cu_ok == TRUE);
+    check("clu_launch_app('cu') prints Lil Cu title",
+          strstr(s_shell_buf, "Lil Cu 64 Demoscene") != NULL);
 }
 
 /* ── Section 2: Layer 0/1 — EE Core Fixed-Function GL Routing ─────── */

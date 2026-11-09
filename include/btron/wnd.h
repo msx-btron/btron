@@ -54,14 +54,16 @@ typedef struct WND {
      * the paint callback and blit dev when this is TRUE; blitting an invalid
      * image stamps an empty client area over real pixels. */
     BOOL  img_valid;
-    /* TRUE when the Graphics Synthesizer owns this window's client area, set by
-     * egl_create_window_surface() on a build whose active backend is GL_BACKEND_EEGS.  A layer
-     * window is still painted -- that is where the GIF stream comes from -- but its client
-     * pixmap is never blitted into the canvas: the canvas holds what is *under* the layer, and
-     * the GS draws the layer into those same VRAM pixels after the upload.  Consequence: the
-     * layer exists only as long as its stream does, so any composite that touches it has to
-     * re-record it (see wnd_gl_layer_take()).  Appended after img_valid so every offset above
-     * it is unchanged. */
+    /* TRUE when the Graphics Synthesizer owns this window's client area.
+     * SPEC (doc/txt/PS2.txt §19.2): one GS layer, owned by the focused GL
+     * window of EEGS size.  egl_surface_apply_live_backend claims it (and
+     * demotes the previous holder to TinyGL).  A layer window is still painted
+     * -- that is where the GIF stream comes from -- but its client pixmap is
+     * never blitted into the canvas: the canvas holds what is *under* the layer,
+     * and the GS draws the layer into those same VRAM pixels after the upload.
+     * Consequence: the layer exists only as long as its stream does, so any
+     * composite that touches it has to re-record it (see wnd_gl_layer_take()).
+     * Appended after img_valid so every offset above it is unchanged. */
     BOOL  gl_layer;
     /* This window's own OpenGL surface, owned by src/gl/egl_surface.c: set by
      * egl_create_window_surface() and cleared by egl_destroy_surface().  It is a
@@ -159,9 +161,10 @@ typedef struct {
 WND* wnd_gl_layer(void);
 BOOL wnd_gl_layer_rect(RECT *client_out);
 BOOL wnd_gl_layer_take(RECT *client_out);
-/* Live TinyGL↔EEGS: demote clears the layer so the compositor blits the
- * pixmap again; claim succeeds only when the layer is vacant (or already
- * this window).  No gl_init — EEGS is a name on the shared TinyGL pipeline. */
+/* Live TinyGL↔EEGS: one GS layer, owned by the focused GL window.
+ * egl_surface_apply_live_backend yields the previous holder then claims.
+ * claim succeeds only when the layer is vacant (or already this window).
+ * No gl_init — EEGS is a name on the shared TinyGL pipeline. */
 int  wnd_gl_layer_claim(WND *wnd);
 void wnd_gl_layer_release(WND *wnd);
 
