@@ -120,8 +120,10 @@ int read_key() {
         } else if (c2 >= 'A' && c2 <= 'Z') { // ESC + Shift
             int c3 = getchar();
             if (c2 == 'E' && c3 == '\n') return KEY_ESC_SHIFT_ENTER; // ESC+Shift+Enter
-            if (c2 == '[') return KEY_ESC_SHIFT_LEFT_BRACKET; // ESC+Shift+[
-            if (c2 == ']') return KEY_ESC_SHIFT_RIGHT_BRACKET; // ESC+Shift+]
+        } else if (c2 == '{') {
+            return KEY_ESC_SHIFT_LEFT_BRACKET; // ESC+Shift+[
+        } else if (c2 == '}') {
+            return KEY_ESC_SHIFT_RIGHT_BRACKET; // ESC+Shift+]
         } else if (c2 == 27) {
             return KEY_ESC; // Esc
         } else {

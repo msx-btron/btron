@@ -2826,7 +2826,7 @@ static int DisassembleAdvancedSIMDModifiedImmediateInstr(struct instruction *i,
 
         unsigned tempimm = VFPExpandImm(imm8);
 
-        immf = *(float *)&tempimm;
+        memcpy(&immf, &tempimm, sizeof(immf));
 
         Rd_Rtbl = AD_RTBL_FP_V_128;
         Rd_sz = _128_BIT;
@@ -2906,7 +2906,9 @@ static int DisassembleAdvancedSIMDModifiedImmediateInstr(struct instruction *i,
     }
 
     if(instr_id == AD_INSTR_FMOV){
-        ADD_IMM_OPERAND(out, AD_IMM_FLOAT, *(unsigned *)&immf);
+        unsigned immf_u = 0;
+        memcpy(&immf_u, &immf, sizeof(immf_u));
+        ADD_IMM_OPERAND(out, AD_IMM_FLOAT, immf_u);
 
         {
             char fbuf[32];
@@ -4834,7 +4836,8 @@ static int DisassembleFloatingPointImmediateInstr(struct instruction *i,
 
     unsigned imm = VFPExpandImm(imm8);
 
-    float immf = *(float *)&imm;
+    float immf;
+    memcpy(&immf, &imm, sizeof(immf));
     ADD_IMM_OPERAND(out, AD_IMM_FLOAT, imm);
 
     {

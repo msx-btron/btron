@@ -352,7 +352,7 @@ static void be_draw(BeNativeContext *ctx)
         "F6 Edit/View", "F7 Find", "F8 Empty", "F9 Empty", "F10 Quit"
     };
     char line[BE_NATIVE_PATH_MAX];
-    int r, visible, per_line, start_col;
+    int r, visible, per_line, start_col = 18;
     int cursor_row, cursor_col;
     unsigned int i;
     const char *arch_name;

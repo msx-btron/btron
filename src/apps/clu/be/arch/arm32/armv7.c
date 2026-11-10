@@ -117,6 +117,8 @@ static const char *shift_type(int type)
 {
   static const char *shifts[] = { "lsl", "lsr", "asr", "ror" };
   assert(type >= 0 && type < (int)sizearray(shifts));
+  if (type < 0 || type >= (int)sizearray(shifts))
+    return "";
   return shifts[type];
 }
 
@@ -144,7 +146,7 @@ static void padinstr(char *text)
 static void add_condition(ARMSTATE *state, int cond)
 {
   assert(cond >= 0);
-  if (cond < (int)sizearray(conditions))
+  if (cond >= 0 && cond < (int)sizearray(conditions))
     strcat(state->text, conditions[cond]);
 }
 
@@ -388,7 +390,8 @@ static bool thumb_immop(ARMSTATE *state, uint32_t instr)
   static const char *mnemonics[] = { "mov", "cmp", "add", "sub" };
   unsigned opc = FIELD(instr, 11, 2);
   assert(opc < sizearray(mnemonics));
-  strcpy(state->text, mnemonics[opc]);
+  if (opc < sizearray(mnemonics))
+    strcpy(state->text, mnemonics[opc]);
   if (opc != 1)
     add_it_cond(state, 1);
   padinstr(state->text);
@@ -408,7 +411,8 @@ static bool thumb_regop(ARMSTATE *state, uint32_t instr)
   };
   unsigned opc = FIELD(instr, 6, 4);
   assert(opc < sizearray(mnemonics));
-  strcpy(state->text, mnemonics[opc]);
+  if (opc < sizearray(mnemonics))
+    strcpy(state->text, mnemonics[opc]);
   add_it_cond(state, (opc != 8 && opc != 10 && opc != 11));
   padinstr(state->text);
   sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
@@ -487,7 +491,8 @@ static bool thumb_loadstor_reg(ARMSTATE *state, uint32_t instr)
   };
   unsigned opc = FIELD(instr, 9, 3);
   assert(opc < sizearray(mnemonics));
-  strcpy(state->text, mnemonics[opc]);
+  if (opc < sizearray(mnemonics))
+    strcpy(state->text, mnemonics[opc]);
   add_it_cond(state, 0);
   padinstr(state->text);
   sprintf(tail(state->text), "%s, [%s, %s]", register_name(FIELD(instr, 0, 3)),
@@ -590,7 +595,8 @@ static bool thumb_sign_ext(ARMSTATE *state, uint32_t instr)
   static const char *mnemonics[] = { "sxth", "sxtb", "uxth", "uxtb" };
   unsigned opc = FIELD(instr, 6, 2);
   assert(opc < sizearray(mnemonics));
-  strcpy(state->text, mnemonics[opc]);
+  if (opc < sizearray(mnemonics))
+    strcpy(state->text, mnemonics[opc]);
   add_it_cond(state, 0);
   padinstr(state->text);
   sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
@@ -1395,7 +1401,8 @@ static bool thumb2_imm_br_misc(ARMSTATE *state, uint32_t instr)
       unsigned c = FIELD(instr, 6+16, 4);
       assert(c < sizearray(conditions));  /* already handled in if() for this block */
       strcpy(state->text, "b");
-      strcat(state->text, conditions[c]);
+      if (c < sizearray(conditions))
+        strcat(state->text, conditions[c]);
       padinstr(state->text);
       int32_t address = state->address + 4 + offset;
       sprintf(tail(state->text), "0x%07x", address);
@@ -2137,7 +2144,7 @@ static const char *arm_opcode_name(unsigned opc, int variant, unsigned opc2)
     assert(strlen(field) > 0);
     return field;
   }
-  return mnemonics[opc];
+  return (opc < sizearray(mnemonics)) ? mnemonics[opc] : "";
 }
 
 static int arm_opcode_form(int opc)

@@ -29,6 +29,7 @@ struct editor* editor() {
 
 struct editor* editor_init() {
     e = malloc(sizeof(struct editor));
+    if (!e) return NULL;
     e->octets_per_line = 24;
     e->seg_size = 64;
     e->line = 0;
@@ -190,16 +191,28 @@ void editor_openfile(struct editor* e, const char* filename) {
         content_length = buf->len;
     } else {
         contents = malloc(sizeof(char) * statbuf.st_size);
+        if (!contents) {
+            perror("Unable to allocate memory for file contents");
+            fclose(fp);
+            exit(1);
+        }
         content_length = statbuf.st_size;
 
         if (fread(contents, 1, statbuf.st_size, fp) < (size_t) statbuf.st_size) {
             perror("Unable to read file contents");
             free(contents);
+            fclose(fp);
             exit(1);
         }
     }
 
     e->filename = malloc(strlen(filename) + 1);
+    if (!e->filename) {
+        perror("Unable to allocate memory for filename");
+        free(contents);
+        fclose(fp);
+        exit(1);
+    }
     strncpy(e->filename, filename, strlen(filename) + 1);
     e->contents = contents;
     e->content_length = content_length;
@@ -227,6 +240,7 @@ void editor_writefile(struct editor* e) {
     size_t bw = fwrite(e->contents, sizeof(char), e->content_length, fp);
     if (bw <= 0) {
         editor_statusmessage(e, STATUS_ERROR, "Unable write to file: %s", strerror(errno));
+        fclose(fp);
         return;
     }
 
@@ -417,7 +431,7 @@ void editor_process_command(struct editor* e, const char* cmd) {
     if (strncmp(cmd, "set", 3) == 0) {
         char setcmd[INPUT_BUF_SIZE] = {0};
         int setval = 0;
-        int items_read = sscanf(cmd, "set %[a-z]=%d", setcmd, &setval);
+        int items_read = sscanf(cmd, "set %79[a-z]=%d", setcmd, &setval);
 
         if (items_read != 2) {
             editor_statusmessage(e, STATUS_ERROR, "set command format: `set cmd=num`");
