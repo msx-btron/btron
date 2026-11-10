@@ -147,10 +147,12 @@ are quality, security, and introspection.
       2  nv/aprintf.c          vsnprintf
       2  nv/easm_xfrm.c
       2  x86/compiler.h        printf
-      1  nv/easm_print.c
-      1  nv/mask.c
-      1  nv/nv.c
       1  riscv/riscv-disas.c   snprintf
+
+  src/apps/clu/be/arch/nv/ was removed after this scan. It is not in
+  Release One. The hits that left with it were envyas.c 25, aprintf.c 2,
+  easm_xfrm.c 2, easm_print.c 1, mask.c 1, nv.c 1. The totals above
+  still include them.
 
   By rule, across the whole of src/: sprintf 273 buffer + 31 format,
   strcpy 54, strcat 43, fprintf 28, vsnprintf 12, snprintf 7, printf 7,
@@ -274,11 +276,11 @@ are quality, security, and introspection.
 
     src/apps/chokanji/bpk_core.c:1139     uninitvar o
     src/apps/clu/term.c:473               uninitvar u
-    src/apps/clu/be/arch/nv/core-as.c:618 memleakOnRealloc of vexprs
-    src/apps/clu/be/arch/nv/core-dis.c:587 deallocuse of e2 (three notes)
-    src/apps/clu/be/arch/nv/envyas.c:509  resourceLeak outfile
-    src/apps/clu/be/arch/nv/envyas.c:96   NULL arithmetic if malloc fails
     src/languages/forth/forth_core.c:283  assignBoolToPointer (two lines)
+
+  The NVIDIA disassembler errors (core-as.c realloc, core-dis.c use
+  after free, envyas.c leak and NULL arithmetic) left with
+  src/apps/clu/be/arch/nv/. That tree is not in Release One.
     src/cores/core_ps2.c:430              subtractPointers
     src/media/quake/sys/fs_btron.c:791    comparePointers and subtractPointers
 

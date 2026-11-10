@@ -749,25 +749,6 @@ __attribute__((weak)) int tkl_fmt_f32(char *str, size_t size, float x, int prec,
     return n;
 }
 
-static float tkl_va_f32(va_list *ap, int is_half)
-{
-    if (is_half) {
-        return tkl_f32_from_bits(va_arg(*ap, unsigned));
-    }
-#if defined(BTRON_PS2_TARGET)
-    {
-        unsigned long long bits = va_arg(*ap, unsigned long long);
-        return tkl_f32_from_f64bits(bits);
-    }
-#else
-    {
-        union { double d; unsigned long long ull; } w;
-        w.d = va_arg(*ap, double);
-        return tkl_f32_from_f64bits(w.ull);
-    }
-#endif
-}
-
 /* Minimal standalone vsnprintf / snprintf.
  * C99: vsnprintf(NULL, 0, fmt, ...) returns the would-be length. */
 __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *format, va_list ap) {
@@ -912,7 +893,22 @@ __attribute__((weak)) int tkl_vsnprintf(char *str, size_t size, const char *form
             sn_putc(&o, c);
         } else if (*format == 'f' || *format == 'F' || *format == 'e' || *format == 'E'
                    || *format == 'g' || *format == 'G') {
-            float fv = tkl_va_f32(&ap, is_half);
+            /* va_arg stays in this function. On GCC, va_list is an array,
+             * so a parameter `ap` has already decayed and `&ap` is not a
+             * `va_list *`. Passing that pointer fails -Wincompatible-pointer-types. */
+            float fv;
+            if (is_half) {
+                fv = tkl_f32_from_bits(va_arg(ap, unsigned));
+            } else {
+#if defined(BTRON_PS2_TARGET)
+                unsigned long long bits = va_arg(ap, unsigned long long);
+                fv = tkl_f32_from_f64bits(bits);
+#else
+                union { double d; unsigned long long ull; } w;
+                w.d = va_arg(ap, double);
+                fv = tkl_f32_from_f64bits(w.ull);
+#endif
+            }
             char tmp[64];
             tkl_fmt_f32_into(tmp, fv, prec, *format);
             sn_puts(&o, tmp);

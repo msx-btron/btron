@@ -255,28 +255,6 @@ BE_DASM_SRCS = src/apps/clu/be/native_dasm.c \
                src/apps/clu/be/arch/mips/mips-rsp.c \
                src/apps/clu/be/arch/pdp11/pdp11.c
 
-# The nvidia half of the `be` editor's decoders -- the assembler and disassembler of the
-# G80..Maxwell microcode, 27 units carried over from the nvclock/nvd3d9 tooling.  It is its own
-# list because of what it costs: 3,338,516 B of initialized .data plus 74,648 B of text, which
-# in the PS2 link is 44% of every byte spent on .data (gm107.c alone is 1,382,528).  Naming it
-# separately changes no list that is in use -- the `+=` below puts it back exactly where it was
-# for every lane -- and only gives a lane a way to answer for it.  See PS2_NV.
-NV_SRCS = src/apps/clu/be/arch/nv/core-as.c src/apps/clu/be/arch/nv/ctx.c \
-          src/apps/clu/be/arch/nv/falcon.c src/apps/clu/be/arch/nv/gk110.c \
-          src/apps/clu/be/arch/nv/macro.c src/apps/clu/be/arch/nv/vp1.c \
-          src/apps/clu/be/arch/nv/hash.c src/apps/clu/be/arch/nv/g80.c \
-          src/apps/clu/be/arch/nv/gm107.c src/apps/clu/be/arch/nv/nv.c \
-          src/apps/clu/be/arch/nv/vuc.c src/apps/clu/be/arch/nv/xtensa.c \
-          src/apps/clu/be/arch/nv/astr.c src/apps/clu/be/arch/nv/colors.c \
-          src/apps/clu/be/arch/nv/core-dis.c src/apps/clu/be/arch/nv/core.c \
-          src/apps/clu/be/arch/nv/gf100.c src/apps/clu/be/arch/nv/hwsq.c \
-          src/apps/clu/be/arch/nv/vcomp.c src/apps/clu/be/arch/nv/mask.c \
-          src/apps/clu/be/arch/nv/varinfo.c src/apps/clu/be/arch/nv/vardata.c \
-          src/apps/clu/be/arch/nv/symtab.c src/apps/clu/be/arch/nv/easm.c \
-          src/apps/clu/be/arch/nv/aprintf.c src/apps/clu/be/arch/nv/easm_xfrm.c \
-          src/apps/clu/be/arch/nv/easm_print.c
-BE_DASM_SRCS += $(NV_SRCS)
-
 COMMON_SRCS = src/desktop/graphics/dp_core.c   \
               src/desktop/graphics/image_decode.c \
               src/desktop/graphics/icons_bundle.c \
@@ -521,14 +499,14 @@ ARCH_BCM_SRCS = src/drivers/broadcom/cache.c      \
                 src/drivers/broadcom/devinit.c    \
                 src/drivers/broadcom/power.c      \
                 src/drivers/broadcom/tkdev_init.c \
-                src/drivers/broadcom/dwc2.c
+                src/drivers/broadcom/dwc2.c \
+                src/drivers/broadcom/usb_audio_uac1.c
 
 ARCH_BCM64_SRCS = $(ARCH_BCM_SRCS) \
                   src/drivers/broadcom/pcie_bcm2711.c \
                   src/drivers/broadcom/xhci.c \
                   src/drivers/broadcom/bcm2711_dma.c \
                   src/drivers/broadcom/bcm2711_hdmi_audio.c \
-                  src/drivers/broadcom/usb_audio_uac1.c \
                   src/drivers/broadcom/v3d_init.c \
                   src/drivers/broadcom/v3d_cl.c \
                   src/drivers/broadcom/v3d_qpu.c
@@ -1363,8 +1341,7 @@ CLU_TERMIO_SRCS = src/apps/clu/lang.c           \
                   src/apps/clu/sc/sc.c          \
                   src/apps/clu/tv/tv.c          \
                   src/apps/clu/be/native.c
-# PS2_NV=1: Include NVIDIA disassembler tables (0: parked to save 3.4 MB RDRAM)
-CLU_TERMIO_SRCS += $(if $(filter 1,$(PS2_NV)),$(BE_DASM_SRCS),$(filter-out $(NV_SRCS),$(BE_DASM_SRCS)))
+CLU_TERMIO_SRCS += $(BE_DASM_SRCS)
 # PS2 Graphics Synthesizer and 3D application runtime sources
 PS2_GL_SRCS    = src/desktop/graphics/gles/gl_dispatch.c     \
                  src/desktop/graphics/gles/gl_backend_choice.c \
@@ -1398,15 +1375,6 @@ $(info [PS2] PS2_QUAKE is now $(PS2_QUAKE) (was $(if $(PS2_QUAKE_PREV),$(PS2_QUA
 endif
 ifeq ($(PS2_QUAKE),1)
 PS2_CFLAGS    += -DBTRON_PS2_QUAKE=1
-endif
-# PS2_NV=1: Include NVIDIA disassembler tables (0: parked to save 3.4 MB RDRAM)
-PS2_NV         ?= 0
-PS2_NV_STAMP    = .build/ps2-nv.stamp
-PS2_NV_PREV    := $(shell cat $(PS2_NV_STAMP) 2>/dev/null)
-ifneq ($(PS2_NV_PREV),$(PS2_NV))
-$(shell mkdir -p ./.build && echo '$(PS2_NV)' >$(PS2_NV_STAMP) && \
-        rm -f $(NV_SRCS:.c=.ps2.o) $(NV_SRCS:.c=.pbench.o))
-$(info [PS2] PS2_NV is now $(PS2_NV) (was $(if $(PS2_NV_PREV),$(PS2_NV_PREV),unset)) -- the nvidia decoder units will rebuild)
 endif
 PS2_SRCS       = $(PS2_STARTUP)           \
                  src/cores/core_init.c    \

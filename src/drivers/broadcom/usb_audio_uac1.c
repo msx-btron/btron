@@ -48,7 +48,20 @@ typedef struct {
 
 static uac1_driver_state_t s_uac1 = {0};
 
-/* Strong copies live in dwc2.c. Host tests link this file alone. */
+/* Strong copies live in dwc2.c and xhci.c. Host tests, and the Pi 2B
+ * image (DWC2, no VL805), link this file without those objects. */
+__attribute__((weak)) int xhci_queue_audio_isoch_transfer(uint32_t slot_id,
+                                                          uint8_t ep_addr,
+                                                          uintptr_t buf_phys,
+                                                          uint32_t length)
+{
+    (void)slot_id;
+    (void)ep_addr;
+    (void)buf_phys;
+    (void)length;
+    return -1;
+}
+
 __attribute__((weak)) int dwc2_audio_write(const int16_t *stereo, uint32_t frames)
 {
     (void)stereo;

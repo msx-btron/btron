@@ -39,5 +39,4 @@ Credits
 * Justin Sherman, <a href="https://github.com/jsherman212/armadillo">armadillo</a>
 * Thiadmer Riemersma, <a href="https://github.com/compuphase/ARM-disassembler/">ARM-disassembler</a>
 * NASM Authors, <a href="https://github.com/netwide-assembler/nasm">nasm</a>
-* Marcelina Kościelnicka, <a href="https://github.com/envytools/envytools">envytools</a>
 * Namdak Tonpa, <a href="https://github.com/asmedit/dasm-pdp11">dasm-pdp11</a>, <a href="https://github.com/asmedit/dasm-mips">dasm-mips</a> 

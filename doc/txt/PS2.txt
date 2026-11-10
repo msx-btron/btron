@@ -1158,7 +1158,6 @@ PART SEVEN -- BUILDING, VERIFYING, RUNNING
   - PS2_FP: Hardware vs software floating point (hw: R5900 COP1 with O32 soft-float calling convention; soft: pure integer libcalls).
   - PS2_GL: Graphics rasterization backend (eegs: native hardware GS renderer; tinygl: software rasterizer fallback).
   - PS2_MSX: Dual-boot MSX subsystem (1: link B-MSX core and 7.5 MB heap; 0: unpark 11 MB heap for native hardware 3D).
-  - PS2_NV: NVIDIA microcode tables for `be` editor (1: include tables; 0: park tables to save 3.4 MB RDRAM).
   - PS2_PW: Parallel asynchronous paint worker scheduler (1: rate-limited paint callbacks with [PW] stats; 0: synchronous compositing).
   - PS2_IDENT: Frame-to-frame GIF group identity hash tracking (1: [GSTID] invariance telemetry enabled; 0: compiled out).
   - BENCH_APP: Automated XMB application lifecycle benchmark via kernel task shim (1: enabled; 0: desktop idle).

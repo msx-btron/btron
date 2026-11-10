@@ -12,7 +12,6 @@
 #include "arch/sh4/sh4.h"
 #include "arch/mips/mips.h"
 #include "arch/pdp11/pdp11.h"
-#include "arch/nv/nv.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -87,8 +86,7 @@ static int be_dasm_decode_arch(BeNativeContext *ctx, const uint8_t *input,
     case 6: decodeM68K(address, out, &used, (unsigned long)offset); break;
     case 7: decodeMIPS(address, out, &used, (unsigned long)offset); break;
     case 8: decodePDP11(address, out, &used, (unsigned long)offset); break;
-    /* The bundled Envy engine allocates during each decode. Keep the
-     * native editor's JPL-bounded edit loop on a byte fallback for now. */
+    /* Release One has no NVIDIA decoder. The editor steps one byte. */
     case 9: return -1;
     default: return -1;
     }

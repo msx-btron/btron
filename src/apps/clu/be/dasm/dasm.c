@@ -24,7 +24,6 @@
 #include "../arch/m68k/m68k.h"
 #include "../arch/sh4/sh4.h"
 #include "../arch/pdp11/pdp11.h"
-#include "../arch/nv/nv.h"
 
 #define LINES 140
 #define DUMP  32
@@ -126,7 +125,11 @@ char *decode(unsigned long int start, char *outbuf, int *lendis, unsigned long i
          case ARCH_M68K:  decodeM68K  (start, outbuf, lendis, offset); break;
          case ARCH_MIPS:  decodeMIPS  (start, outbuf, lendis, offset); break;
          case ARCH_PDP11: decodePDP11 (start, outbuf, lendis, offset); break;
-         case ARCH_NVIDIA:   decodeNV (start, outbuf, lendis, offset); break;
+         case ARCH_NVIDIA:
+             /* Release One has no NVIDIA decoder. Advance one byte. */
+             if (outbuf) outbuf[0] = '\0';
+             if (lendis) *lendis = 1;
+             break;
          default: break;
      }
      return outbuf;
