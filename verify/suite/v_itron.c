@@ -6,7 +6,7 @@
  * L2 conformance: behavioral checks (create/start/delete lifecycle).
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/itron.h>
 
 #define S "uITRON"

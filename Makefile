@@ -60,7 +60,8 @@ CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
         test-mars-capture \
         run-posix run-qemu run-kernel run-yoko run-yoko4 run-sakamura run-foma run-uefi run-eufi run-uefu run-pc98 run-m68k run-ps2 run-mips debug-virtio debug-gdb clean \
         ps2-cfg ps2-dials \
-        pi400 pi400-payload flash-pi400 fetch-pi400-fw
+        pi400 pi400-payload flash-pi400 fetch-pi400-fw \
+        sec-libstr sec-be sec-clu sec-kernel sec-fs sec-drivers security
 
 QEMU_ARM     ?= qemu-system-arm
 QEMU_AARCH64 ?= qemu-system-aarch64
@@ -1888,6 +1889,156 @@ sec-libstr: $(TEST_LIBSTR_ASAN)
 	else \
 		echo "cppcheck not on PATH: brew install cppcheck"; \
 	fi
+
+# ── BE Binary Editor & Disassembler Security Analysis ────────────────────────
+BE_SEC_INCLUDES = -Iinclude -Iinclude/rt -Isrc/apps/clu -Isrc/apps/clu/be
+
+BE_CORE_SRCS = \
+	src/apps/clu/be/be.c \
+	src/apps/clu/be/editor.c \
+	src/apps/clu/be/native.c \
+	src/apps/clu/be/native_dasm.c \
+	src/apps/clu/be/dasm/dasm.c \
+	src/apps/clu/be/hex/hex.c \
+	src/apps/clu/be/term/buffer.c \
+	src/apps/clu/be/term/terminal.c
+
+sec-be:
+	@echo "=========================================================="
+	@echo " sec-be: clang --analyze on BE core + all disassemblers"
+	@echo "=========================================================="
+	$(CC) --analyze -std=c99 -Wall -Wextra $(BE_SEC_INCLUDES) \
+		-Xanalyzer -analyzer-output=text $(BE_CORE_SRCS)
+	@echo "  (arch/ disassemblers: clang --analyze deferred to slice 8)"
+	@if command -v flawfinder >/dev/null 2>&1; then \
+		flawfinder --minlevel=4 --quiet src/apps/clu/be/; \
+	else \
+		echo "flawfinder not on PATH: brew install flawfinder"; \
+	fi
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		cppcheck --std=c99 --enable=warning,portability --quiet \
+			$(BE_SEC_INCLUDES) src/apps/clu/be/; \
+	else \
+		echo "cppcheck not on PATH: brew install cppcheck"; \
+	fi
+
+# ── CLU Commands Security Analysis ───────────────────────────────────────────
+CLU_SEC_INCLUDES = -Iinclude -Iinclude/rt -Isrc/apps/clu
+
+CLU_TOP_SRCS = \
+	src/apps/clu/clu.c \
+	src/apps/clu/cp.c \
+	src/apps/clu/df.c \
+	src/apps/clu/fs.c \
+	src/apps/clu/lang.c \
+	src/apps/clu/ln.c \
+	src/apps/clu/ls.c \
+	src/apps/clu/mv.c \
+	src/apps/clu/ps_vm.c \
+	src/apps/clu/rm.c \
+	src/apps/clu/sps.c \
+	src/apps/clu/st.c \
+	src/apps/clu/term.c \
+	src/apps/clu/tp.c \
+	src/apps/clu/tty.c \
+	src/apps/clu/vfs.c \
+	src/apps/clu/sh/sh.c \
+	src/apps/clu/sc/sc.c \
+	src/apps/clu/sc/input.c \
+	src/apps/clu/sc/menus.c \
+	src/apps/clu/sc/files.c \
+	src/apps/clu/tv/tv.c
+
+sec-clu:
+	@echo "=========================================================="
+	@echo " sec-clu: clang --analyze + flawfinder + cppcheck on CLU"
+	@echo "=========================================================="
+	$(CC) --analyze -std=c99 -Wall -Wextra $(CLU_SEC_INCLUDES) \
+		-Xanalyzer -analyzer-output=text $(CLU_TOP_SRCS)
+	@if command -v flawfinder >/dev/null 2>&1; then \
+		flawfinder --minlevel=4 --quiet \
+			src/apps/clu/sh/ src/apps/clu/sc/ src/apps/clu/tv/ \
+			$(CLU_TOP_SRCS); \
+	else \
+		echo "flawfinder not on PATH: brew install flawfinder"; \
+	fi
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		cppcheck --std=c99 --enable=warning,portability --quiet \
+			$(CLU_SEC_INCLUDES) \
+			src/apps/clu/sh/ src/apps/clu/sc/ src/apps/clu/tv/ \
+			$(CLU_TOP_SRCS); \
+	else \
+		echo "cppcheck not on PATH: brew install cppcheck"; \
+	fi
+
+# ── Kernel Security Analysis ──────────────────────────────────────────────────
+KERNEL_SEC_INCLUDES = -Iinclude -Iinclude/rt -Iinclude/drivers/broadcom
+
+sec-kernel:
+	@echo "=========================================================="
+	@echo " sec-kernel: clang --analyze + flawfinder + cppcheck"
+	@echo "=========================================================="
+	@find src/kernel -maxdepth 1 -name '*.c' | sort | \
+		xargs $(CC) --analyze -std=c99 -Wall -Wextra $(KERNEL_SEC_INCLUDES) \
+		-Xanalyzer -analyzer-output=text
+	@if command -v flawfinder >/dev/null 2>&1; then \
+		flawfinder --minlevel=4 --quiet src/kernel/; \
+	else \
+		echo "flawfinder not on PATH: brew install flawfinder"; \
+	fi
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		cppcheck --std=c99 --enable=warning,portability --quiet \
+			$(KERNEL_SEC_INCLUDES) src/kernel/; \
+	else \
+		echo "cppcheck not on PATH: brew install cppcheck"; \
+	fi
+
+# ── Filesystem Security Analysis ──────────────────────────────────────────────
+FS_SEC_INCLUDES = -Iinclude -Iinclude/rt -Iinclude/drivers/broadcom
+
+sec-fs:
+	@echo "=========================================================="
+	@echo " sec-fs: clang --analyze + flawfinder + cppcheck on src/fs"
+	@echo "=========================================================="
+	@find src/fs -maxdepth 1 -name '*.c' | sort | \
+		xargs $(CC) --analyze -std=c99 -Wall -Wextra $(FS_SEC_INCLUDES) \
+		-Xanalyzer -analyzer-output=text
+	@if command -v flawfinder >/dev/null 2>&1; then \
+		flawfinder --minlevel=4 --quiet src/fs/; \
+	else \
+		echo "flawfinder not on PATH: brew install flawfinder"; \
+	fi
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		cppcheck --std=c99 --enable=warning,portability --quiet \
+			$(FS_SEC_INCLUDES) src/fs/; \
+	else \
+		echo "cppcheck not on PATH: brew install cppcheck"; \
+	fi
+
+# ── Drivers Security Analysis ─────────────────────────────────────────────────
+DRIVERS_SEC_INCLUDES = -Iinclude -Iinclude/rt -Iinclude/drivers -Iinclude/drivers/broadcom
+
+sec-drivers:
+	@echo "=========================================================="
+	@echo " sec-drivers: flawfinder + cppcheck on src/drivers"
+	@echo "=========================================================="
+	@if command -v flawfinder >/dev/null 2>&1; then \
+		flawfinder --minlevel=4 --quiet src/drivers/; \
+	else \
+		echo "flawfinder not on PATH: brew install flawfinder"; \
+	fi
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		cppcheck --std=c99 --enable=warning,portability --quiet \
+			$(DRIVERS_SEC_INCLUDES) src/drivers/; \
+	else \
+		echo "cppcheck not on PATH: brew install cppcheck"; \
+	fi
+
+# ── Aggregated Security Gate ──────────────────────────────────────────────────
+security: sec-libstr sec-be sec-clu sec-kernel sec-fs sec-drivers
+	@echo "=========================================================="
+	@echo " ALL SECURITY SCANS COMPLETE"
+	@echo "=========================================================="
 
 test-ps2-cdvd-loop:
 	@echo "=========================================================="
@@ -3849,7 +4000,7 @@ segui-screens: $(CAPTURE_SEGUI_BIN)
 # Quake Automated Screenshot Pipeline — 21:9 (672×288) ARGB frames
 # ===================================================================
 CAPTURE_QUAKE_BIN  = ./.build/capture_quake
-CAPTURE_QUAKE_SRCS = verify/scratch/capture_quake.c \
+CAPTURE_QUAKE_SRCS = verify/tests/capture_quake.c \
                      src/media/quake/core/mathlib.c \
                      src/media/quake/core/mem.c \
                      src/media/quake/core/cvar.c \

@@ -972,7 +972,7 @@ static void test_counters_reset(void)
  * and valid 12.4 XYZ2 coordinates.
  *
  * In addition to in-memory assertions, the recorded GIF stream is dumped to a binary fixture
- * (verify/fixtures/gs_lit_stream.bin) and re-read back into a decoder validator, proving that
+ * (.build/gs_lit_stream.bin) and re-read back into a decoder validator, proving that
  * offline tools and differential oracles can parse and verify the stream with zero drift.
  */
 static void test_lit_vertex_stream(void)
@@ -1061,14 +1061,14 @@ static void test_lit_vertex_stream(void)
         check("Q channel is 1.0f (0x3F800000)", (col >> 32) == 0x3F800000ULL);
     }
 
-    /* Offline Dump and Replay: write to verify/fixtures/gs_lit_stream.bin.
+    /* Offline Dump and Replay: write to .build/gs_lit_stream.bin.
      * The fixture is the VERTEX group only, 96 bytes, so its replay is a chain that has to be told
      * what to draw -- which after rung 12v is a fact the stream states in the packet in front of it.
      * A reader that wants the lit triangle on a machine therefore prepends the two-quadword AD write
      * asserted above, or takes the whole frame from the live capture; widening the fixture to the pair
      * is #120's call, not this row's. */
-    fp = fopen("verify/fixtures/gs_lit_stream.bin", "wb");
-    check("can create verify/fixtures/gs_lit_stream.bin", fp != NULL);
+    fp = fopen(".build/gs_lit_stream.bin", "wb");
+    check("can create .build/gs_lit_stream.bin", fp != NULL);
     if (fp != NULL) {
         size_t bytes = GS_QW_BYTES(vg_n(0));
         size_t written = fwrite(w, 1, bytes, fp);
@@ -1079,8 +1079,8 @@ static void test_lit_vertex_stream(void)
 
     /* Replay from disk */
     memset(replayed, 0, sizeof(replayed));
-    fp = fopen("verify/fixtures/gs_lit_stream.bin", "rb");
-    check("can open verify/fixtures/gs_lit_stream.bin for replay", fp != NULL);
+    fp = fopen(".build/gs_lit_stream.bin", "rb");
+    check("can open .build/gs_lit_stream.bin for replay", fp != NULL);
     if (fp != NULL) {
         nread = fread(replayed, 1, sizeof(replayed), fp);
         fclose(fp);

@@ -944,6 +944,10 @@ static void test_e2e_full_lifecycle_and_clu_browsing(void) {
     assert(cls_fil(verify_fd) == 0);
 
     /* 6b. Verify copying files from /SYS to newly created volume */
+    if (g_sys_vol) {
+        vol_umount(g_sys_vol);
+        g_sys_vol = NULL;
+    }
     void *sys_ram = calloc(1, 2048 * 4096);
     BlkDev *sys_dev = blk_mem_create(sys_ram, 2048 * 4096, 0);
     sys_dev->block_size = 4096;

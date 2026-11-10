@@ -6,7 +6,7 @@
  * opn_dir, rd_dir, cls_dir, cre_lnk, del_lnk, ref_vol.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/file.h>
 #include <string.h>
 

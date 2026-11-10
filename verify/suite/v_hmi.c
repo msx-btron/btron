@@ -4,7 +4,7 @@
  * All HMI controls and panel lifecycle APIs are tested here.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/hmi.h>
 #include <btron/dp.h>
 

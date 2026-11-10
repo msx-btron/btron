@@ -5,7 +5,7 @@
  * ensuring 100% 1-to-1 consistency between both tables.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <stdio.h>
 #include <string.h>
 

@@ -4,7 +4,7 @@
  * Tests the VOBJ subsystem types and functions.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/vobj.h>
 #include <string.h>
 

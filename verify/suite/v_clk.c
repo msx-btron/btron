@@ -4,7 +4,7 @@
  * Tests get_tod, set_tod, get_tim_btron, set_tim_btron, DATE_TIM, TIMEZONE, STIME.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/clk.h>
 #include <string.h>
 

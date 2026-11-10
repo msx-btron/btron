@@ -5,7 +5,7 @@
  * Tests lifecycle, positioning, z-order, hit-testing, and tab management.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/wnd.h>
 #include <btron/dp.h>
 

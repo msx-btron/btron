@@ -515,7 +515,7 @@ WND* open_control_panel_window(void) {
     if (scr_h <= 600) {
         win_h = 340;
     } else {
-        win_h = (sz == BTRON_ICON_SIZE_32) ? 520 : 600;
+        win_h = (sz == BTRON_ICON_SIZE_32) ? 520 : 660;
     }
 #endif
     H win_x = (scr_w - win_w) / 2;

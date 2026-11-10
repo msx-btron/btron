@@ -4,7 +4,7 @@
  * Tests opn_dev_mgr, cls_dev_mgr, rea_dev, wri_dev, ctl_dev, ref_dev, wai_dev.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/device.h>
 #include <string.h>
 

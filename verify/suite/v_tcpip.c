@@ -4,7 +4,7 @@
  * Normative source: b-spec/os_spec/shell/tcpip.html
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/tcpip.h>
 #include <btron/error.h>
 

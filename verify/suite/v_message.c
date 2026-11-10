@@ -4,7 +4,7 @@
  * Full behavioral testing of snd_msg, rcv_msg, chk_msg, MSGBODY, and MESSAGE.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/message.h>
 #include <btron/event.h>
 #include <string.h>

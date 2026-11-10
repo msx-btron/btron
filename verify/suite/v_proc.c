@@ -4,7 +4,7 @@
  * Tests cre_prc, ter_prc, chg_pri, get_tid, get_pid, P_USER, LINK.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/proc.h>
 #include <string.h>
 

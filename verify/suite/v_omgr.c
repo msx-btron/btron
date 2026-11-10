@@ -4,7 +4,7 @@
  * Normative source: b-spec/os_spec/shell/omgr.html (#ala)
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/omgr.h>
 #include <btron/error.h>
 

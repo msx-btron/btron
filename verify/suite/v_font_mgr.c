@@ -4,7 +4,7 @@
  * Normative source: b-spec/os_spec/shell/font_mgr.html
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/font_mgr.h>
 #include <btron/error.h>
 

@@ -5,7 +5,7 @@
  * domain constants, and protection flags.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/memory.h>
 #include <btron/types.h>
 #include <btron/error.h>

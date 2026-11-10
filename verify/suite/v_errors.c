@@ -4,7 +4,7 @@
  * L0 conformance: all 31 error codes must have the exact specified values.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/error.h>
 
 #define S "ErrorCodes"

@@ -4,7 +4,7 @@
  * Tests def_exc, ret_exc, get_cnf, set_cnf.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/sys_mgmt.h>
 #include <string.h>
 

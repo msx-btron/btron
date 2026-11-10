@@ -5,7 +5,7 @@
  * Most DP functions are [IMPL] per CERTIFICATION.md.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/dp.h>
 
 #define S "DisplayPrim"

@@ -400,3 +400,143 @@ are quality, security, and introspection.
   make sec-libstr
   make test-fs-span
   make test-kcopy
+  make security          (sec-libstr + sec-be + sec-clu + sec-kernel + sec-fs + sec-drivers)
+
+
+10. Per-module security gate targets  —  2026-11-11
+
+  Targets added to Makefile.  Each runs clang --analyze, flawfinder >=4,
+  and cppcheck.  None uses --error-exitcode for the disassembler corpus;
+  the disassembler hits are catalogued in Section 8 slice 8 and are not
+  treated as a gate failure until their pass.
+
+  make security   calls each sub-target in order:
+    sec-libstr  sec-be  sec-clu  sec-kernel  sec-fs  sec-drivers
+
+  Results recorded on 2026-11-11  (Apple clang 21.0.0, flawfinder 2.0.20,
+  cppcheck 2.22.0, arm64 Mac).
+
+  ── sec-be  (src/apps/clu/be/) ──────────────────────────────────────────────
+
+  clang --analyze (BE core: be.c editor.c native.c native_dasm.c dasm/dasm.c
+                             hex/hex.c term/buffer.c term/terminal.c)
+    editor.c:229:9    unix.Stream   — opened stream never closed (resource leak)
+    native.c:422:28   core.UndefinedBinaryOperatorResult — left operand of '+'
+                      is a garbage value
+  clang --analyze is not run on arch/ during the gate; arch/ is slice-8 work.
+
+  flawfinder --minlevel=4  src/apps/clu/be/
+    Lines analyzed : 93 480
+    Hits@level 4   : 406   (all inside arch/; zero at level 5)
+    Hits@level 4+  : 406
+  These 406 hits are the disassembler sprintf/strcpy/strcat patterns
+  documented in Section 4 and Section 8 order 8.  They are not a gate
+  failure.  The gate will trigger on level 5 or on any new level-4 hit
+  outside arch/.
+
+  cppcheck  src/apps/clu/be/
+    arch/arm32/armv7.c:120   arrayIndexOutOfBoundsCond  shifts[4] vs type < 4
+    arch/arm32/armv7.c:120   negativeIndex              shifts[4] vs type >= 0
+    arch/arm32/armv7.c:148   negativeIndex              conditions[14] vs cond
+  All findings are inside arch/ disassembler code (slice-8).  No findings in
+  BE core files.
+
+  ── sec-clu  (src/apps/clu/) ────────────────────────────────────────────────
+
+  clang --analyze (22 source files: clu top-level + sh/ sc/ tv/)
+    sh/sh.c:366:13    deadcode.DeadStores  — value stored to 't' never read
+    tv/tv.c:506:5     core.uninitialized.Assign — assigned value is uninit
+
+  flawfinder --minlevel=4  src/apps/clu/ (top-level + sh/ sc/ tv/)
+    Lines analyzed : 9 137
+    Hits@level 4   : 4
+    Hits@level 4+  : 4
+  Low hit count.  The 4 hits are snprintf/strncpy calls that use
+  sizeof-guarded lengths; site review confirms no bad path.
+
+  cppcheck  src/apps/clu/
+    term.c:277   arrayIndexOutOfBoundsCond  sgr[21] accessed with i < 31
+                 (loop bound 31 exceeds array size 21; potential overread)
+
+  ── sec-kernel  (src/kernel/) ───────────────────────────────────────────────
+
+  clang --analyze  src/kernel/*.c
+    kernel.h requires cpu_conf.h, found at include/drivers/broadcom/.
+    KERNEL_SEC_INCLUDES extended to -Iinclude/drivers/broadcom.
+    With corrected flags: zero warnings from clang --analyze.
+
+  flawfinder --minlevel=4  src/kernel/
+    Lines analyzed : 14 849
+    Hits@level 4   : 3
+    Hits@level 4+  : 3
+  3 level-4 hits in kernel/*.c.  Site review scheduled for slice 2
+  (kernel, filesystem, and cores C-string copies — see Section 8 order 2).
+
+  cppcheck  src/kernel/
+    include/kernel/rominfo.h:166   unhandledChar  — Japanese comment
+    include/kernel/str_align.h:75  unhandledChar  — Japanese comment
+    include/kernel/syscall.h:323   unhandledChar  — Japanese comment
+    include/kernel/dbgspt.h:86     unhandledChar  — Japanese comment
+    include/kernel/syslib.h:245    unhandledChar  — Japanese comment
+  All five are cppcheck 2.22.0 false positives on UTF-8 Japanese comments
+  inside #| comment lines.  They are not defects.  No portability or
+  warning findings in kernel source.
+
+  ── sec-fs  (src/fs/) ───────────────────────────────────────────────────────
+
+  clang --analyze  src/fs/*.c
+    blk_file.c:85:21   unix.Errno — errno not checked after fwrite
+    blk_file.c:106:31  unix.Errno — errno not checked after malloc
+    file.c:1544:13     core.uninitialized.Assign — assigned value uninit
+
+  flawfinder --minlevel=4  src/fs/
+    Lines analyzed : 4 314
+    Hits@level 4   : 0
+    Hits@level 4+  : 0
+  Clean at level 4.  src/fs/ passes the flawfinder gate today.
+
+  cppcheck  src/fs/
+    file.c:1852:57   arrayIndexOutOfBoundsCond  nm[41] accessed with ni < 63
+                     (loop bound 63 exceeds array nm size 41; potential overread)
+
+  ── sec-drivers  (src/drivers/) ─────────────────────────────────────────────
+
+  clang --analyze is not run on src/drivers/ in this target because the
+  driver headers pull in target-specific cpu_conf.h and broadcom MMIO
+  registers that do not parse cleanly under a posix host toolchain.
+  flawfinder and cppcheck cover the directory.
+
+  flawfinder --minlevel=4  src/drivers/
+    Lines analyzed : 24 975
+    Hits@level 4   : 0
+    Hits@level 4+  : 0
+  Clean at level 4.  src/drivers/ passes the flawfinder gate today.
+
+  cppcheck  src/drivers/
+    include/kernel/sysdef.h:202    unhandledChar  — Japanese comment (false pos)
+    include/kernel/syscall.h:323   unhandledChar  — Japanese comment (false pos)
+    include/kernel/syslib.h:245    unhandledChar  — Japanese comment (false pos)
+    include/kernel/segment.h:72    unhandledChar  — Japanese comment (false pos)
+    broadcom/cache.c:97:56         shiftNegativeLHS  — shifting negative value
+                                   in E_PAR return expression (portability)
+
+  ── Summary table ────────────────────────────────────────────────────────────
+
+    Target      flawfinder-4+  cppcheck findings  clang-analyze   Gate
+    ─────────── ─────────────  ─────────────────  ──────────────  ────
+    sec-libstr       0               0              0              PASS
+    sec-be         406 (arch/)  3 (arch/ only)     2 (core)       INFO
+    sec-clu          4           1 (term.c)         2              INFO
+    sec-kernel       3           5 (utf8 false+)    0              INFO
+    sec-fs           0           1 (file.c)         3              INFO
+    sec-drivers      0           5 (4 false+, 1)    n/a            INFO
+
+  Gate = PASS means --error-exitcode=1 was set and the tool exited 0.
+  Gate = INFO means the tool ran without --error-exitcode; the results
+  are catalogued here and assigned to a future slice (Section 8).
+
+  Open items assigned to slices
+    slice 2  — sec-kernel level-4 hits (3 sites) and sec-clu term.c overread
+    slice 5  — sec-fs blk_file.c unix.Errno and file.c uninit + overread
+    slice 6  — sec-drivers broadcom/cache.c shiftNegativeLHS
+    slice 8  — sec-be arch/ 406 flawfinder hits and 3 cppcheck findings

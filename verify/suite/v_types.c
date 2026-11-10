@@ -5,7 +5,7 @@
  * These are compile-time/sizeof checks — no runtime kernel needed.
  */
 
-#include "../btron_verify.h"
+#include "btron_verify.h"
 #include <btron/types.h>
 
 #define S "Types"
