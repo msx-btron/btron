@@ -36,6 +36,7 @@ static int16_t s_uac1_pcm_ring[UAC1_RING_PACKETS][UAC1_FRAME_SAMPLES_1MS * UAC1_
 typedef struct {
     bool              attached;
     bool              opened;
+    bool              dwc2;            /* QEMU raspi4b speaker, not an xHCI slot */
     uint32_t          slot_id;
     uint8_t           ep_addr;
     uint32_t          ep_mps;
@@ -47,11 +48,20 @@ typedef struct {
 
 static uac1_driver_state_t s_uac1 = {0};
 
+/* Strong copy lives in dwc2.c. Host tests link this file alone. */
+__attribute__((weak)) int dwc2_audio_write(const int16_t *stereo, uint32_t frames)
+{
+    (void)stereo;
+    (void)frames;
+    return -1;
+}
+
 /* ── Device Lifecycle ─────────────────────────────────────────────── */
 
 void usb_audio_uac1_init(void) {
     s_uac1.attached = false;
     s_uac1.opened = false;
+    s_uac1.dwc2 = false;
     s_uac1.slot_id = 0;
     s_uac1.ep_addr = 0;
     s_uac1.ep_mps = 0;
@@ -70,6 +80,7 @@ void usb_audio_uac1_init(void) {
 void usb_audio_uac1_attach(uint32_t slot_id, uint8_t ep_addr, uint32_t max_packet_size) {
     if (slot_id == 0 || slot_id > XHCI_MAX_SLOTS) return;
 
+    s_uac1.dwc2 = false;
     s_uac1.slot_id = slot_id;
     s_uac1.ep_addr = ep_addr;
     s_uac1.ep_mps = (max_packet_size > 0) ? max_packet_size : UAC1_FRAME_BYTES_1MS;
@@ -86,7 +97,24 @@ void usb_audio_uac1_attach(uint32_t slot_id, uint8_t ep_addr, uint32_t max_packe
     uart_puts("\n");
 }
 
+void usb_audio_uac1_attach_dwc2(uint8_t ep_addr, uint32_t max_packet_size) {
+    s_uac1.dwc2 = true;
+    s_uac1.slot_id = 0;
+    s_uac1.ep_addr = ep_addr;
+    s_uac1.ep_mps = (max_packet_size > 0) ? max_packet_size : UAC1_FRAME_BYTES_1MS;
+    s_uac1.attached = true;
+    s_uac1.opened = false;
+    s_uac1.write_packet_idx = 0;
+    s_uac1.queued_packets = 0;
+    uart_puts("[UAC1] DWC2 DAC EP=0x");
+    uart_hex32(ep_addr);
+    uart_puts(" MPS=");
+    uart_hex32(s_uac1.ep_mps);
+    uart_puts("\n");
+}
+
 void usb_audio_uac1_detach(uint32_t slot_id) {
+    if (s_uac1.dwc2) return;
     if (s_uac1.slot_id == slot_id) {
         usb_audio_uac1_close();
         s_uac1.attached = false;
@@ -164,10 +192,31 @@ int usb_audio_uac1_write(const int16_t *samples, size_t frames) {
         }
 
         uint32_t transfer_bytes = UAC1_FRAME_BYTES_1MS;
-        int ret = xhci_queue_audio_isoch_transfer(s_uac1.slot_id, s_uac1.ep_addr,
-                                                  (uintptr_t)dst, transfer_bytes);
-        if (ret == 0) {
-            s_uac1.queued_packets++;
+        if (s_uac1.dwc2) {
+            /* The DWC2 side gathers whole 48-frame packets. A short
+             * Orchestra tick must not be padded out to silence here. */
+            const int16_t *pcm;
+            int16_t mono[UAC1_FRAME_SAMPLES_1MS * 2u];
+            uint32_t nfr = (uint32_t)chunk_frames;
+            if (s_uac1.channels != 2) {
+                uint32_t i;
+                for (i = 0; i < nfr; i++) {
+                    mono[i * 2u] = samples[written_frames + i];
+                    mono[i * 2u + 1u] = samples[written_frames + i];
+                }
+                pcm = mono;
+            } else {
+                pcm = samples + (written_frames * 2u);
+            }
+            if (dwc2_audio_write(pcm, nfr) != 0) {
+                return (written_frames > 0) ? (int)written_frames : -1;
+            }
+        } else {
+            int ret = xhci_queue_audio_isoch_transfer(s_uac1.slot_id, s_uac1.ep_addr,
+                                                      (uintptr_t)dst, transfer_bytes);
+            if (ret == 0) {
+                s_uac1.queued_packets++;
+            }
         }
 
         s_uac1.write_packet_idx = (s_uac1.write_packet_idx + 1) % UAC1_RING_PACKETS;
@@ -189,6 +238,9 @@ bool usb_audio_uac1_is_ready(void) {
 
 uint32_t usb_audio_uac1_get_queued_bytes(void) {
     if (!s_uac1.opened) return 0;
+    /* DWC2 completes each packet before write() returns, so the xHCI
+     * packet counter stays zero and the DAW keeps rendering. */
+    if (s_uac1.dwc2) return 0;
     return s_uac1.queued_packets * UAC1_FRAME_BYTES_1MS;
 }
 

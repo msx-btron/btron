@@ -100,7 +100,7 @@ static void test_cea861_infoframe(void) {
     TEST_ASSERT(frame.type == CEA861_AUDIO_INFOFRAME_TYPE, "Packet type is 0x84 (Audio InfoFrame)");
     TEST_ASSERT(frame.version == 0x01, "Version is 0x01");
     TEST_ASSERT(frame.length == 0x0A, "Length is 10 bytes");
-    TEST_ASSERT((frame.audio_coding & 0x07) == 2, "Channel count is 2");
+    TEST_ASSERT((frame.audio_coding & 0x07) == 1, "CEA-861 channel-count field is 1 (stereo)");
     TEST_ASSERT(((frame.audio_coding >> 4) & 0x0F) == 1, "Audio coding is LPCM");
     TEST_ASSERT((frame.format_info & 0x03) == 1, "Sample size is 16-bit");
     TEST_ASSERT(((frame.format_info >> 2) & 0x07) == 3, "Sample rate is 48 kHz");
@@ -161,10 +161,10 @@ static void test_pcm_streaming_simulation(void) {
     TEST_ASSERT(ret == 128, "Wrote 128 frames");
     TEST_ASSERT(bcm2711_hdmi_audio_get_queued_bytes() == 512, "Queued bytes == 512 (1 period)");
 
-    /* Write 2nd period (ping-pong wrap-around) */
+    /* Write 2nd period. The host has no DMA consumer, so both periods stay queued. */
     ret = bcm2711_hdmi_audio_write(tone_chunk, 128);
-    TEST_ASSERT(ret == 128, "Wrote 2nd 128 frames (wrap)");
-    TEST_ASSERT(bcm2711_hdmi_audio_get_queued_bytes() == 512, "Queued bytes stays bounded to period");
+    TEST_ASSERT(ret == 128, "Wrote 2nd 128 frames");
+    TEST_ASSERT(bcm2711_hdmi_audio_get_queued_bytes() == 1024, "Queued bytes is 1024 after the second period");
 
     /* Close audio device */
     bcm2711_hdmi_audio_close();

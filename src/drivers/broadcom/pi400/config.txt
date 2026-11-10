@@ -22,6 +22,11 @@ framebuffer_depth=32
 framebuffer_swap=0
 fake_vsync_isr=1
 
+# HDMI, not DVI. A KDL-32W mutes its speakers on a DVI link.
+# Do not set dtparam=audio=on: firmware VCHIQ audio would fight the ARM MAI.
+hdmi_drive=2
+hdmi_force_edid_audio=1
+
 # Performance Clocks & Governors (BCM2711 @ 1.8 GHz Cortex-A72 & 500 MHz V3D 4.2)
 arm_boost=1
 arm_freq=1800

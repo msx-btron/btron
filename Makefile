@@ -2583,7 +2583,7 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	@echo " Machine  : raspi4b  |  CPU: Cortex-A72 / AArch64  |  RAM: 2G"
 	@echo " ELF      : $(ARM64_TARGET)"
 	@echo " Volumes  : btron_sys.vol (@0x03000000), btron_anders.vol (@0x03200000), btron_msx.vol (@0x05400000)"
-	@echo " Devices  : USB Keyboard, USB Mouse & VideoCore GPU Display"
+	@echo " Devices  : USB Keyboard, USB Mouse, USB DAC & VideoCore GPU Display"
 	@echo "=========================================================="
 	@echo " INPUT CAPTURE:"
 	@echo "   Click inside the QEMU window to grab keyboard & mouse."
@@ -2597,6 +2597,7 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	        -device loader,file=btron_msx.vol,addr=0x05400000 \
 	        $$(test -f assets/quake/pak/pak0.pak && echo "-device loader,file=assets/quake/pak/pak0.pak,addr=0x04000000") \
 	        -device usb-kbd -device usb-mouse \
+	        $$(if [ "$$(uname -s)" = Darwin ]; then echo "-audiodev coreaudio,id=snd0 -device usb-audio,audiodev=snd0"; fi) \
 	        -kernel $(ARM64_TARGET) -serial stdio; \
 	else \
 	    echo "[ERROR] $(QEMU_AARCH64) not found — install qemu-system-aarch64"; \

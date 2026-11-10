@@ -48,6 +48,8 @@
 /* Public API Functions */
 void     usb_audio_uac1_init(void);
 void     usb_audio_uac1_attach(uint32_t slot_id, uint8_t ep_addr, uint32_t max_packet_size);
+/* Speaker reached through the DWC2 host (QEMU raspi4b usb-audio). */
+void     usb_audio_uac1_attach_dwc2(uint8_t ep_addr, uint32_t max_packet_size);
 void     usb_audio_uac1_detach(uint32_t slot_id);
 bool     usb_audio_uac1_is_present(void);
 void     usb_audio_uac1_on_transfer_complete(void);

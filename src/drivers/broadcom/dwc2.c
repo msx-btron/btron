@@ -24,6 +24,7 @@
  */
 
 #include <drivers/broadcom/dwc2.h>
+#include <drivers/broadcom/usb_audio_uac1.h>
 #include <btron/event.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -146,6 +147,15 @@ static bool g_mouse_chan_active = false;
  * both are read by the controller out of RAM. */
 static volatile usb_setup_packet_t g_setup_buf  DWC2_DMA_BUF;
 static volatile uint8_t            g_ctrl_data[64] DWC2_DMA_BUF;
+
+/* One QEMU usb-audio packet: 48 stereo frames, 192 bytes, exactly.
+ * The host DMA-reads this, so it lives in the same non-cacheable window
+ * as the HID reports. */
+static volatile int16_t g_audio_pkt[48 * 2] DWC2_DMA_BUF;
+static bool     g_audio_attached;
+static uint8_t  g_audio_addr;
+static uint8_t  g_audio_ep;
+static uint32_t g_audio_fill;
 
 /* ─────────────────────────────────────────────
  * dwc2_chan_halt — safely disable a channel
@@ -329,6 +339,270 @@ static void dwc2_queue_mouse_in(void)
 }
 
 /* ─────────────────────────────────────────────
+ * Control IN (SETUP + DATA IN + STATUS OUT)
+ * Used to read hub port status and the DAC descriptors.
+ * EP0 packets stay 8 bytes so a 64-byte EP0 still answers.
+ * ───────────────────────────────────────────── */
+static int dwc2_ep0_wait(void)
+{
+    for (int i = 0; i < POLL_TIMEOUT; i++) {
+        uint32_t hcint = dwc2_read(DWC2_HCINT(0));
+        if (hcint & HCINT_XFRC) {
+            dwc2_write(DWC2_HCINT(0), HCINT_ALL);
+            return 0;
+        }
+        if (hcint & (HCINT_STALL | HCINT_TXERR | HCINT_BBERR)) {
+            dwc2_write(DWC2_HCINT(0), HCINT_ALL);
+            return -1;
+        }
+        if (hcint & HCINT_NAK) {
+            dwc2_write(DWC2_HCINT(0), HCINT_ALL);
+            return 1;
+        }
+    }
+    return -1;
+}
+
+static int dwc2_ctrl_in(uint8_t dev_addr, uint8_t bmRequestType, uint8_t bRequest,
+                        uint16_t wValue, uint16_t wIndex,
+                        uint8_t *buf, uint16_t wLength)
+{
+    const int MPS = 8;
+    uint32_t hcchar_base = ((uint32_t)dev_addr << 22) | (uint32_t)MPS;
+    uint16_t got = 0;
+    uint32_t pid = PID_DATA1;
+    int naks = 0;
+
+    g_setup_buf.bmRequestType = bmRequestType;
+    g_setup_buf.bRequest      = bRequest;
+    g_setup_buf.wValue        = wValue;
+    g_setup_buf.wIndex        = wIndex;
+    g_setup_buf.wLength       = wLength;
+    dsb();
+
+    dwc2_chan_halt(0);
+    dwc2_write(DWC2_HCINTMSK(0),
+               HCINT_XFRC | HCINT_CHH | HCINT_NAK |
+               HCINT_STALL | HCINT_TXERR | HCINT_BBERR);
+    dwc2_write(DWC2_HCDMA(0),  (uint32_t)(uintptr_t)&g_setup_buf);
+    dwc2_write(DWC2_HCTSIZ(0), (PID_SETUP << 29) | (1u << 19) | 8u);
+    dwc2_write(DWC2_HCCHAR(0), (1u << 31) | hcchar_base);
+    dsb();
+    if (dwc2_ep0_wait() != 0) return -1;
+
+    while (got < wLength) {
+        uint16_t chunk = 8;
+        int wr;
+        uint32_t left;
+        uint32_t actual;
+        if ((uint16_t)(wLength - got) < chunk) chunk = (uint16_t)(wLength - got);
+        dwc2_chan_halt(0);
+        dwc2_write(DWC2_HCINT(0), HCINT_ALL);
+        dwc2_write(DWC2_HCDMA(0),  (uint32_t)(uintptr_t)g_ctrl_data);
+        dwc2_write(DWC2_HCTSIZ(0), (pid << 29) | (1u << 19) | chunk);
+        dwc2_write(DWC2_HCCHAR(0), (1u << 31) | (1u << 15) | hcchar_base);
+        dsb();
+        wr = dwc2_ep0_wait();
+        if (wr == 1) {
+            if (++naks > STATUS_RETRIES) return -1;
+            continue; /* NAK, same PID */
+        }
+        naks = 0;
+        if (wr != 0) return -1;
+        left = dwc2_read(DWC2_HCTSIZ(0)) & 0x7FFFFu;
+        actual = (left < chunk) ? (chunk - left) : 0;
+        if (actual > chunk) actual = chunk;
+        for (uint32_t i = 0; i < actual; i++) buf[got + i] = g_ctrl_data[i];
+        got = (uint16_t)(got + actual);
+        if (actual < chunk) break;
+        pid = (pid == PID_DATA1) ? PID_DATA0 : PID_DATA1;
+    }
+
+    dwc2_chan_halt(0);
+    dwc2_write(DWC2_HCINT(0), HCINT_ALL);
+    dwc2_write(DWC2_HCDMA(0),  (uint32_t)(uintptr_t)g_ctrl_data);
+    dwc2_write(DWC2_HCTSIZ(0), (PID_DATA1 << 29) | (1u << 19) | 0u);
+    dwc2_write(DWC2_HCCHAR(0), (1u << 31) | hcchar_base); /* STATUS OUT */
+    dsb();
+    (void)dwc2_ep0_wait();
+    return (got > 0 || wLength == 0) ? 0 : -1;
+}
+
+static int dwc2_port_connected(uint8_t port)
+{
+    uint8_t st[4];
+    if (dwc2_ctrl_in(1, 0xA3, USB_REQ_GET_STATUS, 0, port, st, 4) != 0) return 0;
+    return (st[0] & 1u) ? 1 : 0;
+}
+
+/* QEMU usb-audio copies a packet only when it is exactly 192 bytes and
+ * alternate setting 1 is selected. Anything else is dropped. */
+static int dwc2_audio_flush(void)
+{
+    const int CH = 3;
+    const uint32_t nbytes = 192u;
+    int try;
+
+    if (!g_audio_attached || g_audio_fill < 48u) return -1;
+    for (try = 0; try < 8; try++) {
+        uint32_t hcchar;
+        uint32_t left;
+        uint32_t actual;
+        dwc2_chan_halt(CH);
+        dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
+        dwc2_write(DWC2_HCINTMSK(CH),
+                   HCINT_XFRC | HCINT_CHH | HCINT_NAK |
+                   HCINT_STALL | HCINT_TXERR | HCINT_BBERR);
+        dwc2_write(DWC2_HCDMA(CH), (uint32_t)(uintptr_t)g_audio_pkt);
+        /* MC = 1, one packet, 192 bytes. EPTYPE = isochronous. OUT. */
+        dwc2_write(DWC2_HCTSIZ(CH), (1u << 29) | (1u << 19) | nbytes);
+        hcchar = (1u << 31) | (1u << 18) |
+                 ((uint32_t)g_audio_addr << 22) |
+                 ((uint32_t)(g_audio_ep & 0x0Fu) << 11) |
+                 nbytes;
+        dwc2_write(DWC2_HCCHAR(CH), hcchar);
+        dsb();
+        for (int i = 0; i < POLL_TIMEOUT; i++) {
+            uint32_t hcint = dwc2_read(DWC2_HCINT(CH));
+            if (hcint & HCINT_XFRC) {
+                dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
+                left = dwc2_read(DWC2_HCTSIZ(CH)) & 0x7FFFFu;
+                actual = (left < nbytes) ? (nbytes - left) : 0;
+                if (actual == nbytes) return 0;
+                break;
+            }
+            if (hcint & (HCINT_STALL | HCINT_TXERR | HCINT_BBERR | HCINT_CHH)) {
+                dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
+                break;
+            }
+        }
+        delay_us(1000);
+    }
+    return -1;
+}
+
+int dwc2_audio_write(const int16_t *stereo, uint32_t frames)
+{
+    uint32_t i = 0;
+    if (!g_audio_attached || !stereo) return -1;
+    if (g_audio_fill >= 48u) {
+        if (dwc2_audio_flush() != 0) return -1;
+        g_audio_fill = 0;
+    }
+    while (i < frames) {
+        uint32_t n = 48u - g_audio_fill;
+        uint32_t k;
+        if (n > frames - i) n = frames - i;
+        for (k = 0; k < n * 2u; k++) {
+            g_audio_pkt[g_audio_fill * 2u + k] = stereo[i * 2u + k];
+        }
+        g_audio_fill += n;
+        i += n;
+        if (g_audio_fill >= 48u) {
+            if (dwc2_audio_flush() != 0) return -1;
+            g_audio_fill = 0;
+        }
+    }
+    dsb();
+    return 0;
+}
+
+static int dwc2_enumerate_dac(void)
+{
+    uint8_t dev[18];
+    uint8_t hdr[9];
+    uint8_t cfg[256];
+    uint32_t total;
+    uint32_t off;
+    uint8_t iface = 1;
+    uint8_t ep = 0x01;
+    uint16_t mps = 0;
+    uint8_t cur_if = 0;
+    uint8_t cur_alt = 0;
+    uint8_t cur_class = 0;
+    uint8_t cur_sub = 0;
+    int found = 0;
+
+    uart_puts("[DWC2] Resetting Hub Port 3 (USB DAC)...\n");
+    dwc2_ctrl_out(1, 0x23, 3, 4 /* PORT_RESET */, 3, 0);
+    delay_us(60000);
+
+    if (dwc2_ctrl_out(0, 0x00, USB_REQ_SET_ADDRESS, 4, 0, 0) != 0) {
+        uart_puts("[DWC2] USB DAC SET_ADDRESS failed\n");
+        return -1;
+    }
+    delay_us(2000);
+    g_audio_addr = 4;
+
+    if (dwc2_ctrl_in(4, 0x80, USB_REQ_GET_DESCRIPTOR,
+                     (uint16_t)(USB_DESC_TYPE_DEVICE << 8), 0, dev, 18) != 0) {
+        uart_puts("[DWC2] USB DAC device descriptor failed\n");
+        return -1;
+    }
+    if (dwc2_ctrl_in(4, 0x80, USB_REQ_GET_DESCRIPTOR,
+                     (uint16_t)(USB_DESC_TYPE_CONFIG << 8), 0, hdr, 9) != 0) {
+        uart_puts("[DWC2] USB DAC config header failed\n");
+        return -1;
+    }
+    total = (uint32_t)hdr[2] | ((uint32_t)hdr[3] << 8);
+    if (total < 9u) total = 9u;
+    if (total > sizeof cfg) total = (uint32_t)sizeof cfg;
+    if (dwc2_ctrl_in(4, 0x80, USB_REQ_GET_DESCRIPTOR,
+                     (uint16_t)(USB_DESC_TYPE_CONFIG << 8), 0, cfg, (uint16_t)total) != 0) {
+        uart_puts("[DWC2] USB DAC config descriptor failed\n");
+        return -1;
+    }
+
+    for (off = 0; off + 2u <= total; ) {
+        uint8_t len = cfg[off];
+        uint8_t type = cfg[off + 1];
+        if (len < 2u || off + len > total) break;
+        if (type == USB_DESC_TYPE_INTERFACE && len >= 9u) {
+            cur_if = cfg[off + 2];
+            cur_alt = cfg[off + 3];
+            cur_class = cfg[off + 5];
+            cur_sub = cfg[off + 6];
+        } else if (type == USB_DESC_TYPE_ENDPOINT && len >= 7u &&
+                   cur_class == 0x01u && cur_sub == 0x02u && cur_alt >= 1u) {
+            uint8_t addr = cfg[off + 2];
+            uint8_t attr = cfg[off + 3];
+            uint16_t pkt = (uint16_t)cfg[off + 4] | ((uint16_t)cfg[off + 5] << 8);
+            if ((addr & 0x80u) == 0 && (attr & 0x03u) == 0x01u) {
+                iface = cur_if;
+                ep = addr;
+                mps = pkt;
+                found = 1;
+                break;
+            }
+        }
+        off += len;
+    }
+    if (!found) {
+        uart_puts("[DWC2] USB DAC has no isochronous OUT endpoint\n");
+        return -1;
+    }
+
+    dwc2_ctrl_out(4, 0x00, USB_REQ_SET_CONFIGURATION, 1, 0, 0);
+    delay_us(500);
+    /* Alternate setting 1 turns the 48 kHz stereo stream on. */
+    if (dwc2_ctrl_out(4, 0x01, USB_REQ_SET_INTERFACE, 1, iface, 0) != 0) {
+        uart_puts("[DWC2] USB DAC SET_INTERFACE failed\n");
+        return -1;
+    }
+
+    g_audio_ep = ep;
+    g_audio_fill = 0;
+    g_audio_attached = true;
+    usb_audio_uac1_attach_dwc2(ep, mps ? mps : 192u);
+    uart_puts("[DWC2] USB DAC ready EP=");
+    uart_hex32(ep);
+    uart_puts(" MPS=");
+    uart_hex32(mps);
+    uart_puts("\n");
+    return 0;
+}
+
+/* ─────────────────────────────────────────────
  * dwc2_init — full host controller + device init
  * ───────────────────────────────────────────── */
 int dwc2_init(void)
@@ -479,6 +753,10 @@ int dwc2_init(void)
                 g_mouse_attached = true;
                 g_mouse_addr = 3;
             }
+
+            /* Third hub port is the external DAC. run-yoko4 plugs QEMU
+             * usb-audio there, after the keyboard and the mouse. */
+            if (dwc2_port_connected(3)) dwc2_enumerate_dac();
         } else {
             /* Direct device (no hub attached) */
             uart_puts("[DWC2] Direct device detected on root port\n");

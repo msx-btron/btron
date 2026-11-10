@@ -167,4 +167,7 @@ int  dwc2_poll_keyboard(usb_kbd_report_t *report);
 int  dwc2_poll_mouse(usb_mouse_report_t *report);
 uint32_t dwc2_usb_to_btron_key(uint8_t scancode, uint8_t modifiers);
 
+/* Stereo S16 into the UAC1 speaker on this bus. 0 = accepted. */
+int  dwc2_audio_write(const int16_t *stereo, uint32_t frames);
+
 #endif /* BTRON_DRIVERS_BCM283X_DWC2_H */
