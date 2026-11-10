@@ -1,0 +1,46 @@
+B-System Binary Editor - Modern GPU Disassemblers
+=================================================
+
+C99 / NASA JPL Power of 10 compatible disassembler skeletons
+for NVIDIA SASS (Pascal → Blackwell) and AMD RDNA (1 → 4).
+
+Directory layout (intended for src/apps/clu/be/arch/):
+
+smcuda/
+  smcuda.h
+  sm60.c   - Pascal   (sm_60 / sm_61)  - 8-byte primary
+  sm75.c   - Turing   (sm_75)          - 16-byte fixed
+  sm86.c   - Ampere   (sm_86)          - 16-byte fixed
+  sm89.c   - Ada      (sm_89)          - 16-byte fixed
+  sm120.c  - Blackwell(sm_120)         - 16-byte fixed
+
+rdna/
+  rdna.h
+  gfx10_1.c - RDNA 1  (GFX10.1)
+  gfx10_3.c - RDNA 2  (GFX10.3)
+  gfx11.c   - RDNA 3  (GFX11)
+  gfx12.c   - RDNA 4  (GFX12)
+
+Notes
+-----
+- All files follow Power of 10 rules: bounded loops, no recursion,
+  no dynamic allocation, assertions, short functions.
+- Opcode constants are simplified placeholders derived from
+  public sources (CUDA Binary Utilities, DocumentSASS,
+  AMD official ISA PDFs). Replace with real bitfields for
+  production use.
+- Instruction length is correct for each generation:
+  Pascal = 8 bytes, Volta+ = 16 bytes, RDNA = 4-byte multiples.
+
+Integration
+-----------
+1. Copy folders into src/apps/clu/be/arch/
+2. Add the .c files to BE_DASM_SRCS in the Makefile.
+3. Extend the architecture switch in native_dasm.c.
+
+Public sources used for review
+------------------------------
+- NVIDIA CUDA Binary Utilities documentation
+- DocumentSASS (0xD0GF00D)
+- AMD RDNA 1/2/3/3.5 ISA Reference Guides (GPUOpen)
+- Community reverse engineering notes (denvdis, JEB, etc.)

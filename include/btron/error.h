@@ -13,18 +13,42 @@ extern "C" {
 #endif
 
 /* ── Standard Error Codes (Defined in Base Specification) ────────── */
+#ifndef E_OK
 #define E_OK        (0)   /* Normal completion */
+#endif
+#ifndef E_SYS
 #define E_SYS      (-5)   /* System error */
+#endif
+#ifndef E_NOMEM
 #define E_NOMEM    (-10)  /* Out of memory */
+#endif
+#ifndef E_NOSPT
 #define E_NOSPT    (-17)  /* Feature not supported */
+#endif
+#ifndef E_RSVR
 #define E_RSVR     (-25)  /* Reserved error */
+#endif
+#ifndef E_PAR
 #define E_PAR      (-33)  /* Parameter error */
+#endif
+#ifndef E_LIMIT
 #define E_LIMIT    (-34)  /* Limit exceeded */
+#endif
+#ifndef E_ID
 #define E_ID       (-35)  /* Invalid ID */
+#endif
+#ifndef E_OBJ
 #define E_OBJ      (-41)  /* Invalid object state */
+#endif
+#ifndef E_NOEXS
 #define E_NOEXS    (-52)  /* Object does not exist */
+#endif
+#ifndef E_BUSY
 #define E_BUSY     (-65)  /* Resource busy */
+#endif
+#ifndef E_TMOUT
 #define E_TMOUT    (-69)  /* Timeout */
+#endif
 
 /* ── Extended BTRON 3.20 Subsystem Error Codes ──────────────────── */
 #define ER_ADR     (-1)   /* Invalid pointer address / memory address */
