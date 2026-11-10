@@ -46,6 +46,7 @@ void R_AddDynamicLight(const float o[3], float rad, float r, float g, float b, f
 }
 void *R_LoadAliasModel(const char *name) { (void)name; return NULL; }
 int TEX_LoadBSPTextures(const byte *tex_lump, int lump_len) { (void)tex_lump; (void)lump_len; return 1; }
+void TEX_Unload(void) { g_num_gl_textures = 0; }
 
 void P_UpdateParticles(float dt) { (void)dt; }
 
@@ -154,8 +155,8 @@ int main(void) {
     printf("  [PASS] Menu selected map maps/e1m1.bsp successfully!\n");
 
     /* OPTIONS: Mesa / Voodoo-style renderer line.  '4' on main opens it;
-     * '2' selects TinyGL pref, '1' selects EEGS.  Live switch stays EEGS
-     * at the 80% window until 30 FPS. */
+     * '2' selects TinyGL pref, '1' selects EEGS.  PS2 paint applies the
+     * pref via gl_backend_select; POSIX VirtIO never selects. */
     g_menu_active = 1;
     UI_HandleKey(27); /* back to MAIN if still on MAPS */
     g_menu_active = 1;

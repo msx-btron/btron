@@ -22,6 +22,10 @@ void World_UnloadMap(void) {
         memset(&g_world, 0, sizeof(g_world));
     }
     memset(&g_bsp_cache, 0, sizeof(g_bsp_cache));
+    /* Drop the collision hull so SV_Move cannot walk freed clipnodes.
+     * Park (quake_release_level) unloads without SV_Init; a stale
+     * worldhull.clipnodes was SV_HullPointContents: bad node on PS2. */
+    SV_BindWorldHull();
 }
 
 static void parse_spawn_entity(const char *ents) {
@@ -154,6 +158,7 @@ int World_LoadMap(const char *mapname) {
     }
 
     g_world.is_loaded = 1;
+    SV_BindWorldHull();
 
     Con_Printf("BSP World Loaded '%s':\n", mapname);
     Con_Printf("  Geometry: %d faces, %d verts, %d nodes, %d leafs, %d models\n",

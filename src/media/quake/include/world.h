@@ -91,5 +91,6 @@ int   World_HullPointContents(int hullnum, int nodenum, const vec3_t point);
 /* Server integration — call after World_LoadMap */
 void  SV_SpawnServer(const char *mapname);
 void  SV_ServerFrame(float dt);
+void  SV_BindWorldHull(void);
 
 #endif /* QUAKE_WORLD_H */

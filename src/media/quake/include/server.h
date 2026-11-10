@@ -204,6 +204,7 @@ extern server_t g_server;
 
 /* ── API ────────────────────────────────────────────────────────────── */
 void  SV_Init(void);
+void  SV_BindWorldHull(void); /* rebind or clear worldhull from g_world */
 void  SV_Frame(float dt);
 void  SV_Physics(void);
 void  SV_RunEntity(edict_t *ed);

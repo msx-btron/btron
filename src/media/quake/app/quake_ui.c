@@ -87,7 +87,8 @@ typedef enum {
 static menu_page_t s_menu_page = MENU_MAIN;
 static int s_menu_cursor = 0;
 /* 0 EEGS (GS / VU0), 1 TinyGL (Mesa-like).  Displayed like GLQuake's
- * Mesa / Voodoo line.  Live switch at this window size is after 30 FPS. */
+ * Mesa / Voodoo line.  PS2 paint applies this via gl_backend_select;
+ * POSIX VirtIO never selects either (virgl stays). */
 static int s_renderer_pref = 0;
 
 int UI_OptionsRenderer(void) { return s_renderer_pref; }
@@ -465,9 +466,9 @@ int World_ChangeMap(const char *mapname) {
     snprintf(logmsg, sizeof(logmsg), "Warping to %s...", fullpath);
     Con_LogAppend(logmsg);
 
-    /* 1. Tear down previous world */
+    /* 1. Tear down previous world and its TinyGL miptex planes */
     World_UnloadMap();
-    g_num_gl_textures = 0;
+    TEX_Unload();
 
     /* 2. Load new BSP file into hunk */
     if (!World_LoadMap(fullpath)) {
@@ -986,7 +987,7 @@ int UI_HandleKey(UW key) {
                     Con_LogAppend("renderer: EEGS (PlayStation 2 GS / VU0)");
                 } else if (s_menu_cursor == 1) {
                     s_renderer_pref = 1;
-                    Con_LogAppend("renderer: TINYGL (Mesa-like) -- live switch after 30 FPS EEGS");
+                    Con_LogAppend("renderer: TINYGL (Mesa-like)");
                 } else {
                     s_menu_page = MENU_MAIN;
                     s_menu_cursor = 3;
@@ -1271,7 +1272,10 @@ void UI_Draw(int width, int height) {
                 Draw_String(cx, item_y, buf);
             }
 
-            snprintf(live, sizeof(live), "LIVE: EEGS AT 80%% WINDOW (TINYGL AFTER 30 FPS)");
+            snprintf(live, sizeof(live),
+                     s_renderer_pref == 0
+                     ? "LIVE: EEGS  (GS / VU0)"
+                     : "LIVE: TINYGL  (MESA SOFTWARE)");
             Draw_String(cx, cy + 92, live);
             {
                 int back_y = cy + 112;

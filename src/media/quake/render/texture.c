@@ -170,6 +170,28 @@ int TEX_FindTexture(const char *name) {
     return -1;
 }
 
+/* ── Drop every uploaded miptex plane back to the heap ────────────── */
+void TEX_Unload(void) {
+    extern void R_BrushInvalidateTexCache(void);
+    int i;
+
+    R_BrushInvalidateTexCache();
+    for (i = 0; i < g_num_gl_textures; i++) {
+        GLuint id = (GLuint)g_gl_textures[i].tex_id;
+        if (id) {
+#if defined(BTRON_GL_BACKEND_TINYGL)
+            glDeleteTextures(1, &id);
+#else
+            (void)id;
+#endif
+        }
+        g_gl_textures[i].tex_id = 0;
+        g_gl_textures[i].is_uploaded = 0;
+        g_gl_textures[i].gs_plane = NULL;
+    }
+    g_num_gl_textures = 0;
+}
+
 /* ── Module Initialisation ────────────────────────────────────────── */
 void TEX_Init(void) {
     g_num_gl_textures = 0;

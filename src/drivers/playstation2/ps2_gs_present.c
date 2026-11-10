@@ -334,11 +334,6 @@ void ps2_paint_region(GDEV *screen, int x0, int y0, int x1, int y1, int full,
     const uint32_t gs_staged = eegs_present_groups_staged();
     const int gs_paints = gs_took && gs_staged != 0u &&
                           gl_client.right > gl_client.left && gl_client.bottom > gl_client.top;
-    const int gs_replates = gs_paints && s_20y_plated &&
-                            s_20y_rect.left   == gl_client.left &&
-                            s_20y_rect.top    == gl_client.top &&
-                            s_20y_rect.right  == gl_client.right &&
-                            s_20y_rect.bottom == gl_client.bottom;
     RECT gl_hole;
     int gl_hole_live = FALSE;
     uint8_t gl_why = PS2_WHY_STREAM;
@@ -363,9 +358,15 @@ void ps2_paint_region(GDEV *screen, int x0, int y0, int x1, int y1, int full,
         } else {
             gl_why = PS2_WHY_NO_LAYER;
         }
-    } else if (gs_replates) {
+    } else {
+        /* Live GIF this pass.  Always cut the client out of the 2D
+         * canvas.  The compositor skipped the layer GDEV, so that rect
+         * is wallpaper and windows underneath; WHY_NOCUT used to DMA
+         * them into the GS hole then overwrite with the stream, which
+         * flickered those windows through focused Quake. */
         gl_hole = gl_client;
-        gl_why = PS2_WHY_NOCUT;
+        gl_hole_live = TRUE;
+        gl_why = PS2_WHY_CUT;
     }
 
     ps2_upload_canvas(x0, y0, x1, y1, gl_hole_live ? &gl_hole : NULL, gs_paints, gl_why);
@@ -385,9 +386,15 @@ void ps2_paint_region(GDEV *screen, int x0, int y0, int x1, int y1, int full,
                 s_20y_rect = gl_client;
                 gs_layer = TRUE;
             }
-        } else if (gl_hole_live &&
+        } else if (gl_hole_live && s_20y_plated &&
+                   s_20y_rect.left   == gl_hole.left &&
+                   s_20y_rect.top    == gl_hole.top &&
+                   s_20y_rect.right  == gl_hole.right &&
+                   s_20y_rect.bottom == gl_hole.bottom &&
                    x1 > gl_hole.left && x0 < gl_hole.right &&
                    y1 > gl_hole.top  && y0 < gl_hole.bottom) {
+            /* Same client as the last plated stream.  A layer steal
+             * must not replay the previous holder's GIF into this hole. */
             gs_groups = eegs_present_replay(&gl_hole);
             if (gs_groups > 0) {
                 gl_client = gl_hole;

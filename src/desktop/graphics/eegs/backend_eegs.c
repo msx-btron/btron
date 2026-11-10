@@ -648,11 +648,24 @@ void eegs_clear(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t rgba)
 {
     eegs_vertex_t v[3];
     eegs_tri_state_t st;
+    uint64_t test_off, test_on;
+    uint32_t gp_test;
     st.smooth = 0u;
     st.textured = 0u;
     st.blended = 0u;
     st.brighten = 0u;                    /* a clear is a clear: it replaces, whatever the blend state */
     st.depth_test = 0u;
+
+    /* present_send programs one TEST for the whole stream.  If any later
+     * triangle sets s_depth_test_active, that env is ZTEN=1 GREATER_EQUAL,
+     * and a z=0 clear loses to leftover GS Z -- Lil Cu moving objects
+     * then stamp over the previous pose (trails).  Disable Z for the
+     * fill, write z=0 (far), restore GREATER_EQUAL for 3D. */
+    test_off = gs_pack_test(0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);
+    test_on  = gs_pack_test(0u, 0u, 0u, 0u, 0u, 0u, 1u, 2u);
+    gp_test  = GS_GP_TEST_1;
+    (void)gs_rec_ad(&test_off, &gp_test, 1u);
+    s_prim_valid = 0;
 
     /* (v0, v1, v2): (x0,y0) -> (x1,y0) -> (x1,y1) */
     v[0].x_px = x0; v[0].y_px = y0; v[0].z = 0u; v[0].s = 0.0f; v[0].t = 0.0f; v[0].rgba = rgba;
@@ -665,6 +678,9 @@ void eegs_clear(int32_t x0, int32_t y0, int32_t x1, int32_t y1, uint32_t rgba)
     v[1].x_px = x1; v[1].y_px = y1; v[1].z = 0u; v[1].s = 0.0f; v[1].t = 0.0f; v[1].rgba = rgba;
     v[2].x_px = x0; v[2].y_px = y1; v[2].z = 0u; v[2].s = 0.0f; v[2].t = 0.0f; v[2].rgba = rgba;
     eegs_triangle(v, st);
+
+    (void)gs_rec_ad(&test_on, &gp_test, 1u);
+    s_prim_valid = 0;
 }
 
 uint32_t eegs_prims(void) { return s_prims; }

@@ -379,6 +379,23 @@ void tinygl_backend_make_current_ctx(void **p_ctx, int w, int h, void *pixel_buf
         s_ctx_live++;
     }
 
+#if defined(BTRON_PS2_TARGET)
+    /* EEGS records to GS and does not sample the software zbuf.
+     * make_current of an EEGS window used to ZB_resize the shared
+     * process zbuf down to that client (XMB ~186 kB) and the demoted
+     * TinyGL window grew it back (Quake 632×444×2 = 548 kB) every
+     * composite — UART 186↔548 kB ping-pong.  Bind the context for
+     * glTexImage/commit; leave s_zb extent and s_width alone. */
+    if (gl_active_backend() == GL_BACKEND_EEGS && ctx->zb) {
+        gl_current_context = &ctx->gl;
+        if (s_zb)
+            ctx->zb = s_zb;
+        ctx->gl.zb = ctx->zb;
+        *p_ctx = ctx;
+        return;
+    }
+#endif
+
     /* Switch active context and raster buffer */
     gl_current_context = &ctx->gl;
     s_zb = ctx->zb;

@@ -44,6 +44,11 @@ int eegs_present_send(const RECT *client);
 /* Re-dispatches the most recently staged valid GIF stream without re-running CPU paint. */
 int eegs_present_replay(const RECT *client);
 
+/* Drop the saved GIF so a layer steal cannot replay the previous holder's
+ * stream into the new client's scissor.  POSIX/host images that never
+ * present still link a no-op if they call it. */
+void eegs_present_invalidate(void);
+
 /* Frame presentation and hardware pipeline diagnostic statistics */
 typedef struct {
     uint32_t groups;         /* Total GIF packet groups dispatched to DMAC */

@@ -55,6 +55,7 @@ void R_AddDynamicLight(const float o[3], float rad, float r, float g, float b, f
 }
 void *R_LoadAliasModel(const char *name) { (void)name; return NULL; }
 int   TEX_LoadBSPTextures(const byte *t, int l) { (void)t; (void)l; return 1; }
+void  TEX_Unload(void) { g_num_gl_textures = 0; }
 void  P_UpdateParticles(float dt) { (void)dt; }
 void  Draw_Fill(int x, int y, int w, int h, uint32_t c) { (void)x; (void)y; (void)w; (void)h; (void)c; }
 void  Draw_Char(int x, int y, char c) { (void)x; (void)y; (void)c; }
@@ -1053,6 +1054,88 @@ int main(void) {
         }
         printf("    %d distinct builtin(s) dispatched, %d of them not implemented\n",
                called, ignored);
+    }
+
+    printf("\n== 6. Hull lifetime vs park/reload\n");
+    {
+        int fails = 0;
+        int below_root = 0, out_last = 0, m;
+        const int last = g_world.numclipnodes - 1;
+
+        if (g_server.worldhull.clipnodes != g_world.clipnodes) {
+            printf("    [FAIL] worldhull.clipnodes != g_world.clipnodes after spawn\n");
+            fails++;
+        } else {
+            printf("    worldhull bound first=%d last=%d clipnodes=%d\n",
+                   g_server.worldhull.firstclipnode,
+                   g_server.worldhull.lastclipnode,
+                   g_world.numclipnodes);
+        }
+
+        for (m = 0; m < g_world.nummodels; m++) {
+            int root = g_world.models[m].headnode[1];
+            int sp = 0, n, i;
+            int *stack;
+            char *seen;
+            if (root < 0 || root > last) continue;
+            seen = calloc((size_t)g_world.numclipnodes, 1);
+            stack = malloc(sizeof(int) * (size_t)(g_world.numclipnodes + 1));
+            if (!seen || !stack) { free(seen); free(stack); continue; }
+            stack[sp++] = root;
+            while (sp) {
+                const dclipnode_t *cn;
+                n = stack[--sp];
+                if (n < 0) continue;
+                if (n > last) { out_last++; continue; }
+                if (seen[n]) continue;
+                seen[n] = 1;
+                cn = &g_world.clipnodes[n];
+                for (i = 0; i < 2; i++) {
+                    int c = cn->children[i];
+                    if (c < 0) continue;
+                    if (c > last) { out_last++; continue; }
+                    if (c < root) below_root++;
+                    if (sp <= g_world.numclipnodes) stack[sp++] = c;
+                }
+            }
+            free(seen);
+            free(stack);
+        }
+        printf("    submodel hull1 children below own root=%d  past lastclipnode=%d\n",
+               below_root, out_last);
+        printf("    (below-root is why the walk uses array bounds, not firstclipnode)\n");
+
+        World_UnloadMap();
+        if (g_server.worldhull.clipnodes != NULL) {
+            printf("    [FAIL] worldhull still bound after UnloadMap\n");
+            fails++;
+        } else {
+            printf("    UnloadMap cleared worldhull\n");
+        }
+        {
+            float p[3] = { 480.0f, -352.0f, 88.0f };
+            float q[3] = { 480.0f, -352.0f, 0.0f };
+            trace_t t = SV_Move(p, NULL, NULL, q, 0, NULL);
+            if (t.fraction != 1.0f) {
+                printf("    [FAIL] SV_Move after unload did not no-op (frac=%.3f)\n",
+                       t.fraction);
+                fails++;
+            } else {
+                printf("    SV_Move after unload is a no-op\n");
+            }
+        }
+
+        if (!World_LoadMap("maps/e1m1.bsp")) {
+            printf("    [FAIL] reload maps/e1m1.bsp\n");
+            fails++;
+        } else if (g_server.worldhull.clipnodes != g_world.clipnodes ||
+                   g_server.worldhull.lastclipnode != g_world.numclipnodes - 1) {
+            printf("    [FAIL] LoadMap did not rebind worldhull\n");
+            fails++;
+        } else {
+            printf("    LoadMap rebound worldhull without SV_Init\n");
+        }
+        if (fails) return 1;
     }
 
     printf("\n");

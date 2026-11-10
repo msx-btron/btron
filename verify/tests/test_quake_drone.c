@@ -74,6 +74,7 @@ void R_AddDynamicLight(const float o[3], float rad, float r, float g, float b, f
 }
 void *R_LoadAliasModel(const char *name) { (void)name; return NULL; }
 int   TEX_LoadBSPTextures(const byte *t, int l) { (void)t; (void)l; return 1; }
+void  TEX_Unload(void) { g_num_gl_textures = 0; }
 void  P_UpdateParticles(float dt) { (void)dt; }
 void  Draw_Fill(int x, int y, int w, int h, uint32_t c) { (void)x; (void)y; (void)w; (void)h; (void)c; }
 void  Draw_Char(int x, int y, char c) { (void)x; (void)y; (void)c; }

@@ -28,21 +28,23 @@ void glopClear(GLParam* p) {
 
 #if defined(BTRON_PS2_TARGET)
 	/* EEGS records a GS clear; the pixmap is never blitted for the layer,
-	 * so a software color fill is a second write of the whole client. */
+	 * so a software color fill is a second write of the whole client.
+	 * A DEPTH bit still fills: leftover GS Z plus ZTEN GREATER_EQUAL
+	 * kept previous fragments (Lil Cu trails).  Viewport size, not the
+	 * shared TinyGL zbuf, because EEGS make_current skips ZB_resize. */
 	if (gl_active_backend() == GL_BACKEND_EEGS) {
-		if (mask & GL_COLOR_BUFFER_BIT) {
+		if (mask & (GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)) {
 			const uint32_t cr = (uint32_t)(c->clear_color.v[0] * 255.0f);
 			const uint32_t cg = (uint32_t)(c->clear_color.v[1] * 255.0f);
 			const uint32_t cb = (uint32_t)(c->clear_color.v[2] * 255.0f);
 			const uint32_t ca = (uint32_t)(c->clear_color.v[3] * 255.0f);
 			const uint32_t rgba = (cr & 0xFFu) | ((cg & 0xFFu) << 8) | ((cb & 0xFFu) << 16) | ((ca & 0xFFu) << 24);
-			int32_t w = c->zb ? c->zb->xsize : (int32_t)c->viewport.xsize;
-			int32_t h = c->zb ? c->zb->ysize : (int32_t)c->viewport.ysize;
+			int32_t w = (int32_t)c->viewport.xsize;
+			int32_t h = (int32_t)c->viewport.ysize;
+			if (w <= 0 && c->zb) { w = c->zb->xsize; h = c->zb->ysize; }
 			if (w > 0 && h > 0)
 				eegs_clear(0, 0, w, h, rgba);
 		}
-		/* GS Z is the layer's depth; the shared TinyGL zbuf is for the
-		 * software windows and must not be walked on an EEGS clear. */
 		(void)z; (void)r; (void)g; (void)b;
 		return;
 	}

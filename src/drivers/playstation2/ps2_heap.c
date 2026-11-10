@@ -73,7 +73,8 @@ size_t ps2_heap_peak_bytes(void)
     return s_heap_peak;
 }
 
-#define PS2_HEAP_HOLDER_SLOTS 24
+#define PS2_HEAP_HOLDER_SLOTS 64
+#define PS2_HEAP_HOLDER_PRINT 24
 static unsigned s_heap_ooms;
 static unsigned s_heap_oom_site;
 static size_t   s_heap_oom_size;
@@ -92,7 +93,7 @@ void ps2_heap_holders(const char *why)
     s_heap_census_mark = s_heap_used;
 
     for (const ps2_blk *b = s_heap_list; b; b = b->next) {
-        int i, hit = -1;
+        int i, hit = -1, worst;
         if (!b->used) continue;
         for (i = 0; i < n; i++) if (ras[i] == b->ra) { hit = i; break; }
         if (hit < 0 && n < PS2_HEAP_HOLDER_SLOTS) {
@@ -100,9 +101,20 @@ void ps2_heap_holders(const char *why)
             ras[hit] = b->ra; tot[hit] = 0; cnt[hit] = 0; big[hit] = 0;
         }
         if (hit < 0) {
-            rest_tot += b->size; rest_cnt++;
-            if (b->size > rest_big) rest_big = b->size;
-            continue;
+            /* Keep the largest sites: first-seen order hid gl_image_alloc
+             * (1878 kB of 256 kB miptex planes past the old 24 slots). */
+            worst = 0;
+            for (i = 1; i < n; i++) if (tot[i] < tot[worst]) worst = i;
+            if (b->size > tot[worst]) {
+                rest_tot += tot[worst]; rest_cnt += cnt[worst];
+                if (big[worst] > rest_big) rest_big = big[worst];
+                hit = worst;
+                ras[hit] = b->ra; tot[hit] = 0; cnt[hit] = 0; big[hit] = 0;
+            } else {
+                rest_tot += b->size; rest_cnt++;
+                if (b->size > rest_big) rest_big = b->size;
+                continue;
+            }
         }
         tot[hit] += b->size; cnt[hit]++;
         if (b->size > big[hit]) big[hit] = b->size;
@@ -116,7 +128,7 @@ void ps2_heap_holders(const char *why)
         ps2_kprintf("[HEAP]   last failed ask: %u kB from 0x%x\n",
                     (unsigned int)(s_heap_oom_size / 1024u), s_heap_oom_site);
     }
-    for (int pass = 0; pass < n; pass++) {
+    for (int pass = 0; pass < n && pass < PS2_HEAP_HOLDER_PRINT; pass++) {
         int best = -1;
         for (int i = 0; i < n; i++) {
             if (tot[i] == 0u) continue;
@@ -128,11 +140,16 @@ void ps2_heap_holders(const char *why)
                     (unsigned int)(big[best] / 1024u));
         tot[best] = 0u;
     }
+    for (int i = 0; i < n; i++) {
+        if (tot[i] == 0u) continue;
+        rest_tot += tot[i]; rest_cnt += cnt[i];
+        if (big[i] > rest_big) rest_big = big[i];
+    }
     if (rest_cnt) {
-        ps2_kprintf("[HEAP]   +%u block(s) of %u kB (biggest %u kB) at sites past the %d slots"
+        ps2_kprintf("[HEAP]   +%u block(s) of %u kB (biggest %u kB) at sites past the %d printed"
                     " -- raise PS2_HEAP_HOLDER_SLOTS to name them\n",
                     rest_cnt, (unsigned int)(rest_tot / 1024u), (unsigned int)(rest_big / 1024u),
-                    PS2_HEAP_HOLDER_SLOTS);
+                    PS2_HEAP_HOLDER_PRINT);
     }
 }
 

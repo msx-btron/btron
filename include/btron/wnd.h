@@ -225,8 +225,10 @@ BOOL wnd_mgr_contains(const WND *wnd);
 int  wnd_gl_count(void);
 int  wnd_gl_is_costly(const WND *wnd);
 int  wnd_gl_focused_owes(void);        /* focused GL window still needs a raster */
-/* 0 = unlimited GL paints per composite (hosted default).  1 = one TinyGL
- * raster per pass, round-robin among invalid GL windows.  -1 = machine default. */
+/* 0 = unlimited GL paints per composite (hosted / POSIX VirtIO default).
+ * 1 = one TinyGL software raster per pass, round-robin among invalid
+ * TinyGL windows.  The live EEGS layer is not costly and paints beside
+ * that slot.  -1 = machine default. */
 void wnd_gl_set_pass_quota(int n);
 void wnd_gl_pass_begin(void);
 

@@ -912,6 +912,25 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   size steals the layer: the previous holder is demoted to
   TinyGL immediately (its EGL_SURFACE.backend is TinyGL before
   the new window records, so it cannot write the new GS page).
+  The EEGS layer does not consume PS2_TILE_GL_PER_PASS: that
+  slot is a TinyGL software raster, so the demoted window
+  fills its GDEV in the same composite (expected framedrop is
+  REST_MS, not "never paints").  Yield also inval_wnds the
+  demoted window and eegs_present_invalidate()s the saved GIF
+  so present cannot replay the previous holder's stream into
+  the new scissor (XMB/Quake flicker).  Replay requires the
+  plated rect to match the current layer hole.
+  A live EEGS stream always cuts its client out of the 2D canvas
+  upload (PS2_WHY_CUT).  The compositor skips the layer GDEV, so
+  that rect is wallpaper and windows underneath; uploading it then
+  overwriting with the GIF flickered those windows through focused
+  Quake (boot terminal overlaps Quake 80,28,640,480 at y=292..508).
+  Quake OPTIONS Mesa/Voodoo line calls gl_backend_select on
+  the next paint (EEGS or TinyGL).  POSIX VirtIO
+  (`make run-posix`) does not define BTRON_GL_BACKEND_TINYGL
+  and never selects EEGS from that menu: virgl stays.
+  EEGS glClear writes a GS fill with TEST.ZTEN off so leftover
+  GS Z cannot keep previous fragments (Lil Cu trails).
   The GS texture registry (GS_TEX_MAX 8) belongs to the layer
   holder.  Claiming EEGS runs gs_tex_evict_all() so the previous
   holder's planes free their VRAM; the new holder re-registers
@@ -926,13 +945,24 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   GL window takes it on its next paint.  Size hysteresis
   numbers are unchanged; live resize TinyGL↔EEGS on one window
   is still the next debug.
-  XMB from gterm while Quake is live parks the current BSP
-  (`quake_release_level`: World_UnloadMap + FS_DropBSP) so the
-  400×280 GDEV plus 512² atlas fit leftover heap.  Focusing
-  Quake reloads the parked map when the heap hole fits e1m1
+  XMB from gterm while Quake is live parks the current BSP and
+  its TinyGL miptex planes (`quake_release_level`: TEX_Unload +
+  World_UnloadMap + FS_DropBSP) so the 400×280 GDEV plus 512²
+  atlas (1024 kB padded) fit leftover heap.  UnloadMap clears
+  worldhull so SV_Move cannot walk freed clipnodes (UART
+  `SV_HullPointContents: bad node`); LoadMap rebinds it.  Hardware of the
+  park-BSP-only image freed 1333 kB and the atlas still missed
+  an 879 kB hole: the miptex planes (up to 256×256×4 each, ~1.8
+  MiB unnamed past the first 24 holder slots) stayed in the
+  shared TinyGL hash.  Focusing Quake reloads the parked map
+  and re-uploads textures when the heap hole fits e1m1
   (~1.4 MiB); with XMB still open the malloc misses, UART logs
   once, and the next try waits until wnd_gl_count() drops
-  (close XMB).  A stale FILEIO PAK fd is reopened on a short
+  (close XMB).  EEGS make_current does not ZB_resize the shared
+  TinyGL zbuf (the 186↔548 kB ping-pong was XMB EEGS shrinking
+  it to ~384×248×2 and demoted Quake growing it to 632×444×2).
+  A growing drag latches gdev_fit for that window until
+  button-up; slack grows do not free-old-and-retry.  A stale FILEIO PAK fd is reopened on a short
   read (`hashed=339` is a live index, not a hash miss).  EEGS icon/font ST uses uploaded px, not
   the padded plane (a 384 atlas in 512 with u=1 is 384 texels);
   a NULL GS tex after heal still fails closed so TinyGL IM can draw.

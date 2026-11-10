@@ -76,12 +76,13 @@ static void uart_esc_path(const char *tag, const char *path, int fd)
     int i, j = 0;
 
     for (i = 0; path[i] && j < 70; i++) {
-        if (path[i] == '\\') {
-            esc[j++] = '\\';
-            if (j < 70) esc[j++] = '\\';
-        } else {
+        /* Host UART terminals eat 0x5C (`\Q` → Q), which concatenated
+         * `cdrom0:\QUAKE\DRONE1M1.DEM;1` into QUAKEDRONE1M1.DEM.  Log
+         * the ISO slash so the bytes on the wire stay printable. */
+        if (path[i] == '\\')
+            esc[j++] = '/';
+        else
             esc[j++] = path[i];
-        }
     }
     esc[j] = 0;
     snprintf(msg, sizeof(msg), "%s %s fd=%d\n", tag, esc, fd);
@@ -252,14 +253,29 @@ static void fio_to_backslash(char *s)
     }
 }
 
+static int fio_fmt_cdrom(char *dst, size_t cap, const char *rel, int extra_slash)
+{
+    static const char pfx[] = "cdrom0:";
+    size_t i = 0, n;
+
+    if (!dst || cap < 12 || !rel) return -1;
+    for (n = 0; pfx[n] && i + 1 < cap; n++)
+        dst[i++] = pfx[n];
+    if (i + 1 < cap) dst[i++] = '\\';
+    if (extra_slash && i + 1 < cap) dst[i++] = '\\';
+    for (n = 0; rel[n] && i + 1 < cap; n++)
+        dst[i++] = rel[n];
+    if (i + 1 < cap) dst[i++] = ';';
+    if (i + 1 < cap) dst[i++] = '1';
+    dst[i] = 0;
+    return 0;
+}
+
 int ps2_fio_open_cdrom(const char *rel)
 {
     /* CdSearchFileInner requires a leading '\' after cdrom0:.  Slash
-     * paths fail immediately.  Two tries: retail C and SYSTEM.CNF. */
-    static const char *fmt[] = {
-        "cdrom0:\\%s;1",
-        "cdrom0:\\\\%s;1",
-    };
+     * paths fail immediately.  Two tries: retail C and SYSTEM.CNF.
+     * Built with memcpy so a 0x5C is never a snprintf format char. */
     char path[FIO_PATH_MAX];
     char back[192];
     size_t n;
@@ -275,8 +291,9 @@ int ps2_fio_open_cdrom(const char *rel)
     fio_upper(back);
     fio_to_backslash(back);
 
-    for (i = 0; i < sizeof(fmt) / sizeof(fmt[0]); i++) {
-        snprintf(path, sizeof(path), fmt[i], back);
+    for (i = 0; i < 2; i++) {
+        if (fio_fmt_cdrom(path, sizeof(path), back, (int)i) < 0)
+            continue;
         fd = ps2_fio_open(path, PS2_FIO_RDONLY);
         if (fd >= 0) {
             uart_esc_path("[FILEIO] open", path, fd);

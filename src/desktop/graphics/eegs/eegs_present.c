@@ -401,6 +401,12 @@ void eegs_present_end(void)
     eegs_frame_end();
 }
 
+void eegs_present_invalidate(void)
+{
+    s_saved_groups = 0u;
+    s_saved_used   = 0u;
+}
+
 int eegs_present_replay(const RECT *client)
 {
     if (s_groups != 0u || s_saved_groups == 0u) return 0;

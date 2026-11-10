@@ -39,6 +39,9 @@ extern int       g_num_gl_textures;
 /* ── Lifecycle ────────────────────────────────────────────────────── */
 void TEX_Init(void);
 void TEX_LoadPalette(const char *pak_path);
+/* glDeleteTextures every uploaded miptex and clear the table.
+ * PS2 parks this with the BSP so XMB's 1024 kB atlas can fit. */
+void TEX_Unload(void);
 
 /* ── Miptex loading from BSP LUMP_TEXTURES ───────────────────────── */
 int  TEX_LoadBSPTextures(const byte *tex_lump, int lump_len);

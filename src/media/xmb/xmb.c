@@ -3729,7 +3729,8 @@ WND* open_xmb_window_rect(int x, int y, int w, int h)
     if (w <= 0 || h <= 0) {
 #if defined(BTRON_PS2_TARGET)
         /* EEGS-eligible (above 320×220) and small enough that GDEV+atlas
-         * fit after parking Quake's 1.4 MiB BSP: 400×280×4 + 512²×4 ≈ 1.5 MiB. */
+         * fit after parking Quake's BSP and TinyGL miptex planes:
+         * 400×280×4 + 512²×4 ≈ 1.5 MiB. */
         x = 40; y = 40; w = 400; h = 280;
 #elif defined(_RPI_BCM283x_) || defined(BTRON_YOKOYAMA_AARCH64)
         x = 20; y = 34; w = 520; h = 360;

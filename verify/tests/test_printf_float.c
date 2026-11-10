@@ -129,6 +129,13 @@ int main(void)
     n = sn(buf, sizeof buf, "%5s", "ab");
     check("%5s ab", n == 5 && strcmp(buf, "   ab") == 0);
 
+    /* FILEIO cdrom0:\QUAKE\NAME.DEM;1 — a 0x5C in the format or in %s
+     * must survive.  Host UART still eats raw backslash; the EE log
+     * now prints '/' for it. */
+    n = sn(buf, sizeof buf, "cdrom0:\\%s;1", "QUAKE\\DRONE1M1.DEM");
+    check("cdrom0 backslash path",
+          n == 28 && strcmp(buf, "cdrom0:\\QUAKE\\DRONE1M1.DEM;1") == 0);
+
     printf("----------------------------------------------------------\n");
     printf(" %d checks, %d failed\n", s_checks, s_fail);
     return s_fail ? 1 : 0;

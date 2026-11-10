@@ -445,6 +445,11 @@ static int gdev_fit(GDEV *d, H need_w, H need_h, int grow_slack)
         n = (size_t)cap_w * (size_t)cap_h;
         npx = (COLOR *)calloc(n, sizeof(COLOR));
     }
+    /* During a drag, keep the old pixmap.  Free-old-and-retry was the
+     * UART storm: fail 459 kB, free 416, land 427, hole shrinks, next
+     * MOVE asks more. */
+    if (!npx && grow_slack)
+        return 0;
     if (!npx) {
         COLOR *oldp = d->pixels;
         d->pixels = NULL;
@@ -544,9 +549,10 @@ ER rsz_wnd(WND *wnd, H w, H h) {
                 wnd->dev->cap_h = new_dev_h;
             }
             wnd->img_valid = FALSE;
-        } else if (s_gdev_oom_wnd == wnd &&
-                   new_dev_w <= s_gdev_oom_w && new_dev_h <= s_gdev_oom_h) {
-            /* Same grow already failed this drag; keep the old pixmap. */
+        } else if (s_gdev_oom_wnd == wnd) {
+            /* This window already missed a grow; keep the pixmap.
+             * `new <= latched` used to miss a growing drag: each MOVE
+             * asked a larger size and stormed calloc (0x267b3c). */
         } else if (!gdev_fit(wnd->dev, new_dev_w, new_dev_h, slack)) {
             s_gdev_oom_wnd = wnd;
             s_gdev_oom_w = new_dev_w;
@@ -760,14 +766,21 @@ ER wnd_set_title(WND *wnd, const char *title) {
 
 int wnd_gl_is_costly(const WND *w)
 {
-    return w && (w->gl_surf || w->gl_layer);
+    /* TinyGL software raster is the expensive one.  The live EEGS layer
+     * records a GIF stream and must not consume PS2_TILE_GL_PER_PASS:
+     * counting it left the demoted window unpainted (GDEV never written)
+     * while the focused layer animated.  POSIX quota is 0, so this
+     * answer is unused there. */
+    if (!w || !w->gl_surf) return 0;
+    if (w->gl_layer && w == find_gl_layer()) return 0;
+    return 1;
 }
 
 int wnd_gl_count(void)
 {
     int n = 0;
     for (WND *w = g_wnd_head; w; w = w->next) {
-        if (w->visible && wnd_gl_is_costly(w)) n++;
+        if (w->visible && w->gl_surf) n++;
     }
     return n;
 }
@@ -777,10 +790,10 @@ int wnd_gl_focused_owes(void)
     WND *top = get_top_wnd();
     WND *lay;
     if (!top || !top->visible || !top->paint) return 0;
-    if (!wnd_gl_is_costly(top)) return 0;
     lay = find_gl_layer();
     if (top->gl_layer && top == lay)
         return (!s_gl_frozen || !s_gl_layer_recorded) ? 1 : 0;
+    if (!top->gl_surf) return 0;
     return top->img_valid ? 0 : 1;
 }
 
@@ -796,41 +809,26 @@ static int gl_quota_now(void)
 #endif
 }
 
-/* Next visible GL window that still owes a raster, wrapping after `after`.
- * An EEGS layer that has never recorded outranks freeze and the rotation:
- * XMB is the first GL tile, so without this it stayed a hole until focused.
- * The focused GL window then outranks round-robin: continuing from the last
- * pick skipped the app in use and capped it at 60/N. */
+/* Next visible TinyGL window that still owes a software raster, wrapping
+ * after `after`.  The EEGS layer is not costly: it paints through
+ * wnd_owes_callback without taking this slot, so a demoted window can
+ * fill its GDEV in the same composite.  Focused TinyGL outranks
+ * round-robin.  An unrecorded layer still paints: owes_callback is true
+ * while !s_gl_layer_recorded even under freeze. */
 static WND *gl_next_owed(WND *after)
 {
     WND *start;
     WND *w;
-    WND *lay;
     WND *top;
     if (!g_wnd_head) return NULL;
-    lay = find_gl_layer();
-    if (lay && lay->visible && lay->paint && !s_gl_layer_recorded)
-        return lay;
     top = get_top_wnd();
-    if (top && top->visible && top->paint && wnd_gl_is_costly(top)) {
-        BOOL owed;
-        if (top->gl_layer && top == lay)
-            owed = !s_gl_frozen || !s_gl_layer_recorded;
-        else
-            owed = !top->img_valid;
-        if (owed) return top;
-    }
+    if (top && top->visible && top->paint && wnd_gl_is_costly(top) && !top->img_valid)
+        return top;
     start = (after && after->next) ? after->next : g_wnd_head;
     w = start;
     do {
-        if (w->visible && w->paint && wnd_gl_is_costly(w)) {
-            BOOL owed;
-            if (w->gl_layer && w == lay)
-                owed = !s_gl_frozen || !s_gl_layer_recorded;
-            else
-                owed = !w->img_valid;
-            if (owed) return w;
-        }
+        if (w->visible && w->paint && wnd_gl_is_costly(w) && !w->img_valid)
+            return w;
         w = w->next ? w->next : g_wnd_head;
     } while (w != start);
     return NULL;
@@ -859,12 +857,11 @@ void wnd_gl_pass_begin(void)
  * Nothing outside the PS2 core's paint pass ever raises the freeze, so on every other target this
  * reduces to the `!img_valid` it has always answered.
  *
- * PS2 (quota 1): one TinyGL raster per composite.  The focused GL window
- * is picked whenever it owes a frame; remaining slots round-robin among
- * the other invalid GL windows.  Five TinyGL paints in one pass were
- * ~140 ms (~7 FPS each).  Fair RR from the last pick capped the focused
- * app at 60/N.  A skipped window stays invalid and is the next pick
- * once the focused window is valid; closing one shortens the rotation. */
+ * PS2 (quota 1): one TinyGL software raster per composite.  The EEGS
+ * layer is not in that quota (GIF record is cheap); a demoted window
+ * therefore still fills its GDEV.  Focused TinyGL is picked whenever it
+ * owes; remaining slots round-robin.  Five TinyGL paints in one pass
+ * were ~140 ms (~7 FPS each).  A skipped window stays invalid. */
 static BOOL wnd_owes_callback(const WND *w) {
     BOOL owes;
     if (!w->paint) return FALSE;
@@ -971,8 +968,9 @@ static void draw_retro_window_frame(GDEV *dev, WND *wnd, BOOL layer_records) {
 
     /* A GS layer window's client rect belongs to the stream, not to the canvas: the pass that
      * records it (layer_records) is the pass whose environment packet scissors that rect, and the
-     * present uploads the band before sending the stream, so whatever the canvas holds under the
-     * rect is buried in VRAM a few microseconds later and cannot reach the screen.  Skipping the
+     * present cuts that rect from the canvas upload so wallpaper and windows underneath never
+     * DMA into the GS hole (WHY_NOCUT used to upload them, then the stream buried them a few
+     * microseconds later -- flicker of those windows through focused Quake).  Skipping the
      * fill there is the same refusal increment 5c already made for the client blit -- the
      * unconditional `if (wnd->gl_layer) continue` further down this walk -- charged on the other
      * side of the ledger, where a measured full-desktop pass spends essentially all of frame= at
@@ -1227,8 +1225,8 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
                 }
             }
         }
-        /* The GS draws these pixels, into the same VRAM this canvas was just uploaded to.
-         * Only the active hardware GL layer skips software client pixmap blitting. */
+        /* The GS draws these pixels.  Present cuts this client from the canvas
+         * upload, so skipping the blit here does not leave wallpaper in VRAM. */
         if (wnd->gl_layer && wnd == gl_wnd) continue;
 
         H cx0 = damage->left - dest_x;
@@ -1662,6 +1660,9 @@ BOOL wnd_mgr_handle_event(const EVT *ev) {
         BOOL was_interacting = (s_wnd_dragging || s_wnd_sliding_tab || s_wnd_resizing);
         if (s_wnd_resizing) {
             s_wnd_resizing = FALSE;
+            /* One button-up try at the exact size; drag latch stays off. */
+            if (s_gdev_oom_wnd == s_wnd_resize_target)
+                s_gdev_oom_wnd = NULL;
             wnd_mgr_flush_resize();
         }
         s_wnd_dragging = FALSE;

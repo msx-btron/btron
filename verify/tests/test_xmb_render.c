@@ -2082,6 +2082,19 @@ static void test_live_backend_switch(void)
                   "refocused first window takes EEGS back");
             CHECK(s2->backend == GL_BACKEND_TINYGL,
                   "unfocused second window is TinyGL");
+            /* OPTIONS Mesa/Voodoo: remembered TinyGL demotes even a
+             * focused EEGS-sized window.  POSIX VirtIO never takes
+             * this arm (no BTRON_GL_BACKEND_TINYGL). */
+            gl_backend_select(GL_BACKEND_TINYGL);
+            egl_surface_apply_live_backend(surf);
+            CHECK(surf->backend == GL_BACKEND_TINYGL,
+                  "OPTIONS TinyGL demotes the focused GS layer");
+            CHECK(g_wnd.gl_layer == FALSE, "OPTIONS TinyGL releases the layer");
+            gl_backend_select(GL_BACKEND_EEGS);
+            s_focus_wnd = &g_wnd;
+            egl_surface_apply_live_backend(surf);
+            CHECK(surf->backend == GL_BACKEND_EEGS,
+                  "OPTIONS EEGS returns the focused window to the GS layer");
             egl_destroy_surface(s2);
             w2.gl_surf = NULL;
             w2.gl_layer = FALSE;

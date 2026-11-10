@@ -426,6 +426,9 @@ static void test_empty_frames(void)
     eegs_present_end();
     check("a frame that painted nothing sends nothing", eegs_present_send(&k_client) == 0);
     check("and touches the bus zero times", s_calls == 0u);
+    eegs_present_invalidate();
+    check("invalidate drops a saved stream so replay cannot steal a hole",
+          eegs_present_replay(&k_client) == 0);
 
     dma_reset();
     eegs_present_begin();

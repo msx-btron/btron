@@ -340,8 +340,9 @@ static void whole_canvas_reports_its_stages(void)
  * the marginal rate at the same 18.5 ns/px as the average, with an intercept of about
  * -200 us: that stage is essentially one whole-body flat fill per window.  A layer window
  * is then drawn twice, once into the canvas by the fill and once into VRAM by the stream the
- * same pass records, and only the second copy reaches the screen, because the present uploads
- * the band first and sends the stream after (doc/txt/PS2.txt row 9a: -6,547 us measured at
+ * same pass records, and only the second copy reaches the screen: present cuts that client
+ * from the canvas upload (PS2_WHY_CUT) so wallpaper and windows underneath never DMA into
+ * the GS hole, then sends the stream (doc/txt/PS2.txt row 9a: -6,547 us measured at
  * `plate=covered`).  Refusing 384,000 px a frame is legitimate only while the refused set is
  * exactly the rect the GS covers -- one pixel wider is a hole of desktop art where a grey
  * plate belongs, and no bench row would show it.  So this asserts the set equality, not the

@@ -32,16 +32,59 @@ server_t g_server;
 
 /* ── BSP Hull Trace ─────────────────────────────────────────────────── */
 
+static int s_hull_bad_prints;
+
+void SV_BindWorldHull(void) {
+    hull_t *h = &g_server.worldhull;
+    memset(h, 0, sizeof(*h));
+    s_hull_bad_prints = 0;
+    if (!g_world.is_loaded || !g_world.clipnodes || !g_world.planes)
+        return;
+    if (g_world.numclipnodes <= 0)
+        return;
+    h->clipnodes     = g_world.clipnodes;
+    h->planes        = g_world.planes;
+    h->lastclipnode  = g_world.numclipnodes - 1;
+    h->firstclipnode = 0;
+    if (g_world.models && g_world.nummodels > 0) {
+        int root = g_world.models[0].headnode[1];
+        if (root >= 0 && root <= h->lastclipnode)
+            h->firstclipnode = root;
+    }
+    h->clip_mins[0] = -16.0f; h->clip_mins[1] = -16.0f; h->clip_mins[2] = -24.0f;
+    h->clip_maxs[0] =  16.0f; h->clip_maxs[1] =  16.0f; h->clip_maxs[2] =  32.0f;
+}
+
 static int SV_HullPointContents(const hull_t *hull, int num, const float *p) {
+    int guard = 0;
+    if (!hull || !hull->clipnodes || !hull->planes || !p)
+        return CONTENTS_EMPTY;
+    /* Parked or rebound map: worldhull still named the freed BSP. */
+    if (hull == &g_server.worldhull &&
+        (!g_world.is_loaded || hull->clipnodes != g_world.clipnodes))
+        return CONTENTS_EMPTY;
+
     while (num >= 0) {
-        if (num < hull->firstclipnode || num > hull->lastclipnode) {
-            Con_DPrintf("SV_HullPointContents: bad node\n");
+        const dclipnode_t *node;
+        const dplane_t    *plane;
+        float d;
+        /*
+         * Array bounds, not firstclipnode.  A bmodel tree's children can
+         * sit below that model's own root still inside the clipnodes lump;
+         * treating that as fatal printed "bad node" mid-demo on PS2.
+         */
+        if (num > hull->lastclipnode) {
+            if (s_hull_bad_prints < 1) {
+                s_hull_bad_prints++;
+                Con_DPrintf("SV_HullPointContents: bad node\n");
+            }
             return CONTENTS_EMPTY;
         }
-        const dclipnode_t *node = &hull->clipnodes[num];
-        const dplane_t    *plane = &hull->planes[node->planenum];
-
-        float d;
+        node = &hull->clipnodes[num];
+        if (g_world.numplanes > 0 &&
+            (node->planenum < 0 || node->planenum >= g_world.numplanes))
+            return CONTENTS_EMPTY;
+        plane = &hull->planes[node->planenum];
         /*
          * Only 0..2 name an axis. The on-disk record marks a generic plane with
          * type -1, so a bare `type < 3` would index p[-1].
@@ -52,12 +95,15 @@ static int SV_HullPointContents(const hull_t *hull, int num, const float *p) {
             d = DotProduct(plane->normal, p) - plane->dist;
         }
         num = (d < 0) ? node->children[1] : node->children[0];
+        if (++guard > hull->lastclipnode + 2)
+            return CONTENTS_EMPTY;
     }
     return num; /* leaf contents (negative) */
 }
 
 int SV_PointContents(const float *p) {
     if (!g_world.is_loaded || !g_server.worldhull.clipnodes) return CONTENTS_EMPTY;
+    if (g_server.worldhull.clipnodes != g_world.clipnodes) return CONTENTS_EMPTY;
     return SV_HullPointContents(&g_server.worldhull, g_server.worldhull.firstclipnode, p);
 }
 
@@ -79,9 +125,13 @@ static int SV_RecursiveHullCheck(const hull_t *hull, int num,
         return 1;
     }
 
-    if (num < hull->firstclipnode || num > hull->lastclipnode) return 1;
+    if (!hull || !hull->clipnodes || !hull->planes) return 1;
+    if (num > hull->lastclipnode) return 1;
 
     const dclipnode_t *node  = &hull->clipnodes[num];
+    if (g_world.numplanes > 0 &&
+        (node->planenum < 0 || node->planenum >= g_world.numplanes))
+        return 1;
     const dplane_t    *plane = &hull->planes[node->planenum];
 
     float t1, t2;
@@ -164,6 +214,7 @@ trace_t SV_Move(const float *start, const float *mins, const float *maxs,
     trace.ent = NULL;
 
     if (!g_world.is_loaded || !g_server.worldhull.clipnodes) return trace;
+    if (g_server.worldhull.clipnodes != g_world.clipnodes) return trace;
 
     /* 1. Trace against static world BSP */
     int start_contents = SV_HullPointContents(&g_server.worldhull,
@@ -813,17 +864,7 @@ int SV_UseEntity(int edictnum, int other_edict) {
 /* ── Server init ────────────────────────────────────────────────────── */
 void SV_Init(void) {
     memset(&g_server, 0, sizeof(g_server));
-
-    /* Build hull 1 (player bbox 32×32×56) from BSP clipnodes */
-    if (g_world.is_loaded && g_world.clipnodes && g_world.planes) {
-        hull_t *h = &g_server.worldhull;
-        h->clipnodes     = g_world.clipnodes;
-        h->planes        = g_world.planes;
-        h->firstclipnode = (g_world.models && g_world.nummodels > 0) ? g_world.models[0].headnode[1] : 0;
-        h->lastclipnode  = g_world.numclipnodes - 1;
-        h->clip_mins[0]  = -16.0f; h->clip_mins[1] = -16.0f; h->clip_mins[2] = -24.0f;
-        h->clip_maxs[0]  =  16.0f; h->clip_maxs[1] =  16.0f; h->clip_maxs[2] =  32.0f;
-    }
+    SV_BindWorldHull();
 
     g_server.active    = 1;
     g_server.time      = 0.0f;

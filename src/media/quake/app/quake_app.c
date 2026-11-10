@@ -24,6 +24,8 @@
 #include "../include/cl_demo.h"
 #include "gl_dispatch.h"
 #include "egl_surface.h"
+#include "gl_backend_choice.h"
+#include "../include/quake_ui.h"
 
 #include <btron/wnd.h>
 #include <btron/itron.h>
@@ -70,10 +72,32 @@ static void Quake_Shutdown(void) {
 void quake_release_level(void)
 {
 #if defined(BTRON_PS2_TARGET)
+    extern size_t ps2_heap_used_bytes(void);
+    size_t used0;
+    int ntex;
+
     if (g_world.is_loaded && g_world.name[0])
         snprintf(s_parked_map, sizeof(s_parked_map), "%s", g_world.name);
     else if (!s_parked_map[0])
         snprintf(s_parked_map, sizeof(s_parked_map), "maps/e1m1.bsp");
+    /* TinyGL planes stay in the shared hash after FS_DropBSP; hardware
+     * UART of 2026-11-10 left ~1.8 MiB of 256 kB-class blocks unnamed
+     * and the 1024 kB atlas missed an 879 kB hole.  Delete them here
+     * while Quake's surface is still current. */
+    ntex = g_num_gl_textures;
+    used0 = ps2_heap_used_bytes();
+    if (s_surf)
+        egl_make_current(s_surf);
+    TEX_Unload();
+    {
+        char msg[96];
+        size_t used1 = ps2_heap_used_bytes();
+        unsigned freed = (used0 > used1)
+            ? (unsigned)((used0 - used1) / 1024u) : 0u;
+        snprintf(msg, sizeof(msg),
+                 "[QUAKE] textures parked (%d names, %u kB)\n", ntex, freed);
+        uart_puts_raw(msg);
+    }
     World_UnloadMap();
     FS_DropBSP();
     s_park_skip = 0;
@@ -115,6 +139,12 @@ static void quake_paint(WND *wnd, GDEV *dev) {
     if (!surf) surf = s_surf;
     if (!surf) return;
 
+#if defined(BTRON_PS2_TARGET)
+    /* OPTIONS Mesa/Voodoo line: apply on this paint.  POSIX VirtIO
+     * (`make run-posix`) must not select EEGS or TinyGL — virgl stays. */
+    gl_backend_select(UI_OptionsRenderer() == 1
+                      ? GL_BACKEND_TINYGL : GL_BACKEND_EEGS);
+#endif
     egl_make_current(surf);
 
 #if defined(BTRON_PS2_TARGET)
@@ -128,7 +158,14 @@ static void quake_paint(WND *wnd, GDEV *dev) {
         if (!(s_park_skip && gln == s_park_gln)) {
             s_park_gln = gln;
             uart_puts_raw("[QUAKE] reloading parked level\n");
+            /* World_LoadMap rebinds worldhull; do not walk the parked clipnodes. */
             s_park_skip = World_LoadMap(s_parked_map) ? 0 : 1;
+            if (!s_park_skip && g_bsp_cache.is_ready && g_num_gl_textures == 0) {
+                const byte *tex_lump = g_bsp_cache.lumps[LUMP_TEXTURES];
+                int tex_len = g_bsp_cache.lump_lens[LUMP_TEXTURES];
+                if (tex_lump && tex_len > 0)
+                    TEX_LoadBSPTextures(tex_lump, tex_len);
+            }
         }
     }
 #endif

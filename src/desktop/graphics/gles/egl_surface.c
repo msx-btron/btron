@@ -18,6 +18,7 @@
 #include <string.h>
 #if defined(BTRON_PS2_TARGET)
 #include "../../../drivers/playstation2/ps2_gs_tex.h"
+#include "../eegs/eegs_present.h"
 #endif
 
 extern void uart_puts_raw(const char *s);
@@ -218,7 +219,12 @@ EGL_SURFACE* egl_create_window_surface(WND *wnd) {
 
 /* SPEC: one EEGS GS layer, owned by the focused GL window.  Unfocused
  * GL is TinyGL (framedrop is the unfocused REST_MS / quota law).  Size
- * hysteresis on the focused window is unchanged (280×180 / 320×220). */
+ * hysteresis on the focused window is unchanged (280×180 / 320×220).
+ *
+ * POSIX VirtIO (`make run-posix`) does not define BTRON_GL_BACKEND_TINYGL:
+ * this returns `cur` so the surface stays on the virgl backend gl_init
+ * installed.  Quake OPTIONS must not gl_backend_select(EEGS) on that
+ * image (gated in quake_paint). */
 static GL_BACKEND egl_live_want(const EGL_SURFACE *surf, int w, int h)
 {
     GL_BACKEND cur = surf->backend;
@@ -279,6 +285,13 @@ static void egl_yield_other_layer(WND *keep)
         held->layer_home = 0;
         egl_fps_restore_base(held);
         egl_live_log(GL_BACKEND_TINYGL);
+        /* Demoted GDEV was never written by EEGS glClear.  Dirty it so
+         * the TinyGL quota paints the pixmap instead of blitting stale
+         * pixels under a replay of the previous holder's GIF. */
+        inval_wnd(cur);
+#if defined(BTRON_PS2_TARGET)
+        eegs_present_invalidate();
+#endif
     }
 }
 
@@ -324,6 +337,9 @@ void egl_surface_apply_live_backend(EGL_SURFACE *surf)
         wnd_gl_layer_release(wnd);
         surf->backend = GL_BACKEND_TINYGL;
         surf->layer_home = 0;
+#if defined(BTRON_PS2_TARGET)
+        eegs_present_invalidate();
+#endif
     }
     gl_set_active_backend(surf->backend);
     egl_live_log(surf->backend);

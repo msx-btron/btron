@@ -70,6 +70,7 @@ int in_down = 0, in_jump = 0, in_attack = 0;
 int in_turn_left = 0, in_turn_right = 0;
 
 void uart_puts_raw(const char *s) { (void)s; }
+void glDeleteTextures(GLint n, const GLuint *textures) { (void)n; (void)textures; }
 void P_BloodSplash(const float o[3], int c) { (void)o; (void)c; }
 void P_ExplosionParticles(const float o[3]) { (void)o; }
 void P_RunParticleEffect(const float o[3], const float d[3], int col, int cnt) {
