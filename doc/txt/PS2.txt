@@ -963,8 +963,18 @@ PART SIX -- THE PORT -- DRIVERS, DESKTOP, STORAGE
   it to ~384×248×2 and demoted Quake growing it to 632×444×2).
   A growing drag latches gdev_fit for that window until
   button-up; slack grows do not free-old-and-retry.  A stale FILEIO PAK fd is reopened on a short
-  read (`hashed=339` is a live index, not a hash miss).  EEGS icon/font ST uses uploaded px, not
-  the padded plane (a 384 atlas in 512 with u=1 is 384 texels);
+  read (`hashed=339` is a live index, not a hash miss).  EEGS icon/font ST
+  uses texel centres of the uploaded extent (a 384 atlas in 512 with u=1
+  is 383.5, never the pad).  gs_tex_register REGION_CLAMPs to px-1 when
+  px < pad so LINEAR cannot mix white ink with transparent padding over
+  the blue ribbon (that mix is cyan on category icons).  XMB bakes each occupied atlas cell (except the particle droplet) as a
+  navy badge in the glyph bounding box (STROKE interiors and 2×2 gaps
+  at A=255, white glyph lerped on top).  Square-cell corners stay A=0.
+  Icon quads draw with ABE on and vertex A=1 so the badge replaces the
+  destination-brighten ribbon and the corners keep it.  A full-cell
+  A=255 bake stamped a 64×64 navy square plus a square drop-shadow.  Texture DMA FlushCache(0)s before the kseg1 GIF read.  Boot paints the
+  whole 832-wide GS page navy before the 800-wide IMAGE upload, because
+  the 32 px of pitch share PSMCT32 pages with visible x=768..799.
   a NULL GS tex after heal still fails closed so TinyGL IM can draw.
   Quake is the boot GL window and the EEGS layer while focused;
   an unrecorded layer still paints once while frozen, then freeze

@@ -1228,33 +1228,16 @@ static void xb_fill_icon_atlas(UB *icons)
 #endif
 
 #if defined(BTRON_PS2_TARGET)
-/* TinyGL pads each axis to a power of two.  384→512, 96→128. */
-#define XB_ICON_PAD  512
+#include "xmb_ps2_atlas.h"
 #define XB_FONT_PAD  128
-
-static uint32_t xb_pack_rgba(UB r, UB g, UB b, UB a)
-{
-    /* Same word as gl_convert_row_to_8A8R8G8B on this target: A top,
-     * R in the low byte, B at 16. */
-    return ((uint32_t)a << 24) | ((uint32_t)b << 16) |
-           ((uint32_t)g << 8) | (uint32_t)r;
-}
-
-static void xb_fill_icon_plane(uint32_t *pm, int pad_w)
-{
-    int x, y;
-    for (y = 0; y < XB_ICON_TEX; y++) {
-        for (x = 0; x < XB_ICON_TEX; x++) {
-            unsigned char a = xb_icon_alpha[y * XB_ICON_TEX + x];
-            pm[y * pad_w + x] = xb_pack_rgba(a ? 248 : 0, a ? 250 : 0,
-                                             a ? 255 : 0, a);
-        }
-    }
-}
 
 static void xb_fill_font_plane(uint32_t *pm, int pad_w)
 {
-    int i;
+    int i, x, y;
+
+    for (y = 0; y < XB_FONT_PAD; y++)
+        for (x = 0; x < XB_FONT_PAD; x++)
+            pm[y * pad_w + x] = 0u;
     for (i = 0; i < XB_FONT_COLS * XB_FONT_ROWS; i++) {
         int code = 32 + i;
         H gw = 8, gh = 16;
@@ -1271,7 +1254,7 @@ static void xb_fill_font_plane(uint32_t *pm, int pad_w)
             for (gx = 0; gx < 8; gx++) {
                 if (bmp[gy] & (0x80 >> gx))
                     pm[(oy + gy) * pad_w + (ox + gx)] =
-                        xb_pack_rgba(255, 255, 255, 255);
+                        xb_ps2_pack_rgba(255, 255, 255, 255);
             }
         }
     }
@@ -1307,7 +1290,7 @@ static void xb_bake_textures(void)
         if (!pm) {
             uart_puts_raw("[GL] xmb: no memory for the icon atlas\n");
         } else {
-            xb_fill_icon_plane(pm, XB_ICON_PAD);
+            xb_ps2_fill_icon_plane(pm, XB_ICON_PAD);
             tinygl_texture_commit(s_tex_icons);
         }
         xb_phase("fill_atlas", XB_ICON_TEX * XB_ICON_TEX);
@@ -1485,7 +1468,7 @@ static void xb_gs_heal(void)
         tinygl_texture_commit(s_tex_font);
 }
 
-static int xb_tex_ask(int nquads, GLuint name)
+static int xb_tex_ask(int nquads, GLuint name, int blended)
 {
     const gs_tex_t *tex;
     if (!xb_eegs_live()) return 0;
@@ -1497,7 +1480,7 @@ static int xb_tex_ask(int nquads, GLuint name)
     if (!tex) return 0;
     return eegs_geom_tex_quads_px(tex,
                                   s_tex_xs, s_tex_ys, s_tex_us, s_tex_vs,
-                                  s_tex_cols, nquads, s_w, s_h, 1, 0) >= 0;
+                                  s_tex_cols, nquads, s_w, s_h, blended, 0) >= 0;
 }
 #endif /* BTRON_PS2_TARGET */
 
@@ -1723,7 +1706,7 @@ static void xb_draw_icon(int cell, float cx, float cy, float size,
                          cx + w + s_shadow_offset, cy + h + s_shadow_offset,
                          u0, v0, u1, v1,
                          0.0f, 0.0f, 0.0f, alpha * XB_SHADOW_ALPHA * 0.75f);
-        if (!xb_tex_ask(1, s_tex_icons))
+        if (!xb_tex_ask(1, s_tex_icons, 1))
 #endif
         {
             glTexCoord2f(u0, v0); glVertex2f(cx - w + s_shadow_offset, cy - h + s_shadow_offset);
@@ -1735,11 +1718,18 @@ static void xb_draw_icon(int cell, float cx, float cy, float size,
     }
 
     glColor4f(br, br, br, alpha);
+#if defined(BTRON_PS2_TARGET)
+    /* Badge is A=255 navy in the glyph bbox (holes included); cell corners
+     * stay A=0.  Source-over with vertex A=1 replaces the ribbon inside the
+     * badge and keeps it in the corners.  ABE off would stamp RGB=0 corners
+     * as a black square the size of the cell. */
+    glColor4f(br, br, br, 1.0f);
+#endif
     glBegin(GL_QUADS);
 #if defined(BTRON_PS2_TARGET)
     xb_tex_fill_quad(0, cx - w, cy - h, cx + w, cy + h,
-                     u0, v0, u1, v1, br, br, br, alpha);
-    if (!xb_tex_ask(1, s_tex_icons))
+                     u0, v0, u1, v1, br, br, br, 1.0f);
+    if (!xb_tex_ask(1, s_tex_icons, 1))
 #endif
     {
         glTexCoord2f(u0, v0); glVertex2f(cx - w, cy - h);
@@ -1805,7 +1795,7 @@ static void xb_draw_text_run(const char *str, float x, float y, float h,
                                  u0, v0, u1, v1, r, g, b, a);
                 gx += step;
             }
-            if (xb_tex_ask(n, s_tex_font)) {
+            if (xb_tex_ask(n, s_tex_font, 1)) {
                 glEnd();
                 return;
             }

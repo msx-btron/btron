@@ -23,6 +23,7 @@ static void check(const char *what, int ok)
 
 static uint8_t s_buf[4096];
 static uint32_t s_n;
+static const gs_tex_t *s_find_tex;
 
 static void rec_sink(void *user, const uint64_t *q, uint32_t nq)
 {
@@ -92,13 +93,19 @@ int main(void)
     check("fill_rect recorded GIF bytes", s_n > 0);
     check("fill_rect submitted two triangles", eegs_prims() == 2);
 
-    /* GL 0..1 maps onto the uploaded extent, not the padded plane.
-     * A 384×384 atlas in 512×512 with u=1 must be 384 texels. */
-    check("uv 1 of 384-in-512 is 384 texels",
-          eegs_geom_uv_to_st(1.0f, 384u) == 384.0f);
-    check("uv 0 is 0", eegs_geom_uv_to_st(0.0f, 384u) == 0.0f);
-    check("pad_w 512 is the wrong converter",
-          eegs_geom_uv_to_st(1.0f, 512u) == 512.0f);
+    /* GL 0..1 maps onto texel centres of the uploaded extent, not the pad.
+     * A 384×384 atlas in 512×512 with u=1 is the centre of texel 383. */
+    check("uv 1 of 384-in-512 is texel 383.5",
+          eegs_geom_uv_to_st(1.0f, 384u) == 383.5f);
+    check("uv 0 is the centre of texel 0",
+          eegs_geom_uv_to_st(0.0f, 384u) == 0.5f);
+    check("pad_w 512 is the wrong converter (would be 511.5, not 384)",
+          eegs_geom_uv_to_st(1.0f, 512u) == 511.5f);
+    {
+        float st = eegs_geom_uv_to_st(63.0f / 383.0f, 384u);
+        check("xb_uv cell-0 right edge stays inside the 64-texel cell",
+              st > 63.0f && st < 64.0f);
+    }
 
     {
         float xs[4] = {0, 10, 10, 0};
@@ -113,12 +120,65 @@ int main(void)
         check("NULL tex is refused (TinyGL IM fallback)", rc == -1);
     }
 
+    /* PRIM ABE bit 6 follows the blended argument once a plane is bound.
+     * A=0 cell corners need ABE on so they do not stamp RGB=0 as a square. */
+    {
+        static uint32_t plane[64 * 64];
+        static gs_tex_t tex;
+        float xs[4] = {0, 10, 10, 0};
+        float ys[4] = {0, 0, 10, 10};
+        float us[4] = {0, 1, 1, 0};
+        float vs[4] = {0, 0, 1, 1};
+        float cols[16];
+        int k;
+        const eegs_chain_rec *ch;
+        for (k = 0; k < 16; k++) cols[k] = 1.0f;
+        memset(&tex, 0, sizeof tex);
+        tex.plane = plane;
+        tex.px_w = tex.px_h = 64;
+        tex.pad_w = tex.pad_h = 64;
+        tex.tw_exp = tex.th_exp = 6;
+        s_find_tex = &tex;
+
+        s_n = 0;
+        eegs_frame_begin(rec_sink, NULL);
+        check("blended=0 tex quad records",
+              eegs_geom_tex_quads_px(&tex, xs, ys, us, vs, cols, 1,
+                                     64, 64, 0, 0) >= 0);
+        eegs_frame_end();
+        ch = eegs_chain_at(0);
+        check("blended=0 chain exists", ch != 0);
+        if (ch) {
+            check("blended=0 ABE bit 6 is clear",
+                  (ch->prim & (1u << 6)) == 0);
+            check("blended=0 TME bit 4 is set",
+                  (ch->prim & (1u << 4)) != 0);
+        }
+
+        s_n = 0;
+        eegs_frame_begin(rec_sink, NULL);
+        check("blended=1 tex quad records",
+              eegs_geom_tex_quads_px(&tex, xs, ys, us, vs, cols, 1,
+                                     64, 64, 1, 0) >= 0);
+        eegs_frame_end();
+        ch = eegs_chain_at(0);
+        check("blended=1 chain exists", ch != 0);
+        if (ch) {
+            check("blended=1 ABE bit 6 is set",
+                  (ch->prim & (1u << 6)) != 0);
+            check("blended=1 TME bit 4 is set",
+                  (ch->prim & (1u << 4)) != 0);
+        }
+        s_find_tex = 0;
+    }
+
     printf("%d checks, %d failed\n", s_checks, s_fail);
     return s_fail ? 1 : 0;
 }
 
 const gs_tex_t *gs_tex_find(const void *plane)
 {
-    (void)plane;
+    if (s_find_tex && plane == s_find_tex->plane)
+        return s_find_tex;
     return NULL;
 }

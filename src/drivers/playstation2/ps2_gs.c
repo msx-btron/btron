@@ -21,6 +21,7 @@
 #include "ps2_gs_read.h"     /* Local->Host VRAM readback builder */
 #include "ps2_gs_vram.h"     /* VRAM page and framebuffer allocator */
 #include "ps2_gs_tex.h"      /* Texture-plane registry */
+#include "ps2_sif.h"         /* ps2_sif_flush_dcache: GIF DMA reads kseg1 */
 
 /* The canvas the GS is fed from, and the one the desktop composites into.
  *
@@ -662,6 +663,11 @@ static void ps2_gs_tex_upload(const gs_tex_t *t)
 {
     if (t == 0 || t->plane == 0 || t->qwc == 0u) return;
 
+    /* TinyGL writes the plane through the cached heap.  send_image_stream
+     * reads the kseg1 alias, which does not snoop the EE dcache, so dirty
+     * lines of an in-place atlas bake would DMA as the calloc zeros. */
+    ps2_sif_flush_dcache();
+
     /* A plane's format is its own, not the display's: the atlas and the font sheet are CT32 and are
      * sampled as CT32 whatever the canvas is, so this caller names the format instead of inheriting
      * it from gs_disp_psm(). */
@@ -829,6 +835,41 @@ void ps2_gs_init(uint32_t width, uint32_t height)
     uint32_t *fb = ps2_fb();
     for (int i = 0; i < PS2_SCREEN_WIDTH * PS2_SCREEN_HEIGHT; i++) {
         fb[i] = BTRON_PIXEL_FB(0xFF121B29u);
+    }
+
+    /* 6b. Paint the whole 832-wide GS page, not only the 800 visible columns.
+     * FRAME.FBW is 13 (832 px).  The 800-wide IMAGE upload leaves x=800..831 as
+     * power-on eDRAM, and those 32 texels share PSMCT32 pages with visible
+     * x=768..799.  A SPRITE fill of GS_DISP_PX_W x GS_DISP_ROWS writes navy
+     * into the pitch remainder so the PCRTC cannot show leftover as coloured
+     * specks on the boot console's right edge. */
+    {
+        static uint64_t pkt[18] __attribute__((aligned(16)));
+        uint64_t *p = (uint64_t *)UNCACHED(pkt);
+        const gs_disp_page_t *pg = gs_disp_drawn();
+        const uint32_t w = GS_DISP_PX_W;
+        const uint32_t h = GS_DISP_ROWS;
+
+        p[0] = gs_pack_giftag(8u, 1u, 0u, 0u, GS_FLG_PACKED, 1u);
+        p[1] = GS_NIB_AD;
+        p[2] = gs_pack_xyoffset(GS_XYOFFSET_PAGE, GS_XYOFFSET_PAGE);
+        p[3] = GS_GP_XYOFFSET_1;
+        p[4] = gs_pack_scissor(0u, w - 1u, 0u, h - 1u);
+        p[5] = GS_GP_SCISSOR_1;
+        p[6] = gs_pack_frame(pg->fba, pg->fbw, pg->psm, 0u);
+        p[7] = GS_GP_FRAME_1;
+        p[8] = 0u;
+        p[9] = GS_GP_TEST_1;
+        p[10] = gs_pack_prim(GS_OP_SPRITE, 0u, 0u, 0u, 0u, 0u);
+        p[11] = GS_GP_PRIM;
+        p[12] = gs_pack_rgbaq(0x12u, 0x1Bu, 0x29u, 0xFFu, GS_Q_ONE);
+        p[13] = GS_GP_RGBAQ;
+        p[14] = gs_pack_xyz2(gs_vertex_coord16(0), gs_vertex_coord16(0), 0u);
+        p[15] = GS_GP_XYZ2;
+        p[16] = gs_pack_xyz2(gs_vertex_coord16((int32_t)w),
+                            gs_vertex_coord16((int32_t)h), 0u);
+        p[17] = GS_GP_XYZ2;
+        ps2_gs_gif_send(pkt, 9);
     }
 
     /* 7. Initial hardware flush to GS eDRAM */

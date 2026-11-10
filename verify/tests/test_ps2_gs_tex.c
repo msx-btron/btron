@@ -22,8 +22,11 @@
 
 #include <stdio.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
+#include "../../src/media/xmb/xmb_atlas.h"
+#include "../../src/media/xmb/xmb_ps2_atlas.h"
 #include "../../src/drivers/playstation2/ps2_gs_pack.c"
 #include "../../src/drivers/playstation2/ps2_gs_vram.c"
 #include "../../src/drivers/playstation2/ps2_gs_tex.c"
@@ -138,12 +141,13 @@ static const uint64_t k_tex0_font  = 0x5DC00AE80ULL;
  * white-on-blue under either filter); it is pinned LINEAR because that is the faithful 1:1 port. */
 static const uint64_t k_tex1       = 0x60ULL;
 
-/* CLAMP: WMS[1:0] WMT[3:2] MINU[13:4] MAXU[23:14] MINV[33:24] MAXV[43:34], with both modes
- * REPEAT (1) and both limits the whole padded plane, so the wrap period is pad_w -- the same
- * law TinyGL's own mask applies.  Atlas: 1 + (1<<2) + (511<<14) + (511<<34) = 0x7FC007FC005.
- * Font: the same with 127 = 0x1FC001FC005. */
-static const uint64_t k_clamp_atlas = 0x7FC007FC005ULL;
-static const uint64_t k_clamp_font  = 0x1FC001FC005ULL;
+/* CLAMP: WMS[1:0] WMT[3:2] MINU[13:4] MAXU[23:14] MINV[33:24] MAXV[43:34].
+ * Hardware 2 is REGION_CLAMP.  A 384-in-512 atlas REGION_CLAMPs to texel 383
+ * (0xA | (383<<14) | (383<<34) = 0x5FC005FC00A) so LINEAR at u=1 does not
+ * read the transparent pad.  Font 128x96 in 128x128: S is POT (mode 1, 127),
+ * T is REGION_CLAMP to 95 (95<<34 = 0x17C00000000). */
+static const uint64_t k_clamp_atlas = 0x5FC005FC00AULL;
+static const uint64_t k_clamp_font  = 0x17C001FC009ULL;
 
 /* What the registry says about a plane, all of it checked. */
 static void plan_words(const char *tag, const gs_tex_t *t, uint32_t byte, uint32_t tba,
@@ -596,12 +600,219 @@ static void test_evict_all(void)
           gs_tex_register(plane_of((int)GS_TEX_MAX), 64u, 64u, 64u, 64u) == 0);
 }
 
+static uint32_t cell_texel(const uint32_t *pm, int cell, int cx, int cy)
+{
+    int ox = (cell % XB_ATLAS_GRID) * XB_ICON_CELL;
+    int oy = (cell / XB_ATLAS_GRID) * XB_ICON_CELL;
+    return pm[(oy + cy) * XB_ICON_PAD + (ox + cx)];
+}
+
+/* GS source-over: (Cs-Cd)*As>>7+Cd, As in 0..128. */
+static unsigned src_over_ch(unsigned cs, unsigned cd, unsigned sa)
+{
+    unsigned as = (sa * 128u + 127u) / 255u;
+    int d = (int)cs - (int)cd;
+    return (unsigned)(d * (int)as / 128 + (int)cd);
+}
+
+static int write_ppm(const char *path, int w, int h, const unsigned char *rgb)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f) return 0;
+    fprintf(f, "P6\n%d %d\n255\n", w, h);
+    fwrite(rgb, 1, (size_t)w * (size_t)h * 3u, f);
+    fclose(f);
+    return 1;
+}
+
+/* Scale one 64×64 cell 4× into RGB, and the same cell source-over a cyan ribbon. */
+static void dump_cell_pair(const uint32_t *pm, int cell, const char *stem)
+{
+    const int s = 4, n = XB_ICON_CELL * s;
+    unsigned char *rgb, *over;
+    int x, y, i;
+    char path[256];
+
+    rgb = (unsigned char *)calloc((size_t)n * (size_t)n * 3u, 1);
+    over = (unsigned char *)calloc((size_t)n * (size_t)n * 3u, 1);
+    if (!rgb || !over) {
+        free(rgb);
+        free(over);
+        return;
+    }
+    for (y = 0; y < n; y++) {
+        for (x = 0; x < n; x++) {
+            uint32_t t = cell_texel(pm, cell, x / s, y / s);
+            unsigned r = t & 0xFFu, g = (t >> 8) & 0xFFu;
+            unsigned b = (t >> 16) & 0xFFu, a = (t >> 24) & 0xFFu;
+            i = (y * n + x) * 3;
+            rgb[i] = (unsigned char)r;
+            rgb[i + 1] = (unsigned char)g;
+            rgb[i + 2] = (unsigned char)b;
+            /* Brightened-ribbon dest: high G/B, low R — the cyan the
+             * hardware showed through A=0 STROKE holes. */
+            over[i]     = (unsigned char)src_over_ch(r, 48u, a);
+            over[i + 1] = (unsigned char)src_over_ch(g, 176u, a);
+            over[i + 2] = (unsigned char)src_over_ch(b, 255u, a);
+        }
+    }
+    snprintf(path, sizeof path, "/tmp/xmb_ps2_check/%s.ppm", stem);
+    (void)write_ppm(path, n, n, rgb);
+    snprintf(path, sizeof path, "/tmp/xmb_ps2_check/%s_over_cyan.ppm", stem);
+    (void)write_ppm(path, n, n, over);
+    free(rgb);
+    free(over);
+}
+
+/* Coverage-only (POSIX) over the same cyan dest: this is the hardware cyan. */
+static void dump_coverage_over_cyan(int cell, const char *stem)
+{
+    const int s = 4, n = XB_ICON_CELL * s;
+    unsigned char *over;
+    int x, y, i, ox, oy;
+    char path[256];
+
+    over = (unsigned char *)calloc((size_t)n * (size_t)n * 3u, 1);
+    if (!over) return;
+    ox = (cell % XB_ATLAS_GRID) * XB_ICON_CELL;
+    oy = (cell / XB_ATLAS_GRID) * XB_ICON_CELL;
+    for (y = 0; y < n; y++) {
+        for (x = 0; x < n; x++) {
+            unsigned a = xb_icon_alpha[(oy + y / s) * XB_ICON_TEX + (ox + x / s)];
+            i = (y * n + x) * 3;
+            over[i]     = (unsigned char)src_over_ch(248u, 48u, a);
+            over[i + 1] = (unsigned char)src_over_ch(250u, 176u, a);
+            over[i + 2] = (unsigned char)src_over_ch(255u, 255u, a);
+        }
+    }
+    snprintf(path, sizeof path, "/tmp/xmb_ps2_check/%s_coverage_over_cyan.ppm", stem);
+    (void)write_ppm(path, n, n, over);
+    free(over);
+}
+
+/* Occupied non-droplet cells: navy A=255 inside the glyph bbox (STROKE
+ * interiors included), A=0 in the square-cell corners. */
+static void test_ps2_icon_plane_opaque(void)
+{
+    uint32_t *pm;
+    int cell, cx, cy, drop_a = 0, hole_bad = 0, corner_ink = 0;
+    uint32_t t, apps_c, cmd_c, apps_0;
+    unsigned over_r, over_g, cov_r;
+
+    pm = (uint32_t *)calloc((size_t)XB_ICON_PAD * XB_ICON_PAD, sizeof(uint32_t));
+    check("icon plane alloc", pm != 0);
+    if (!pm) return;
+    xb_ps2_fill_icon_plane(pm, XB_ICON_PAD);
+
+    /* Applications 2x2 gap is the cell centre: coverage is 0, bake is navy. */
+    apps_c = cell_texel(pm, IC_CAT_APPS, XB_ICON_CELL / 2, XB_ICON_CELL / 2);
+    check_num("Applications centre alpha is 255", (apps_c >> 24) & 0xFFu, 255u);
+    check_num("Applications centre R is navy 12", apps_c & 0xFFu, 12u);
+
+    /* Commands is a STROKE window plus a prompt.  Cell centre can clip the
+     * chevron AA; pick a zero-coverage texel inside the window. */
+    cmd_c = 0u;
+    {
+        int ox = (IC_CAT_COMMANDS % XB_ATLAS_GRID) * XB_ICON_CELL;
+        int oy = (IC_CAT_COMMANDS / XB_ATLAS_GRID) * XB_ICON_CELL;
+        int found = 0;
+        for (cy = 12; cy < XB_ICON_CELL - 12 && !found; cy++) {
+            for (cx = 12; cx < XB_ICON_CELL - 12; cx++) {
+                if (xb_icon_alpha[(oy + cy) * XB_ICON_TEX + (ox + cx)])
+                    continue;
+                cmd_c = cell_texel(pm, IC_CAT_COMMANDS, cx, cy);
+                found = 1;
+                break;
+            }
+        }
+        check("Commands has a hollow interior texel", found);
+    }
+    check_num("Commands interior alpha is 255", (cmd_c >> 24) & 0xFFu, 255u);
+    check_num("Commands interior R is navy 12", cmd_c & 0xFFu, 12u);
+
+    apps_0 = cell_texel(pm, IC_CAT_APPS, 0, 0);
+    check_num("Applications cell corner alpha is 0", (apps_0 >> 24) & 0xFFu, 0u);
+    t = cell_texel(pm, IC_CAT_COMMANDS, 0, 0);
+    check_num("Commands cell corner alpha is 0", (t >> 24) & 0xFFu, 0u);
+
+    /* Source-over the bake onto a brightened-ribbon dest.  A=255 navy must
+     * replace cyan; A=0 corner must keep cyan.  Coverage-only (POSIX) at
+     * the same centre keeps cyan — that is the hardware artifact. */
+    over_r = src_over_ch(apps_c & 0xFFu, 48u, (apps_c >> 24) & 0xFFu);
+    over_g = src_over_ch((apps_c >> 8) & 0xFFu, 176u, (apps_c >> 24) & 0xFFu);
+    check_num("Applications centre over cyan is navy R", over_r, 12u);
+    check_num("Applications centre over cyan is navy G", over_g, 20u);
+    over_r = src_over_ch(apps_0 & 0xFFu, 48u, (apps_0 >> 24) & 0xFFu);
+    check_num("Applications corner over cyan keeps ribbon R", over_r, 48u);
+    cov_r = src_over_ch(248u, 48u, 0u);
+    check_num("coverage-only centre over cyan is the ribbon (the artifact)",
+              cov_r, 48u);
+
+    for (cell = 0; cell < XB_ICON_CELLS; cell++) {
+        int has = 0, bx0, by0, bx1, by1;
+        int ox, oy;
+        if (cell == IC_DROPLET) continue;
+        ox = (cell % XB_ATLAS_GRID) * XB_ICON_CELL;
+        oy = (cell / XB_ATLAS_GRID) * XB_ICON_CELL;
+        bx0 = XB_ICON_CELL; by0 = XB_ICON_CELL; bx1 = -1; by1 = -1;
+        for (cy = 0; cy < XB_ICON_CELL; cy++)
+            for (cx = 0; cx < XB_ICON_CELL; cx++)
+                if (xb_icon_alpha[(oy + cy) * XB_ICON_TEX + (ox + cx)]) {
+                    has = 1;
+                    if (cx < bx0) bx0 = cx;
+                    if (cy < by0) by0 = cy;
+                    if (cx > bx1) bx1 = cx;
+                    if (cy > by1) by1 = cy;
+                }
+        if (!has) continue;
+        if (bx0 > 0) bx0--;
+        if (by0 > 0) by0--;
+        if (bx1 < XB_ICON_CELL - 1) bx1++;
+        if (by1 < XB_ICON_CELL - 1) by1++;
+        for (cy = 0; cy < XB_ICON_CELL; cy++) {
+            for (cx = 0; cx < XB_ICON_CELL; cx++) {
+                uint32_t p = cell_texel(pm, cell, cx, cy);
+                unsigned a = (p >> 24) & 0xFFu;
+                int in_badge = (cx >= bx0 && cx <= bx1 &&
+                                cy >= by0 && cy <= by1);
+                if (in_badge) {
+                    if (a != 255u || (p & 0xFFu) < 12u)
+                        hole_bad++;
+                } else if (a != 0u) {
+                    corner_ink++;
+                }
+            }
+        }
+    }
+    check_num("badge texels are opaque navy-or-white", (uint32_t)hole_bad, 0u);
+    check_num("cell corners outside the badge stay A=0", (uint32_t)corner_ink, 0u);
+
+    for (cy = 0; cy < XB_ICON_CELL; cy++)
+        for (cx = 0; cx < XB_ICON_CELL; cx++)
+            if (((cell_texel(pm, IC_DROPLET, cx, cy) >> 24) & 0xFFu) < 255u)
+                drop_a++;
+    check("droplet keeps some transparent texels for particles", drop_a > 0);
+
+    t = pm[(XB_ICON_PAD - 1) * XB_ICON_PAD + (XB_ICON_PAD - 1)];
+    check_num("pad corner stays 0", t, 0u);
+
+    (void)system("mkdir -p /tmp/xmb_ps2_check");
+    dump_cell_pair(pm, IC_CAT_APPS, "apps");
+    dump_cell_pair(pm, IC_CAT_SETTINGS, "settings");
+    dump_cell_pair(pm, IC_CAT_COMMANDS, "commands");
+    dump_coverage_over_cyan(IC_CAT_APPS, "apps");
+    dump_coverage_over_cyan(IC_CAT_COMMANDS, "commands");
+
+    free(pm);
+}
+
 int main(void)
 {
     printf("==========================================================\n");
     printf(" PS2 GS texture-plane registry vs hand-built TEX0/TEX1/CLAMP...\n");
     printf("==========================================================\n");
 
+    test_ps2_icon_plane_opaque();
     test_two_sheets();
     test_refusals();
     test_sink_at_registration();

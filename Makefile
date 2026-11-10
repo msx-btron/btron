@@ -1952,7 +1952,8 @@ test-ps2-gs-tex: $(TEST_GSTEX_BIN)
 $(TEST_GSTEX_BIN): $(TEST_GSTEX_OBJS) src/drivers/playstation2/ps2_gs_tex.c \
                    src/drivers/playstation2/ps2_gs_pack.c src/drivers/playstation2/ps2_gs_vram.c \
                    src/drivers/playstation2/ps2_gs_tex.h src/drivers/playstation2/ps2_gs_pack.h \
-                   src/drivers/playstation2/ps2_gs_vram.h
+                   src/drivers/playstation2/ps2_gs_vram.h \
+                   src/media/xmb/xmb_ps2_atlas.h src/media/xmb/xmb_atlas.h src/media/xmb/xmb_icons.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_GSTEX_OBJS) -o $@ $(LDFLAGS)
 

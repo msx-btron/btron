@@ -375,7 +375,6 @@ int eegs_geom_tex_quads_px(const gs_tex_t *tex,
 {
     tgl_tex_map_t tm;
     int n, i;
-    float tw, th;
     if (!tex || !tex->plane || !xs || !ys || !us || !vs || !cols || nquads < 1)
         return -1;
     if (nquads > EEGS_GEOM_QUAD_CAP) return -1;
@@ -383,13 +382,11 @@ int eegs_geom_tex_quads_px(const gs_tex_t *tex,
     memset(&tm, 0, sizeof tm);
     map_ok(&tm.g, vp_w, vp_h, blended, brighten, 0);
     tm.pixmap = tex->plane;
-    tw = eegs_geom_uv_to_st(1.0f, tex->px_w);
-    th = eegs_geom_uv_to_st(1.0f, tex->px_h);
     for (i = 0; i < n; i++) {
         s_tex_pts[i].x_px = (int32_t)xs[i];
         s_tex_pts[i].y_px = (int32_t)ys[i];
-        s_tex_pts[i].s = us[i] * tw;
-        s_tex_pts[i].t = vs[i] * th;
+        s_tex_pts[i].s = eegs_geom_uv_to_st(us[i], tex->px_w);
+        s_tex_pts[i].t = eegs_geom_uv_to_st(vs[i], tex->px_h);
         s_tex_pts[i].rgba = eegs_geom_rgba(cols[i * 4 + 0], cols[i * 4 + 1],
                                            cols[i * 4 + 2], cols[i * 4 + 3]);
     }

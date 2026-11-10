@@ -229,8 +229,11 @@ uint64_t gs_pack_tex1(uint32_t lcm, uint32_t mxl, uint32_t mmag, uint32_t mmin,
 #define GS_FILTER_NEAREST 0u
 #define GS_FILTER_LINEAR  1u
 
-/* CLAMP WMS/WMT arguments.  0 clamps to 0, 1 repeats with the plane's own period, 2 clamps to
- * the edge texel; TinyGL's sampler masks its coordinates, which is 1. */
+/* CLAMP WMS/WMT arguments, hardware encoding: 0 REPEAT, 1 CLAMP (full pad),
+ * 2 REGION_CLAMP (MINU..MAXU).  GS_REPEAT is 1 because TinyGL's sampler
+ * masks to the pad, which is hardware CLAMP to 0..pad-1.  GS_CLAMP_EDGE is
+ * REGION_CLAMP, used when the upload is smaller than the pad (XMB 384 in
+ * 512) so LINEAR at u=1 stays on the last inked texel. */
 #define GS_CLAMP_ZERO 0u
 #define GS_REPEAT     1u
 #define GS_CLAMP_EDGE 2u

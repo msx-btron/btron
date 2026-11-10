@@ -41,6 +41,28 @@ void gs_tex_install_sink(gs_tex_sink sink)
     s_sink = sink;
 }
 
+/* REGION_CLAMP to the ink when the plane is padded, CLAMP to the pad when it is not. */
+static uint64_t clamp_for(uint32_t px_w, uint32_t px_h, uint32_t pad_w, uint32_t pad_h)
+{
+    uint32_t wms, wmt, maxu, maxv;
+
+    if (px_w < pad_w && px_w > 0u) {
+        wms  = GS_CLAMP_EDGE;
+        maxu = px_w - 1u;
+    } else {
+        wms  = GS_REPEAT;
+        maxu = pad_w - 1u;
+    }
+    if (px_h < pad_h && px_h > 0u) {
+        wmt  = GS_CLAMP_EDGE;
+        maxv = px_h - 1u;
+    } else {
+        wmt  = GS_REPEAT;
+        maxv = pad_h - 1u;
+    }
+    return gs_pack_clamp(wms, wmt, 0u, maxu, 0u, maxv);
+}
+
 /* Hand slot `index` to whoever owns the bus, once its plan is complete.  With no sink installed --
  * the host gate -- the entry stays `pending`, which is what gs_tex_pending() counts. */
 static void hand_over(uint32_t index)
@@ -81,6 +103,7 @@ const gs_tex_t *gs_tex_register(const void *plane, uint32_t px_w, uint32_t px_h,
         if (s_reg[i].pad_w == pad_w && s_reg[i].pad_h == pad_h) {
             s_reg[i].px_w = px_w;
             s_reg[i].px_h = px_h;
+            s_reg[i].clamp = clamp_for(px_w, px_h, pad_w, pad_h);
             s_reg[i].pending = 1;
             hand_over(i);
             return &s_reg[i];
@@ -173,13 +196,13 @@ const gs_tex_t *gs_tex_register(const void *plane, uint32_t px_w, uint32_t px_h,
     slot->tex1 = gs_pack_tex1(0u, 0u, GS_FILTER_LINEAR, GS_FILTER_LINEAR,
                               0u, 0u, 0u);
 
-    /* Repeat on both axes, over the whole plane: `MINU`/`MAXU` are the first and last texel
-     * index, so the wrap period is pad_w -- which is what TinyGL's own mask does, and why an
-     * overshooting coordinate reads this plane's padding rather than the next plane's texels.
-     * The fields are 10 bits, so a plane wider than 1024 texels would have to be described by
-     * a smaller clamp; nothing in this port allocates one. */
-    slot->clamp = gs_pack_clamp(GS_REPEAT, GS_REPEAT, 0u, pad_w - 1u,
-                                0u, pad_h - 1u);
+    /* Hardware WMS/WMT: 0 REPEAT, 1 CLAMP (full pad), 2 REGION_CLAMP.  GS_REPEAT is 1, which
+     * is CLAMP to 0..pad-1 -- TinyGL's mask on a power-of-two plane.  A non-POT upload
+     * (XMB 384 in 512, font 96 in 128) lives inside a larger pad; LINEAR at u=1 is texel
+     * `px`, which is transparent padding, and bilinear mix of white ink with that pad over
+     * the XMB blue ribbon reads as cyan.  REGION_CLAMP to px-1 is CLAMP_TO_EDGE of the ink.
+     * The fields are 10 bits; nothing in this port allocates a plane wider than 1024. */
+    slot->clamp = clamp_for(px_w, px_h, pad_w, pad_h);
     slot->pending = 1;
     /* A high-water mark, never a rename.  `index` reaches this line from the append (index == s_n)
      * and from a cleared middle slot (index < s_n); assigning `s_n = index + 1` unconditionally

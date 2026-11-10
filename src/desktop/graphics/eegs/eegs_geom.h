@@ -66,10 +66,14 @@ int eegs_geom_grid_px(const float *xs, const float *ys, const float *bri,
                       int rows, int cols, int vp_w, int vp_h, int brighten);
 
 /* GL 0..1 → GS ST in texels of the *uploaded* extent (px), never the
- * padded plane.  A 384×384 atlas in a 512×512 plane maps u=1 to 384. */
+ * padded plane.  XMB xb_uv is virgl-style (sample = u * (px-1)), so
+ * u=0 is the centre of texel 0 and u=1 is the centre of texel px-1.
+ * LINEAR then stays inside 0..px-1 and does not read the POT pad
+ * (a 384 atlas in 512 with u=1 is 383.5, not 384). */
 static inline float eegs_geom_uv_to_st(float uv, uint32_t px)
 {
-    return uv * (float)(px ? px : 1u);
+    if (px <= 1u) return 0.5f;
+    return uv * (float)(px - 1u) + 0.5f;
 }
 
 /* Pixel-space textured quads.  us/vs are 0..1; converted to texels via tex->px.
