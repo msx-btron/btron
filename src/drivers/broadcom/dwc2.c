@@ -76,6 +76,9 @@ static inline void delay_us(uint32_t us) {
     while ((uint32_t)(systimer_clo() - start) < us) { __asm__ volatile("nop"); }
 }
 #else
+static inline uint32_t systimer_clo(void) {
+    return *(volatile uint32_t *)((uintptr_t)BCM283X_PERIPH_BASE + 0x00003004u);
+}
 static inline void delay_us(uint32_t us) { delay_cycles((int)(us * 10u)); }
 #endif
 
@@ -148,14 +151,29 @@ static bool g_mouse_chan_active = false;
 static volatile usb_setup_packet_t g_setup_buf  DWC2_DMA_BUF;
 static volatile uint8_t            g_ctrl_data[64] DWC2_DMA_BUF;
 
-/* One QEMU usb-audio packet: 48 stereo frames, 192 bytes, exactly.
- * The host DMA-reads this, so it lives in the same non-cacheable window
- * as the HID reports. */
-static volatile int16_t g_audio_pkt[48 * 2] DWC2_DMA_BUF;
+/* QEMU usb-audio plays one 192-byte packet per millisecond and keeps
+ * only a short streambuf. Samples wait here, and one packet is handed
+ * to the host each millisecond so that buffer never overflows. */
+#define AUDIO_PKT_FRAMES 48u
+#define AUDIO_RING_PKTS  96u
+#define AUDIO_HOST_SLACK 40u
+#define AUDIO_CREDIT_MAX 40u
+#define AUDIO_STALL_US   100000u
+
+static int16_t g_audio_ring[AUDIO_RING_PKTS][AUDIO_PKT_FRAMES * 2u];
+/* The host DMA-reads this one packet, so it lives with the HID reports. */
+static volatile int16_t g_audio_pkt[AUDIO_PKT_FRAMES * 2u] DWC2_DMA_BUF;
 static bool     g_audio_attached;
+static bool     g_audio_clock_on;
 static uint8_t  g_audio_addr;
 static uint8_t  g_audio_ep;
 static uint32_t g_audio_fill;
+static uint32_t g_audio_prod;
+static uint32_t g_audio_cons;
+static uint32_t g_audio_credit;
+static uint32_t g_audio_clock_us;
+static uint32_t g_audio_host_pkts;
+static uint32_t g_audio_host_us0;
 
 /* ─────────────────────────────────────────────
  * dwc2_chan_halt — safely disable a channel
@@ -435,76 +453,169 @@ static int dwc2_port_connected(uint8_t port)
     return (st[0] & 1u) ? 1 : 0;
 }
 
-/* QEMU usb-audio copies a packet only when it is exactly 192 bytes and
- * alternate setting 1 is selected. Anything else is dropped. */
-static int dwc2_audio_flush(void)
+/* One try. A full host buffer refuses the packet; the caller keeps it. */
+static int dwc2_audio_submit(void)
 {
     const int CH = 3;
     const uint32_t nbytes = 192u;
-    int try;
+    uint32_t hcchar;
+    uint32_t left;
+    uint32_t actual;
 
-    if (!g_audio_attached || g_audio_fill < 48u) return -1;
-    for (try = 0; try < 8; try++) {
-        uint32_t hcchar;
-        uint32_t left;
-        uint32_t actual;
-        dwc2_chan_halt(CH);
-        dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
-        dwc2_write(DWC2_HCINTMSK(CH),
-                   HCINT_XFRC | HCINT_CHH | HCINT_NAK |
-                   HCINT_STALL | HCINT_TXERR | HCINT_BBERR);
-        dwc2_write(DWC2_HCDMA(CH), (uint32_t)(uintptr_t)g_audio_pkt);
-        /* MC = 1, one packet, 192 bytes. EPTYPE = isochronous. OUT. */
-        dwc2_write(DWC2_HCTSIZ(CH), (1u << 29) | (1u << 19) | nbytes);
-        hcchar = (1u << 31) | (1u << 18) |
-                 ((uint32_t)g_audio_addr << 22) |
-                 ((uint32_t)(g_audio_ep & 0x0Fu) << 11) |
-                 nbytes;
-        dwc2_write(DWC2_HCCHAR(CH), hcchar);
-        dsb();
-        for (int i = 0; i < POLL_TIMEOUT; i++) {
-            uint32_t hcint = dwc2_read(DWC2_HCINT(CH));
-            if (hcint & HCINT_XFRC) {
-                dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
-                left = dwc2_read(DWC2_HCTSIZ(CH)) & 0x7FFFFu;
-                actual = (left < nbytes) ? (nbytes - left) : 0;
-                if (actual == nbytes) return 0;
-                break;
-            }
-            if (hcint & (HCINT_STALL | HCINT_TXERR | HCINT_BBERR | HCINT_CHH)) {
-                dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
-                break;
-            }
+    if (!g_audio_attached) return -1;
+    dwc2_chan_halt(CH);
+    dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
+    dwc2_write(DWC2_HCINTMSK(CH),
+               HCINT_XFRC | HCINT_CHH | HCINT_NAK |
+               HCINT_STALL | HCINT_TXERR | HCINT_BBERR);
+    dwc2_write(DWC2_HCDMA(CH), (uint32_t)(uintptr_t)g_audio_pkt);
+    /* MC = 1, one packet, 192 bytes. EPTYPE = isochronous. OUT. */
+    dwc2_write(DWC2_HCTSIZ(CH), (1u << 29) | (1u << 19) | nbytes);
+    hcchar = (1u << 31) | (1u << 18) |
+             ((uint32_t)g_audio_addr << 22) |
+             ((uint32_t)(g_audio_ep & 0x0Fu) << 11) |
+             nbytes;
+    dwc2_write(DWC2_HCCHAR(CH), hcchar);
+    dsb();
+    for (int i = 0; i < POLL_TIMEOUT; i++) {
+        uint32_t hcint = dwc2_read(DWC2_HCINT(CH));
+        if (hcint & HCINT_XFRC) {
+            dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
+            left = dwc2_read(DWC2_HCTSIZ(CH)) & 0x7FFFFu;
+            actual = (left < nbytes) ? (nbytes - left) : 0;
+            return (actual == nbytes) ? 0 : -1;
         }
-        delay_us(1000);
+        if (hcint & (HCINT_STALL | HCINT_TXERR | HCINT_BBERR | HCINT_CHH)) {
+            dwc2_write(DWC2_HCINT(CH), HCINT_ALL);
+            return -1;
+        }
     }
     return -1;
+}
+
+static void dwc2_audio_pace(void)
+{
+    uint32_t now;
+    uint32_t elapsed;
+    uint32_t grant;
+    uint32_t played;
+    uint32_t outstanding;
+
+    if (!g_audio_attached) return;
+    now = systimer_clo();
+    if (!g_audio_clock_on) {
+        g_audio_clock_on = 1;
+        g_audio_clock_us = now;
+        g_audio_host_us0 = now;
+        return;
+    }
+    elapsed = now - g_audio_clock_us;
+    if (elapsed > AUDIO_STALL_US) {
+        /* Playback stopped. Drop the stale tail instead of dumping it. */
+        g_audio_cons = g_audio_prod;
+        g_audio_fill = 0;
+        g_audio_clock_us = now;
+        g_audio_host_us0 = now;
+        g_audio_host_pkts = 0;
+        g_audio_credit = 0;
+        return;
+    }
+    grant = elapsed / 1000u;
+    if (grant > 0u) {
+        g_audio_clock_us += grant * 1000u;
+        g_audio_credit += grant;
+        if (g_audio_credit > AUDIO_CREDIT_MAX) g_audio_credit = AUDIO_CREDIT_MAX;
+    }
+    played = 0;
+    if (g_audio_host_pkts != 0u) {
+        played = (now - g_audio_host_us0) / 1000u;
+        if (played > g_audio_host_pkts) played = g_audio_host_pkts;
+        if (played >= 1000u) {
+            g_audio_host_pkts -= played;
+            g_audio_host_us0 += played * 1000u;
+            played = 0;
+        }
+    }
+    outstanding = g_audio_host_pkts - played;
+    while (g_audio_credit > 0u &&
+           outstanding < AUDIO_HOST_SLACK &&
+           g_audio_cons != g_audio_prod) {
+        uint32_t slot = g_audio_cons % AUDIO_RING_PKTS;
+        uint32_t k;
+        for (k = 0; k < AUDIO_PKT_FRAMES * 2u; k++)
+            g_audio_pkt[k] = g_audio_ring[slot][k];
+        if (dwc2_audio_submit() != 0) {
+            /* Host buffer is full. Wait for the next millisecond. */
+            g_audio_credit = 0;
+            return;
+        }
+        g_audio_cons++;
+        g_audio_credit--;
+        if (g_audio_host_pkts == 0u) g_audio_host_us0 = systimer_clo();
+        g_audio_host_pkts++;
+        outstanding++;
+    }
 }
 
 int dwc2_audio_write(const int16_t *stereo, uint32_t frames)
 {
     uint32_t i = 0;
+    uint32_t held;
+    uint32_t space;
+
     if (!g_audio_attached || !stereo) return -1;
-    if (g_audio_fill >= 48u) {
-        if (dwc2_audio_flush() != 0) return -1;
-        g_audio_fill = 0;
-    }
+    held = g_audio_prod - g_audio_cons;
+    if (held > AUDIO_RING_PKTS) return -1;
+    space = (AUDIO_RING_PKTS - held) * AUDIO_PKT_FRAMES;
+    if (space < g_audio_fill) return -1;
+    space -= g_audio_fill;
+    if (frames > space) return -1;
     while (i < frames) {
-        uint32_t n = 48u - g_audio_fill;
+        uint32_t slot = g_audio_prod % AUDIO_RING_PKTS;
+        uint32_t n = AUDIO_PKT_FRAMES - g_audio_fill;
         uint32_t k;
         if (n > frames - i) n = frames - i;
-        for (k = 0; k < n * 2u; k++) {
-            g_audio_pkt[g_audio_fill * 2u + k] = stereo[i * 2u + k];
-        }
+        for (k = 0; k < n * 2u; k++)
+            g_audio_ring[slot][g_audio_fill * 2u + k] = stereo[i * 2u + k];
         g_audio_fill += n;
         i += n;
-        if (g_audio_fill >= 48u) {
-            if (dwc2_audio_flush() != 0) return -1;
+        if (g_audio_fill >= AUDIO_PKT_FRAMES) {
             g_audio_fill = 0;
+            g_audio_prod++;
         }
     }
-    dsb();
+    dwc2_audio_pace();
     return 0;
+}
+
+uint32_t dwc2_audio_queued_bytes(void)
+{
+    uint32_t now;
+    uint32_t played;
+    uint32_t inflight;
+    uint32_t held;
+
+    if (!g_audio_attached) return 0;
+    dwc2_audio_pace();
+    played = 0;
+    if (g_audio_host_pkts != 0u) {
+        now = systimer_clo();
+        played = (now - g_audio_host_us0) / 1000u;
+        if (played > g_audio_host_pkts) played = g_audio_host_pkts;
+    }
+    inflight = (g_audio_host_pkts - played) * AUDIO_PKT_FRAMES;
+    held = (g_audio_prod - g_audio_cons) * AUDIO_PKT_FRAMES + g_audio_fill;
+    return (inflight + held) * 4u;
+}
+
+void dwc2_audio_idle(void)
+{
+    g_audio_prod = 0;
+    g_audio_cons = 0;
+    g_audio_fill = 0;
+    g_audio_credit = 0;
+    g_audio_clock_on = 0;
+    g_audio_host_pkts = 0;
 }
 
 static int dwc2_enumerate_dac(void)

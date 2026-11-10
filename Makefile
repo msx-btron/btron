@@ -2597,7 +2597,7 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	        -device loader,file=btron_msx.vol,addr=0x05400000 \
 	        $$(test -f assets/quake/pak/pak0.pak && echo "-device loader,file=assets/quake/pak/pak0.pak,addr=0x04000000") \
 	        -device usb-kbd -device usb-mouse \
-	        $$(if [ "$$(uname -s)" = Darwin ]; then echo "-audiodev coreaudio,id=snd0 -device usb-audio,audiodev=snd0"; fi) \
+	        $$(if [ "$$(uname -s)" = Darwin ]; then echo "-audiodev coreaudio,id=snd0,out.frequency=48000,out.channels=2,out.format=s16 -device usb-audio,audiodev=snd0,buffer=12288"; fi) \
 	        -kernel $(ARM64_TARGET) -serial stdio; \
 	else \
 	    echo "[ERROR] $(QEMU_AARCH64) not found — install qemu-system-aarch64"; \

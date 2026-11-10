@@ -48,12 +48,21 @@ typedef struct {
 
 static uac1_driver_state_t s_uac1 = {0};
 
-/* Strong copy lives in dwc2.c. Host tests link this file alone. */
+/* Strong copies live in dwc2.c. Host tests link this file alone. */
 __attribute__((weak)) int dwc2_audio_write(const int16_t *stereo, uint32_t frames)
 {
     (void)stereo;
     (void)frames;
     return -1;
+}
+
+__attribute__((weak)) uint32_t dwc2_audio_queued_bytes(void)
+{
+    return 0;
+}
+
+__attribute__((weak)) void dwc2_audio_idle(void)
+{
 }
 
 /* ── Device Lifecycle ─────────────────────────────────────────────── */
@@ -227,6 +236,7 @@ int usb_audio_uac1_write(const int16_t *samples, size_t frames) {
 }
 
 void usb_audio_uac1_close(void) {
+    if (s_uac1.dwc2) dwc2_audio_idle();
     s_uac1.opened = false;
     s_uac1.queued_packets = 0;
     s_uac1.write_packet_idx = 0;
@@ -238,9 +248,10 @@ bool usb_audio_uac1_is_ready(void) {
 
 uint32_t usb_audio_uac1_get_queued_bytes(void) {
     if (!s_uac1.opened) return 0;
-    /* DWC2 completes each packet before write() returns, so the xHCI
-     * packet counter stays zero and the DAW keeps rendering. */
-    if (s_uac1.dwc2) return 0;
+    /* The DWC2 speaker finishes the USB transfer before write() returns,
+     * so the xHCI packet counter is not the playback queue. Report the
+     * paced backlog instead, or the DAW fills the host buffer and drops. */
+    if (s_uac1.dwc2) return dwc2_audio_queued_bytes();
     return s_uac1.queued_packets * UAC1_FRAME_BYTES_1MS;
 }
 
