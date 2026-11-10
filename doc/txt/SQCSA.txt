@@ -1,0 +1,400 @@
+Security and Quality Code Static Analysis
+src/  —  2026-11-11
+
+Scope is src/ and the headers it includes. third_party/ is not scanned and
+not edited. A scanner hit names a call or a pattern. It is a defect when a
+read of that site shows the bad path can run. The three groups used below
+are quality, security, and introspection.
+
+
+1. Tools
+
+  Apple clang 21.0.0 (arm64)
+    clang --analyze -std=c99 -Wall -Wextra -Wformat=2
+    -Xanalyzer -analyzer-output=text
+    AddressSanitizer and UndefinedBehaviorSanitizer on the contract tests
+
+  flawfinder 2.0.20
+    flawfinder --minlevel=4 --quiet src
+    Exit 0. flawfinder exits 0 when it has hits, so a green exit is not a
+    clean tree. Level 1 is where strncpy sits. The gate uses level 4 so
+    that noise is not a failure. Whole-tree level 4 is a baseline. It
+    becomes a gate only after a directory is on the ban list.
+
+  cppcheck 2.22.0
+    cppcheck --std=c99 --enable=warning,portability --quiet
+      -Iinclude -Iinclude/rt -Isrc/kernel src
+    Exit 0. This tree run did not pass --error-exitcode, so exit 0 means
+    the tool finished. It does not mean zero findings.
+    make sec-libstr does pass --error-exitcode=1, and only on libstr.c.
+
+  The per-file gate is make sec-libstr.
+  The span gate is make test-fs-span.
+  The kernel and record-file copy gate is make test-kcopy.
+
+  Valgrind does not run on this Mac. libgmalloc is not combined with
+  AddressSanitizer. Coverity Scan and CodeChecker are not in the gate.
+  clang --analyze is the OpenBSD-style scanner that does run here.
+
+
+2. What already holds
+
+  tkl_strscpy, tkl_strscat, tkl_strpad in src/kernel/libstr.c.
+  n is the full capacity, including the NUL. Truncation, n == 0, and a
+  NULL argument return (size_t)-1. A positive n always terminates.
+  strscpy does not zero the tail. strpad writes exactly n bytes, the
+  string and then zeros, and is the copy for a slot that is stored raw.
+  tkl_strncpy is unchanged: no NUL when the source is at least n bytes,
+  zero-fill when it is shorter. It is not an alias of strscpy.
+
+  make sec-libstr on this date:
+    AddressSanitizer and UndefinedBehaviorSanitizer, 23 checks, 0 failed.
+    clang --analyze on src/kernel/libstr.c produced no diagnostics.
+    cppcheck on that file, with --error-exitcode=1, produced no findings.
+    flawfinder --minlevel=4 reported 3 hits, all freestanding aliases:
+      src/kernel/libstr.c:500  strcpy
+      src/kernel/libstr.c:522  strcat
+      src/kernel/libstr.c:941  snprintf
+    Those lines are the weak aliases onto tkl_strcpy, tkl_strcat, and
+    tkl_snprintf. They stay. No flawfinder: ignore comment was added.
+
+  Freestanding assert() in include/rt/assert.h increments
+  btron_assert_count and stores btron_assert_line. It does not abort,
+  print, or allocate. The hosted build still uses the system assert.
+
+  tkl_vsnprintf does not implement %n. The store is locked by
+  verify/tests/test_printf_float.c: a sink of 42 stays 42.
+
+  PAK and BSP lengths go through btron_span_inside() in
+  include/btron/span.h. The sum is formed in size_t after the negative
+  check. The hostile pair is ofs = INT_MAX - 8, len = 64. make test-fs-span
+  is 10 checks, 0 failed, under UndefinedBehaviorSanitizer. Call sites
+  are in src/media/quake/sys/fs_btron.c.
+
+
+3. This slice: kernel, filesystem, and cores copies
+
+  C-string copies now call tkl_strscpy with the full capacity.
+  The one raw slot calls tkl_strpad.
+
+  src/cores/core_init.c
+    sys_get_devconf on the PS2, m68k, and other freestanding lanes.
+    The hosted lane was already snprintf(buf, bufsz, ...).
+    Syntax-checked hosted, -ffreestanding -DBTRON_PS2_TARGET, and
+    -ffreestanding -D__m68k__.
+
+  src/kernel/sys_mgmt.c
+    set_cnf of CNF_SYS_NAME. get_cnf copies strlen+1, so the name is a
+    C string. A 79-byte name comes back as 63 bytes plus a NUL.
+
+  src/kernel/dev_mgr.c
+    opn_dev_mgr name[32].
+
+  src/kernel/fs_record.c
+    File paths, the sample directory name, and VOL_INFO.vol_name.
+    Paths are compared with strcmp. VOL_INFO.vol_name is a 32-byte
+    C string, separate from the 40-byte on-disk volume name.
+
+  src/fs/file.c
+    fil_get_rec_link_info.
+    FileHeader.name is 40 bytes and is not required to contain a NUL.
+    The copy into link_name[64] is bounded by sizeof name, so the read
+    stays inside the field. The old strncpy used sizeof(link_name)-1
+    and could continue into data_blk. The caller buffer uses name_max
+    as the full capacity.
+
+  src/fs/vol.c
+    Empty B-right/V name. vol_name is 40 bytes and is memcpy'd to the
+    volume block (vol.c writes 40 bytes at offset 28). tkl_strpad
+    zero-fills that slot. tkl_strscpy would leave whatever sat past the
+    new NUL.
+
+  POSIX and QEMU image lists now compile src/kernel/libstr.c. core_init
+  and vol.c call into it. Host filesystem tools link libstr.host.o built
+  with -DBTRON_LIBSTR_NO_HEAP, so mkbtronfs does not take the image heap.
+  The same flag is used for the .test.o, .tgl.o, and verify objects.
+
+  make test-kcopy, AddressSanitizer and UndefinedBehaviorSanitizer,
+  15 checks, 0 failed. A 79-byte configuration name and a 79-byte record
+  path come back terminated inside the slot. Opening the unclipped path
+  fails. "hi" after a long name does not keep the long tail. rd_dir
+  returns "sample.tad". ref_vol returns "BTRON_SYSTEM".
+  src/fs/vol.host.o and src/fs/file.host.o compiled with -Wall -Wextra.
+  The verify recipe's flags compiled vol.c, fs_record.c, sys_mgmt.c,
+  dev_mgr.c, and libstr.c.
+
+  tkl_strncpy itself was not edited. Call sites outside this slice were
+  not edited.
+
+
+4. flawfinder, level 4 and above, on src/
+
+  Lines analyzed: 458360. Physical SLOC: 398004.
+  Hits at each level: [0] 1503  [1] 1047  [2] 1990  [3] 17  [4] 464  [5] 0.
+  The run asked for level 4 and above, so the listed hits are 464.
+  No level 5 hit.
+
+  434 of the 464 are under src/apps/clu/be/arch/:
+
+    199  arm32/armv7.c          sprintf, strcpy, strcat
+     92  mips/mips-rsp.c       sprintf
+     54  ppc/ppc_disasm.c      sprintf, strcpy
+     26  m68k/dis68k.c         sprintf, strcat
+     25  nv/envyas.c           fprintf
+     23  pdp11/pdp11.c         sprintf
+      3  riscv/rv32i.c         printf
+      2  arm64/strext.c        vsnprintf
+      2  nv/aprintf.c          vsnprintf
+      2  nv/easm_xfrm.c
+      2  x86/compiler.h        printf
+      1  nv/easm_print.c
+      1  nv/mask.c
+      1  nv/nv.c
+      1  riscv/riscv-disas.c   snprintf
+
+  By rule, across the whole of src/: sprintf 273 buffer + 31 format,
+  strcpy 54, strcat 43, fprintf 28, vsnprintf 12, snprintf 7, printf 7,
+  vfprintf 5, access 2, execvp 1, popen 1.
+
+  ARMSTATE.text is char[128]. The mnemonics that land in field[16] and
+  field[10] fit the slots that were measured. That is margin, not a
+  demonstrated smash. The disassemblers are one later slice, with a
+  canary in the same change. They are not rewritten from this baseline.
+
+  The 30 hits outside the disassemblers:
+
+  Security, real calls, scheduled with their directory:
+
+    src/apps/clu/sh/sh.c:181
+      execvp of the shell's own argv. The shell exists to run a command.
+      No injection through a format string was shown.
+    src/media/sdk/gst_rtc.c:120
+      popen of the fixed string "ip route show default 2>/dev/null".
+    src/apps/clu/be/editor.c:207
+      access() then use of the same path. A classic check-then-use.
+      The editor slice owns it. The same file's
+      strncpy(dst, src, strlen(src)+1) is unbounded and is level 1, so
+      this level-4 run does not list it. The census does.
+    src/apps/terminal/gterm.c:1503
+      strcat into the input buffer. The call sits under a length test
+      against GTERM_MAX_COLS. The history slot strncpy(..., 255) into
+      [256], with no forced NUL, is the gterm defect and is level 1.
+
+  Hits that do not overflow the sizes on the site:
+
+    src/kernel/libstr.c:500, :522, :941
+      The three aliases in section 2.
+    src/apps/clu/clu.c:317
+      strcpy into path_buf[256] from g_cwd_path[128] or the literal "/SYS".
+    src/apps/clu/sh/sh.c:52
+      strcpy into a buffer from malloc(strlen(s)+1).
+    src/desktop/graphics/tinygl/arrays.c:236
+      The parameter name access on glMapBuffer. Not the access() syscall.
+
+  Format-string hits on snprintf, vsnprintf, printf, or fprintf. The
+  checker fires because the format is not a string literal at the call,
+  including when the caller passed a constant. They are not, by
+  themselves, a %n or an attacker-controlled format. %n stores in this
+  tree: none. The list:
+
+    src/apps/chat/chat.c:116                         snprintf
+    src/apps/chokanji/bpk_core.c:1093, :1102         vsnprintf
+    src/apps/clu/be/editor.c:279, :317               vsnprintf, snprintf
+    src/apps/clu/be/term/buffer.c:48                 vsnprintf
+    src/apps/clu/sps.c:17                            vsnprintf
+    src/desktop/graphics/tinygl/msghandling.c:23, :34, :47, :57
+                                                     vfprintf
+    src/emulators/msx/msx_app.c:323                  snprintf
+    src/emulators/msx/z80.c:18                       fprintf
+    src/languages/forth/forth.c:801                  printf
+    src/languages/forth/forth16.c:84                 printf
+    src/media/quake/app/quake_ui.c:1275              snprintf
+    src/media/quake/include/cl_demo_paths.h:49       snprintf
+    src/media/quake/sys/sys_btron.c:24, :36, :46     vsnprintf
+
+
+5. cppcheck, warning and portability, on src/
+
+  362 findings parsed from the text report.
+  48 of those are tool or generated-code noise and are set aside:
+
+    26  unknownMacro     src/emulators/bx8/sim/verilator/obj_dir/**
+                         generated Verilator output, macro VL_DEBUG_IF
+     8  unhandledChar    include/kernel/*.h character code 231
+                         cppcheck's encoding, not a source defect
+     1  syntaxError      include/termios.h __has_include_next
+     1  internalAstError src/apps/terminal/gterm.c:310
+                         the checker lost the AST and stopped on that file
+
+  314 remain: 42 error, 230 warning, 42 portability.
+
+  The bulk of the warnings is one assumption, repeated:
+
+     96  nullPointerOutOfMemory
+     70  nullPointerRedundantCheck
+         "if allocation fails, this pointer is dereferenced", or a later
+         NULL test the checker thinks is redundant. Quality of the failure
+         path. Not a proven NULL dereference on the success path.
+
+  Shift of a signed value by its width, or by width-1, is undefined in
+  C99. 16 shiftTooManyBitsSigned plus 1 shiftTooManyBits, mostly the
+  RISC-V disassembler (shift by 63) and TinyGL (shift by 31). One
+  shiftTooManyBits at src/apps/clu/be/arch/arm64/utils.c:93 shifts a
+  64-bit value by 64. Quality, and undefined behavior, inside the
+  disassemblers and TinyGL. Not scheduled ahead of the copy slices.
+
+  arrayIndexOutOfBounds, 12 errors. The checker uses the loop ceiling,
+  which is wider than the array. Sites read for this report do not reach
+  that ceiling:
+
+    src/apps/chokanji/cab.c:141, :212, :370
+      entries[64], loop ceiling CAB_LOOP_BOUND 128.
+      The only count++ is capped by CAB_MAX_ENTRIES 64.
+    src/languages/microscript/microscript.c:253 and the four siblings
+      vars[48], procs[16], figures[16], loop ceiling MS_LOOP_BOUND 512.
+      var_count is refused at MS_MAX_VARS 48 before it grows.
+    src/media/orchestra/orchestra_score.c:42
+      t[12] after midi is clamped to 0..127 and reduced mod 12.
+    src/media/sdk/gst_rt.c:1359
+      a 14-byte literal walked with name[i] && i < 31. The NUL stops it.
+    src/media/orchestra/orchestra_session.c:249, :692
+      lit[20] under the same class of ceiling. Not re-executed here.
+
+  Making the loop ceiling the array size is a quality fix. It also makes
+  the next scan able to tell a real index from the ceiling. It is not a
+  demonstrated out-of-bounds on the sites above.
+
+  The conditional form, arrayIndexOutOfBoundsCond, is 28 warnings of the
+  same shape. src/fs/file.c:1852 walks nm[41] while ni < 63, and nm[40]
+  was set to NUL on the line before, so the walk stops at the NUL.
+  GIF suffix tables (tad_browser, image_decode, app_menu, settings_icon)
+  are the same warning against a 4096-entry table and a bound of 4096.
+
+  Other errors worth a later read, not fixed in this slice:
+
+    src/apps/chokanji/bpk_core.c:1139     uninitvar o
+    src/apps/clu/term.c:473               uninitvar u
+    src/apps/clu/be/arch/nv/core-as.c:618 memleakOnRealloc of vexprs
+    src/apps/clu/be/arch/nv/core-dis.c:587 deallocuse of e2 (three notes)
+    src/apps/clu/be/arch/nv/envyas.c:509  resourceLeak outfile
+    src/apps/clu/be/arch/nv/envyas.c:96   NULL arithmetic if malloc fails
+    src/languages/forth/forth_core.c:283  assignBoolToPointer (two lines)
+    src/cores/core_ps2.c:430              subtractPointers
+    src/media/quake/sys/fs_btron.c:791    comparePointers and subtractPointers
+
+  The last two are the linker-symbol size idiom
+  (image_end - image, two extern arrays the link places as one object).
+  cppcheck sees two objects. The image build treats them as one span.
+
+  Portability, 42. Most are intToPointerCast (28), integer literals stored
+  in pointer-sized fields, plus a handful of invalidPointerCast,
+  shiftNegativeLHS, and pointerOutOfBoundsCond. Kernel and driver code
+  does this on purpose for device addresses. They are recorded, not
+  treated as overflows.
+
+  sscanf without a field width, invalidscanf, two warnings:
+    src/emulators/msx/msx_cfg.c:394
+      "%[^\"]" into rom_path and patch. The MSX ini slice owns the
+      parser. vram size via atoi is the same slice and was not a
+      cppcheck hit.
+    src/apps/clu/be/editor.c:420
+
+  libstr.c, the new copy sites, and btron_span_inside produced no
+  cppcheck finding in this run.
+
+
+6. Census that is not a scanner hit
+
+  An earlier comment-stripped count of src/ .c and .h, kept so the
+  replacement order stays attached to the scan:
+
+    strncpy   533    494 of them pass n-1
+    strcpy    299    268 in armv7.c
+    strcat    155    141 in armv7.c
+    sprintf   572    all under src/apps/clu/be/arch/
+    snprintf  about 802, most returns ignored
+    atoi       11
+    %n stores   0
+    setjmp      0
+
+  Bare-width strncpy that can leave a buffer without a NUL, still open:
+    gterm history, 255 into [256]
+    quake console history, 127
+    cabinet out_path, browser clicked path
+    clu editor strncpy(..., strlen(src)+1)
+
+  Quake miptex and WAD names are char name[16] with no requirement of a
+  NUL. They stay on a counted copy. strlen or strlcpy would walk out of
+  the field. strlcpy is the wrong replacement on purpose: it returns
+  strlen(src) and reads past the bound.
+
+
+7. Categories
+
+  Quality
+    Sized copies at the kernel, filesystem, and cores boundary.
+    Span checks that do not add two signed ints.
+    Loop ceilings that match the arrays (cab, microscript, orchestra),
+    so the next scan can see a real index.
+    Shift-by-width in the disassemblers and TinyGL.
+    Allocation failure paths cppcheck grouped as nullPointerOutOfMemory.
+    Format warnings (-Wformat=2) on the verify build, later, not on the
+    freestanding image yet.
+
+  Security
+    Unbounded strcpy, strcat, and sprintf in the disassemblers.
+    Editor access-then-use, and the editor's strlen+1 copy.
+    MSX sscanf without a width, and atoi of untrusted ini integers.
+    PAK and BSP spans. The hostile pair is rejected. That slice is in.
+    Shell execvp and the fixed popen are named by flawfinder. No
+    exploit path was shown past "the program runs a command".
+    gterm history and quake console history can leave a slot without a
+    NUL. Those are the next copy slices, not this one.
+
+  Introspection and error reporting
+    Freestanding assert records the line and returns.
+    %n does not store.
+    tkl_strscpy returns (size_t)-1 on truncation. The kernel setters
+    still return their existing code. A new logger was not added.
+    cppcheck's two uninitvar hits (bpk_core.c, term.c) are unread
+    values, which is this category, and they are not fixed here.
+    Kernel CHECK_* and goto error_exit stay.
+
+
+8. Order still open
+
+  One directory at a time. Each change keeps a test that fails if the
+  check is removed, and runs the suite that directory already has.
+
+    1. Length helper and both PAK paths and FS_CacheBSP. Done.
+    2. Kernel, filesystem, and cores C-string copies. Done in this report.
+    3. MSX: atoi of "vram size" to tkl_strtoul with an end pointer and a
+       cap. A bad line keeps the default and uses msx_err_message.
+       The unbounded sscanf in msx_cfg.c rides with that slice.
+    4. Quake names, console history, and PR_RunError via tkl_vsnprintf.
+       The game format stays. %n stays a non-store.
+    5. gterm, editor, cabinet, browser. Truncation of a path or a command
+       is reported on that subsystem's output. A truncated UI label stays
+       quiet.
+    6. Desktop HMI, menus, and TIP content.
+    7. reallocarray beside Imalloc, then the product-sized allocations.
+    8. CLU disassemblers alone. Canary in the same change.
+    9. TAD, SMF, font, and paint. One hostile header each.
+   10. Ban-list grep, directory by directory, after that directory is clean.
+       The allow-list is the tkl_strncpy definition and the disassemblers
+       until their pass.
+
+  Out of this series: third_party/, tools/mkbtronfs.c, splitting long
+  functions, removing kernel goto error_exit, banning function pointers,
+  pledge, unveil, ASLR, RETGUARD, a global logger, and explicit_bzero
+  until a real secret exists.
+
+
+9. How to repeat
+
+  flawfinder --minlevel=4 --quiet src
+  cppcheck --std=c99 --enable=warning,portability --quiet \
+      -Iinclude -Iinclude/rt -Isrc/kernel src
+  make sec-libstr
+  make test-fs-span
+  make test-kcopy

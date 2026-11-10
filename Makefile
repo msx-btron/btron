@@ -432,6 +432,7 @@ POSIX_STARTUP = src/cores/core_posix.c
 POSIX_SRCS    = $(POSIX_STARTUP)        \
                 src/drivers/virtio/virtio.c \
                 src/cores/core_init.c  \
+                src/kernel/libstr.c    \
                 $(VIRGL_SRCS)          \
                 $(COMMON_SRCS)
 
@@ -440,6 +441,7 @@ QEMU_STARTUP = src/cores/core_virtio.c
 QEMU_SRCS    = $(QEMU_STARTUP)          \
                 src/drivers/virtio/virtio.c \
                 src/cores/core_init.c   \
+                src/kernel/libstr.c     \
                 $(VIRGL_SRCS)           \
                 $(COMMON_SRCS)
 
@@ -815,7 +817,19 @@ run-sakamura: $(SAKAMURA_TARGET) btron_sys.vol btron_anders.vol
 # FS Library (host/POSIX build) — blk_mem, blk_file, vol, file, clu
 # ══════════════════════════════════════════════════════════════════════
 FS_SRCS  = src/fs/blk_mem.c src/fs/blk_file.c src/fs/blk_qcow2.c src/fs/blk_part.c src/fs/vol.c src/fs/file.c
-FS_OBJS  = $(FS_SRCS:.c=.host.o)
+FS_OBJS  = $(FS_SRCS:.c=.host.o) src/kernel/libstr.host.o
+
+# Host tools need tkl_strscpy / tkl_strpad. The full libstr heap is the image
+# allocator; this object only has to export the string functions.
+src/kernel/libstr.host.o: src/kernel/libstr.c include/libstr.h
+	$(CC) $(CFLAGS) -DBTRON_TARGET=0 -DBTRON_LIBSTR_NO_HEAP -MMD -MP -c $< -o $@
+
+src/kernel/libstr.test.o: src/kernel/libstr.c include/libstr.h
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DBTRON_LIBSTR_NO_HEAP -MMD -MP -c $< -o $@
+
+src/kernel/libstr.tgl.o: src/kernel/libstr.c include/libstr.h
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DBTRON_LIBSTR_NO_HEAP -DBTRON_GL_BACKEND_TINYGL \
+	      -DXMB_OUT_DIR='"./.build/tgl/"' -MMD -MP -c $< -o $@
 
 # -MMD is not optional here.  Host objects are linked straight from .o files, so
 # without a header dependency an edit to e.g. src/apps/clu/vfs.h or
@@ -1822,6 +1836,91 @@ $(TEST_PRINTFF_BIN): $(TEST_PRINTFF_OBJS) src/kernel/libstr.c include/libstr.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_PRINTFF_OBJS) -o $@ $(LDFLAGS)
 
+# PAK and BSP spans. The hostile pair is INT_MAX-8 + 64, which wraps in signed int.
+TEST_FSSPAN_SRC = verify/tests/test_fs_span.c
+TEST_FSSPAN_BIN = ./.build/test_fs_span
+
+test-fs-span: $(TEST_FSSPAN_BIN)
+	@echo "=========================================================="
+	@echo " Running btron_span_inside against a wrapping PAK/BSP length..."
+	@echo "=========================================================="
+	@./$(TEST_FSSPAN_BIN)
+
+$(TEST_FSSPAN_BIN): $(TEST_FSSPAN_SRC) include/btron/span.h
+	@mkdir -p ./.build
+	$(CC) -std=c99 -Wall -Wextra -Wformat=2 -O1 -g -fsanitize=undefined \
+		-fno-omit-frame-pointer -Iinclude $(TEST_FSSPAN_SRC) -o $@
+
+# Kernel and record-file copies. A 79-byte name must come back as 63 bytes
+# plus a NUL, and the caller's next byte must stay put. An unbounded copy
+# walks off g_sys_name[64].
+TEST_KCOPY_SRC = verify/tests/test_kcopy.c
+TEST_KCOPY_BIN = ./.build/test_kcopy
+TEST_KCOPY_OBJS = src/kernel/sys_mgmt.c src/kernel/dev_mgr.c src/kernel/fs_record.c src/kernel/libstr.c
+
+test-kcopy: $(TEST_KCOPY_BIN)
+	@echo "=========================================================="
+	@echo " Running kernel and record-file name copies..."
+	@echo "=========================================================="
+	@./$(TEST_KCOPY_BIN)
+
+$(TEST_KCOPY_BIN): $(TEST_KCOPY_SRC) $(TEST_KCOPY_OBJS) include/libstr.h
+	@mkdir -p ./.build
+	$(CC) -std=c99 -Wall -Wextra -Wformat=2 -O1 -g -fsanitize=address,undefined \
+		-fno-omit-frame-pointer -DBTRON_LIBSTR_NO_HEAP $(CFLAGS) \
+		$(TEST_KCOPY_SRC) $(TEST_KCOPY_OBJS) -o $@ -lpthread
+
+# Sized copy, freestanding assert record, and the local static-analysis gate.
+# clang --analyze is the scanner OpenBSD drives with scan-build / CodeChecker.
+# flawfinder (OpenBSD port devel/flawfinder) and cppcheck are optional: a missing
+# one prints its brew line and does not fail the sanitized contract test.
+TEST_LIBSTR_SRC = verify/tests/test_libstr_bounds.c
+TEST_LIBSTR_BIN = ./.build/test_libstr_bounds
+TEST_LIBSTR_ASAN = ./.build/test_libstr_bounds_asan
+TEST_LIBSTR_PROBE = ./.build/test_assert_rt.o
+TEST_LIBSTR_INCLUDES = -Iinclude -Iinclude/rt -Isrc/kernel
+
+test-libstr-bounds: $(TEST_LIBSTR_BIN)
+	@echo "=========================================================="
+	@echo " Running tkl_strscpy / strscat / strpad and assert record..."
+	@echo "=========================================================="
+	@./$(TEST_LIBSTR_BIN)
+
+$(TEST_LIBSTR_PROBE): $(TEST_LIBSTR_SRC) include/rt/assert.h
+	@mkdir -p ./.build
+	$(CC) -std=c99 -Wall -Wextra -ffreestanding -DBTRON_ASSERT_RT_PROBE \
+		$(TEST_LIBSTR_INCLUDES) -c $(TEST_LIBSTR_SRC) -o $@
+
+$(TEST_LIBSTR_BIN): $(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) src/kernel/libstr.c include/libstr.h
+	@mkdir -p ./.build
+	$(CC) -std=c99 -Wall -Wextra -Wformat=2 -O2 $(TEST_LIBSTR_INCLUDES) \
+		$(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) -o $@
+
+$(TEST_LIBSTR_ASAN): $(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) src/kernel/libstr.c include/libstr.h
+	@mkdir -p ./.build
+	$(CC) -std=c99 -Wall -Wextra -Wformat=2 -O1 -g -fsanitize=address,undefined \
+		-fno-omit-frame-pointer $(TEST_LIBSTR_INCLUDES) \
+		$(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) -o $@
+
+sec-libstr: $(TEST_LIBSTR_ASAN)
+	@echo "=========================================================="
+	@echo " sec-libstr: ASan/UBSan contract, then clang --analyze"
+	@echo "=========================================================="
+	@./$(TEST_LIBSTR_ASAN)
+	$(CC) --analyze -std=c99 -Wall -Wextra -Wformat=2 $(TEST_LIBSTR_INCLUDES) \
+		-Xanalyzer -analyzer-output=text src/kernel/libstr.c
+	@if command -v flawfinder >/dev/null 2>&1; then \
+		flawfinder --minlevel=4 --quiet src/kernel/libstr.c; \
+	else \
+		echo "flawfinder not on PATH (OpenBSD port devel/flawfinder): brew install flawfinder"; \
+	fi
+	@if command -v cppcheck >/dev/null 2>&1; then \
+		cppcheck --std=c99 --enable=warning,portability --error-exitcode=1 --quiet \
+			$(TEST_LIBSTR_INCLUDES) src/kernel/libstr.c; \
+	else \
+		echo "cppcheck not on PATH: brew install cppcheck"; \
+	fi
+
 test-ps2-cdvd-loop:
 	@echo "=========================================================="
 	@echo " Running PS2 Quake CDVD UART gate loop..."
@@ -2668,7 +2767,7 @@ $(TEST_MOZC_BIN): $(TEST_MOZC_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 TEST_EDITOR_SRCS = verify/tests/test_editor_ui.c src/apps/editor/t_editor.c src/desktop/window/app_menu.c src/desktop/tip/japanese/mozc_kkc.c src/desktop/tip/tip_ife.c src/desktop/tip/tibetan/wylie.c src/desktop/tip/tibetan/tibetan_dict.c \
                    src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c src/desktop/tip/tip_vobj.c src/desktop/window/wnd.c \
-                   src/desktop/graphics/dp_core.c src/apps/chokanji/pmc.c src/fs/blk_mem.c src/fs/blk_file.c src/fs/vol.c src/fs/file.c
+                   src/desktop/graphics/dp_core.c src/apps/chokanji/pmc.c src/fs/blk_mem.c src/fs/blk_file.c src/fs/vol.c src/fs/file.c src/kernel/libstr.c
 TEST_EDITOR_OBJS = $(TEST_EDITOR_SRCS:.c=.test.o)
 TEST_EDITOR_BIN  = ./.build/test_editor
 
@@ -2898,7 +2997,7 @@ TEST_XMB_SRCS = verify/tests/test_xmb_render.c src/media/xmb/xmb.c src/media/xmb
                 src/desktop/graphics/gles/gl_backend_choice.c \
                 src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c \
                 src/apps/clu/vfs.c src/fs/blk_mem.c src/fs/blk_file.c \
-                src/fs/vol.c src/fs/file.c
+                src/fs/vol.c src/fs/file.c src/kernel/libstr.c
 TEST_XMB_OBJS = $(TEST_XMB_SRCS:.c=.test.o)
 TEST_XMB_BIN  = ./.build/test_xmb_render
 
@@ -2919,7 +3018,7 @@ TEST_XMB_TGL_SRCS = verify/tests/test_xmb_render.c src/media/xmb/xmb.c src/media
                     src/desktop/graphics/gles/backend_tinygl.c $(TINYGL_SRCS) src/desktop/graphics/virgl/backend_virgl.c \
                     src/desktop/font/troncode.c src/desktop/font/jis_fonts.c src/desktop/font/tibetan_fonts.c \
                     src/apps/clu/vfs.c src/fs/blk_mem.c src/fs/blk_file.c \
-                    src/fs/vol.c src/fs/file.c
+                    src/fs/vol.c src/fs/file.c src/kernel/libstr.c
 TEST_XMB_TGL_OBJS = $(TEST_XMB_TGL_SRCS:.c=.tgl.o)
 TEST_XMB_TGL_BIN  = ./.build/test_xmb_render_tgl
 
@@ -3642,6 +3741,7 @@ CAPTURE_SCREENS_SRCS = tools/capture_screens.c \
                        src/fs/blk_part.c \
                        src/fs/vol.c \
                        src/fs/file.c \
+                       src/kernel/libstr.c \
                        src/apps/clu/lang.c \
                        src/apps/clu/term.c \
                        src/apps/clu/tty.c \
@@ -3736,6 +3836,7 @@ CAPTURE_FOMA_SRCS = tools/capture_foma.c \
                     src/fs/blk_file.c \
                     src/fs/vol.c \
                     src/fs/file.c \
+                    src/kernel/libstr.c \
                     $(CLU_APPS_SRCS) \
                     src/apps/clu/clu.c
 

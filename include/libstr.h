@@ -60,6 +60,16 @@ extern int tkl_strcmp( const char *s1, const char *s2 );
 extern int tkl_strncmp( const char *s1, const char *s2, size_t n );
 extern char* tkl_strcpy( char *dst, const char *src );
 extern char* tkl_strncpy( char *dst, const char *src, size_t n );
+/* n is the full capacity of dst, including the NUL.
+ * Reads at most n bytes of src. Always terminates when n > 0.
+ * Does not zero the tail. Returns the count copied, excluding the NUL,
+ * or (size_t)-1 on truncation, on n == 0, or on a NULL argument. */
+extern size_t tkl_strscpy( char *dst, const char *src, size_t n );
+/* n is the full capacity of dst. Writes nothing when dst has no NUL inside n. */
+extern size_t tkl_strscat( char *dst, const char *src, size_t n );
+/* Writes exactly n bytes: the string, then zeros. Stops reading src after n.
+ * No NUL beyond n. For a fixed slot whose padding is the format. */
+extern void tkl_strpad( char *dst, const char *src, size_t n );
 extern char* tkl_strcat( char *dst, const char *src );
 extern char* tkl_strncat( char *dst, const char *src, size_t n );
 extern char* tkl_strstr( const char *haystack, const char *needle );

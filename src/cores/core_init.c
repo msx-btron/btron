@@ -42,23 +42,21 @@ extern void handle_baremetal_mouse_click(GDEV *screen, H x, H y, BOOL press);
 void sys_get_devconf(char *buf, size_t bufsz) {
     if (!buf || bufsz == 0) return;
 #if defined(BTRON_PS2_TARGET)
-    tkl_strncpy(buf,
+    tkl_strscpy(buf,
         "Registered Device Drivers:\n"
         "  [0] ScreenDrv : GS 4MB eDRAM 640x448 @ 32-bpp RGBA (Active, OK)\n"
         "  [1] SerialDrv : EE SIO0 UART 115200 8N1 (Active, Console)\n"
         "  [2] KBPD      : DualShock 2 & USB OHCI Keyboard/Mouse (Active)\n"
         "  [3] TKernel   : Cleanroom uITRON 3.0 / BTRON 3.20 RTOS (Active)\n"
-        "  [4] VObjStore : HyperData HFDS Real Body Storage (Active)", bufsz - 1);
-    buf[bufsz - 1] = '\0';
+        "  [4] VObjStore : HyperData HFDS Real Body Storage (Active)", bufsz);
 #elif defined(__m68k__)
-    tkl_strncpy(buf,
+    tkl_strscpy(buf,
         "Registered Device Drivers:\n"
         "  [0] ScreenDrv : NuBus Slot 9 DAFB Framebuffer 800x600 (Active, OK)\n"
         "  [1] SerialDrv : Zilog Z8530 ESCC Dual UART (Active, Console)\n"
         "  [2] KBPD      : Apple Desktop Bus (ADB) Mouse & Keyboard (Active)\n"
         "  [3] TKernel   : Cleanroom uITRON 3.0 / BTRON 3.20 RTOS (Active)\n"
-        "  [4] VObjStore : HyperData HFDS Real Body Storage (Active)", bufsz - 1);
-    buf[bufsz - 1] = '\0';
+        "  [4] VObjStore : HyperData HFDS Real Body Storage (Active)", bufsz);
 #elif defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1
     snprintf(buf, bufsz,
         "Registered Device Drivers:\n"
@@ -68,14 +66,13 @@ void sys_get_devconf(char *buf, size_t bufsz) {
         "  [3] TKernel   : 14 Sakamura T-Kernel 2.0 Subsystems (Active)\n"
         "  [4] VObjStore : HyperData HFDS Real Body Storage (Active)");
 #else
-    tkl_strncpy(buf,
+    tkl_strscpy(buf,
         "Registered Device Drivers:\n"
         "  [0] ScreenDrv : VideoCore IV GPU 1024x768 32-bpp (Active, OK)\n"
         "  [1] SerialDrv : PL011 UART0 115200 8N1 (Active, Console)\n"
         "  [2] KBPD      : Keyboard & Pointing Device (Mouse Cursor Active)\n"
         "  [3] TKernel   : 14 Sakamura T-Kernel 2.0 Subsystems (Active)\n"
-        "  [4] VObjStore : HyperData HFDS Real Body Storage (Active)", bufsz - 1);
-    buf[bufsz - 1] = '\0';
+        "  [4] VObjStore : HyperData HFDS Real Body Storage (Active)", bufsz);
 #endif
 }
 

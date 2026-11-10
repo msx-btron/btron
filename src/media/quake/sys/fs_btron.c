@@ -13,6 +13,8 @@
  */
 
 #include "../include/fs_btron.h"
+#include <btron/span.h>
+#include <limits.h>
 
 #if defined(BTRON_PS2_TARGET)
 #include "ps2_cdvd.h"
@@ -148,6 +150,8 @@ int FS_Init(void) {
     volatile const char *ram_pak = (const char *)0x04000000;
     if (ram_pak[0] == 'P' && ram_pak[1] == 'A' && ram_pak[2] == 'C' && ram_pak[3] == 'K') {
         const dpackheader_t *hdr = (const dpackheader_t *)ram_pak;
+        if (!btron_span_inside(hdr->dirofs, hdr->dirlen, INT_MAX))
+            return 0;
         s_pak_image = (byte *)ram_pak;
         s_pak_size = hdr->dirofs + hdr->dirlen;
         s_pak_path_str = "RAM@0x04000000";
@@ -156,6 +160,8 @@ int FS_Init(void) {
         const packfile_t *dir = (const packfile_t *)(s_pak_image + hdr->dirofs);
         for (int i = 0; i < num_entries; i++) {
             if (dir[i].filelen <= 0 || dir[i].filepos < 0) continue;
+            if (!btron_span_inside(dir[i].filepos, dir[i].filelen, s_pak_size))
+                continue;
             ht_insert(fnv1a(dir[i].name), dir[i].filepos, dir[i].filelen, dir[i].name);
         }
         Con_Printf("FS_Init: PAK memory-mapped from RAM @ 0x04000000 (%d entries)\n", num_entries);
@@ -179,7 +185,7 @@ int FS_Init(void) {
         long pak_sz = ftell(f);
         fseek(f, 0, SEEK_SET);
 
-        if (pak_sz <= 0) { fclose(f); continue; }
+        if (pak_sz <= 0 || pak_sz > (long)INT_MAX) { fclose(f); continue; }
 
         /* Hosted/Pi: one fread of the archive so FindInPak is zero-copy.
          * PS2 does not take this path; it indexes a mapped image and loads
@@ -200,13 +206,18 @@ int FS_Init(void) {
         s_pak_path_str = s_search_paths[pi];
 
         /* ── Build hash table from embedded directory ─────────────── */
+        if (!btron_span_inside(hdr.dirofs, hdr.dirlen, s_pak_size)) {
+            s_pak_image = NULL;
+            continue;
+        }
         int num_entries = hdr.dirlen / (int)sizeof(packfile_t);
         if (num_entries > FS_HT_SIZE / 2) num_entries = FS_HT_SIZE / 2;
 
         const packfile_t *dir = (const packfile_t *)(s_pak_image + hdr.dirofs);
         for (int i = 0; i < num_entries; i++) {
             if (dir[i].filelen <= 0 || dir[i].filepos < 0) continue;
-            if (dir[i].filepos + dir[i].filelen > s_pak_size) continue;
+            if (!btron_span_inside(dir[i].filepos, dir[i].filelen, s_pak_size))
+                continue;
             ht_insert(fnv1a(dir[i].name), dir[i].filepos,
                       dir[i].filelen, dir[i].name);
         }
@@ -313,7 +324,7 @@ int FS_CacheBSP(const char *bsp_path) {
     for (int l = 0; l < HEADER_LUMPS; l++) {
         int ofs = hdr->lumps[l].fileofs;
         int len = hdr->lumps[l].filelen;
-        if (ofs < 0 || len < 0 || ofs + len > bsp_len) {
+        if (!btron_span_inside(ofs, len, bsp_len)) {
             g_bsp_cache.lumps[l]     = NULL;
             g_bsp_cache.lump_lens[l] = 0;
         } else {
@@ -362,7 +373,7 @@ static int fs_index_dir(const packfile_t *dir, int num_entries, int pak_sz)
     if (num_entries > FS_HT_SIZE / 2) num_entries = FS_HT_SIZE / 2;
     for (i = 0; i < num_entries; i++) {
         if (dir[i].filelen <= 0 || dir[i].filepos < 0) continue;
-        if (dir[i].filepos + dir[i].filelen > pak_sz) continue;
+        if (!btron_span_inside(dir[i].filepos, dir[i].filelen, pak_sz)) continue;
         ht_insert(fnv1a(dir[i].name), dir[i].filepos, dir[i].filelen, dir[i].name);
         n++;
     }
@@ -379,8 +390,7 @@ static int fs_map_pak_image(byte *img, int pak_sz, const char *path)
     if (!img || pak_sz < (int)sizeof(dpackheader_t)) return 0;
     if (img[0] != 'P' || img[1] != 'A' || img[2] != 'C' || img[3] != 'K') return 0;
     hdr = (const dpackheader_t *)img;
-    if (hdr->dirofs < 0 || hdr->dirlen < 0) return 0;
-    if (hdr->dirofs + hdr->dirlen > pak_sz) return 0;
+    if (!btron_span_inside(hdr->dirofs, hdr->dirlen, pak_sz)) return 0;
     s_pak_image = img;
     s_pak_size = pak_sz;
     s_pak_path_str = path;
@@ -614,8 +624,8 @@ static int fs_index_pak_fd(int fd, int pak_sz, const char *path)
         uart_puts_raw("[FS] PAK0.PAK is not a PACK archive\n");
         return 0;
     }
-    if (hdr.dirofs < 0 || hdr.dirlen <= 0) return 0;
-    if (hdr.dirofs + hdr.dirlen > pak_sz) return 0;
+    if (hdr.dirlen <= 0) return 0;
+    if (!btron_span_inside(hdr.dirofs, hdr.dirlen, pak_sz)) return 0;
 
     dir = (packfile_t *)malloc((size_t)hdr.dirlen);
     if (!dir) return 0;
@@ -703,8 +713,8 @@ static int fs_init_cdvd_pak(void)
         Con_Printf("[FS] PAK0.PAK is not a PACK archive\n");
         return 0;
     }
-    if (hdr.dirofs < 0 || hdr.dirlen <= 0) return 0;
-    if (hdr.dirofs + hdr.dirlen > (int)size) return 0;
+    if (hdr.dirlen <= 0 || size > 0x7fffffffu) return 0;
+    if (!btron_span_inside(hdr.dirofs, hdr.dirlen, (int)size)) return 0;
 
     dir = (packfile_t *)malloc((size_t)hdr.dirlen);
     if (!dir) return 0;
@@ -952,7 +962,7 @@ int FS_CacheBSP(const char *bsp_path)
     for (i = 0; i < HEADER_LUMPS; i++) {
         int ofs = hdr->lumps[i].fileofs;
         int len = hdr->lumps[i].filelen;
-        if (ofs < 0 || len < 0 || ofs + len > bsp_len) {
+        if (!btron_span_inside(ofs, len, bsp_len)) {
             g_bsp_cache.lumps[i]     = NULL;
             g_bsp_cache.lump_lens[i] = 0;
         } else {

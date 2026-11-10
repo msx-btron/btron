@@ -273,15 +273,56 @@ static int hdmi_is_qemu(void) {
     return 0;
 }
 
-/* HDMI1 only when that jack is the one with the cable. Otherwise HDMI0,
- * including the case where neither HPD bit reads back (firmware has the
- * picture up and the hotplug register did not). */
+/* VID_CTL lives in the shared HD block. HDMI0 is +0x44, HDMI1 is +0x48.
+ * Bit 31 is the scanout enable the firmware sets on the live picture. */
+#define HDMI0_VID_CTL_OFF  0x0044u
+#define HDMI1_VID_CTL_OFF  0x0048u
+#define HDMI_VID_CTL_ENABLE (1u << 31)
+
+/* DVP audio gate. A set bit stops the 108 MHz parent (clk gate
+ * set-to-disable). HDMI0 is bit 3, HDMI1 is bit 4. SW_INIT at +0x04 is
+ * the HDMI reset; this driver never writes it. */
+#define BCM2711_DVP_BASE          0xFEF00000UL
+#define DVP_HT_RPI_MISC_CONFIG    0x08u
+
+static int hdmi_port_scanning(int port) {
+    uint32_t off = (port == 0) ? HDMI0_VID_CTL_OFF : HDMI1_VID_CTL_OFF;
+    uint32_t vid = hdmi_read32(BCM2711_HDMI0_HD_BASE + off);
+    return (vid & HDMI_VID_CTL_ENABLE) ? 1 : 0;
+}
+
+/* Open the 108 MHz parent into the MAI sampler. A closed gate leaves the
+ * picture up and the audio tract stopped. */
+static void hdmi_audio_clock_on(int port) {
+    uintptr_t reg = BCM2711_DVP_BASE + DVP_HT_RPI_MISC_CONFIG;
+    uint32_t bit = 1u << (3u + (uint32_t)port);
+    uint32_t v = hdmi_read32(reg);
+    if (v & bit) hdmi_write32(reg, v & ~bit);
+    uart_puts("[HDMI-AUDIO] clk ");
+    uart_hex32(hdmi_read32(reg));
+    uart_puts("\n");
+}
+
+/* Follow the port the firmware is scanning. HDMI1 only when that jack is
+ * the one with the cable. Otherwise HDMI0, including the case where neither
+ * HPD bit reads back (firmware has the picture up and the hotplug register
+ * did not). */
 static int hdmi_select_port(void) {
-    int g0 = hdmi_gpio_level(HDMI_GPIO_HPD0);
-    int g1 = hdmi_gpio_level(HDMI_GPIO_HPD1);
+    int v0 = hdmi_port_scanning(0);
+    int v1 = hdmi_port_scanning(1);
+    int g0;
+    int g1;
     uint32_t h0;
     uint32_t h1;
 
+    uart_puts("[HDMI-AUDIO] vid ");
+    uart_hex32((uint32_t)v0 | ((uint32_t)v1 << 1));
+    uart_puts("\n");
+    if (v0 && !v1) return 0;
+    if (v1 && !v0) return 1;
+
+    g0 = hdmi_gpio_level(HDMI_GPIO_HPD0);
+    g1 = hdmi_gpio_level(HDMI_GPIO_HPD1);
     if (g1 == 1 && g0 != 1) return 1;
     if (g0 == 1) return 0;
 
@@ -330,7 +371,7 @@ static int iec_cs_bit(uint32_t frame, uint32_t rate) {
 
     if (which == 0) byte = 0x04u;       /* consumer, linear PCM, no copyright */
     else if (which == 3) byte = b3;     /* sampling frequency */
-    else if (which == 4) byte = 0x02u;  /* 16-bit word length */
+    else if (which == 4) byte = 0x03u;  /* 24-bit slot, 16-bit samples */
     else byte = 0;
     return (int)((byte >> (bi & 7u)) & 1u);
 }
@@ -568,6 +609,23 @@ static void hdmi_write_infoframe(const hdmi_port_t *port, const cea861_audio_inf
 
     for (i = 0; i < 32u; i++) raw[i] = 0;
     for (i = 0; i < sizeof(*frame) && i < 32u; i++) raw[i] = src[i];
+    /* Drop only the audio slot. The firmware AVI packet stays enabled.
+     * Writing the slot while it is still on the wire fails the checksum. */
+    cfg = hdmi_read32(port->core + HDMI_RAM_PACKET_CONFIG);
+    cfg &= ~(1u << HDMI_AUDIO_PACKET_ID);
+    hdmi_write32(port->core + HDMI_RAM_PACKET_CONFIG, cfg);
+    {
+        uintptr_t clo = g_mmio_base + 0x3004u;
+        uint32_t t0 = hdmi_read32(clo);
+        uint32_t spins;
+        /* CLO is the 1 MHz timer. The spin cap covers a timer that reads as zero. */
+        for (spins = 0; spins < 200000u; spins++) {
+            uint32_t st = hdmi_read32(port->core + HDMI_RAM_PACKET_STATUS);
+            if ((st & (1u << HDMI_AUDIO_PACKET_ID)) == 0) break;
+            if ((hdmi_read32(clo) - t0) > 1000u) break; /* 1 ms */
+        }
+    }
+
     for (i = 0; i < HDMI_PACKET_STRIDE; i += 4u) hdmi_write32(slot + i, 0);
 
     walk = slot;
@@ -627,6 +685,8 @@ static void hdmi_program_port(const hdmi_port_t *port, uint32_t rate, uint8_t ch
     uint32_t pixel;
     cea861_audio_infoframe_t frame;
 
+    hdmi_audio_clock_on((port == &s_ports[1]) ? 1 : 0);
+
     hdmi_write32(mai, HDMI_MAI_CTL_RESET | HDMI_MAI_CTL_FLUSH |
                       HDMI_MAI_CTL_DLATE | HDMI_MAI_CTL_ERRORE | HDMI_MAI_CTL_ERRORF);
 
@@ -668,7 +728,10 @@ static void hdmi_program_port(const hdmi_port_t *port, uint32_t rate, uint8_t ch
 
 static void hdmi_build_ring(const hdmi_port_t *port) {
     uint32_t i;
-    uint32_t ti = BCM_DMA_TI_DEST_DREQ |
+    /* NO_WIDE_BURSTS: a 128-bit beat into MAI_DATA is dropped and the
+     * tract stays silent. One 32-bit word per beat matches the FIFO. */
+    uint32_t ti = BCM_DMA_TI_NO_WIDE_BURSTS |
+                  BCM_DMA_TI_DEST_DREQ |
                   BCM_DMA_TI_PERMAP(port->dreq) |
                   BCM_DMA_TI_SRC_INC |
                   BCM_DMA_TI_WAIT_RESP |

@@ -136,6 +136,15 @@ int main(void)
     check("cdrom0 backslash path",
           n == 28 && strcmp(buf, "cdrom0:\\QUAKE\\DRONE1M1.DEM;1") == 0);
 
+    /* %n is not a conversion. It must not store through the pointer.
+     * The argument is not consumed; this lock is the store, not alignment. */
+    {
+        int sink = 42;
+        n = sn(buf, sizeof buf, "ab%ncd", &sink);
+        check("%n does not store",
+              sink == 42 && n == 4 && strcmp(buf, "abcd") == 0);
+    }
+
     printf("----------------------------------------------------------\n");
     printf(" %d checks, %d failed\n", s_checks, s_fail);
     return s_fail ? 1 : 0;

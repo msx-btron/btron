@@ -205,6 +205,11 @@ char* tkl_strcpy(char *dst, const char *src) {
     return ret;
 }
 
+/* ISO strncpy, kept until callers move.
+ * Source longer than n: n bytes are copied and no NUL is written.
+ * Source shorter than n: every leftover byte in those n is set to NUL.
+ * A C string wants tkl_strscpy. A fixed-width padded slot wants tkl_strpad.
+ */
 char* tkl_strncpy(char *dst, const char *src, size_t n) {
     char *ret = dst;
     volatile char *d = (volatile char *)dst;
@@ -216,6 +221,55 @@ char* tkl_strncpy(char *dst, const char *src, size_t n) {
         *d++ = '\0';
     }
     return ret;
+}
+
+/* Sticky record for the freestanding assert() in include/rt/assert.h. */
+int btron_assert_count;
+int btron_assert_line;
+
+size_t tkl_strscpy(char *dst, const char *src, size_t n)
+{
+    size_t i;
+
+    if (!dst || !src || n == 0)
+        return (size_t)-1;
+    for (i = 0; i < n - 1 && src[i] != '\0'; i++)
+        dst[i] = src[i];
+    dst[i] = '\0';
+    if (src[i] != '\0')
+        return (size_t)-1;
+    return i;
+}
+
+size_t tkl_strscat(char *dst, const char *src, size_t n)
+{
+    size_t used;
+    size_t added;
+
+    if (!dst || !src || n == 0)
+        return (size_t)-1;
+    for (used = 0; used < n && dst[used] != '\0'; used++)
+        ;
+    if (used == n)
+        return (size_t)-1;
+    added = tkl_strscpy(dst + used, src, n - used);
+    if (added == (size_t)-1)
+        return (size_t)-1;
+    return used + added;
+}
+
+void tkl_strpad(char *dst, const char *src, size_t n)
+{
+    size_t i;
+
+    if (!dst || n == 0)
+        return;
+    if (!src)
+        src = "";
+    for (i = 0; i < n && src[i] != '\0'; i++)
+        dst[i] = src[i];
+    for (; i < n; i++)
+        dst[i] = '\0';
 }
 
 int tkl_strcmp(const char *s1, const char *s2) {

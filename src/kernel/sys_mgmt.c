@@ -7,6 +7,7 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <string.h>
+#include <libstr.h>
 
 static FP g_exc_handlers[32];
 static char g_sys_name[64] = "BTRON3 Sakamura T-Kernel 2.0 (Cleanroom C99)";
@@ -44,7 +45,7 @@ ER set_cnf(W key, const VP val, W sz) {
     if (!val) return ER_PAR;
 
     if (key == CNF_SYS_NAME) {
-        strncpy(g_sys_name, (const char*)val, sizeof(g_sys_name) - 1);
+        tkl_strscpy(g_sys_name, (const char *)val, sizeof(g_sys_name));
         return E_OK;
     } else if (key == CNF_MAX_PROCS) {
         g_max_procs = *(const int*)val;

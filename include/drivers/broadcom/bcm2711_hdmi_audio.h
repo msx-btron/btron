@@ -48,6 +48,7 @@
 #define HDMI_MAI_CONFIG_REG            0x00A0
 #define HDMI_AUDIO_PACKET_CONFIG       0x00B8
 #define HDMI_RAM_PACKET_CONFIG         0x00BC
+#define HDMI_RAM_PACKET_STATUS         0x00C4
 #define HDMI_CRP_CFG                   0x00C8
 #define HDMI_CTS_0                     0x00CC
 #define HDMI_CTS_1                     0x00D0
@@ -61,7 +62,9 @@
 #define HDMI_PACKET_STRIDE             0x24u
 #define HDMI_AUDIO_PACKET_ID           4u
 
-/* DVP parent that clocks MAI_SMP. Not a mailbox firmware-clock id. */
+/* MAI_SMP divides this 108 MHz parent. The parent reaches MAI only after
+ * the DVP gate (MISC_CONFIG, set-to-disable) for that port is clear.
+ * This is not a mailbox firmware-clock id. */
 #define BCM2711_HSM_CLOCK_HZ           108000000u
 
 /* Legacy-DMA bus address of MAI_DATA (0x7E window, not the ARM 0xFE alias). */

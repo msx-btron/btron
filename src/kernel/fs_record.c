@@ -7,6 +7,7 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <string.h>
+#include <libstr.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <time.h>
@@ -52,7 +53,7 @@ static void fs_init_once(void) {
 
         /* Default root system files */
         g_files[0].exists = TRUE;
-        strncpy(g_files[0].path, "/sys/startup.tad", sizeof(g_files[0].path) - 1);
+        tkl_strscpy(g_files[0].path, "/sys/startup.tad", sizeof(g_files[0].path));
         g_files[0].num_records = 1;
         g_files[0].records[0].in_use = TRUE;
         const char *def = "TRON_AUTORUN";
@@ -86,7 +87,7 @@ ID opn_fil(const char *path, UW mode) {
                 g_files[i].open = TRUE;
                 g_files[i].mode = mode;
                 g_files[i].num_records = 0;
-                strncpy(g_files[i].path, path, sizeof(g_files[i].path) - 1);
+                tkl_strscpy(g_files[i].path, path, sizeof(g_files[i].path));
                 pthread_mutex_unlock(&g_fs_lock);
                 return (ID)(i + 1);
             }
@@ -155,7 +156,7 @@ ER mov_fil(const char *src_path, const char *dst_path) {
 
     for (int i = 0; i < MAX_FS_FILES; i++) {
         if (g_files[i].exists && strcmp(g_files[i].path, src_path) == 0) {
-            strncpy(g_files[i].path, dst_path, sizeof(g_files[i].path) - 1);
+            tkl_strscpy(g_files[i].path, dst_path, sizeof(g_files[i].path));
             pthread_mutex_unlock(&g_fs_lock);
             return E_OK;
         }
@@ -337,7 +338,7 @@ ID opn_dir(const char *path) {
 ER rd_dir(ID dir_id, DIR_ENTRY *entry) {
     (void)dir_id;
     if (!entry) return ER_PAR;
-    strncpy(entry->name, "sample.tad", sizeof(entry->name) - 1);
+    tkl_strscpy(entry->name, "sample.tad", sizeof(entry->name));
     entry->attr = 0;
     entry->size = 1024;
     entry->robj_id = 100;
@@ -363,7 +364,7 @@ ER del_lnk(const char *link_path) {
 ER ref_vol(ID vol_id, VOL_INFO *info) {
     if (!info) return ER_PAR;
     info->vol_id = vol_id > 0 ? vol_id : 1;
-    strncpy(info->vol_name, "BTRON_SYSTEM", sizeof(info->vol_name) - 1);
+    tkl_strscpy(info->vol_name, "BTRON_SYSTEM", sizeof(info->vol_name));
     info->total_blocks = 131072;
     info->free_blocks  = 120000;
     info->block_size   = 4096;

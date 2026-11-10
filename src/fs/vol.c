@@ -24,6 +24,7 @@
 #include <stdint.h>
 
 #include <btron/libc_shim.h>
+#include <libstr.h>
 #if BTRON_HOSTED
 #include <time.h>
 #endif
@@ -887,10 +888,8 @@ Volume *vol_mount(BlkDev *dev)
             tc[k] = rd_u16(1, blk_buf + 0x30 + k * 2);
         }
         btr_tcode_to_utf8(tc, 20, (char *)v->hdr.vol_name, sizeof(v->hdr.vol_name));
-        if (v->hdr.vol_name[0] == '\0') {
-            strncpy((char *)v->hdr.vol_name, "B-right/V", sizeof(v->hdr.vol_name) - 1);
-            v->hdr.vol_name[sizeof(v->hdr.vol_name) - 1] = '\0';
-        }
+        if (v->hdr.vol_name[0] == '\0')
+            tkl_strpad((char *)v->hdr.vol_name, "B-right/V", sizeof(v->hdr.vol_name));
     } else {
         v->block_size       = dev->block_size ? dev->block_size : BTRON_BLOCK_SIZE;
         v->hdr.magic        = magic;

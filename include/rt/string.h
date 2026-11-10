@@ -14,6 +14,9 @@
 #define strnlen tkl_strnlen
 #define strcpy  tkl_strcpy
 #define strncpy tkl_strncpy
+#define strscpy tkl_strscpy
+#define strscat tkl_strscat
+#define strpad  tkl_strpad
 #define strcmp  tkl_strcmp
 #define strncmp tkl_strncmp
 #define strcat  tkl_strcat

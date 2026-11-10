@@ -61,7 +61,8 @@ VERIFY_SRCS = btron_verify.c \
               ../src/fs/blk_qcow2.c \
               ../src/fs/blk_part.c \
               ../src/fs/vol.c \
-              ../src/kernel/fs_record.c
+              ../src/kernel/fs_record.c \
+              ../src/kernel/libstr.c
 
 VERIFY_OBJS = $(VERIFY_SRCS:.c=.o)
 VERIFY_BIN = btron_verify
@@ -72,6 +73,9 @@ all: $(VERIFY_BIN)
 
 $(VERIFY_BIN): $(VERIFY_OBJS)
 	$(CC) $(VERIFY_OBJS) -o $@ $(LDFLAGS) $(VERIFY_LIBS)
+
+../src/kernel/libstr.o: ../src/kernel/libstr.c
+	$(CC) $(CFLAGS) -DBTRON_LIBSTR_NO_HEAP -c $< -o $@
 
 %.o: %.c btron_verify.h ../include/btron/*.h
 	$(CC) $(CFLAGS) -c $< -o $@

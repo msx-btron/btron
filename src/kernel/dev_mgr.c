@@ -7,6 +7,7 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <string.h>
+#include <libstr.h>
 #include <pthread.h>
 
 #define MAX_DEVICES 16
@@ -41,7 +42,7 @@ ID opn_dev_mgr(const char *dev_name, UW mode) {
     for (int i = 0; i < MAX_DEVICES; i++) {
         if (!g_devs[i].open) {
             g_devs[i].dev_id = g_next_dev_id++;
-            strncpy(g_devs[i].name, dev_name, sizeof(g_devs[i].name) - 1);
+            tkl_strscpy(g_devs[i].name, dev_name, sizeof(g_devs[i].name));
             g_devs[i].mode = mode;
             g_devs[i].open = TRUE;
             g_devs[i].buf_len = 0;

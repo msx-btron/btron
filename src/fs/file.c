@@ -21,6 +21,7 @@
 #include <stdint.h>
 
 #include <btron/libc_shim.h>
+#include <libstr.h>
 #if BTRON_HOSTED
 #include <time.h>
 #endif
@@ -2121,16 +2122,17 @@ ER fil_get_rec_link_info(ID fd, W rec_idx, FID *out_fid, char *out_name, size_t 
     if (link_name[0] == '\0' && link_fid != (FID)0) {
         ID target_fd = opn_fil_fid(v, link_fid, 0x0001);
         if (target_fd >= 0) {
-            strncpy(link_name, (const char *)g_open_files[(int)target_fd].hdr.name, sizeof(link_name) - 1);
-            link_name[sizeof(link_name) - 1] = '\0';
+            /* name[40] is a fixed slot and may have no NUL. Bound the read to it. */
+            tkl_strscpy(link_name,
+                (const char *)g_open_files[(int)target_fd].hdr.name,
+                sizeof g_open_files[(int)target_fd].hdr.name);
             cls_fil(target_fd);
         }
     }
 
     if (out_fid) *out_fid = link_fid;
     if (out_name && name_max > 0) {
-        strncpy(out_name, link_name[0] ? link_name : "(link)", name_max - 1);
-        out_name[name_max - 1] = '\0';
+        tkl_strscpy(out_name, link_name[0] ? link_name : "(link)", name_max);
     }
     return (ER)0;
 }
