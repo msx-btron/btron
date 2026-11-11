@@ -941,129 +941,29 @@ footer.site li { margin-bottom: 0.35rem; }
           </table>
         </div>
         <figcaption>
-          <span><b>Table 3.1: IEEE 1003 Standard Series Synthesis</b> — Systematic comparison against IEEE POSIX Specifications</span>
+          <span><b>Table 3.1: Level 1 — IEEE 1003 Standard Series Synthesis</b> — High-level paradigm comparison across POSIX standards specifications</span>
           <span>Deterministic microkernel actors replace fragmented Unix time-sharing standards</span>
         </figcaption>
       </figure>
 
       <p class="note">
-        <b>Direct System Call Mapping from ./b-spec/:</b> In traditional POSIX environments, executing a coordinated inter-task
-        operation requires complex multi-step syscall cascades—such as opening a pseudo-file in <code>/dev/shm</code>, truncating the file,
-        mapping memory pages with <code>mmap()</code>, and configuring separate synchronization mutexes. BTRON 3.20 primitives (defined in
-        <code>./b-spec/os_spec/kernel/</code>) eliminate descriptor tables entirely. Tasks synchronize via atomic 32-bit event flags, communicate
-        through bounded intra-process message buffers or synchronous Ada-style rendezvous ports, and share memory via single-call <code>Smalloc()</code>.
+        <b>Level 2: Subsystem Group Architecture (BTRON 3.20 vs Apache NuttX POSIX):</b> Apache NuttX is widely recognized
+        as the leading open-source POSIX microkernel, yet its strict commitment to Linux-like POSIX emulation forces significant
+        memory and latency penalties on microcontroller architectures. Every NuttX message queue, socket, and stream must allocate
+        a VFS file descriptor (<code>struct file</code>), threads incur mandatory Thread-Local Storage (TLS) and cancellation metadata
+        overhead in <code>struct tcb_s</code>, and message queues dynamically allocate heap nodes into linked priority lists.
+        By contrast, BTRON 3.20 operates with zero file-descriptor tables, constant-time $O(1)$ integer handle lookups, native multi-bit
+        event flags, and a fully decoupled C99 runtime (<code>include/rt</code>) requiring zero static tables and zero heap memory on boot.
       </p>
 
-      <!-- Table 3.2: Detailed BTRON 3.20 vs POSIX API Breakdown -->
-      <figure class="plate">
-        <div class="scroll">
-          <table class="cmp">
-            <thead>
-              <tr>
-                <th style="width: 16%;">Domain</th>
-                <th style="width: 25%;">BTRON 3.20 API (./b-spec/)</th>
-                <th style="width: 25%;">POSIX IEEE 1003 Equivalent</th>
-                <th style="width: 20%;">POSIX RTOS Hazard</th>
-                <th style="width: 14%;">BTRON Metric</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><b>Processes</b><br><span class="mono">1003.1</span></td>
-                <td><code>cre_prc()</code>, <code>ext_prc()</code>, <code>ter_prc()</code>, <code>chg_pri()</code></td>
-                <td><code>fork()</code>, <code>execve()</code>, <code>waitpid()</code></td>
-                <td>Page-table cloning; latency spikes; COW fragmentation</td>
-                <td><span class="badge badge-teal">&lt; 1.2 µs O(1)</span></td>
-              </tr>
-              <tr>
-                <td><b>Tasks / Threads</b><br><span class="mono">1003.1c</span></td>
-                <td><code>cre_tsk()</code>, <code>ext_tsk()</code>, <code>slp_tsk()</code>, <code>wup_tsk()</code></td>
-                <td><code>pthread_create()</code>, <code>pthread_cancel()</code></td>
-                <td>Async cancel deadlocks; unwinding stack blowouts</td>
-                <td><span class="badge badge-teal">140 Pri Levels</span></td>
-              </tr>
-              <tr>
-                <td><b>Semaphores</b><br><span class="mono">1003.1b SEM</span></td>
-                <td><code>cre_sem()</code>, <code>sig_sem()</code>, <code>wai_sem(tmout)</code></td>
-                <td><code>sem_open()</code>, <code>sem_wait()</code>, <code>sem_post()</code></td>
-                <td>Descriptor table leaks; missing multi-unit atomic acquire</td>
-                <td><span class="badge badge-teal">TMOUT Bounds</span></td>
-              </tr>
-              <tr>
-                <td><b>Event Flags</b><br><span class="mono">1003.1b IPC</span></td>
-                <td><code>cre_flg()</code>, <code>set_flg()</code>, <code>clr_flg()</code>, <code>wai_flg()</code></td>
-                <td><code>pthread_cond_wait()</code> + mutex predicates</td>
-                <td>Race conditions; lost wakeups; lock convoying</td>
-                <td><span class="badge badge-teal">32-Bit AND/OR</span></td>
-              </tr>
-              <tr>
-                <td><b>Message Buffers</b><br><span class="mono">1003.1b IPC</span></td>
-                <td><code>cre_mbf()</code>, <code>del_mbf()</code>, <code>snd_mbf()</code>, <code>rcv_mbf()</code></td>
-                <td><code>mq_open()</code>, <code>mq_send()</code>, <code>mq_receive()</code></td>
-                <td>VFS directory lookups; priority inversion in queues</td>
-                <td><span class="badge badge-teal">Ring Bounded</span></td>
-              </tr>
-              <tr>
-                <td><b>Message Passing</b><br><span class="mono">1003.1b IPC</span></td>
-                <td><code>snd_msg()</code>, <code>rcv_msg()</code>, <code>clr_msg()</code>, <code>req_tmg()</code></td>
-                <td>Unix Domain Sockets (<code>AF_UNIX</code>), pipes</td>
-                <td>Descriptor leaks; heavy copy across ring 0/3 boundaries</td>
-                <td><span class="badge badge-teal">&lt; 280 ns IPC</span></td>
-              </tr>
-              <tr>
-                <td><b>Rendezvous</b><br><span class="mono">1003.1b RPC</span></td>
-                <td><code>cre_por()</code>, <code>cal_por()</code>, <code>acp_por()</code>, <code>rpy_por()</code></td>
-                <td>Socket pair RPC handshakes; pipe handoffs</td>
-                <td>Deadlocks during bilateral handshakes; dual stack use</td>
-                <td><span class="badge badge-teal">Zero-Copy RPC</span></td>
-              </tr>
-              <tr>
-                <td><b>Shared Memory</b><br><span class="mono">1003.1b SHM</span></td>
-                <td><code>Smalloc()</code>, <code>Sfree()</code>, <code>get_mbk()</code>, <code>rel_mbk()</code></td>
-                <td><code>shm_open()</code>, <code>mmap()</code>, <code>shmat()</code></td>
-                <td>Multi-syscall setup; TLB invalidations; VFS paths</td>
-                <td><span class="badge badge-teal">1-Call Smalloc</span></td>
-              </tr>
-              <tr>
-                <td><b>Clocks &amp; Timers</b><br><span class="mono">1003.1b Time</span></td>
-                <td><code>get_tim()</code>, <code>set_tim()</code>, <code>dly_tsk(tmout)</code></td>
-                <td><code>clock_gettime()</code>, <code>clock_nanosleep()</code></td>
-                <td>Tick accumulation jitter; heavy timezone parsing in libc</td>
-                <td><span class="badge badge-teal">50 µs Ceiling</span></td>
-              </tr>
-              <tr>
-                <td><b>File &amp; Storage</b><br><span class="mono">1003.1 VFS</span></td>
-                <td>Real-Object / Virtual-Object (RO/VO), TAD records</td>
-                <td>Hierarchical VFS (<code>open</code>, <code>read</code>, <code>write</code>)</td>
-                <td>Fragile paths; broken symlinks; deep directory traversal</td>
-                <td><span class="badge badge-teal">Hypermedia</span></td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <figcaption>
-          <span><b>Table 3.2: BTRON 3.20 vs POSIX API Matrix</b> — Direct primitive mapping from ./b-spec/</span>
-          <span>Single-call shared memory, atomic multi-bit flags, and bounded rendezvous replace Unix syscall cascades</span>
-        </figcaption>
-      </figure>
-
-      <p class="note">
-        <b>Direct Head-to-Head: BTRON 3.20 vs Apache NuttX POSIX:</b> Apache NuttX is widely recognized as the premier POSIX microkernel
-        for embedded systems, yet its strict commitment to Linux-like POSIX compliance forces significant architectural compromises on microcontroller cores.
-        Every NuttX message queue, socket, and stream must allocate a VFS file descriptor (<code>struct file</code>), threads incur mandatory Thread-Local
-        Storage (TLS) and cancellation metadata overhead in <code>struct tcb_s</code>, and message queues dynamically allocate heap nodes into linked priority lists.
-        By contrast, BTRON 3.20 operates with zero file-descriptor overhead, constant-time $O(1)$ integer handle lookups, native multi-bit event flags,
-        and a fully decoupled C99 runtime (<code>include/rt</code>) requiring zero static tables and zero heap memory on boot.
-      </p>
-
-      <!-- Table 3.3: BTRON 3.20 vs Apache NuttX POSIX Functions -->
+      <!-- Table 3.2: Level 2 — Group Comparison: BTRON 3.20 vs Apache NuttX POSIX Subsystems -->
       <figure class="plate">
         <div class="scroll">
           <table class="cmp">
             <thead>
               <tr>
                 <th style="width: 15%;">Subsystem</th>
-                <th style="width: 25%;">BTRON 3.20 Primitive (./b-spec/)</th>
+                <th style="width: 25%;">BTRON 3.20 Subsystem (./b-spec/)</th>
                 <th style="width: 25%;">Apache NuttX POSIX API</th>
                 <th style="width: 21%;">NuttX RTOS Overhead &amp; Bottleneck</th>
                 <th style="width: 14%;">BTRON Gain</th>
@@ -1137,8 +1037,182 @@ footer.site li { margin-bottom: 0.35rem; }
           </table>
         </div>
         <figcaption>
-          <span><b>Table 3.3: BTRON 3.20 vs Apache NuttX POSIX Breakdown</b> — Microkernel efficiency vs POSIX emulation</span>
+          <span><b>Table 3.2: Level 2 — Subsystem Group Comparison</b> — BTRON 3.20 vs Apache NuttX POSIX Subsystems</span>
           <span>Zero VFS file-descriptor tables, constant-time integer handles, and pure decoupled C99 runtime</span>
+        </figcaption>
+      </figure>
+
+      <p class="note">
+        <b>Level 3: Direct Function-by-Function API Signature Breakdown:</b> Below is the granular, function-by-function comparison
+        of BTRON 3.20 system calls (from <code>./b-spec/os_spec/kernel/</code>) versus their direct POSIX and Apache NuttX counterparts.
+        Where POSIX requires multi-step initialization, dynamic heap chunk allocation, timespec conversions, and errno thread-local pointers,
+        BTRON 3.20 specifies exact integer handles, direct millisecond timeouts (<code>TMOUT</code>), atomic multi-count semaphore updates,
+        and zero-copy rendezvous ports.
+      </p>
+
+      <!-- Table 3.3: Level 3 — Detailed Function-by-Function Comparison (One API Call Per Line) -->
+      <figure class="plate">
+        <div class="scroll">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th style="width: 22%;">BTRON 3.20 System Call</th>
+                <th style="width: 24%;">POSIX / NuttX Function</th>
+                <th style="width: 38%;">Parameter Semantics &amp; Execution Mechanics</th>
+                <th style="width: 16%;">Real-Time Metric</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>cre_tsk(p_ctsk)</code></td>
+                <td><code>pthread_create(&amp;th, &amp;a, fn, arg)</code></td>
+                <td>Static TCB/stack binding; 0 heap alloc vs dynamic TCB/TLS heap allocation</td>
+                <td><span class="badge badge-teal">&lt; 1.2 µs O(1)</span></td>
+              </tr>
+              <tr>
+                <td><code>ter_tsk(tskid)</code></td>
+                <td><code>pthread_cancel(th)</code></td>
+                <td>Deterministic immediate task termination vs async cancellation unwind deadlocks</td>
+                <td><span class="badge badge-teal">Deterministic</span></td>
+              </tr>
+              <tr>
+                <td><code>slp_tsk()</code></td>
+                <td><code>pthread_cond_wait(&amp;cv, &amp;mtx)</code></td>
+                <td>Direct task self-suspension without mutex parameter vs mandatory lock/unlock cycle</td>
+                <td><span class="badge badge-teal">Zero Mutex</span></td>
+              </tr>
+              <tr>
+                <td><code>wup_tsk(tskid)</code></td>
+                <td><code>pthread_cond_signal(&amp;cv)</code></td>
+                <td>Direct target task wakeup with nestable count vs lost wakeup if thread not waiting</td>
+                <td><span class="badge badge-teal">Nestable Count</span></td>
+              </tr>
+              <tr>
+                <td><code>can_wup(tskid)</code></td>
+                <td><i>(No POSIX Equivalent)</i></td>
+                <td>Cancels queued wakeup requests and returns pending count; impossible in POSIX</td>
+                <td><span class="badge badge-teal">Atomic Query</span></td>
+              </tr>
+              <tr>
+                <td><code>dly_tsk(tmout)</code></td>
+                <td><code>clock_nanosleep(CLOCK_MONO, ...)</code></td>
+                <td>Direct millisecond task delay; hardware plane timer binding vs timespec math &amp; errno</td>
+                <td><span class="badge badge-teal">Zero Drift</span></td>
+              </tr>
+              <tr>
+                <td><code>chg_pri(tskid, pri)</code></td>
+                <td><code>pthread_setschedprio(th, pri)</code></td>
+                <td>Instant re-queue across 140 priority queues vs dynamic scheduler policy recalculation</td>
+                <td><span class="badge badge-teal">O(1) 140 Pri</span></td>
+              </tr>
+              <tr>
+                <td><code>cre_sem(cnt, opt)</code></td>
+                <td><code>sem_init(&amp;sem, pshared, cnt)</code></td>
+                <td>Kernel integer semaphore object; FIFO/priority queue vs wraps internal <code>nxsem_s</code></td>
+                <td><span class="badge badge-teal">0 Descriptor</span></td>
+              </tr>
+              <tr>
+                <td><code>wai_sem(id, cnt, tmo)</code></td>
+                <td><code>sem_timedwait(&amp;sem, &amp;ts)</code></td>
+                <td>Multi-unit count acquisition in 1 atomic call vs single-unit decrement only; timespec math</td>
+                <td><span class="badge badge-teal">Multi-Count</span></td>
+              </tr>
+              <tr>
+                <td><code>sig_sem(id, cnt)</code></td>
+                <td><code>sem_post(&amp;sem)</code></td>
+                <td>Multi-unit atomic release; awakens multiple tasks vs increments by 1; loop required</td>
+                <td><span class="badge badge-teal">Bulk Wakeup</span></td>
+              </tr>
+              <tr>
+                <td><code>del_sem(semid)</code></td>
+                <td><code>sem_destroy(&amp;sem)</code></td>
+                <td>Deletes semaphore; awakens all blocked tasks with <code>ER_DLT</code> vs undefined behavior</td>
+                <td><span class="badge badge-teal">Clean Unblock</span></td>
+              </tr>
+              <tr>
+                <td><code>cre_flg(flgptn, opt)</code></td>
+                <td><code>pthread_cond_init()</code> + mutex</td>
+                <td>Allocates 32-bit pattern flag; FIFO/priority wait vs dual POSIX objects (mutex+condvar)</td>
+                <td><span class="badge badge-teal">Atomic 32-Bit</span></td>
+              </tr>
+              <tr>
+                <td><code>wai_flg(p_f, id, ptn, m, tmo)</code></td>
+                <td><code>pthread_cond_timedwait()</code> loop</td>
+                <td>Atomic wait for pattern (<code>TWF_ANDW/ORW</code>) with auto-clear vs while-loop under mutex</td>
+                <td><span class="badge badge-teal">Zero Spurious</span></td>
+              </tr>
+              <tr>
+                <td><code>set_flg(flgid, setptn)</code></td>
+                <td><code>pthread_cond_broadcast(&amp;cv)</code></td>
+                <td>Bitwise OR pattern update; awakens matching tasks vs thundering herd mutex contention</td>
+                <td><span class="badge badge-teal">No Herd Contend</span></td>
+              </tr>
+              <tr>
+                <td><code>clr_flg(flgid, clrptn)</code></td>
+                <td><i>(Manual mutex flag assignment)</i></td>
+                <td>Atomic bitwise AND clear of flag pattern without holding separate synchronization locks</td>
+                <td><span class="badge badge-teal">Atomic Clear</span></td>
+              </tr>
+              <tr>
+                <td><code>cre_mbf(mbfsz, maxmsz, opt)</code></td>
+                <td><code>mq_open(name, O_CREAT, ...)</code></td>
+                <td>Bounded intra-process ringbuffer vs VFS filesystem entry, inode allocation, permissions</td>
+                <td><span class="badge badge-teal">No VFS Inode</span></td>
+              </tr>
+              <tr>
+                <td><code>snd_mbf(id, msg, sz, tmo)</code></td>
+                <td><code>mq_timedsend(mq, msg, sz, p, &amp;ts)</code></td>
+                <td>Direct copy to bounded ringbuffer vs dynamic heap node allocation into priority list</td>
+                <td><span class="badge badge-teal">Bounded Ring</span></td>
+              </tr>
+              <tr>
+                <td><code>rcv_mbf(id, msg, tmo)</code></td>
+                <td><code>mq_timedreceive(mq, msg, sz, ...)</code></td>
+                <td>Pulls message from ringbuffer; unblocks sender vs unlinks priority node, frees heap</td>
+                <td><span class="badge badge-teal">0 Dynamic Heap</span></td>
+              </tr>
+              <tr>
+                <td><code>cal_por(id, ptn, cm, csz, rm, tmo)</code></td>
+                <td><code>write(fd)</code> + <code>read(fd)</code> pair</td>
+                <td>Synchronous Ada rendezvous; waits for server reply vs bilateral pipe, 2 context switches</td>
+                <td><span class="badge badge-teal">Zero-Copy RPC</span></td>
+              </tr>
+              <tr>
+                <td><code>acp_por(id, ptn, rdnvp, cm, tmo)</code></td>
+                <td><code>accept()</code> + <code>read(fd)</code></td>
+                <td>Server accepts transaction; receives caller context vs socket handshake, descriptor alloc</td>
+                <td><span class="badge badge-teal">Direct Port</span></td>
+              </tr>
+              <tr>
+                <td><code>rpy_por(rdnvno, rmsg, rsz)</code></td>
+                <td><code>write(fd)</code> reply</td>
+                <td>Server returns reply payload directly into caller buffer vs socket buffer write &amp; close</td>
+                <td><span class="badge badge-teal">Single Handoff</span></td>
+              </tr>
+              <tr>
+                <td><code>Smalloc(size)</code></td>
+                <td><code>shm_open()</code> + <code>ftruncate()</code> + <code>mmap()</code></td>
+                <td>1-call allocation of inter-task zero-copy shared memory vs 4 discrete POSIX syscalls</td>
+                <td><span class="badge badge-teal">1 Call (0 Descr)</span></td>
+              </tr>
+              <tr>
+                <td><code>Sfree(ptr)</code></td>
+                <td><code>munmap()</code> + <code>close()</code> + <code>shm_unlink()</code></td>
+                <td>Releases shared buffer back to system pool instantly vs 3 cleanup syscalls &amp; TLB shootdown</td>
+                <td><span class="badge badge-teal">Immediate Free</span></td>
+              </tr>
+              <tr>
+                <td><code>get_mbk(size, opt, p_addr)</code></td>
+                <td><code>shmget(key, sz)</code> + <code>shmat()</code></td>
+                <td>Direct raw memory block allocation with alignment options vs System V IPC key search</td>
+                <td><span class="badge badge-teal">Raw Block O(1)</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <figcaption>
+          <span><b>Table 3.3: Level 3 — Direct System Call Signature Matrix</b> — One API function call per line (b-spec vs POSIX / NuttX)</span>
+          <span>Zero VFS file-descriptor tables, atomic multi-unit semaphores, and direct synchronous ports</span>
         </figcaption>
       </figure>
 
