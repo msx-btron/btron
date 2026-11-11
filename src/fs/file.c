@@ -1849,7 +1849,7 @@ ER rd_dir(ID dir_id, DIR_ENTRY *entry)
         memcpy(nm, buf + 32, 40);
         nm[40] = '\0';
         int ni = 0;
-        while (nm[ni] && ni < 63) { entry->name[ni] = nm[ni]; ni++; }
+        while (nm[ni] && ni < 40) { entry->name[ni] = nm[ni]; ni++; }
         entry->name[ni] = '\0';
         /* The root Real Body is the drawer itself, not an entry of it. */
         if (fid == FID_ROOT && vol_name(v) && strcmp(entry->name, vol_name(v)) == 0)

@@ -135,6 +135,39 @@ jobs:
           path: btron-posix
           if-no-files-found: ignore
 
+  # ── Security & Quality Static Analysis (Alpine Linux) ────────────────────────
+  security-alpine:
+    name: Security & Quality Audit (Alpine Linux)
+    runs-on: ubuntu-latest
+    container:
+      image: alpine:3.20
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Prerequisites (Alpine)
+        run: |
+          sed -i 's/^#//g' /etc/apk/repositories
+          apk update
+          apk add --no-cache \
+            build-base \
+            clang \
+            lld \
+            llvm \
+            compiler-rt \
+            cppcheck \
+            flawfinder \
+            python3
+
+      - name: Run Security & Quality Static Analysis
+        run: |
+          make CC=clang security
+
+      - name: Generate ASCII Tree Security & Quality Report
+        run: |
+          python3 scripts/security_report.py
+
   # ── FreeBSD ──────────────────────────────────────────────────────────────────
   build-freebsd:
     name: Build & Test (FreeBSD 15.1)

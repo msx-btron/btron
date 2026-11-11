@@ -274,7 +274,7 @@ void term_style(int id, const char *sgr)
 {
     size_t i = 0;
     if (id <= 0 || id >= TERM_STYLES || sgr == NULL) return;
-    while (i < 31u && sgr[i] != '\0') { g_sgr[id][i] = sgr[i]; i++; }
+    while (sgr[i] != '\0' && i < 31u) { g_sgr[id][i] = sgr[i]; i++; }
     g_sgr[id][i] = '\0';
 }
 
@@ -463,7 +463,7 @@ static void move_to(int r, int c)
 static void emit_cell(int r, int c)
 {
     const Cell *x = &CELL(g_back, r, c);
-    char u[4];
+    char u[4] = {0};
     int w;
     if (x->cp == 0u) return;                         /* right half of a wide char */
     if ((int)x->at != g_cur_at) {

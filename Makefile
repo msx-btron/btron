@@ -61,7 +61,7 @@ CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
         run-posix run-qemu run-kernel run-yoko run-yoko4 run-sakamura run-foma run-uefi run-eufi run-uefu run-pc98 run-m68k run-ps2 run-mips debug-virtio debug-gdb clean \
         ps2-cfg ps2-dials \
         pi400 pi400-payload flash-pi400 fetch-pi400-fw \
-        sec-libstr sec-be sec-clu sec-kernel sec-fs sec-drivers security
+        sec-libstr sec-be sec-clu sec-kernel sec-fs sec-drivers security security-report
 
 QEMU_ARM     ?= qemu-system-arm
 QEMU_AARCH64 ?= qemu-system-aarch64
@@ -1884,7 +1884,7 @@ sec-libstr: $(TEST_LIBSTR_ASAN)
 		echo "flawfinder not on PATH (OpenBSD port devel/flawfinder): brew install flawfinder"; \
 	fi
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		cppcheck --std=c99 --enable=warning,portability --error-exitcode=1 --quiet \
+		cppcheck -j4 --std=c99 --enable=warning,portability --error-exitcode=1 --quiet \
 			$(TEST_LIBSTR_INCLUDES) src/kernel/libstr.c; \
 	else \
 		echo "cppcheck not on PATH: brew install cppcheck"; \
@@ -1916,7 +1916,7 @@ sec-be:
 		echo "flawfinder not on PATH: brew install flawfinder"; \
 	fi
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		cppcheck --std=c99 --enable=warning,portability --quiet \
+		cppcheck -j4 --std=c99 --enable=warning,portability --quiet \
 			$(BE_SEC_INCLUDES) src/apps/clu/be/; \
 	else \
 		echo "cppcheck not on PATH: brew install cppcheck"; \
@@ -1963,7 +1963,7 @@ sec-clu:
 		echo "flawfinder not on PATH: brew install flawfinder"; \
 	fi
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		cppcheck --std=c99 --enable=warning,portability --quiet \
+		cppcheck -j4 --std=c99 --enable=warning,portability --quiet \
 			$(CLU_SEC_INCLUDES) \
 			src/apps/clu/sh/ src/apps/clu/sc/ src/apps/clu/tv/ \
 			$(CLU_TOP_SRCS); \
@@ -1987,7 +1987,7 @@ sec-kernel:
 		echo "flawfinder not on PATH: brew install flawfinder"; \
 	fi
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		cppcheck --std=c99 --enable=warning,portability --quiet \
+		cppcheck -j4 --std=c99 --enable=warning,portability --quiet \
 			$(KERNEL_SEC_INCLUDES) src/kernel/; \
 	else \
 		echo "cppcheck not on PATH: brew install cppcheck"; \
@@ -2009,7 +2009,7 @@ sec-fs:
 		echo "flawfinder not on PATH: brew install flawfinder"; \
 	fi
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		cppcheck --std=c99 --enable=warning,portability --quiet \
+		cppcheck -j4 --std=c99 --enable=warning,portability --quiet \
 			$(FS_SEC_INCLUDES) src/fs/; \
 	else \
 		echo "cppcheck not on PATH: brew install cppcheck"; \
@@ -2028,17 +2028,21 @@ sec-drivers:
 		echo "flawfinder not on PATH: brew install flawfinder"; \
 	fi
 	@if command -v cppcheck >/dev/null 2>&1; then \
-		cppcheck --std=c99 --enable=warning,portability --quiet \
+		cppcheck -j4 --std=c99 --enable=warning,portability --quiet \
 			$(DRIVERS_SEC_INCLUDES) src/drivers/; \
 	else \
 		echo "cppcheck not on PATH: brew install cppcheck"; \
 	fi
 
 # ── Aggregated Security Gate ──────────────────────────────────────────────────
+security-report:
+	@python3 scripts/security_report.py
+
 security: sec-libstr sec-be sec-clu sec-kernel sec-fs sec-drivers
 	@echo "=========================================================="
 	@echo " ALL SECURITY SCANS COMPLETE"
 	@echo "=========================================================="
+	@python3 scripts/security_report.py
 
 test-ps2-cdvd-loop:
 	@echo "=========================================================="

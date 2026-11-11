@@ -28,7 +28,7 @@
 #define SERCD(er)	( (H)(er) )		/* Sub-error code */
 #define ERCD(mer, ser)	( (ER)(((UW)(mer) << 16) | ((UW)(ser) & 0x0000FFFF)) )
 #else
-#define ERCD(mer, ser)	( ((mer) << 16) | ((ser) & 0xffff) )
+#define ERCD(mer, ser)	( (ER)(((UW)(mer) << 16) | ((UW)(ser) & 0x0000FFFF)) )
 #endif /* _in_asm_source_ */
 
 #ifndef E_OK
