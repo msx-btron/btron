@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>C Libraries · B-System rt · Comparative Study</title>
+<meta name="description" content="A methods-first comparison of B-System rt with musl, glibc, NuttX libc, newlib/picolibc and dietlibc.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@300;400;500;600&family=Shippori+Mincho:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+
+:root {
+  --jp-font: "Noto Sans JP", "Inter", system-ui, sans-serif;
+  --mincho-font: "Shippori Mincho", "Noto Sans JP", serif;
+  --mono-font: "JetBrains Mono", ui-monospace, monospace;
+  --tron-teal: #008080;
+  --tron-gold: #c59b27;
+  --ink: #14171a;
+  --ink-2: #2b3136;
+  --ink-3: #5b6470;
+  --paper: #f7f7f5;
+  --paper-2: #efeeea;
+  --plate: #ffffff;
+  --rule: #d8d7d1;
+  --rule-dark: rgba(255, 255, 255, 0.16);
+  --shadow-plate: 0 2px 4px rgba(20, 23, 26, 0.05),
+    0 18px 40px -18px rgba(20, 23, 26, 0.22),
+    0 60px 90px -50px rgba(20, 23, 26, 0.28);
+  --shadow-lift: 0 2px 4px rgba(20, 23, 26, 0.06),
+    0 28px 56px -20px rgba(20, 23, 26, 0.28);
+}
+
+button:not(:disabled), [role="button"]:not(:disabled) { cursor: pointer; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--jp-font);
+    font-weight: 400;
+    letter-spacing: 0.015em;
+    line-height: 1.85;
+    color: var(--ink-2);
+    background: var(--paper);
+    -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--tron-teal); text-decoration: none; }
+  a:hover { color: var(--ink); }
+
+.wrap {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 5vw, 3.5rem);
+}
+
+nav.sticky {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  background: rgba(247, 247, 245, 0.94);
+  border-bottom: 1px solid var(--rule);
+  backdrop-filter: blur(14px);
+}
+.nav-container {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0.85rem clamp(1.25rem, 5vw, 3.5rem);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.logo {
+  font-family: var(--mincho-font);
+  font-weight: 700;
+  font-size: 1.35rem;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.logo span {
+  font-family: var(--mono-font);
+  font-weight: 400;
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+  margin-left: 0.4rem;
+}
+.nav-links {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  gap: 1.35rem;
+  flex-wrap: wrap;
+}
+.nav-links a {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+header.hero {
+  position: relative;
+  min-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  background:
+    radial-gradient(120% 90% at 50% 0%, rgba(0, 128, 128, 0.07), rgba(0, 128, 128, 0) 60%),
+    var(--paper);
+  border-bottom: 1px solid var(--rule);
+}
+header.hero::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(197, 155, 39, 0), rgba(197, 155, 39, 0.55), rgba(197, 155, 39, 0));
+}
+.hero-content {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 5.5rem clamp(1.25rem, 5vw, 3.5rem) 7rem;
+  text-align: center;
+}
+.hero-kicker {
+  font-family: var(--mono-font);
+  font-size: 0.76rem;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: var(--tron-teal);
+  margin-bottom: 1.8rem;
+}
+.hero-content h1 {
+  font-family: var(--mincho-font);
+  font-weight: 700;
+  font-size: clamp(2.2rem, 5.6vw, 4.4rem);
+  line-height: 1.22;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+  margin: 0 auto;
+  max-width: 16ch;
+}
+.hero-rule {
+  width: 64px;
+  height: 1px;
+  background: var(--ink);
+  margin: 1.8rem auto;
+  opacity: 0.55;
+}
+.hero-lede {
+  max-width: 820px;
+  margin: 0 auto;
+  font-size: clamp(1rem, 1.6vw, 1.12rem);
+  font-weight: 300;
+  line-height: 2;
+  color: var(--ink-2);
+}
+.hero-lede-en {
+  max-width: 720px;
+  margin: 1.4rem auto 0;
+  font-size: 0.92rem;
+  line-height: 1.9;
+  color: var(--ink-3);
+}
+.hero-marks {
+  margin-top: 2.2rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 2rem;
+  justify-content: center;
+  font-family: var(--mono-font);
+  font-size: 0.72rem;
+  letter-spacing: 0.12em;
+  color: var(--ink-3);
+}
+.hero-marks span::before {
+  content: "·";
+  margin-right: 0.55rem;
+  color: var(--tron-gold);
+}
+
+section.band { padding: clamp(4.2rem, 9vw, 8rem) 0; }
+.band-head {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 1.4rem;
+  border-top: 1px solid var(--rule);
+  padding-top: 1.4rem;
+  margin-bottom: clamp(1.8rem, 4vw, 3rem);
+}
+.band-index {
+  font-family: var(--mono-font);
+  font-size: 0.76rem;
+  letter-spacing: 0.22em;
+  color: var(--tron-teal);
+  white-space: nowrap;
+}
+.band-head h2 {
+  font-family: var(--mincho-font);
+  font-weight: 600;
+  font-size: clamp(1.7rem, 4vw, 2.8rem);
+  line-height: 1.3;
+  margin: 0;
+  color: var(--ink);
+}
+.band-eyebrow {
+  grid-column: 1 / -1;
+  font-family: var(--mono-font);
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+.band-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(1.6rem, 4vw, 3.2rem);
+  margin-bottom: clamp(2rem, 5vw, 3.4rem);
+}
+.band-intro p { margin: 0; font-size: 0.98rem; line-height: 1.95; color: var(--ink-2); }
+.band-intro .en {
+  font-size: 0.9rem;
+  color: var(--ink-3);
+  padding-left: clamp(0rem, 2vw, 1.6rem);
+  border-left: 1px solid var(--rule);
+}
+
+.plate {
+  margin: 0 0 1.6rem;
+  background: var(--plate);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  box-shadow: var(--shadow-plate);
+  padding: 0;
+  overflow: hidden;
+}
+.plate figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.35rem 1.2rem;
+  padding: 0.85rem 1.1rem 0.95rem;
+  font-family: var(--mono-font);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  border-top: 1px solid var(--rule);
+}
+.plate figcaption b { color: var(--ink); font-weight: 500; }
+
+.scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table.cmp {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+  line-height: 1.45;
+  min-width: 720px;
+}
+table.cmp th,
+table.cmp td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.72rem 0.9rem;
+  hyphens: manual;
+}
+table.cmp th {
+  font-family: var(--mono-font);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--rule);
+  position: sticky;
+  top: 0;
+  white-space: nowrap;
+}
+table.cmp td {
+  border-bottom: 1px solid rgba(216, 215, 209, 0.75);
+  color: var(--ink-2);
+}
+table.cmp tr:last-child td { border-bottom: none; }
+table.cmp th:first-child,
+table.cmp td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 8.5rem;
+  max-width: 14rem;
+  background: var(--plate);
+  box-shadow: 1px 0 0 var(--rule);
+}
+table.cmp th:first-child {
+  z-index: 2;
+  background: var(--paper-2);
+}
+table.cmp td:first-child {
+  font-weight: 500;
+  color: var(--ink);
+}
+table.cmp b { color: var(--ink); font-weight: 600; }
+table.cmp code {
+  font-family: var(--mono-font);
+  font-size: 0.86em;
+  color: var(--tron-teal);
+}
+
+ul.spec {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0;
+}
+ul.spec li {
+  display: grid;
+  grid-template-columns: minmax(7.5rem, 28%) minmax(0, 1fr);
+  gap: 0.75rem 1.25rem;
+  align-items: baseline;
+  padding: 0.7rem 1.1rem;
+  border-bottom: 1px solid rgba(216, 215, 209, 0.75);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+ul.spec li:last-child { border-bottom: none; }
+ul.spec strong {
+  font-family: var(--mono-font);
+  font-size: 0.74rem;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.note {
+  font-size: 0.92rem;
+  line-height: 1.9;
+  color: var(--ink-2);
+  max-width: 72ch;
+}
+.caveat {
+  border-left: 1px solid var(--tron-gold);
+  padding-left: 1rem;
+  color: var(--ink-3);
+  font-size: 0.88rem;
+  margin: 1.2rem 0 0;
+}
+
+footer.site {
+  background: #1a1e22;
+  color: #a8b0b8;
+  padding: clamp(3rem, 7vw, 5rem) 0 2.4rem;
+  font-size: 0.84rem;
+  line-height: 1.75;
+}
+footer.site a { color: #c8d0d8; }
+.footer-columns {
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 0 clamp(1.25rem, 5vw, 3.5rem);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 2rem;
+}
+footer.site h4 {
+  font-family: var(--mono-font);
+  font-size: 0.7rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #e0e4e8;
+  margin: 0 0 0.9rem;
+  font-weight: 500;
+}
+footer.site ul { list-style: none; margin: 0; padding: 0; }
+footer.site li { margin-bottom: 0.4rem; }
+.footer-legal {
+  max-width: 1180px;
+  margin: 2.6rem auto 0;
+  padding: 1.6rem clamp(1.25rem, 5vw, 3.5rem) 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+.footer-legal p {
+  margin: 0 0 0.75rem;
+  color: #69747e;
+  font-size: 0.74rem;
+  line-height: 1.7;
+}
+.footer-legal p.hold {
+  color: #b8c0c8;
+  font-size: 0.8rem;
+  text-align: center;
+}
+
+@media (max-width: 860px) {
+  .band-intro { grid-template-columns: 1fr; }
+  .band-intro .en { border-left: none; padding-left: 0; border-top: 1px solid var(--rule); padding-top: 1rem; }
+  .nav-container { flex-direction: column; align-items: flex-start; }
+  .nav-links { gap: 0.85rem 1.1rem; }
+  header.hero { min-height: auto; }
+  table.cmp { font-size: 0.78rem; min-width: 640px; }
+  table.cmp th,
+  table.cmp td { padding: 0.62rem 0.7rem; }
+  table.cmp th:first-child,
+  table.cmp td:first-child { min-width: 6.6rem; max-width: 9rem; }
+  ul.spec li {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.2rem;
+    padding: 0.7rem 0.95rem;
+  }
+}
+
+</style>
+</head>
+<body>
+<nav class="sticky" aria-label="Study navigation">
+        <div class="nav-container">
+          <a href="#method" class="logo">
+            rt<span>B-SYSTEM</span>
+          </a>
+          <ul class="nav-links">
+            <li><a href="#method">Method</a></li>
+            <li><a href="#positions">Positions</a></li>
+            <li><a href="#surface">Surface</a></li>
+            <li><a href="#metrics">Metrics</a></li>
+            <li><a href="#placement">Placement</a></li>
+            <li><a href="#selection">Selection</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <header class="hero">
+        <div class="hero-content">
+          <p class="hero-kicker">Comparative systems note · C libraries · RTOS hosts</p>
+          <h1>A minimal rt, measured against the field.</h1>
+          <div class="hero-rule"></div>
+          <p class="hero-lede">
+            B-System <code>include/rt</code> is not a second glibc. It is a reorganised,
+            freestanding-leaning shim: small trusted surface, explicit absences, and the
+            services a workstation actually needs living one layer above the C library.
+          </p>
+          <p class="hero-lede-en">
+            This note compares that shim with musl, glibc, NuttX libc, newlib / picolibc
+            and dietlibc. Claims stay inside published measurements or inside what each
+            design states about itself. Where B-System has no published binary size, the
+            cell says so.
+          </p>
+          <div class="hero-marks">
+            <span>Six objects</span>
+            <span>Header surface</span>
+            <span>Size class · licence · failure</span>
+            <span>Host placement</span>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        <section class="band" id="method">
+          <div class="wrap">
+            <div class="band-head">
+              <span class="band-index">00 / Method</span>
+              <h2>What is being compared</h2>
+              <p class="band-eyebrow">Objects · criteria · what this note refuses to claim</p>
+            </div>
+            <div class="band-intro">
+              <p>
+                The objects are C libraries used as the lowest portable layer under an
+                operating system or a bare-metal image. They are not ranked by how many
+                POSIX calls they export. A library that omits <code>locale</code> because
+                the document system owns text is not “incomplete” in the same sense as a
+                library that claims POSIX and then aborts on exhaustion.
+              </p>
+              <p class="en">
+                Criteria, in order: (1) stated design position, (2) which ISO C headers
+                are actually present, (3) published size class and licence, (4) behaviour
+                when a resource runs out, (5) which host — Linux, RTOS, or freestanding
+                multi-arch — the library is built to sit under.
+              </p>
+            </div>
+            <figure class="plate">
+              <ul class="spec">
+                <li><strong>In scope</strong><span>musl, glibc, NuttX libc, newlib and picolibc treated as one embedded family, dietlibc, B-System rt.</span></li>
+                <li><strong>Out of scope</strong><span>BSD libc, Bionic, MSVCRT, llvm-libc. Named only so the omission is visible.</span></li>
+                <li><strong>Size numbers</strong><span>Static-hello figures are the long-published Eta Labs comparison (dietlibc 6k, musl 13k, uClibc 70k, glibc 662k). They are historical, not a 2026 re-benchmark.</span></li>
+                <li><strong>B-System size</strong><span>No independent static-hello figure is cited. The design (printf as a no-op, no buffered stdio) implies a smaller hosted hello; that is a design fact, not a measured kilobyte.</span></li>
+                <li><strong>Fairness rule</strong><span>An empty cell means “not in this layer”, not “the system cannot do the job”.</span></li>
+              </ul>
+              <figcaption>
+                <span><b>Protocol</b> — fixed before the matrix</span>
+                <span>Sources named in the colophon</span>
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="band" id="positions">
+          <div class="wrap">
+            <div class="band-head">
+              <span class="band-index">01 / Positions</span>
+              <h2>Six design positions</h2>
+              <p class="band-eyebrow">What each library optimises, in its own terms</p>
+            </div>
+            <figure class="plate">
+              <div class="scroll">
+                <table class="cmp">
+                  <thead>
+                    <tr>
+                      <th>Library</th>
+                      <th>Position</th>
+                      <th>Pays for</th>
+                      <th>Refuses</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><b>B-System rt</b></td>
+                      <td>Secure minimal shim under one multi-arch BTRON image.</td>
+                      <td>Deterministic assert, ASCII ctype, internal allocator, TRON types.</td>
+                      <td>Locale, iconv, pthreads, buffered stdio, symbol versioning.</td>
+                    </tr>
+                    <tr>
+                      <td><b>musl</b></td>
+                      <td>Correct, simple ISO C and POSIX on Linux syscalls.</td>
+                      <td>Static linking, UTF-8, predictable failure instead of abort.</td>
+                      <td>GNU extensions, legacy 8-bit code pages, iconv kitchen sink.</td>
+                    </tr>
+                    <tr>
+                      <td><b>glibc</b></td>
+                      <td>Feature-complete hosted library for GNU/Linux.</td>
+                      <td>Locales, iconv, NPTL, long double, symbol versions.</td>
+                      <td>A small static image. A freestanding or no-MMU target.</td>
+                    </tr>
+                    <tr>
+                      <td><b>NuttX libc</b></td>
+                      <td>Configurable libc inside an RTOS that already owns pools and files.</td>
+                      <td>Build-time removal of what the board does not need.</td>
+                      <td>One canonical feature set. It is a configuration, not a single library.</td>
+                    </tr>
+                    <tr>
+                      <td><b>newlib / picolibc</b></td>
+                      <td>Portable embedded C, with syscall stubs the port must fill.</td>
+                      <td>Bare-metal and RTOS ports (Zephyr, many FreeRTOS trees, nano specs).</td>
+                      <td>A Linux ABI. Full pthread semantics unless the OS supplies them.</td>
+                    </tr>
+                    <tr>
+                      <td><b>dietlibc</b></td>
+                      <td>Smallest practical static Linux executables.</td>
+                      <td>Kilobytes on a hosted hello.</td>
+                      <td>Broad POSIX correctness, threads, a serious math library.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <figcaption>
+                <span><b>Positions</b> — not a scoreboard</span>
+                <span>Each row is a different optimum</span>
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="band" id="surface">
+          <div class="wrap">
+            <div class="band-head">
+              <span class="band-index">02 / Surface</span>
+              <h2>Header coverage</h2>
+              <p class="band-eyebrow">Present · partial · absent at the libc layer</p>
+            </div>
+            <div class="band-intro">
+              <p>
+                The matrix records the library layer only. B-System marks several headers
+                absent because assert must not abort, ctype must not grow locale tables,
+                and time is a plane period rather than <code>clock()</code>. Those choices
+                are specified, not unfinished.
+              </p>
+              <p class="en">
+                musl, glibc and a full NuttX or newlib configuration implement the same
+                headers because their contract is “a C programmer can include them”.
+                dietlibc implements a subset and documents the rest as missing.
+              </p>
+            </div>
+            <figure class="plate">
+              <div class="scroll">
+                <table class="cmp">
+                  <thead>
+                    <tr>
+                      <th>Header</th>
+                      <th>B-System rt</th>
+                      <th>musl</th>
+                      <th>glibc</th>
+                      <th>NuttX</th>
+                      <th>newlib / pico</th>
+                      <th>dietlibc</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><code>assert.h</code></td>
+                      <td>Counter and line. No abort.</td>
+                      <td>Abort path</td>
+                      <td>Full, NDEBUG</td>
+                      <td>Configurable</td>
+                      <td>Abort path</td>
+                      <td>Minimal</td>
+                    </tr>
+                    <tr>
+                      <td><code>ctype.h</code></td>
+                      <td>Inline ASCII only</td>
+                      <td>Clean</td>
+                      <td>Locales</td>
+                      <td>Modular</td>
+                      <td>ASCII, locale optional</td>
+                      <td>ASCII</td>
+                    </tr>
+                    <tr>
+                      <td><code>inttypes.h</code></td>
+                      <td>Minimal PRI/SCN</td>
+                      <td>Full</td>
+                      <td>Full + GNU</td>
+                      <td>Full</td>
+                      <td>Full</td>
+                      <td>Subset</td>
+                    </tr>
+                    <tr>
+                      <td><code>math.h</code></td>
+                      <td>Soft-float series, x87, PS2 FPU</td>
+                      <td>Annex F</td>
+                      <td>Hardware paths</td>
+                      <td>Modular libm</td>
+                      <td>Full or nano</td>
+                      <td>Limited</td>
+                    </tr>
+                    <tr>
+                      <td><code>stdio.h</code></td>
+                      <td>printf no-op; snprintf to tkl_*; fopen only with a filesystem</td>
+                      <td>Light full stdio</td>
+                      <td>POSIX + GNU buffers</td>
+                      <td>Configurable</td>
+                      <td>Full or nano, syscall stubs</td>
+                      <td>Small printf</td>
+                    </tr>
+                    <tr>
+                      <td><code>stdlib.h</code></td>
+                      <td>Imalloc, stubs, shell sort, LCG</td>
+                      <td>mallocng</td>
+                      <td>ptmalloc</td>
+                      <td>kmm_ / umm_ pools</td>
+                      <td>sbrk or port allocator</td>
+                      <td>Tiny allocator</td>
+                    </tr>
+                    <tr>
+                      <td><code>string.h</code></td>
+                      <td>tkl_* plus inline helpers</td>
+                      <td>Portable</td>
+                      <td>SIMD</td>
+                      <td>Standard</td>
+                      <td>Standard / nano</td>
+                      <td>Minimal</td>
+                    </tr>
+                    <tr>
+                      <td><code>time.h</code></td>
+                      <td>clock returns 0; basic tm</td>
+                      <td>POSIX</td>
+                      <td>POSIX + GNU</td>
+                      <td>Timers, RTC</td>
+                      <td>Configurable</td>
+                      <td>Minimal</td>
+                    </tr>
+                    <tr>
+                      <td><code>errno</code> limits stdint stdarg stdbool float</td>
+                      <td>Compiler or TRON error codes. Not a second errno universe.</td>
+                      <td>Full</td>
+                      <td>Full</td>
+                      <td>Full</td>
+                      <td>Full</td>
+                      <td>Needed subset</td>
+                    </tr>
+                    <tr>
+                      <td>locale wchar wctype complex fenv threads signal setjmp</td>
+                      <td>Absent in rt</td>
+                      <td>Present</td>
+                      <td>Present, largest</td>
+                      <td>Configurable</td>
+                      <td>Partial / optional</td>
+                      <td>Mostly absent</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <figcaption>
+                <span><b>Surface</b> — libc headers only</span>
+                <span>Empty is a specification</span>
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="band" id="metrics">
+          <div class="wrap">
+            <div class="band-head">
+              <span class="band-index">03 / Metrics</span>
+              <h2>Size, licence, exhaustion</h2>
+              <p class="band-eyebrow">Published figures kept separate from design inference</p>
+            </div>
+            <figure class="plate">
+              <div class="scroll">
+                <table class="cmp">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>B-System rt</th>
+                      <th>musl</th>
+                      <th>glibc</th>
+                      <th>NuttX</th>
+                      <th>newlib / pico</th>
+                      <th>dietlibc</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><b>Static hello</b></td>
+                      <td>Not published</td>
+                      <td>13 kB</td>
+                      <td>662 kB</td>
+                      <td>Depends on config</td>
+                      <td>nano: very small; full: medium</td>
+                      <td>6 kB</td>
+                    </tr>
+                    <tr>
+                      <td><b>Licence shape</b></td>
+                      <td>ISC / project terms</td>
+                      <td>MIT</td>
+                      <td>LGPL</td>
+                      <td>BSD-style components</td>
+                      <td>Permissive, per file</td>
+                      <td>GPL-2</td>
+                    </tr>
+                    <tr>
+                      <td><b>On exhaustion</b></td>
+                      <td>Stubs and explicit pools. No hidden abort in assert.</td>
+                      <td>Usually reports failure</td>
+                      <td>Some paths abort</td>
+                      <td>Pool allocation fails cleanly when configured to</td>
+                      <td>Port-defined</td>
+                      <td>Many calls unimplemented</td>
+                    </tr>
+                    <tr>
+                      <td><b>Heap after boot</b></td>
+                      <td>Can stay at zero: pools and plane budgets</td>
+                      <td>Ordinary malloc</td>
+                      <td>Ordinary malloc</td>
+                      <td>Kernel and user pools</td>
+                      <td>sbrk or a port heap</td>
+                      <td>Small hosted heap</td>
+                    </tr>
+                    <tr>
+                      <td><b>UTF-8</b></td>
+                      <td>Not in rt. TRON Code, UTF-8 and Mozc sit in HMI / tip / fonts.</td>
+                      <td>Native, conformant</td>
+                      <td>Via gconv, heavier</td>
+                      <td>Limited</td>
+                      <td>Optional</td>
+                      <td>Weak</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <figcaption>
+                <span><b>Metrics</b> — Eta Labs static hello, where a number appears</span>
+                <span>uClibc 70 kB is the fourth published point, not a column</span>
+              </figcaption>
+            </figure>
+            <p class="caveat">
+              The 6 / 13 / 70 / 662 kilobyte row is a single historical experiment on
+              Linux static linking. It does not measure NuttX, newlib-nano, picolibc or
+              B-System. Using it to declare a winner across RTOS libc builds would be a
+              category error.
+            </p>
+          </div>
+        </section>
+
+        <section class="band" id="placement">
+          <div class="wrap">
+            <div class="band-head">
+              <span class="band-index">04 / Placement</span>
+              <h2>What the host already owns</h2>
+              <p class="band-eyebrow">A libc is only the bottom of a system</p>
+            </div>
+            <div class="band-intro">
+              <p>
+                musl and glibc assume Linux: processes, mmap, a dynamic linker, a
+                filesystem. newlib assumes the opposite: the port writes <code>_sbrk</code>,
+                <code>_read</code> and <code>_write</code>. NuttX assumes its own kernel
+                pools. B-System assumes BTRON planes, an actor queue, and a document
+                model. Comparing header counts without that sentence flatters the
+                largest library.
+              </p>
+              <p class="en">
+                Word wrap, complex text, and input method do not belong in B-System rt.
+                They are implemented in the text renderer, TAD segments, windows and
+                language settings. Threads are not pthreads; they are pinned workers
+                and lock-free queues. Time is not a 10 ms tick; the finest plane wakes
+                on a 1 ms period, and the interrupt contract is a 50 µs ceiling, not a
+                measured worst case.
+              </p>
+            </div>
+            <figure class="plate">
+              <ul class="spec">
+                <li><strong>Text</strong><span>TRON Code, UTF-8, Mozc — HMI, tip, font manager. Not iconv.</span></li>
+                <li><strong>Time</strong><span>Plane periods and budgets. <code>clock()</code> stays zero on purpose.</span></li>
+                <li><strong>Concurrency</strong><span>InterCore nexus and MPSC queues. No pthread cancel in rt.</span></li>
+                <li><strong>Memory</strong><span>Imalloc plus fixed pools. A zero-heap-after-boot image is a supported shape.</span></li>
+                <li><strong>Files</strong><span>fopen exists only when a filesystem is linked. Otherwise stdio does not pretend.</span></li>
+                <li><strong>Machines</strong><span>One C99 tree across hosted POSIX and bare targets, including PS2 FPU awareness in math. Not a Linux-only ABI.</span></li>
+              </ul>
+              <figcaption>
+                <span><b>B-System</b> — layer above rt</span>
+                <span>The absences are load-bearing</span>
+              </figcaption>
+            </figure>
+          </div>
+        </section>
+
+        <section class="band" id="selection">
+          <div class="wrap">
+            <div class="band-head">
+              <span class="band-index">05 / Selection</span>
+              <h2>A decision, not a ranking</h2>
+              <p class="band-eyebrow">Pick the library whose refusal matches the product</p>
+            </div>
+            <figure class="plate">
+              <div class="scroll">
+                <table class="cmp">
+                  <thead>
+                    <tr>
+                      <th>If the product is</th>
+                      <th>Use</th>
+                      <th>Because</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td><b>A Linux desktop or a full server userspace</b></td>
+                      <td>glibc</td>
+                      <td>The feature set and the ABI are the product.</td>
+                    </tr>
+                    <tr>
+                      <td><b>A small static Linux image or a container base</b></td>
+                      <td>musl</td>
+                      <td>Correct POSIX, MIT, static hello an order of magnitude under glibc.</td>
+                    </tr>
+                    <tr>
+                      <td><b>A configurable open RTOS with a POSIX flavour</b></td>
+                      <td>NuttX libc</td>
+                      <td>The kernel already owns pools, files and timers.</td>
+                    </tr>
+                    <tr>
+                      <td><b>Bare metal, Zephyr, or a classic MCU port</b></td>
+                      <td>newlib or picolibc</td>
+                      <td>Syscall stubs and a nano configuration are the established path.</td>
+                    </tr>
+                    <tr>
+                      <td><b>The smallest possible static Linux tool</b></td>
+                      <td>dietlibc</td>
+                      <td>Size is the only objective, and correctness is knowingly narrower.</td>
+                    </tr>
+                    <tr>
+                      <td><b>A freestanding multi-arch BTRON image</b></td>
+                      <td>B-System rt</td>
+                      <td>The shim stays small and honest. The OS above it is the C library’s missing half.</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <figcaption>
+                <span><b>Selection</b></span>
+                <span>No library wins every row</span>
+              </figcaption>
+            </figure>
+            <p class="note">
+              musl is already a radical reduction of glibc. B-System rt is a further
+              reduction, and a different kind: it is not trying to be Linux libc at
+              all. Its protection is the size of the surface a reader must trust, the
+              refusal to abort from assert, and the rule that locale, threads and
+              buffered I/O do not enter the bottom layer by default.
+            </p>
+          </div>
+        </section>
+      </main>
+
+      <footer class="site">
+        <div class="footer-columns">
+          <div>
+            <h4>Study</h4>
+            <ul>
+              <li><a href="#method">00 Method</a></li>
+              <li><a href="#positions">01 Positions</a></li>
+              <li><a href="#surface">02 Surface</a></li>
+              <li><a href="#metrics">03 Metrics</a></li>
+              <li><a href="#placement">04 Placement</a></li>
+              <li><a href="#selection">05 Selection</a></li>
+            </ul>
+          </div>
+          <div>
+            <h4>Objects</h4>
+            <ul>
+              <li>B-System include/rt</li>
+              <li>musl</li>
+              <li>glibc</li>
+              <li>NuttX libc</li>
+              <li>newlib / picolibc</li>
+              <li>dietlibc</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Sources</h4>
+            <ul>
+              <li>etalabs.net/compare_libcs.html</li>
+              <li>musl, glibc, newlib, picolibc public notes</li>
+              <li>NuttX libc configuration</li>
+              <li>B-System rt header notes</li>
+            </ul>
+          </div>
+          <div>
+            <h4>Record</h4>
+            <p>Comparative note, November 2026.</p>
+            <p>Not a benchmark paper. Size cells without a number are unmarked on purpose.</p>
+          </div>
+        </div>
+        <div class="footer-legal">
+          <p class="hold">© 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.</p>
+          <p>
+            <b>Copyright and marks.</b> This page is an independent technical comparison.
+            glibc is part of the GNU Project. musl, NuttX, newlib, picolibc and dietlibc
+            are projects of their respective authors and foundations. TRON, BTRON and
+            T-Kernel are marks of their owners. Product names appear under nominative
+            fair use to identify the libraries being compared. B-System rt, as described
+            here, is a clean-room interface note: it does not include vendor microcode,
+            firmware ROMs, or third-party library source. Static-hello kilobyte figures
+            are quoted from the Eta Labs libc comparison and remain that author’s
+            measurements.
+          </p>
+          <p>
+            btron.pro · B-System rt comparative study · ISC / project terms for original
+            B-System text · figures cited, not relicensed.
+          </p>
+        </div>
+      </footer>
+</body>
+</html>
