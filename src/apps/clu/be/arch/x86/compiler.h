@@ -266,8 +266,14 @@ size_t strnlen(const char *s, size_t maxlen);
 /*
  * How to tell the compiler that a function takes a printf-like string
  */
-#define printf_func(fmt, list)     format_func3(printf,fmt,list)
-#define printf_func_ptr(fmt, list) format_func3_ptr(printf,fmt,list)
+/* `printf` here is the GCC format-attribute archetype that config.h's
+ * format_func3(x1,x2,x3) -> __attribute__((format(x1,x2,x3))) splices in.
+ * It is not a call and takes no format string; flawfinder's (format) rule
+ * matches the bare token inside the macro argument list.  Verified false
+ * positive: __attribute__((format(printf,fmt,list))) spelled out directly
+ * produces no hit. */
+#define printf_func(fmt, list)     format_func3(printf,fmt,list) /* flawfinder: ignore */
+#define printf_func_ptr(fmt, list) format_func3_ptr(printf,fmt,list) /* flawfinder: ignore */
 
 /* Determine probabilistically if something is a compile-time constant */
 #ifdef HAVE___BUILTIN_CONSTANT_P

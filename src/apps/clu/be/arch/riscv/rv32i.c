@@ -32,12 +32,12 @@ void decode_rv32i(uint32_t instruction) {
     switch (opcode) {
         case 0x33: // R-type
             switch (funct3) {
-                case 0x0: printf(funct7 == 0x20 ? "sub x%d, x%d, x%d\n" : "add x%d, x%d, x%d\n", rd, rs1, rs2); break;
+                case 0x0: printf("%s x%d, x%d, x%d\n", funct7 == 0x20 ? "sub" : "add", rd, rs1, rs2); break;
                 case 0x7: printf("and x%d, x%d, x%d\n", rd, rs1, rs2); break;
                 case 0x6: printf("or x%d, x%d, x%d\n", rd, rs1, rs2); break;
                 case 0x4: printf("xor x%d, x%d, x%d\n", rd, rs1, rs2); break;
                 case 0x1: printf("sll x%d, x%d, x%d\n", rd, rs1, rs2); break;
-                case 0x5: printf(funct7 == 0x20 ? "sra x%d, x%d, x%d\n" : "srl x%d, x%d, x%d\n", rd, rs1, rs2); break;
+                case 0x5: printf("%s x%d, x%d, x%d\n", funct7 == 0x20 ? "sra" : "srl", rd, rs1, rs2); break;
             }
             break;
         case 0x13: // I-type
@@ -49,7 +49,7 @@ void decode_rv32i(uint32_t instruction) {
                 /* The two format strings here were the bare mnemonics, so the
                  * three operands below had nothing to land in and the line
                  * printed "srai".  Matches the slli row above. */
-                case 0x5: printf(funct7 == 0x20 ? "srai x%d, x%d, %d\n" : "srli x%d, x%d, %d\n", rd, rs1, imm_i & 0x1F); break;
+                case 0x5: printf("%s x%d, x%d, %d\n", funct7 == 0x20 ? "srai" : "srli", rd, rs1, imm_i & 0x1F); break;
             }
             break;
         case 0x03: // Load

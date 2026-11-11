@@ -516,6 +516,7 @@ typedef struct {
 int inst_length(rv_inst inst);
 void inst_fetch(uint8_t *data, rv_inst *instp, int *length);
 void disasm_inst(char *buf, size_t buflen, rv_isa isa, uint64_t pc, rv_inst inst);
-char * decodeRISCV(unsigned long int address, char *outbuf, int *lendis, unsigned long int offset0);
+/* outbufsize is the full capacity of outbuf, including the NUL. */
+char * decodeRISCV(unsigned long int address, char *outbuf, int outbufsize, int *lendis, unsigned long int offset0);
 
 #endif

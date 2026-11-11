@@ -71,7 +71,7 @@ static int be_dasm_decode_arch(BeNativeContext *ctx, const uint8_t *input,
     case 1:
         return be_dasm_x86(input, available, ctx->bitness, offset, out, out_size, length);
     case 2:
-        if (ctx->bitness == 32) decodeARM32(address, out, &used, (unsigned long)offset);
+        if (ctx->bitness == 32) decodeARM32(address, out, (int)out_size, &used, (unsigned long)offset);
         else return -1;
         break;
     case 3: {
@@ -81,11 +81,11 @@ static int be_dasm_decode_arch(BeNativeContext *ctx, const uint8_t *input,
         if (used > 0) disasm_inst(out, out_size, isa, offset, instruction);
         break;
     }
-    case 4: decodePPC(address, out, &used, (unsigned long)offset); break;
-    case 5: decodeSH4(address, out, &used, (unsigned long)offset); break;
-    case 6: decodeM68K(address, out, &used, (unsigned long)offset); break;
-    case 7: decodeMIPS(address, out, &used, (unsigned long)offset); break;
-    case 8: decodePDP11(address, out, &used, (unsigned long)offset); break;
+    case 4: decodePPC(address, out, (int)out_size, &used, (unsigned long)offset); break;
+    case 5: decodeSH4(address, out, (int)out_size, &used, (unsigned long)offset); break;
+    case 6: decodeM68K(address, out, (int)out_size, &used, (unsigned long)offset); break;
+    case 7: decodeMIPS(address, out, (int)out_size, &used, (unsigned long)offset); break;
+    case 8: decodePDP11(address, out, (int)out_size, &used, (unsigned long)offset); break;
     /* Release One has no NVIDIA decoder. The editor steps one byte. */
     case 9: return -1;
     default: return -1;

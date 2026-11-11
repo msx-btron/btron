@@ -23,6 +23,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <libstr.h>
 #include "../../editor.h"
 #include "armv7.h"
 
@@ -85,28 +86,28 @@ static const char *special_register(int reg, int mask)
   static char field[16];
 
   switch (reg) {
-  case 0x00:    strcpy(field, "APSR");    break;
-  case 0x01:    strcpy(field, "IAPSR");    break;
-  case 0x02:    strcpy(field, "EIAPSR");    break;
-  case 0x03:    strcpy(field, "XPSR");    break;
-  case 0x05:    strcpy(field, "IPSR");    break;
-  case 0x06:    strcpy(field, "EPSR");    break;
-  case 0x07:    strcpy(field, "IEPSR");    break;
-  case 0x08:    strcpy(field, "MSP");    break;
-  case 0x09:    strcpy(field, "PSP");    break;
-  case 0x10:    strcpy(field, "PRIMASK");    break;
-  case 0x11:    strcpy(field, "BASEPRI");    break;
-  case 0x12:    strcpy(field, "BASEPRI_MAX");    break;
-  case 0x13:    strcpy(field, "FAULTMASK");    break;
-  case 0x14:    strcpy(field, "CONTROL");    break;
-  default:    assert(0);    strcpy(field, "?");
+  case 0x00:    tkl_strscpy(field, "APSR", sizeof(field));    break;
+  case 0x01:    tkl_strscpy(field, "IAPSR", sizeof(field));    break;
+  case 0x02:    tkl_strscpy(field, "EIAPSR", sizeof(field));    break;
+  case 0x03:    tkl_strscpy(field, "XPSR", sizeof(field));    break;
+  case 0x05:    tkl_strscpy(field, "IPSR", sizeof(field));    break;
+  case 0x06:    tkl_strscpy(field, "EPSR", sizeof(field));    break;
+  case 0x07:    tkl_strscpy(field, "IEPSR", sizeof(field));    break;
+  case 0x08:    tkl_strscpy(field, "MSP", sizeof(field));    break;
+  case 0x09:    tkl_strscpy(field, "PSP", sizeof(field));    break;
+  case 0x10:    tkl_strscpy(field, "PRIMASK", sizeof(field));    break;
+  case 0x11:    tkl_strscpy(field, "BASEPRI", sizeof(field));    break;
+  case 0x12:    tkl_strscpy(field, "BASEPRI_MAX", sizeof(field));    break;
+  case 0x13:    tkl_strscpy(field, "FAULTMASK", sizeof(field));    break;
+  case 0x14:    tkl_strscpy(field, "CONTROL", sizeof(field));    break;
+  default:    assert(0);    tkl_strscpy(field, "?", sizeof(field));
   }
 
   if (reg < 5) {
     switch (mask) {
-    case 0x4:      strcat(field, "_g");      break;
-    case 0x8:      strcat(field, "_nzcvq");      break;
-    case 0xc:      strcat(field, "_nzcvqg");      break;
+    case 0x4:      tkl_strscat(field, "_g", sizeof(field));      break;
+    case 0x8:      tkl_strscat(field, "_nzcvq", sizeof(field));      break;
+    case 0xc:      tkl_strscat(field, "_nzcvqg", sizeof(field));      break;
     }
   }
 
@@ -122,20 +123,32 @@ static const char *shift_type(int type)
   return shifts[type];
 }
 
-static char *tail(char *text)
-{
-  assert(text);
-  return text + strlen(text);
-}
+/* Append a formatted field at the end of `buf`, whose full capacity is `cap`
+ * (including the NUL).  This replaces sprintf(tail(buf), ...): tail() handed
+ * back a cursor with no room attached, and on the freestanding lanes sprintf
+ * is capped at 8192 by include/rt/stdio.h regardless of the destination --
+ * state->text is 128 bytes.  Every format passed here is a literal. */
+#define ARM_APP(buf, cap, ...) do { \
+    char *arm_b_ = (buf); \
+    size_t arm_cap_ = (cap); \
+    if (arm_b_ && arm_cap_ > 0u) { \
+        size_t arm_used_ = strlen(arm_b_); \
+        if (arm_used_ < arm_cap_) \
+            snprintf(arm_b_ + arm_used_, arm_cap_ - arm_used_, __VA_ARGS__); \
+    } \
+} while (0)
 
-static void padinstr(char *text)
+static void padinstr(char *text, size_t cap)
 {
   assert(text);
-  int i = strlen(text);
+  /* Real guard, not just the assert: on PS2/UEFI assert() only records. */
+  if (!text || cap == 0) return;
+  size_t i = strlen(text);
   if (i < 1) return;
 //  assert(i > 0);        /* there should already be some text in there */
+  if (i >= cap - 1) return;   /* no room left to pad into */
   if (i < 8) {
-    while (i < 8)
+    while (i < 8 && i < cap - 1)
       text[i++] = ' ';
   } else {
     text[i++] = ' ';    /* length already >= 8, but add a space separator */
@@ -147,7 +160,7 @@ static void add_condition(ARMSTATE *state, int cond)
 {
   assert(cond >= 0);
   if (cond >= 0 && cond < (int)sizearray(conditions))
-    strcat(state->text, conditions[cond]);
+    tkl_strscat(state->text, conditions[cond], sizeof(state->text));
 }
 
 static void add_it_cond(ARMSTATE *state, int add_s)
@@ -159,33 +172,33 @@ static void add_it_cond(ARMSTATE *state, int add_s)
     assert(c < sizearray(conditions));
     add_condition(state, c);
   } else if (add_s) {
-    strcat(state->text, "s");
+    tkl_strscat(state->text, "s", sizeof(state->text));
   }
 }
 
-static int add_reglist(char *text, int mask)
+static int add_reglist(char *text, size_t cap, int mask)
 {
-  strcat(text, "{");
+  tkl_strscat(text, "{", cap);
   int count = 0;
   for (int i = 0; register_name(i); i++) {
     if (BIT_SET(mask, i)) {
       if (count++ > 0)
-        strcat(text, ", ");
-      strcat(text, register_name(i));
+        tkl_strscat(text, ", ", cap);
+      tkl_strscat(text, register_name(i), cap);
       /* try to detect a range */
       int j;
       for (j = i + 1; register_name(j) && BIT_SET(mask, j); j++)
         {}
       j -= 1; /* reset for overrun */
       if (j - i > 1) {
-        strcat(text, "-");
-        strcat(text, register_name(j));
+        tkl_strscat(text, "-", cap);
+        tkl_strscat(text, register_name(j), cap);
         count += j - i;
         i = j;
       }
     }
   }
-  strcat(text, "}");
+  tkl_strscat(text, "}", cap);
   return count;
 }
 
@@ -195,16 +208,16 @@ static void add_insert_prefix(ARMSTATE *state, uint32_t instr)
 
   char prefix[32] = "";
   if (state->add_addr)
-    sprintf(prefix, "%08x    ", state->address);
+    snprintf(prefix, sizeof(prefix), "%08x    ", state->address);
 
   if (state->add_bin) {
     if (state->arm_mode) {
-      sprintf(tail(prefix), "%08x    ", instr);
+      ARM_APP(prefix, sizeof(prefix), "%08x    ", instr);
     } else {
       if (state->size == 4)
-        sprintf(tail(prefix), "%04x %04x   ", (instr >> 16) & 0xffff, instr & 0xffff);
+        ARM_APP(prefix, sizeof(prefix), "%04x %04x   ", (instr >> 16) & 0xffff, instr & 0xffff);
       else
-        sprintf(tail(prefix), "%04x        ", instr & 0xffff);
+        ARM_APP(prefix, sizeof(prefix), "%04x        ", instr & 0xffff);
     }
   }
 
@@ -212,8 +225,12 @@ static void add_insert_prefix(ARMSTATE *state, uint32_t instr)
   assert(len == 0|| len == 12 || len == 24);
   if (len > 0) {
     assert(len + strlen(state->text) < sizearray(state->text));
-    memmove(state->text + len, state->text, strlen(state->text) + 1);
-    memmove(state->text, prefix, len);
+    /* The assert above only records on PS2/UEFI, so the shift needs a real
+     * bound: both memmoves together write len + strlen(text) + 1 bytes. */
+    if ((size_t)len + strlen(state->text) < sizearray(state->text)) {
+      memmove(state->text + len, state->text, strlen(state->text) + 1);
+      memmove(state->text, prefix, len);
+    }
   }
 }
 
@@ -227,12 +244,13 @@ static void append_comment(ARMSTATE *state, const char *text, const char *separa
   if (padding < 2)
     padding = 2;
 
-  char prefix[40];
+  char prefix[40] = "";
   if (!separator) {
     memset(prefix, ' ', padding);
-    strcpy(prefix + padding, "; ");
+    /* The capacity of the tail starting at prefix + padding, not of prefix. */
+    tkl_strscpy(prefix + padding, "; ", sizeof(prefix) - (size_t)padding);
   } else {
-    strcpy(prefix, separator);
+    tkl_strscpy(prefix, separator, sizeof(prefix));
   }
 
   size_t size = sizearray(state->text);
@@ -241,18 +259,18 @@ static void append_comment(ARMSTATE *state, const char *text, const char *separa
   if (state->add_bin)
     size -= 12;
   if (strlen(state->text) + strlen(prefix) + strlen(text) < size) {
-    strcat(state->text, prefix);
-    strcat(state->text, text);
+    tkl_strscat(state->text, prefix, sizeof(state->text));
+    tkl_strscat(state->text, text, sizeof(state->text));
   } else if (strlen(state->text) + strlen(prefix) + 4 < size) {
     /* text fits partially, but not completely: copy part and append "..." */
     size_t count = size - (strlen(state->text) + strlen(prefix) + 4);
-    strcat(state->text, prefix);
+    tkl_strscat(state->text, prefix, sizeof(state->text));
     len = strlen(state->text);
     if (count > 0) {
       strncpy(state->text + len, text, count);
       state->text[len + count] = '\0';
     }
-    strcat(state->text, " ...");
+    tkl_strscat(state->text, " ...", sizeof(state->text));
     assert(strlen(state->text) < sizearray(state->text));
   }
 }
@@ -262,7 +280,7 @@ static void append_comment_hex(ARMSTATE *state, uint32_t value)
   assert(state);
   if (state->add_cmt && value >= 10) {
     char hex[40];
-    sprintf(hex, "0x%08x", value);
+    snprintf(hex, sizeof(hex), "0x%08x", value);
     append_comment(state, hex, NULL);
   }
 }
@@ -324,10 +342,10 @@ static int lookup_address_type(ARMSTATE *state, uint32_t address)
 static bool thumb_shift(ARMSTATE *state, unsigned instr, const char *opcode)
 {
   /* helper function, for the common part of the Thumb shift instructions */
-  strcpy(state->text, opcode);
+  tkl_strscpy(state->text, opcode, sizeof(state->text));
   add_it_cond(state, 1);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%s, %s, #%u", register_name(FIELD(instr, 0, 3)),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%s, %s, #%u", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)), FIELD(instr, 6, 5));
   state->size = 2;
   return true;
@@ -338,9 +356,9 @@ static bool thumb_lsl(ARMSTATE *state, uint32_t instr)
   /* 0000 0xxx xxxx xxxx - shift by immediate, move register */
   if (FIELD(instr, 6, 5) == 0) {
 //    assert(state->it_mask == 0); /* this instruction is not valid inside an IT block*/
-    strcpy(state->text, "movs");
-    padinstr(state->text);
-    sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
+    tkl_strscpy(state->text, "movs", sizeof(state->text));
+    padinstr(state->text, sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
             register_name(FIELD(instr, 3, 3)));
     state->size = 2;
     return true;
@@ -356,12 +374,12 @@ static bool thumb_asr(ARMSTATE *state, uint32_t instr) { return thumb_shift(stat
 static bool thumb_addsub_reg(ARMSTATE *state, uint32_t instr)
 {
   if (BIT_SET(instr, 9))
-    strcpy(state->text, "sub");
+    tkl_strscpy(state->text, "sub", sizeof(state->text));
   else
-    strcpy(state->text, "add");
+    tkl_strscpy(state->text, "add", sizeof(state->text));
   add_it_cond(state, 1);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%s, %s, %s", register_name(FIELD(instr, 0, 3)),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)), register_name(FIELD(instr, 6, 3)));
   state->size = 2;
   return true;
@@ -371,13 +389,13 @@ static bool thumb_addsub_imm(ARMSTATE *state, uint32_t instr)
 {
   /* 0001 11xx xxxx xxxx - add/subtract immediate */
   if (BIT_SET(instr, 9))
-    strcpy(state->text, "sub");
+    tkl_strscpy(state->text, "sub", sizeof(state->text));
   else
-    strcpy(state->text, "add");
+    tkl_strscpy(state->text, "add", sizeof(state->text));
   add_it_cond(state, 1);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   uint32_t imm = FIELD(instr, 6, 3);
-  sprintf(tail(state->text), "%s, %s, #%u", register_name(FIELD(instr, 0, 3)),
+  ARM_APP(state->text, sizeof(state->text), "%s, %s, #%u", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)), imm);
   append_comment_hex(state, imm);
   state->size = 2;
@@ -391,12 +409,12 @@ static bool thumb_immop(ARMSTATE *state, uint32_t instr)
   unsigned opc = FIELD(instr, 11, 2);
   assert(opc < sizearray(mnemonics));
   if (opc < sizearray(mnemonics))
-    strcpy(state->text, mnemonics[opc]);
+    tkl_strscpy(state->text, mnemonics[opc], sizeof(state->text));
   if (opc != 1)
     add_it_cond(state, 1);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   uint32_t imm = FIELD(instr, 0, 8);
-  sprintf(tail(state->text), "%s, #%u", register_name(FIELD(instr, 8, 3)), imm);
+  ARM_APP(state->text, sizeof(state->text), "%s, #%u", register_name(FIELD(instr, 8, 3)), imm);
   append_comment_hex(state, imm);
   state->size = 2;
   return true;
@@ -412,10 +430,10 @@ static bool thumb_regop(ARMSTATE *state, uint32_t instr)
   unsigned opc = FIELD(instr, 6, 4);
   assert(opc < sizearray(mnemonics));
   if (opc < sizearray(mnemonics))
-    strcpy(state->text, mnemonics[opc]);
+    tkl_strscpy(state->text, mnemonics[opc], sizeof(state->text));
   add_it_cond(state, (opc != 8 && opc != 10 && opc != 11));
-  padinstr(state->text);
-  sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)));
   state->size = 2;
   return true;
@@ -429,28 +447,28 @@ static bool thumb_regop_hi(ARMSTATE *state, uint32_t instr)
   int opc = FIELD(instr, 8, 2);
   switch (opc) {
   case 0:
-    strcpy(state->text, "add");
+    tkl_strscpy(state->text, "add", sizeof(state->text));
     break;
   case 1:
-    strcpy(state->text, "cmp");
+    tkl_strscpy(state->text, "cmp", sizeof(state->text));
     break;
   case 2:
-    strcpy(state->text, "mov");
+    tkl_strscpy(state->text, "mov", sizeof(state->text));
     break;
   case 3:
     assert(0);  /* this function should not have been called for this bit pattern */
     break;
   }
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   int Rd = FIELD(instr, 0, 3);
   if (BIT_SET(instr, 7))
     Rd += 8;
   int Rm = FIELD(instr, 3, 4);
   if (opc == 0 && Rm == 13)
-    sprintf(tail(state->text), "%s, sp, %s", register_name(Rd), register_name(Rd));
+    ARM_APP(state->text, sizeof(state->text), "%s, sp, %s", register_name(Rd), register_name(Rd));
   else
-    sprintf(tail(state->text), "%s, %s", register_name(Rd), register_name(Rm));
+    ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(Rd), register_name(Rm));
   state->size = 2;
   return true;
 }
@@ -459,11 +477,11 @@ static bool thumb_branch_exch(ARMSTATE *state, uint32_t instr)
 {
   /* 0100 0111 xxxx xxxx - branch exchange instruction set */
   if (BIT_SET(instr, 7))
-    strcpy(state->text, "blx");
+    tkl_strscpy(state->text, "blx", sizeof(state->text));
   else
-    strcpy(state->text, "bx");
-  padinstr(state->text);
-  strcat(state->text, register_name(FIELD(instr, 3, 4)));
+    tkl_strscpy(state->text, "bx", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
+  tkl_strscat(state->text, register_name(FIELD(instr, 3, 4)), sizeof(state->text));
   state->size = 2;
   return true;
 }
@@ -471,11 +489,11 @@ static bool thumb_branch_exch(ARMSTATE *state, uint32_t instr)
 static bool thumb_load_lit(ARMSTATE *state, uint32_t instr)
 {
   /* 0100 1xxx xxxx xxxx - load from literal pool */
-  strcpy(state->text, "ldr");
+  tkl_strscpy(state->text, "ldr", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   uint32_t offs = 4 * FIELD(instr, 0, 8);
-  sprintf(tail(state->text), "%s, [pc, #%u]", register_name(FIELD(instr, 8, 3)), offs);
+  ARM_APP(state->text, sizeof(state->text), "%s, [pc, #%u]", register_name(FIELD(instr, 8, 3)), offs);
   state->ldr_addr = ALIGN4(state->address + 4) + offs;
   append_comment_hex(state, state->ldr_addr);
   mark_address_type(state, state->ldr_addr, POOL_LITERAL);
@@ -492,10 +510,10 @@ static bool thumb_loadstor_reg(ARMSTATE *state, uint32_t instr)
   unsigned opc = FIELD(instr, 9, 3);
   assert(opc < sizearray(mnemonics));
   if (opc < sizearray(mnemonics))
-    strcpy(state->text, mnemonics[opc]);
+    tkl_strscpy(state->text, mnemonics[opc], sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%s, [%s, %s]", register_name(FIELD(instr, 0, 3)),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%s, [%s, %s]", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)), register_name(FIELD(instr, 6, 3)));
   state->size = 2;
   return true;
@@ -505,17 +523,17 @@ static bool thumb_loadstor_imm(ARMSTATE *state, uint32_t instr)
 {
   /* 011x xxxx xxxx xxxx - load/store word/byte immediate offset */
   if (BIT_SET(instr, 11))
-    strcpy(state->text, "ldr");
+    tkl_strscpy(state->text, "ldr", sizeof(state->text));
   else
-    strcpy(state->text, "str");
+    tkl_strscpy(state->text, "str", sizeof(state->text));
   uint32_t offs = FIELD(instr, 6, 5);
   if (BIT_SET(instr, 12))
-    strcat(state->text, "b");
+    tkl_strscat(state->text, "b", sizeof(state->text));
   else
     offs *= 4;
   add_it_cond(state, 0);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%s, [%s, #%u]", register_name(FIELD(instr, 0, 3)),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%s, [%s, #%u]", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)), offs);
   append_comment_hex(state, offs);
   state->size = 2;
@@ -526,13 +544,13 @@ static bool thumb_loadstor_hw(ARMSTATE *state, uint32_t instr)
 {
   /* 1000 xxxx xxxx xxxx - load/store halfword immediate offset */
   if (BIT_SET(instr, 11))
-    strcpy(state->text, "ldrh");
+    tkl_strscpy(state->text, "ldrh", sizeof(state->text));
   else
-    strcpy(state->text, "strh");
+    tkl_strscpy(state->text, "strh", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   uint32_t offs = 2 * FIELD(instr, 6, 5);
-  sprintf(tail(state->text), "%s, [%s, #%u]", register_name(FIELD(instr, 0, 3)),
+  ARM_APP(state->text, sizeof(state->text), "%s, [%s, #%u]", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)), offs);
   append_comment_hex(state, offs);
   state->size = 2;
@@ -543,13 +561,13 @@ static bool thumb_loadstor_stk(ARMSTATE *state, uint32_t instr)
 {
   /* 1001 xxxx xxxx xxxx - load from or store to stack */
   if (BIT_SET(instr, 11))
-    strcpy(state->text, "ldr");
+    tkl_strscpy(state->text, "ldr", sizeof(state->text));
   else
-    strcpy(state->text, "str");
+    tkl_strscpy(state->text, "str", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   uint32_t offs = 4 * FIELD(instr, 0, 7);
-  sprintf(tail(state->text), "%s, [sp, #%u]", register_name(FIELD(instr, 8, 3)), offs);
+  ARM_APP(state->text, sizeof(state->text), "%s, [sp, #%u]", register_name(FIELD(instr, 8, 3)), offs);
   append_comment_hex(state, offs);
   state->size = 2;
   return true;
@@ -559,13 +577,13 @@ static bool thumb_add_sp_pc_imm(ARMSTATE *state, uint32_t instr)
 {
   /* 1010 xxxx xxxx xxxx - add to sp or pc */
   if (BIT_SET(instr, 11))
-    strcpy(state->text, "add");
+    tkl_strscpy(state->text, "add", sizeof(state->text));
   else
-    strcpy(state->text, "adr");
+    tkl_strscpy(state->text, "adr", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   uint32_t imm = FIELD(instr, 0, 7);
-  sprintf(tail(state->text), "%s, sp, #%u", register_name(FIELD(instr, 8, 3)), imm);
+  ARM_APP(state->text, sizeof(state->text), "%s, sp, #%u", register_name(FIELD(instr, 8, 3)), imm);
   if (BIT_CLR(instr, 11))
     imm += ALIGN4(state->add_addr + 4); /* as it might be a code address, we cannot mark it as a literal pool */
   append_comment_hex(state, imm);
@@ -577,13 +595,13 @@ static bool thumb_adj_sp(ARMSTATE *state, uint32_t instr)
 {
   /* 1011 0000 xxxx xxxx - adjust stack pointer */
   if (BIT_SET(instr, 7))
-    strcpy(state->text, "sub");
+    tkl_strscpy(state->text, "sub", sizeof(state->text));
   else
-    strcpy(state->text, "add");
+    tkl_strscpy(state->text, "add", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   uint32_t imm = 4 * FIELD(instr, 0, 7);
-  sprintf(tail(state->text), "sp, #%u", imm);
+  ARM_APP(state->text, sizeof(state->text), "sp, #%u", imm);
   append_comment_hex(state, imm);
   state->size = 2;
   return true;
@@ -596,10 +614,10 @@ static bool thumb_sign_ext(ARMSTATE *state, uint32_t instr)
   unsigned opc = FIELD(instr, 6, 2);
   assert(opc < sizearray(mnemonics));
   if (opc < sizearray(mnemonics))
-    strcpy(state->text, mnemonics[opc]);
+    tkl_strscpy(state->text, mnemonics[opc], sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)));
   state->size = 2;
   return true;
@@ -609,15 +627,15 @@ static bool thumb_cmp_branch(ARMSTATE *state, uint32_t instr)
 {
   /* 1011 x0x1 xxxx xxxx - compare and branch on (non-)zero */
   if (BIT_CLR(instr, 11))
-    strcpy(state->text, "cbz");
+    tkl_strscpy(state->text, "cbz", sizeof(state->text));
   else
-    strcpy(state->text, "cbnz");
-  padinstr(state->text);
+    tkl_strscpy(state->text, "cbnz", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
   uint32_t address = FIELD(instr, 3, 5);
   if (BIT_SET(instr, 9))
     address += 32;
   address = state->address + 4 + 2 * address;
-  sprintf(tail(state->text), "%s, 0x%07x", register_name(FIELD(instr, 0, 3)), address);
+  ARM_APP(state->text, sizeof(state->text), "%s, 0x%07x", register_name(FIELD(instr, 0, 3)), address);
   mark_address_type(state, address, POOL_CODE);
   state->size = 2;
   return true;
@@ -626,14 +644,14 @@ static bool thumb_cmp_branch(ARMSTATE *state, uint32_t instr)
 static bool thumb_push(ARMSTATE *state, uint32_t instr)
 {
   /* 1011 010x xxxx xxxx - push register list */
-  strcpy(state->text, "push");
-  padinstr(state->text);
+  tkl_strscpy(state->text, "push", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
   int list = FIELD(instr, 0, 8);
   if (BIT_SET(instr, 8))
     list |= 1 << 14;  /* lr */
   if (list == 0)
     return false;
-  add_reglist(state->text, list);
+  add_reglist(state->text, sizeof(state->text), list);
   state->size = 2;
   return true;
 }
@@ -641,14 +659,14 @@ static bool thumb_push(ARMSTATE *state, uint32_t instr)
 static bool thumb_pop(ARMSTATE *state, uint32_t instr)
 {
   /* 1011 110x xxxx xxxx - pop register list */
-  strcpy(state->text, "pop");
-  padinstr(state->text);
+  tkl_strscpy(state->text, "pop", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
   int list = FIELD(instr, 0, 8);
   if (BIT_SET(instr, 8))
     list |= 1 << 15;  /* pc */
   if (list == 0)
     return false;
-  add_reglist(state->text, list);
+  add_reglist(state->text, sizeof(state->text), list);
   state->size = 2;
   return true;
 }
@@ -656,12 +674,12 @@ static bool thumb_pop(ARMSTATE *state, uint32_t instr)
 static bool thumb_endian(ARMSTATE *state, uint32_t instr)
 {
   /* 1011 0110 0101 xxxx - set endianness */
-  strcpy(state->text, "setend");
-  padinstr(state->text);
+  tkl_strscpy(state->text, "setend", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
   if (BIT_SET(instr, 3))
-    strcat(state->text, "BE");
+    tkl_strscat(state->text, "BE", sizeof(state->text));
   else
-    strcat(state->text, "LE");
+    tkl_strscat(state->text, "LE", sizeof(state->text));
   state->size = 2;
   return true;
 }
@@ -669,42 +687,42 @@ static bool thumb_endian(ARMSTATE *state, uint32_t instr)
 static bool thumb_cpu_state(ARMSTATE *state, uint32_t instr)
 {
   /* 1011 0110 011x 0xxx - change processor state */
-  strcpy(state->text, "cps");
+  tkl_strscpy(state->text, "cps", sizeof(state->text));
   if (BIT_CLR(instr, 4))
-    strcat(state->text, "ie");
+    tkl_strscat(state->text, "ie", sizeof(state->text));
   else
-    strcat(state->text, "id");
-  padinstr(state->text);
+    tkl_strscat(state->text, "id", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
   if (BIT_SET(instr, 2))
-    strcat(state->text, "a");
+    tkl_strscat(state->text, "a", sizeof(state->text));
   if (BIT_SET(instr, 1))
-    strcat(state->text, "i");
+    tkl_strscat(state->text, "i", sizeof(state->text));
   if (BIT_SET(instr, 0))
-    strcat(state->text, "f");
+    tkl_strscat(state->text, "f", sizeof(state->text));
   state->size = 2;
   return true;
 
 #if 0
   /* code for 32-bit variant of CPS */
   int imod = FIELD(instr, 9, 2);
-  strcpy(state->text, "cps");
+  tkl_strscpy(state->text, "cps", sizeof(state->text));
   if (imod == 2)
-    strcat(state->text, "ie");
+    tkl_strscat(state->text, "ie", sizeof(state->text));
   else if (imod == 3)
-    strcat(state->text, "id");
-  padinstr(state->text);
+    tkl_strscat(state->text, "id", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
   if (imod >= 2) {
     if (BIT_SET(instr, 7))
-      strcat(state->text, "a");
+      tkl_strscat(state->text, "a", sizeof(state->text));
     if (BIT_SET(instr, 6))
-      strcat(state->text, "i");
+      tkl_strscat(state->text, "i", sizeof(state->text));
     if (BIT_SET(instr, 6))
-      strcat(state->text, "f");
+      tkl_strscat(state->text, "f", sizeof(state->text));
   }
   if (imod >= 2 && BIT_SET(instr, 8))
-    strcat(state->text, ", ");  /* mode change follows */
+    tkl_strscat(state->text, ", ", sizeof(state->text));  /* mode change follows */
   if (BIT_SET(instr, 8))
-    sprintf(tail(state->text), "#%u", FIELD(instr, 0, 5));
+    ARM_APP(state->text, sizeof(state->text), "#%u", FIELD(instr, 0, 5));
 #endif
 }
 
@@ -713,20 +731,20 @@ static bool thumb_reverse(ARMSTATE *state, uint32_t instr)
   /* 1011 1010 xxxx xxxx -  reverse bytes */
   switch (FIELD(instr, 6, 2)) {
   case 0:
-    strcpy(state->text, "rev");
+    tkl_strscpy(state->text, "rev", sizeof(state->text));
     break;
   case 1:
-    strcpy(state->text, "rev16");
+    tkl_strscpy(state->text, "rev16", sizeof(state->text));
     break;
   case 3:
-    strcpy(state->text, "revsh");
+    tkl_strscpy(state->text, "revsh", sizeof(state->text));
     break;
   default:
     return false;
   }
   add_it_cond(state, 0);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 0, 3)),
           register_name(FIELD(instr, 3, 3)));
   state->size = 2;
   return true;
@@ -735,9 +753,9 @@ static bool thumb_reverse(ARMSTATE *state, uint32_t instr)
 static bool thumb_break(ARMSTATE *state, uint32_t instr)
 {
   /* 1011 1110 xxxx xxxx - software breakpoint */
-  strcpy(state->text, "bkpt");
-  padinstr(state->text);
-  sprintf(tail(state->text), "#%u", FIELD(instr, 0, 8));
+  tkl_strscpy(state->text, "bkpt", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "#%u", FIELD(instr, 0, 8));
   state->size = 2;
   return true;
 }
@@ -753,7 +771,7 @@ static bool thumb_if_then(ARMSTATE *state, uint32_t instr)
     unsigned opc = FIELD(instr, 4, 4);
     if (opc >= sizearray(mnemonics))
       return false;
-    strcpy(state->text, mnemonics[opc]);
+    tkl_strscpy(state->text, mnemonics[opc], sizeof(state->text));
     add_it_cond(state, 0);
   } else {
     /* if-then */
@@ -771,16 +789,16 @@ static bool thumb_if_then(ARMSTATE *state, uint32_t instr)
     }
     assert(ccount >= 0);  /* if -1, mask was 0, but that case was handled on top */
     mask = state->it_mask & 0x0f;
-    strcpy(state->text, "it");
+    tkl_strscpy(state->text, "it", sizeof(state->text));
     while (ccount-- > 0) {
       if (((mask >> 3) & 1) == (cond & 1))
-        strcat(state->text, "t");
+        tkl_strscat(state->text, "t", sizeof(state->text));
       else
-        strcat(state->text, "e");
+        tkl_strscat(state->text, "e", sizeof(state->text));
       mask = (mask << 1) & 0x0f;
     }
-    padinstr(state->text);
-    strcat(state->text, conditions[cond]);
+    padinstr(state->text, sizeof(state->text));
+    tkl_strscat(state->text, conditions[cond], sizeof(state->text));
   }
   state->size = 2;
   return true;
@@ -790,21 +808,21 @@ static bool thumb_loadstor_mul(ARMSTATE *state, uint32_t instr)
 {
   /* 1100 xxxx xxx xxxx - load/store multiple */
   if (BIT_SET(instr, 11))
-    strcpy(state->text, "ldmia");
+    tkl_strscpy(state->text, "ldmia", sizeof(state->text));
   else
-    strcpy(state->text, "stmia");
+    tkl_strscpy(state->text, "stmia", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
 
   int Rn = FIELD(instr, 8, 3);
   int list = FIELD(instr, 0, 8);
   if (list == 0)
     return false;
-  strcat(state->text, register_name(Rn));
+  tkl_strscat(state->text, register_name(Rn), sizeof(state->text));
   if (BIT_CLR(instr, 11) || (list & (1 << Rn)) == 0)
-    strcat(state->text, "!");
-  strcat(state->text, ", ");
-  add_reglist(state->text, list);
+    tkl_strscat(state->text, "!", sizeof(state->text));
+  tkl_strscat(state->text, ", ", sizeof(state->text));
+  add_reglist(state->text, sizeof(state->text), list);
 
   state->size = 2;
   return true;
@@ -821,16 +839,16 @@ static bool thumb_condbranch(ARMSTATE *state, uint32_t instr)
      1101 110x xxxx xxxx - conditional branch
      (this is split into 7 matching patterns, because 1011 111x must not match
      conditional branch) */
-  strcpy(state->text, "b");
+  tkl_strscpy(state->text, "b", sizeof(state->text));
   unsigned cond = FIELD(instr, 8, 4);
   if (cond >= sizearray(conditions))
     return false;
-  strcat(state->text, conditions[cond]);
-  padinstr(state->text);
+  tkl_strscat(state->text, conditions[cond], sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
   int32_t address = FIELD(instr, 0, 8);
   SIGN_EXT(address, 8);
   address = state->address + 4 + 2 * address;
-  sprintf(tail(state->text), "0x%07x", address);
+  ARM_APP(state->text, sizeof(state->text), "0x%07x", address);
   mark_address_type(state, address, POOL_CODE);
   state->size = 2;
   return true;
@@ -839,10 +857,10 @@ static bool thumb_condbranch(ARMSTATE *state, uint32_t instr)
 static bool thumb_service(ARMSTATE *state, uint32_t instr)
 {
   /* 1101 1111 xxxx xxxx */
-  strcpy(state->text, "swi");
+  tkl_strscpy(state->text, "swi", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
-  sprintf(tail(state->text), "#%u", FIELD(instr, 0, 8));
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "#%u", FIELD(instr, 0, 8));
   state->size = 2;
   return true;
 }
@@ -850,13 +868,13 @@ static bool thumb_service(ARMSTATE *state, uint32_t instr)
 static bool thumb_branch(ARMSTATE *state, uint32_t instr)
 {
   /* 1110 0xxx xxxx xxxx - unconditional branch */
-  strcpy(state->text, "b");
+  tkl_strscpy(state->text, "b", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   int32_t offset = FIELD(instr, 0, 11);
   SIGN_EXT(offset, 11);
   int32_t address = state->address + 4 + 2 * offset;
-  sprintf(tail(state->text), "0x%07x", address);
+  ARM_APP(state->text, sizeof(state->text), "0x%07x", address);
   mark_address_type(state, address, POOL_CODE);
   state->size = 2;
   return true;
@@ -902,19 +920,19 @@ static const char *decode_imm_shift(int type, int count)
     if (count == 0)
       field[0] = '\0';  /* LSL #0 is the default, so skip appending it */
     else
-      sprintf(field, "%s #%d", shift_type(type), count);
+      snprintf(field, sizeof(field), "%s #%d", shift_type(type), count);
     break;
   case 1:
   case 2:
     if (count == 0)
       count = 32;
-    sprintf(field, "%s #%d", shift_type(type), count);
+    snprintf(field, sizeof(field), "%s #%d", shift_type(type), count);
     break;
   case 3:
     if (count == 0)
-      sprintf(field, "rrx #1");
+      snprintf(field, sizeof(field), "rrx #1");
     else
-      sprintf(field, "%s #%d", shift_type(type), count);
+      snprintf(field, sizeof(field), "%s #%d", shift_type(type), count);
     break;
   }
   return field;
@@ -933,110 +951,110 @@ static bool thumb2_constshift(ARMSTATE *state, uint32_t instr)
   switch (opc) {
   case 0:
     if (Rd == 15 && setflags) {
-      strcpy(state->text, "tst");
+      tkl_strscpy(state->text, "tst", sizeof(state->text));
       setflags = 0;
     } else {
-      strcpy(state->text, "and");
+      tkl_strscpy(state->text, "and", sizeof(state->text));
     }
     break;
   case 1:
-    strcpy(state->text, "bic");
+    tkl_strscpy(state->text, "bic", sizeof(state->text));
     break;
   case 2:
     if (Rn == 15) {
       switch (shifttype) {
       case 0:
         if (imm == 0)
-          strcpy(state->text, "mov");
+          tkl_strscpy(state->text, "mov", sizeof(state->text));
         else
-          strcpy(state->text, "lsl");
+          tkl_strscpy(state->text, "lsl", sizeof(state->text));
         break;
       case 1:
-        strcpy(state->text, "lsr");
+        tkl_strscpy(state->text, "lsr", sizeof(state->text));
         break;
       case 2:
-        strcpy(state->text, "asr");
+        tkl_strscpy(state->text, "asr", sizeof(state->text));
         break;
       case 3:
         if (imm == 0)
-          strcpy(state->text, "rrx");
+          tkl_strscpy(state->text, "rrx", sizeof(state->text));
         else
-          strcpy(state->text, "ror");
+          tkl_strscpy(state->text, "ror", sizeof(state->text));
         break;
       }
     } else {
-      strcpy(state->text, "orr");
+      tkl_strscpy(state->text, "orr", sizeof(state->text));
     }
     break;
   case 3:
     if (Rn == 15)
-      strcpy(state->text, "mvn");
+      tkl_strscpy(state->text, "mvn", sizeof(state->text));
     else
-      strcpy(state->text, "orn");
+      tkl_strscpy(state->text, "orn", sizeof(state->text));
     break;
   case 4:
     if (Rd == 15 && setflags) {
-      strcpy(state->text, "teq");
+      tkl_strscpy(state->text, "teq", sizeof(state->text));
       setflags = 0;
     } else {
-      strcpy(state->text, "eor");
+      tkl_strscpy(state->text, "eor", sizeof(state->text));
     }
     break;
   case 6:
     if (setflags)
       return false; /* undefined instruction */
     if (shifttype == 0)
-      strcpy(state->text, "pkhbt");
+      tkl_strscpy(state->text, "pkhbt", sizeof(state->text));
     else if (shifttype == 2)
-      strcpy(state->text, "pkhtp");
+      tkl_strscpy(state->text, "pkhtp", sizeof(state->text));
     else
       return false;
     break;
   case 8:
     if (Rd == 15 && setflags) {
-      strcpy(state->text, "cmn");
+      tkl_strscpy(state->text, "cmn", sizeof(state->text));
       setflags = 0;
     } else {
-      strcpy(state->text, "add");
+      tkl_strscpy(state->text, "add", sizeof(state->text));
     }
     break;
   case 10:
-    strcpy(state->text, "adc");
+    tkl_strscpy(state->text, "adc", sizeof(state->text));
     break;
   case 11:
-    strcpy(state->text, "sbc");
+    tkl_strscpy(state->text, "sbc", sizeof(state->text));
     break;
   case 13:
     if (Rd == 15 && setflags) {
-      strcpy(state->text, "cmp");
+      tkl_strscpy(state->text, "cmp", sizeof(state->text));
       setflags = 0;
     } else {
-      strcpy(state->text, "sub");
+      tkl_strscpy(state->text, "sub", sizeof(state->text));
     }
     break;
   case 14:
-    strcpy(state->text, "rsb");
+    tkl_strscpy(state->text, "rsb", sizeof(state->text));
     break;
   default:
     return false;
   }
   if (setflags)
-    strcat(state->text, "s");
+    tkl_strscat(state->text, "s", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
 
   if (Rd == 15)
-    sprintf(tail(state->text), "%s, %s", register_name(Rn), register_name(Rm));
+    ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(Rn), register_name(Rm));
   else if (Rn == 15)
-    sprintf(tail(state->text), "%s, %s", register_name(Rd), register_name(Rm));
+    ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(Rd), register_name(Rm));
   else
-    sprintf(tail(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
             register_name(Rm));
   if (opc == 2 && Rn == 15) {
     if ((shifttype != 0 && shifttype != 3) || imm != 0)
-      sprintf(tail(state->text), ", #%d", imm);
+      ARM_APP(state->text, sizeof(state->text), ", #%d", imm);
   } else if (shifttype != 0 || imm != 0) {
-      sprintf(tail(state->text), ", %s", decode_imm_shift(shifttype, imm));
+      ARM_APP(state->text, sizeof(state->text), ", %s", decode_imm_shift(shifttype, imm));
   }
 
   state->size = 4;
@@ -1059,29 +1077,29 @@ static bool thumb2_regshift_sx(ARMSTATE *state, uint32_t instr)
     int opc = FIELD(instr, 20, 3);
     int rot = FIELD(instr, 4, 2);
     switch (opc) {
-    case 0: if (Rn == 15) strcpy(state->text, "sxth");   else strcpy(state->text, "sxtah");   break;
-    case 1: if (Rn == 15) strcpy(state->text, "uxth");   else strcpy(state->text, "uxtah");   break;
-    case 2: if (Rn == 15) strcpy(state->text, "sxtb16"); else strcpy(state->text, "sxtab16"); break;
-    case 3: if (Rn == 15) strcpy(state->text, "uxtb16"); else strcpy(state->text, "uxtab16"); break;
-    case 4: if (Rn == 15) strcpy(state->text, "sxtb");   else strcpy(state->text, "sxtab");   break;
-    case 5: if (Rn == 15) strcpy(state->text, "uxtb");   else strcpy(state->text, "uxtab");   break;
+    case 0: if (Rn == 15) tkl_strscpy(state->text, "sxth", sizeof(state->text));   else tkl_strscpy(state->text, "sxtah", sizeof(state->text));   break;
+    case 1: if (Rn == 15) tkl_strscpy(state->text, "uxth", sizeof(state->text));   else tkl_strscpy(state->text, "uxtah", sizeof(state->text));   break;
+    case 2: if (Rn == 15) tkl_strscpy(state->text, "sxtb16", sizeof(state->text)); else tkl_strscpy(state->text, "sxtab16", sizeof(state->text)); break;
+    case 3: if (Rn == 15) tkl_strscpy(state->text, "uxtb16", sizeof(state->text)); else tkl_strscpy(state->text, "uxtab16", sizeof(state->text)); break;
+    case 4: if (Rn == 15) tkl_strscpy(state->text, "sxtb", sizeof(state->text));   else tkl_strscpy(state->text, "sxtab", sizeof(state->text));   break;
+    case 5: if (Rn == 15) tkl_strscpy(state->text, "uxtb", sizeof(state->text));   else tkl_strscpy(state->text, "uxtab", sizeof(state->text));   break;
     default: return false;
     }
     add_it_cond(state, 0);
-    padinstr(state->text);
-    if (Rn == 15) sprintf(tail(state->text), "%s, %s", register_name(Rd), register_name(Rm));
-    else sprintf(tail(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn), register_name(Rm));
-    if (rot != 0) sprintf(tail(state->text), ", ror #%d", 8 * rot);
+    padinstr(state->text, sizeof(state->text));
+    if (Rn == 15) ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(Rd), register_name(Rm));
+    else ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn), register_name(Rm));
+    if (rot != 0) ARM_APP(state->text, sizeof(state->text), ", ror #%d", 8 * rot);
   } else {
     /* register-controlled shift */
     if ((instr & 0x00000070) != 0)
       return false;   /* must be clear, otherwise undefined instruction */
-    strcpy(state->text, shift_type(FIELD(instr, 21, 2)));
+    tkl_strscpy(state->text, shift_type(FIELD(instr, 21, 2)), sizeof(state->text));
     if (BIT_SET(instr, 20))
-      strcat(state->text, "s");
+      tkl_strscat(state->text, "s", sizeof(state->text));
     add_it_cond(state, 0);
-    padinstr(state->text);
-    sprintf(tail(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
+    padinstr(state->text, sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
             register_name(Rm));
   }
   state->size = 4;
@@ -1104,48 +1122,48 @@ static bool thumb2_simd_misc(ARMSTATE *state, uint32_t instr)
   if (BIT_CLR(instr, 7)) {
     /* SIMD add or subtract */
     switch (prefix) {
-    case 0:      strcpy(state->text, "s");      break;
-    case 1:      strcpy(state->text, "q");      break;
-    case 2:      strcpy(state->text, "sh");      break;
-    case 4:      strcpy(state->text, "u");      break;
-    case 5:      strcpy(state->text, "uq");      break;
-    case 6:      strcpy(state->text, "uh");      break;
+    case 0:      tkl_strscpy(state->text, "s", sizeof(state->text));      break;
+    case 1:      tkl_strscpy(state->text, "q", sizeof(state->text));      break;
+    case 2:      tkl_strscpy(state->text, "sh", sizeof(state->text));      break;
+    case 4:      tkl_strscpy(state->text, "u", sizeof(state->text));      break;
+    case 5:      tkl_strscpy(state->text, "uq", sizeof(state->text));      break;
+    case 6:      tkl_strscpy(state->text, "uh", sizeof(state->text));      break;
     default:      return false;
     }
     switch (opc) {
-    case 0:      strcat(state->text, "add8");      break;
-    case 1:      strcat(state->text, "add16");      break;
-    case 2:      strcat(state->text, "asx");      break;
-    case 4:      strcat(state->text, "sub8");      break;
-    case 5:      strcat(state->text, "sub16");      break;
-    case 6:      strcat(state->text, "sax");      break;
+    case 0:      tkl_strscat(state->text, "add8", sizeof(state->text));      break;
+    case 1:      tkl_strscat(state->text, "add16", sizeof(state->text));      break;
+    case 2:      tkl_strscat(state->text, "asx", sizeof(state->text));      break;
+    case 4:      tkl_strscat(state->text, "sub8", sizeof(state->text));      break;
+    case 5:      tkl_strscat(state->text, "sub16", sizeof(state->text));      break;
+    case 6:      tkl_strscat(state->text, "sax", sizeof(state->text));      break;
     default:
       return false;
     }
     add_it_cond(state, 0);
-    padinstr(state->text);
-    sprintf(tail(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
+    padinstr(state->text, sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
             register_name(Rm));
   } else {
     /* other three-register data processing */
     opc = (prefix << 4) | opc;  /* make single operation code (as BCD) from op & op2 */
     switch (opc) {
-    case 0x00:      strcpy(state->text, "qadd");      break;
-    case 0x01:      strcpy(state->text, "rev");      Rn = -1;  /* Rn should be Rm */      break;
-    case 0x02:      strcpy(state->text, "sel");      break;
-    case 0x03:      strcpy(state->text, "clz");      Rn = -1;  /* Rn should be Rm */      break;
-    case 0x10:      strcpy(state->text, "qdadd");      break;
-    case 0x11:      strcpy(state->text, "rev16");      Rn = -1;  /* Rn should be Rm */      break;
-    case 0x20:      strcpy(state->text, "qsub");      break;
-    case 0x21:      strcpy(state->text, "rbit");      Rn = -1;  /* Rn should be Rm */      break;
-    case 0x30:      strcpy(state->text, "qdsub");      break;
-    case 0x31:      strcpy(state->text, "revsh");      Rn = -1;  /* Rn should be Rm */      break;
+    case 0x00:      tkl_strscpy(state->text, "qadd", sizeof(state->text));      break;
+    case 0x01:      tkl_strscpy(state->text, "rev", sizeof(state->text));      Rn = -1;  /* Rn should be Rm */      break;
+    case 0x02:      tkl_strscpy(state->text, "sel", sizeof(state->text));      break;
+    case 0x03:      tkl_strscpy(state->text, "clz", sizeof(state->text));      Rn = -1;  /* Rn should be Rm */      break;
+    case 0x10:      tkl_strscpy(state->text, "qdadd", sizeof(state->text));      break;
+    case 0x11:      tkl_strscpy(state->text, "rev16", sizeof(state->text));      Rn = -1;  /* Rn should be Rm */      break;
+    case 0x20:      tkl_strscpy(state->text, "qsub", sizeof(state->text));      break;
+    case 0x21:      tkl_strscpy(state->text, "rbit", sizeof(state->text));      Rn = -1;  /* Rn should be Rm */      break;
+    case 0x30:      tkl_strscpy(state->text, "qdsub", sizeof(state->text));      break;
+    case 0x31:      tkl_strscpy(state->text, "revsh", sizeof(state->text));      Rn = -1;  /* Rn should be Rm */      break;
     default:      return false;
     }
     add_it_cond(state, 0);
-    padinstr(state->text);
-    if (Rn == -1) sprintf(tail(state->text), "%s, %s", register_name(Rd), register_name(Rm));
-    else sprintf(tail(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn), register_name(Rm));
+    padinstr(state->text, sizeof(state->text));
+    if (Rn == -1) ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(Rd), register_name(Rm));
+    else ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn), register_name(Rm));
   }
   state->size = 4;
   return true;
@@ -1164,82 +1182,82 @@ static bool thumb2_mult32_acc(ARMSTATE *state, uint32_t instr)
   switch (opc) {
   case 0:
     if (opc2 == 0 && Ra != 15)
-      strcpy(state->text, "mla");
+      tkl_strscpy(state->text, "mla", sizeof(state->text));
     else if (opc2 == 1 && Ra != 15)
-      strcpy(state->text, "mls");
+      tkl_strscpy(state->text, "mls", sizeof(state->text));
     else if (opc2 == 0 && Ra == 15)
-      strcpy(state->text, "mul");
+      tkl_strscpy(state->text, "mul", sizeof(state->text));
     else
       return false;
     break;
   case 1:
     if (opc2 <= 3 && Ra != 15) {
-      strcpy(state->text, "smla");
-      strcat(state->text, (opc2 & 2) ? "t" : "b");
-      strcat(state->text, (opc2 & 1) ? "t" : "b");
+      tkl_strscpy(state->text, "smla", sizeof(state->text));
+      tkl_strscat(state->text, (opc2 & 2) ? "t" : "b", sizeof(state->text));
+      tkl_strscat(state->text, (opc2 & 1) ? "t" : "b", sizeof(state->text));
     } else if (opc2 <= 3 && Ra == 15) {
-      strcpy(state->text, "smul");
-      strcat(state->text, (opc2 & 2) ? "t" : "b");
-      strcat(state->text, (opc2 & 1) ? "t" : "b");
+      tkl_strscpy(state->text, "smul", sizeof(state->text));
+      tkl_strscat(state->text, (opc2 & 2) ? "t" : "b", sizeof(state->text));
+      tkl_strscat(state->text, (opc2 & 1) ? "t" : "b", sizeof(state->text));
     } else {
       return false;
     }
     break;
   case 2:
     if (opc2 <= 1 && Ra != 15) {
-      strcpy(state->text, "smlad");
+      tkl_strscpy(state->text, "smlad", sizeof(state->text));
       if (opc2 == 1)
-        strcat(state->text, "x");
+        tkl_strscat(state->text, "x", sizeof(state->text));
     } else if (opc2 <= 1 && Ra == 15) {
-      strcpy(state->text, "smuad");
+      tkl_strscpy(state->text, "smuad", sizeof(state->text));
       if (opc2 == 1)
-        strcat(state->text, "x");
+        tkl_strscat(state->text, "x", sizeof(state->text));
     } else {
       return false;
     }
     break;
   case 3:
     if (opc2 <= 1 && Ra != 15) {
-      strcpy(state->text, "smlaw");
-      strcat(state->text, (opc2 & 1) ? "t" : "b");
+      tkl_strscpy(state->text, "smlaw", sizeof(state->text));
+      tkl_strscat(state->text, (opc2 & 1) ? "t" : "b", sizeof(state->text));
     } else if (opc2 <= 1 && Ra == 15) {
-      strcpy(state->text, "smuw");
-      strcat(state->text, (opc2 & 1) ? "t" : "b");
+      tkl_strscpy(state->text, "smuw", sizeof(state->text));
+      tkl_strscat(state->text, (opc2 & 1) ? "t" : "b", sizeof(state->text));
     } else {
       return false;
     }
     break;
   case 4:
     if (opc2 <= 1 && Ra != 15) {
-      strcpy(state->text, "smlsd");
+      tkl_strscpy(state->text, "smlsd", sizeof(state->text));
       if (opc2 == 1)
-        strcat(state->text, "x");
+        tkl_strscat(state->text, "x", sizeof(state->text));
     } else if (opc2 <= 1 && Ra == 15) {
-      strcpy(state->text, "smusd");
+      tkl_strscpy(state->text, "smusd", sizeof(state->text));
       if (opc2 == 1)
-        strcat(state->text, "x");
+        tkl_strscat(state->text, "x", sizeof(state->text));
     } else {
       return false;
     }
     break;
   case 5:
     if (opc2 <= 1 && Ra != 15) {
-      strcpy(state->text, "smmla");
+      tkl_strscpy(state->text, "smmla", sizeof(state->text));
       if (opc2 == 1)
-        strcat(state->text, "r");
+        tkl_strscat(state->text, "r", sizeof(state->text));
     } else if (opc2 <= 1 && Ra == 15) {
-      strcpy(state->text, "smmul");
+      tkl_strscpy(state->text, "smmul", sizeof(state->text));
       if (opc2 == 1)
-        strcat(state->text, "r");
+        tkl_strscat(state->text, "r", sizeof(state->text));
     } else {
       return false;
     }
     break;
   case 6:
     if (opc2 <= 1 && Ra != 15) {
-      strcpy(state->text, "smmls");
+      tkl_strscpy(state->text, "smmls", sizeof(state->text));
       if (opc2 == 1)
-        strcat(state->text, "r");
+        tkl_strscat(state->text, "r", sizeof(state->text));
     } else {
       return false;
     }
@@ -1248,18 +1266,18 @@ static bool thumb2_mult32_acc(ARMSTATE *state, uint32_t instr)
     if (opc2 != 0)
       return false;
     if (Ra == 15)
-      strcpy(state->text, "usad8");
+      tkl_strscpy(state->text, "usad8", sizeof(state->text));
     else
-      strcpy(state->text, "usada8");
+      tkl_strscpy(state->text, "usada8", sizeof(state->text));
     break;
   }
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   if (Ra == 15)
-    sprintf(tail(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
             register_name(Rm));
   else
-    sprintf(tail(state->text), "%s, %s, %s, %s", register_name(Rd), register_name(Rn),
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s", register_name(Rd), register_name(Rn),
             register_name(Rm), register_name(Ra));
   state->size = 4;
   return true;
@@ -1277,55 +1295,55 @@ static bool thumb2_mult64_acc(ARMSTATE *state, uint32_t instr)
   switch (opc) {
   case 0:
     if (opc2 == 0)
-      strcpy(state->text, "smull");
+      tkl_strscpy(state->text, "smull", sizeof(state->text));
     else
       return false;
     break;
   case 1:
     if (opc2 == 15)
-      strcpy(state->text, "sdiv");
+      tkl_strscpy(state->text, "sdiv", sizeof(state->text));
     else
       return false;
     break;
   case 2:
     if (opc2 == 0)
-      strcpy(state->text, "umull");
+      tkl_strscpy(state->text, "umull", sizeof(state->text));
     else
       return false;
     break;
   case 3:
     if (opc2 == 15)
-      strcpy(state->text, "udiv");
+      tkl_strscpy(state->text, "udiv", sizeof(state->text));
     else
       return false;
     break;
   case 4:
-    strcpy(state->text, "smlal");
+    tkl_strscpy(state->text, "smlal", sizeof(state->text));
     if (opc2 >= 0x08 && opc2 < 0x0c) {
-      strcat(state->text, (opc2 & 2) ? "t" : "b");
-      strcat(state->text, (opc2 & 1) ? "t" : "b");
+      tkl_strscat(state->text, (opc2 & 2) ? "t" : "b", sizeof(state->text));
+      tkl_strscat(state->text, (opc2 & 1) ? "t" : "b", sizeof(state->text));
     } else if (opc2 >= 0x0c && opc2 < 0x0e) {
-      strcat(state->text, "d");
+      tkl_strscat(state->text, "d", sizeof(state->text));
       if (opc2 & 1)
-        strcat(state->text, "x");
+        tkl_strscat(state->text, "x", sizeof(state->text));
     } else {
       return false;
     }
     break;
   case 5:
-    strcpy(state->text, "smlsld");
+    tkl_strscpy(state->text, "smlsld", sizeof(state->text));
     if (opc2 >= 0x0c && opc < 0x0e) {
       if (opc2 & 1)
-        strcat(state->text, "x");
+        tkl_strscat(state->text, "x", sizeof(state->text));
     } else {
       return false;
     }
     break;
   case 6:
     if (opc2 == 0)
-      strcpy(state->text, "umlal");
+      tkl_strscpy(state->text, "umlal", sizeof(state->text));
     else if (opc2 == 6)
-      strcpy(state->text, "umaal");
+      tkl_strscpy(state->text, "umaal", sizeof(state->text));
     else
       return false;
     break;
@@ -1333,12 +1351,12 @@ static bool thumb2_mult64_acc(ARMSTATE *state, uint32_t instr)
     return false;
   }
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   if (RdLo == 15)
-    sprintf(tail(state->text), "%s, %s, %s", register_name(RdHi), register_name(Rn),
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(RdHi), register_name(Rn),
             register_name(Rm));
   else
-    sprintf(tail(state->text), "%s, %s, %s, %s", register_name(RdLo), register_name(RdHi),
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s", register_name(RdLo), register_name(RdHi),
             register_name(Rn), register_name(Rm));
   state->size = 4;
   return true;
@@ -1364,26 +1382,26 @@ static bool thumb2_imm_br_misc(ARMSTATE *state, uint32_t instr)
       int opc = FIELD(instr, 12, 3) & 0x05;
       switch (opc) {
       case 1:
-        strcpy(state->text, "b");
+        tkl_strscpy(state->text, "b", sizeof(state->text));
         break;
       case 4:
         if (instr & 0x01)
           return false;   /* low bit of address must be clear for switch to ARM */
-        strcpy(state->text, "blx");
+        tkl_strscpy(state->text, "blx", sizeof(state->text));
         break;
       case 5:
-        strcpy(state->text, "bl");
+        tkl_strscpy(state->text, "bl", sizeof(state->text));
         break;
       default:
         return false;
       }
       add_it_cond(state, 0);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       int32_t address = state->address + 4;
       if (opc == 4)
         address = ALIGN4(state->address + 4); /* BLX target is aligned to 32-bit address */
       address += offset;
-      sprintf(tail(state->text), "0x%07x", address);
+      ARM_APP(state->text, sizeof(state->text), "0x%07x", address);
       append_comment_symbol(state, address);
       mark_address_type(state, address, POOL_CODE);
       if (opc == 4)
@@ -1400,33 +1418,33 @@ static bool thumb2_imm_br_misc(ARMSTATE *state, uint32_t instr)
         offset |= 0xfff00000;
       unsigned c = FIELD(instr, 6+16, 4);
       assert(c < sizearray(conditions));  /* already handled in if() for this block */
-      strcpy(state->text, "b");
+      tkl_strscpy(state->text, "b", sizeof(state->text));
       if (c < sizearray(conditions))
-        strcat(state->text, conditions[c]);
-      padinstr(state->text);
+        tkl_strscat(state->text, conditions[c], sizeof(state->text));
+      padinstr(state->text, sizeof(state->text));
       int32_t address = state->address + 4 + offset;
-      sprintf(tail(state->text), "0x%07x", address);
+      ARM_APP(state->text, sizeof(state->text), "0x%07x", address);
       append_comment_symbol(state, address);
       mark_address_type(state, address, POOL_CODE);
     } else if (BIT_SET(instr, 26)) {
       /* secure monitor interrupt */
       if (FIELD(instr, 12, 4) != 8)
         return false;   /* reserved or permanently undefined instructions */
-      strcpy(state->text, "msr");
+      tkl_strscpy(state->text, "msr", sizeof(state->text));
       add_it_cond(state, 0);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       uint32_t imm = FIELD(instr, 16, 4);
-      sprintf(tail(state->text), "#%u", imm);
+      ARM_APP(state->text, sizeof(state->text), "#%u", imm);
       append_comment_hex(state, imm);
     } else {
       /* others */
       assert((instr & 0xff80d000) == 0xf3808000);
       switch (FIELD(instr, 21, 2)) {
       case 0:
-        strcpy(state->text, "msr");
+        tkl_strscpy(state->text, "msr", sizeof(state->text));
         add_it_cond(state, 0);
-        padinstr(state->text);
-        sprintf(tail(state->text), "%s, %s", special_register(instr & 0xff, FIELD(instr, 8, 4)),
+        padinstr(state->text, sizeof(state->text));
+        ARM_APP(state->text, sizeof(state->text), "%s, %s", special_register(instr & 0xff, FIELD(instr, 8, 4)),
                 register_name(FIELD(instr, 16, 4)));
         break;
       case 1:
@@ -1435,31 +1453,31 @@ static bool thumb2_imm_br_misc(ARMSTATE *state, uint32_t instr)
           static const char *mnemonics[] = { "nop", "yield", "wfe", "wfi", "sev" };
           unsigned opc = FIELD(instr, 0, 8);
           if ((opc & 0xf0) == 0xf0)
-            strcpy(state->text, "dbg");
+            tkl_strscpy(state->text, "dbg", sizeof(state->text));
           else if (opc < sizearray(mnemonics))
-            strcpy(state->text, mnemonics[opc]);
+            tkl_strscpy(state->text, mnemonics[opc], sizeof(state->text));
           else
             return false;
           add_it_cond(state, 0);
           if ((opc & 0xf0) == 0xf0) {
-            padinstr(state->text);
-            sprintf(tail(state->text), "#%u", FIELD(instr, 0, 4));
+            padinstr(state->text, sizeof(state->text));
+            ARM_APP(state->text, sizeof(state->text), "#%u", FIELD(instr, 0, 4));
           }
         } else {
           /* change processor state, special control operations */
           int opc = FIELD(instr, 4, 4);
           switch (opc) {
           case 2:
-            strcpy(state->text, "clrex");
+            tkl_strscpy(state->text, "clrex", sizeof(state->text));
             break;
           case 4:
-            strcpy(state->text, "dsb");
+            tkl_strscpy(state->text, "dsb", sizeof(state->text));
             break;
           case 5:
-            strcpy(state->text, "dmb");
+            tkl_strscpy(state->text, "dmb", sizeof(state->text));
             break;
           case 6:
-            strcpy(state->text, "isb");
+            tkl_strscpy(state->text, "isb", sizeof(state->text));
             break;
           }
           add_it_cond(state, 0);
@@ -1468,22 +1486,22 @@ static bool thumb2_imm_br_misc(ARMSTATE *state, uint32_t instr)
       case 2:
         /* branch & change to Java, exception return */
         if (BIT_SET(instr, 20)) {
-          strcpy(state->text, "subs");
+          tkl_strscpy(state->text, "subs", sizeof(state->text));
           add_it_cond(state, 0);
-          padinstr(state->text);
-          sprintf(tail(state->text), "pc, lr, #%u", FIELD(instr, 0, 8));
+          padinstr(state->text, sizeof(state->text));
+          ARM_APP(state->text, sizeof(state->text), "pc, lr, #%u", FIELD(instr, 0, 8));
         } else {
-          strcpy(state->text, "bxj");
+          tkl_strscpy(state->text, "bxj", sizeof(state->text));
           add_it_cond(state, 0);
-          padinstr(state->text);
-          sprintf(tail(state->text), "%s", register_name(FIELD(instr, 16, 4)));
+          padinstr(state->text, sizeof(state->text));
+          ARM_APP(state->text, sizeof(state->text), "%s", register_name(FIELD(instr, 16, 4)));
         }
         break;
       case 3:
-        strcpy(state->text, "mrs");
+        tkl_strscpy(state->text, "mrs", sizeof(state->text));
         add_it_cond(state, 0);
-        padinstr(state->text);
-        sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 8, 4)),
+        padinstr(state->text, sizeof(state->text));
+        ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 8, 4)),
                 special_register(instr & 0xff, FIELD(instr, 8, 4)));
         break;
       }
@@ -1502,79 +1520,79 @@ static bool thumb2_imm_br_misc(ARMSTATE *state, uint32_t instr)
       switch (opc) {
       case 0:   /* AND / TST */
         if (BIT_SET(instr, 20) && Rd == 15) {
-          strcpy(state->text, "tst");
+          tkl_strscpy(state->text, "tst", sizeof(state->text));
           Rd = -1;  /* not used */
         } else {
-          strcpy(state->text, "and");
+          tkl_strscpy(state->text, "and", sizeof(state->text));
         }
         break;
       case 1:   /* BIC */
-        strcpy(state->text, "bic");
+        tkl_strscpy(state->text, "bic", sizeof(state->text));
         break;
       case 2:   /* MOV / ORR */
         if (Rn == 15) {
-          strcpy(state->text, "mov");
+          tkl_strscpy(state->text, "mov", sizeof(state->text));
           Rn = -1;  /* not used */
         } else {
-          strcpy(state->text, "orr");
+          tkl_strscpy(state->text, "orr", sizeof(state->text));
         }
         break;
       case 3:   /* MVN / ORN */
         if (Rn == 15) {
-          strcpy(state->text, "mvn");
+          tkl_strscpy(state->text, "mvn", sizeof(state->text));
           Rn = -1;  /* not used */
         } else {
-          strcpy(state->text, "orn");
+          tkl_strscpy(state->text, "orn", sizeof(state->text));
         }
         break;
       case 4:   /* EOR / TEQ */
         if (BIT_SET(instr, 20) && Rd == 15) {
-          strcpy(state->text, "teq");
+          tkl_strscpy(state->text, "teq", sizeof(state->text));
           Rd = -1;  /* not used */
         } else {
-          strcpy(state->text, "eor");
+          tkl_strscpy(state->text, "eor", sizeof(state->text));
         }
         break;
       case 8:   /* ADD / CMN */
         if (BIT_SET(instr, 20) && Rd == 15) {
-          strcpy(state->text, "cmn");
+          tkl_strscpy(state->text, "cmn", sizeof(state->text));
           Rd = -1;  /* not used */
         } else {
-          strcpy(state->text, "add");
+          tkl_strscpy(state->text, "add", sizeof(state->text));
         }
         break;
       case 10:  /* ADC */
-        strcpy(state->text, "adc");
+        tkl_strscpy(state->text, "adc", sizeof(state->text));
         break;
       case 11:  /* SBC */
-        strcpy(state->text, "sbc");
+        tkl_strscpy(state->text, "sbc", sizeof(state->text));
         break;
       case 13:  /* CMP / SUB */
         if (BIT_SET(instr, 20) && Rd == 15) {
-          strcpy(state->text, "cmp");
+          tkl_strscpy(state->text, "cmp", sizeof(state->text));
           Rd = -1;  /* not used */
         } else {
-          strcpy(state->text, "sub");
+          tkl_strscpy(state->text, "sub", sizeof(state->text));
         }
         break;
       case 14:  /* RSB */
-        strcpy(state->text, "rsb");
+        tkl_strscpy(state->text, "rsb", sizeof(state->text));
         break;
       default:
         return false;
       }
       assert(Rn >= 0 || Rd >= 0);
       if (BIT_SET(instr, 20) && Rd >= 0)
-        strcat(state->text, "s");
+        tkl_strscat(state->text, "s", sizeof(state->text));
       add_it_cond(state, 0);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       if (Rn >= 0 && Rd >= 0)
-        sprintf(tail(state->text), "%s, %s, #%ld", register_name(Rd),
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, #%ld", register_name(Rd),
                 register_name(Rn), imm);
       else if (Rn >= 0)
-        sprintf(tail(state->text), "%s, #%ld", register_name(Rn), imm);
+        ARM_APP(state->text, sizeof(state->text), "%s, #%ld", register_name(Rn), imm);
       else
-        sprintf(tail(state->text), "%s, #%ld", register_name(Rd), imm);
+        ARM_APP(state->text, sizeof(state->text), "%s, #%ld", register_name(Rd), imm);
       append_comment_hex(state, (uint32_t)imm);
     } else if ((instr & 0x03408000) == 0x02000000) {
       /* add/subtract, plain 12-bit immediate */
@@ -1584,33 +1602,33 @@ static bool thumb2_imm_br_misc(ARMSTATE *state, uint32_t instr)
         opc += 4;
       switch (opc) {
       case 0:
-        strcpy(state->text, "addw");
+        tkl_strscpy(state->text, "addw", sizeof(state->text));
         break;
       case 2:
       case 4:
-        strcpy(state->text, "adr");
+        tkl_strscpy(state->text, "adr", sizeof(state->text));
         break;
       case 6:
-        strcpy(state->text, "subw");
+        tkl_strscpy(state->text, "subw", sizeof(state->text));
         break;
       }
       add_it_cond(state, 0);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       if (opc == 0 || opc == 6) {
-        sprintf(tail(state->text), "%s, %s, #%u", register_name(Rd),
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, #%u", register_name(Rd),
                 register_name(Rn), imm);
         append_comment_hex(state, imm);
       } else {
-        sprintf(tail(state->text), "%s, 0x%07x", register_name(Rd), imm);
+        ARM_APP(state->text, sizeof(state->text), "%s, 0x%07x", register_name(Rd), imm);
         append_comment_symbol(state, imm);
       }
     } else if ((instr & 0x03408000) == 0x02400000) {
       /* move, plain 16-bit immediate */
       uint32_t imm = (Rn << 12) | (imm1 << 11) | (imm3 << 8) | imm8;
-      strcpy(state->text, "movw");
+      tkl_strscpy(state->text, "movw", sizeof(state->text));
       add_it_cond(state, 0);
-      padinstr(state->text);
-      sprintf(tail(state->text), "%s, #%u", register_name(Rd), imm);
+      padinstr(state->text, sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), "%s, #%u", register_name(Rd), imm);
       append_comment_hex(state, imm);
     } else if ((instr & 0x03108000) == 0x03000000) {
       /* bit-field operations, saturation with shift */
@@ -1620,55 +1638,55 @@ static bool thumb2_imm_br_misc(ARMSTATE *state, uint32_t instr)
       switch (opc) {
       case 0:
       case 1:
-        strcpy(state->text, "ssat");  /* format: ssat<16>  Rd,#msb+1,Rn,shift #lsb */
+        tkl_strscpy(state->text, "ssat", sizeof(state->text));  /* format: ssat<16>  Rd,#msb+1,Rn,shift #lsb */
         if (opc == 1 && lsb == 0)
-          strcat(state->text, "16");
+          tkl_strscat(state->text, "16", sizeof(state->text));
         break;
       case 2:
-        strcpy(state->text, "sbfx");  /* format: sbfx  Rd,Rn,#lsb,#msb+1 */
+        tkl_strscpy(state->text, "sbfx", sizeof(state->text));  /* format: sbfx  Rd,Rn,#lsb,#msb+1 */
         break;
       case 3:
         if (Rn == 15)
-          strcpy(state->text, "bfc"); /* format: bfc  Rd,#lsb,#(msb-lsb)+1 */
+          tkl_strscpy(state->text, "bfc", sizeof(state->text)); /* format: bfc  Rd,#lsb,#(msb-lsb)+1 */
         else
-          strcpy(state->text, "bfi"); /* format: bfi  Rd,Rn,#lsb,#(msb-lsb)+1 */
+          tkl_strscpy(state->text, "bfi", sizeof(state->text)); /* format: bfi  Rd,Rn,#lsb,#(msb-lsb)+1 */
         break;
       case 4:
       case 5:
-        strcpy(state->text, "usat");  /* format: usat<16>  Rd,#msb+1,Rn,shift #lsb */
+        tkl_strscpy(state->text, "usat", sizeof(state->text));  /* format: usat<16>  Rd,#msb+1,Rn,shift #lsb */
         if (opc == 5 && lsb == 0)
-          strcat(state->text, "16");
+          tkl_strscat(state->text, "16", sizeof(state->text));
         break;
       case 6:
-        strcpy(state->text, "ubfx");  /* format: ubfx  Rd,Rn,#lsb,#msb+1 */
+        tkl_strscpy(state->text, "ubfx", sizeof(state->text));  /* format: ubfx  Rd,Rn,#lsb,#msb+1 */
         break;
       default:
         return false;
       }
       add_it_cond(state, 0);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       switch (opc) {
       case 0:
       case 1:
       case 4:
       case 5:
-        sprintf(tail(state->text), "%s, #%d, %s", register_name(Rd), msb + 1,
+        ARM_APP(state->text, sizeof(state->text), "%s, #%d, %s", register_name(Rd), msb + 1,
                 register_name(Rn));
         int shifttype = BIT_SET(instr, 21) ? 2 : 0;
         if (shifttype != 0 || lsb != 0)
-          sprintf(tail(state->text), ", %s", decode_imm_shift(shifttype, lsb));
+          ARM_APP(state->text, sizeof(state->text), ", %s", decode_imm_shift(shifttype, lsb));
         break;
       case 2:
       case 6:
-        sprintf(tail(state->text), "%s, %s, #%d, #%d`", register_name(Rd),
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, #%d, #%d`", register_name(Rd),
                 register_name(Rn), lsb, msb + 1);
         break;
       case 3:
         if (Rn == 15)
-          sprintf(tail(state->text), "%s, #%d, #%d", register_name(Rd),
+          ARM_APP(state->text, sizeof(state->text), "%s, #%d, #%d", register_name(Rd),
                   lsb, msb - lsb + 1);
         else
-          sprintf(tail(state->text), "%s, %s, #%d, #%d", register_name(Rd),
+          ARM_APP(state->text, sizeof(state->text), "%s, %s, #%d, #%d", register_name(Rd),
                   register_name(Rn), lsb, msb - lsb + 1);
         break;
       }
@@ -1713,48 +1731,48 @@ static bool thumb2_loadstor(ARMSTATE *state, uint32_t instr)
   if (BIT_SET(instr, 20)) {
     if (size == 0 && Rt == 15) {
       hint = 1;
-      strcpy(state->text, BIT_CLR(instr, 24) ? "pld" : "pli");
+      tkl_strscpy(state->text, BIT_CLR(instr, 24) ? "pld" : "pli", sizeof(state->text));
     } else {
-      strcpy(state->text, "ldr");
+      tkl_strscpy(state->text, "ldr", sizeof(state->text));
       if (BIT_CLR(instr, 23) && BIT_SET(instr, 11) && index == 1 && upwards == 1 && writeback == 0)
-        strcat(state->text, "t");
+        tkl_strscat(state->text, "t", sizeof(state->text));
     }
   } else {
-    strcpy(state->text, "str");
+    tkl_strscpy(state->text, "str", sizeof(state->text));
   }
   if (!hint) {
     if (size != 2 && BIT_SET(instr, 24))
-      strcat(state->text, "s");
+      tkl_strscat(state->text, "s", sizeof(state->text));
     if (size == 0)
-      strcat(state->text, "b");
+      tkl_strscat(state->text, "b", sizeof(state->text));
     else if (size == 1)
-      strcat(state->text, "h");
+      tkl_strscat(state->text, "h", sizeof(state->text));
   }
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
 
   if (!hint)
-    sprintf(tail(state->text), "%s, ", register_name(Rt));
+    ARM_APP(state->text, sizeof(state->text), "%s, ", register_name(Rt));
   if (Rn == 15) {
-    sprintf(tail(state->text), "[pc, #%ld]", imm);
+    ARM_APP(state->text, sizeof(state->text), "[pc, #%ld]", imm);
     state->ldr_addr = ALIGN4(state->address + 4) + imm;
     append_comment_hex(state, state->ldr_addr);
     mark_address_type(state, state->ldr_addr, POOL_LITERAL);
   } else {
     if (Rm >= 0 && shift >= 0) {
-      sprintf(tail(state->text), "[%s, %s, lsl #%d]", register_name(Rn),
+      ARM_APP(state->text, sizeof(state->text), "[%s, %s, lsl #%d]", register_name(Rn),
               register_name(Rm), shift);
 
     } else if (index == 1) {
-      sprintf(tail(state->text), "[%s, #%ld]", register_name(Rn), imm);
+      ARM_APP(state->text, sizeof(state->text), "[%s, #%ld]", register_name(Rn), imm);
       if (writeback == 1)
-        strcat(state->text, "!");
+        tkl_strscat(state->text, "!", sizeof(state->text));
       append_comment_hex(state, (uint32_t)imm);
     } else if (writeback == 1 || imm != 0) {
-      sprintf(tail(state->text), "[%s], #%ld", register_name(Rn), imm);
+      ARM_APP(state->text, sizeof(state->text), "[%s], #%ld", register_name(Rn), imm);
       append_comment_hex(state, (uint32_t)imm);
     } else {
-      sprintf(tail(state->text), "[%s]", register_name(Rn));
+      ARM_APP(state->text, sizeof(state->text), "[%s]", register_name(Rn));
     }
   }
   state->size = 4;
@@ -1771,11 +1789,11 @@ static bool thumb2_loadstor2(ARMSTATE *state, uint32_t instr)
   if ((instr & 0x01200000) != 0) {
     /* load and store double */
     if (BIT_SET(instr, 20))
-      strcpy(state->text, "ldrd");
+      tkl_strscpy(state->text, "ldrd", sizeof(state->text));
     else
-      strcpy(state->text, "strd");
+      tkl_strscpy(state->text, "strd", sizeof(state->text));
     add_it_cond(state, 0);
-    padinstr(state->text);
+    padinstr(state->text, sizeof(state->text));
     imm *= 4;
     if (BIT_CLR(instr, 23))
       imm = -imm;
@@ -1785,38 +1803,38 @@ static bool thumb2_loadstor2(ARMSTATE *state, uint32_t instr)
     }
     if (BIT_SET(instr, 24) || BIT_CLR(instr, 21)) {
       if (BIT_CLR(instr, 24) || imm == 0) {
-        sprintf(tail(state->text), "%s, %s, [%s]", register_name(Rt),
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, [%s]", register_name(Rt),
                 register_name(Rt2), register_name(Rn));
       } else {
-        sprintf(tail(state->text), "%s, %s, [%s, #%d]", register_name(Rt),
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, [%s, #%d]", register_name(Rt),
                 register_name(Rt2), register_name(Rn), imm);
         if (BIT_SET(instr, 21))
-          strcat(state->text, "!");
+          tkl_strscat(state->text, "!", sizeof(state->text));
         append_comment_hex(state, imm);
       }
     } else {
       assert(BIT_CLR(instr, 24) && BIT_SET(instr, 21));
-      sprintf(tail(state->text), "%s, %s, [%s], #%d", register_name(Rt),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, [%s], #%d", register_name(Rt),
               register_name(Rt2), register_name(Rn), imm);
       append_comment_hex(state, (uint32_t)imm);
     }
   } else if (BIT_CLR(instr, 23)) {
     /* load and store exclusive */
     if (BIT_SET(instr, 20))
-      strcpy(state->text, "ldrex");
+      tkl_strscpy(state->text, "ldrex", sizeof(state->text));
     else
-      strcpy(state->text, "strex");
+      tkl_strscpy(state->text, "strex", sizeof(state->text));
     add_it_cond(state, 0);
-    padinstr(state->text);
+    padinstr(state->text, sizeof(state->text));
     imm *= 4;
     char imm_str[20] = "";
     if (imm != 0)
-      sprintf(imm_str, ", #%d]", imm);
+      snprintf(imm_str, sizeof(imm_str), ", #%d]", imm);
     if (BIT_SET(instr, 20))
-      sprintf(tail(state->text), "%s, [%s%s]", register_name(Rt),
+      ARM_APP(state->text, sizeof(state->text), "%s, [%s%s]", register_name(Rt),
               register_name(Rn), imm_str);
     else
-      sprintf(tail(state->text), "%s, %s, [%s%s]", register_name(Rt2),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, [%s%s]", register_name(Rt2),
               register_name(Rt), register_name(Rn), imm_str);
     if (imm != 0)
       append_comment_hex(state, imm);
@@ -1826,45 +1844,45 @@ static bool thumb2_loadstor2(ARMSTATE *state, uint32_t instr)
     int opc = imm >> 4;
     switch (opc) {
     case 0:
-      strcpy(state->text, "tbb");       /* format: tbb  [Rn, Rm] */
-      padinstr(state->text);
+      tkl_strscpy(state->text, "tbb", sizeof(state->text));       /* format: tbb  [Rn, Rm] */
+      padinstr(state->text, sizeof(state->text));
       break;
     case 1:
-      strcpy(state->text, "tbh");       /* format: tbh  [Rn, Rm, lsl #1] */
-      padinstr(state->text);
+      tkl_strscpy(state->text, "tbh", sizeof(state->text));       /* format: tbh  [Rn, Rm, lsl #1] */
+      padinstr(state->text, sizeof(state->text));
       break;
     case 4:
       if (BIT_SET(instr, 20))
-        strcpy(state->text, "ldrexb");  /* format: ldrexb  Rt, [Rn] */
+        tkl_strscpy(state->text, "ldrexb", sizeof(state->text));  /* format: ldrexb  Rt, [Rn] */
       else
-        strcpy(state->text, "strexb");  /* format: strexb  Rd, Rt, [Rn] */
+        tkl_strscpy(state->text, "strexb", sizeof(state->text));  /* format: strexb  Rd, Rt, [Rn] */
       add_it_cond(state, 0);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       if (BIT_CLR(instr, 20))
-        strcat(state->text, register_name(Rd));
-      sprintf(tail(state->text), ", %s [%s]", register_name(Rt), register_name(Rn));
+        tkl_strscat(state->text, register_name(Rd), sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), ", %s [%s]", register_name(Rt), register_name(Rn));
       break;
     case 5:
       if (BIT_SET(instr, 20))
-        strcpy(state->text, "ldrexh");  /* format: ldrexh  Rt, [Rn] */
+        tkl_strscpy(state->text, "ldrexh", sizeof(state->text));  /* format: ldrexh  Rt, [Rn] */
       else
-        strcpy(state->text, "strexh");  /* format: strexh  Rd, Rt, [Rn] */
+        tkl_strscpy(state->text, "strexh", sizeof(state->text));  /* format: strexh  Rd, Rt, [Rn] */
       add_it_cond(state, 0);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       if (BIT_CLR(instr, 20))
-        strcat(state->text, register_name(Rd));
-      sprintf(tail(state->text), ", %s [%s]", register_name(Rt), register_name(Rn));
+        tkl_strscat(state->text, register_name(Rd), sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), ", %s [%s]", register_name(Rt), register_name(Rn));
       break;
     case 7:
       if (BIT_SET(instr, 20))
-        strcpy(state->text, "ldrexd");  /* format: ldrexd  Rt, Rt2, [Rn] */
+        tkl_strscpy(state->text, "ldrexd", sizeof(state->text));  /* format: ldrexd  Rt, Rt2, [Rn] */
       else
-        strcpy(state->text, "strexd");  /* format: strexd  Rd, Rt, Rt2, [Rn] */
+        tkl_strscpy(state->text, "strexd", sizeof(state->text));  /* format: strexd  Rd, Rt, Rt2, [Rn] */
       add_it_cond(state, 0);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       if (BIT_CLR(instr, 20))
-        strcat(state->text, register_name(Rd));
-      sprintf(tail(state->text), ", %s, %s [%s]", register_name(Rt),
+        tkl_strscat(state->text, register_name(Rd), sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), ", %s, %s [%s]", register_name(Rt),
               register_name(Rt2), register_name(Rn));
       break;
     default:
@@ -1886,39 +1904,39 @@ static bool thumb2_loadstor_mul(ARMSTATE *state, uint32_t instr)
     list &= ~(1 << 13);
     int fmt = 0;
     if (Rn == 13 && BIT_SET(instr, 21)) {
-      strcpy(state->text, BIT_SET(instr, 20) ? "pop" : "push");
+      tkl_strscpy(state->text, BIT_SET(instr, 20) ? "pop" : "push", sizeof(state->text));
       fmt = 1;
     } else {
-      strcpy(state->text, BIT_SET(instr, 20) ? "ldm" : "stm");
-      strcat(state->text, BIT_SET(instr, 24)? "db" : "ia");
+      tkl_strscpy(state->text, BIT_SET(instr, 20) ? "ldm" : "stm", sizeof(state->text));
+      tkl_strscat(state->text, BIT_SET(instr, 24)? "db" : "ia", sizeof(state->text));
     }
     add_it_cond(state, 0);
-    padinstr(state->text);
+    padinstr(state->text, sizeof(state->text));
     if (fmt == 0) {
-      strcat(state->text, register_name(FIELD(instr, 20, 4)));
+      tkl_strscat(state->text, register_name(FIELD(instr, 20, 4)), sizeof(state->text));
       if (BIT_SET(instr, 21))
-        strcat(state->text, "!");
-      strcat(state->text, ", ");
+        tkl_strscat(state->text, "!", sizeof(state->text));
+      tkl_strscat(state->text, ", ", sizeof(state->text));
     }
-    add_reglist(state->text, list);
+    add_reglist(state->text, sizeof(state->text), list);
   } else if (BIT_SET(instr, 20)) {
     /* rfe */
-    strcpy(state->text, "rfe");
-    strcat(state->text, (cat == 0) ? "db" : "ia");
+    tkl_strscpy(state->text, "rfe", sizeof(state->text));
+    tkl_strscat(state->text, (cat == 0) ? "db" : "ia", sizeof(state->text));
     add_it_cond(state, 0);
-    padinstr(state->text);
-    strcat(state->text, register_name(FIELD(instr, 16, 4)));
+    padinstr(state->text, sizeof(state->text));
+    tkl_strscat(state->text, register_name(FIELD(instr, 16, 4)), sizeof(state->text));
     if (BIT_CLR(instr, 21))
-      strcat(state->text, "!");
+      tkl_strscat(state->text, "!", sizeof(state->text));
   } else {
     /* srs */
-    strcpy(state->text, "srs");
-    strcat(state->text, (cat == 0) ? "db" : "ia");
+    tkl_strscpy(state->text, "srs", sizeof(state->text));
+    tkl_strscat(state->text, (cat == 0) ? "db" : "ia", sizeof(state->text));
     add_it_cond(state, 0);
-    padinstr(state->text);
-    sprintf(tail(state->text), "#%u", FIELD(instr, 0, 5));
+    padinstr(state->text, sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), "#%u", FIELD(instr, 0, 5));
     if (BIT_CLR(instr, 21))
-      strcat(state->text, "!");
+      tkl_strscat(state->text, "!", sizeof(state->text));
   }
   state->size = 4;
   return true;
@@ -1929,19 +1947,19 @@ static bool thumb2_co_loadstor(ARMSTATE *state, uint32_t instr)
   /* 111x 110x xxxx xxxx - coprocessor load/store and mcrr/mrrc register transfers */
   int opc = FIELD(instr, 21, 4);
   if (opc == 2)
-    strcpy(state->text, BIT_SET(instr, 20) ? "mrrc" : "mcrr");
+    tkl_strscpy(state->text, BIT_SET(instr, 20) ? "mrrc" : "mcrr", sizeof(state->text));
   else if (opc != 0)
-    strcpy(state->text, BIT_SET(instr, 20) ? "ldc" : "stc");
+    tkl_strscpy(state->text, BIT_SET(instr, 20) ? "ldc" : "stc", sizeof(state->text));
   else
     return false;
   if (BIT_SET(instr, 28))
-    strcat(state->text, "2");
+    tkl_strscat(state->text, "2", sizeof(state->text));
   if (opc != 2 && BIT_SET(instr, 22))
-    strcat(state->text, "l");
+    tkl_strscat(state->text, "l", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   if (opc == 2) {
-    sprintf(tail(state->text), "%u, %u, %s, %s, cr%u", FIELD(instr, 8, 4),
+    ARM_APP(state->text, sizeof(state->text), "%u, %u, %s, %s, cr%u", FIELD(instr, 8, 4),
             FIELD(instr, 4, 4), register_name(FIELD(instr, 12, 4)),
             register_name(FIELD(instr, 16, 4)), FIELD(instr, 0, 4));
   } else {
@@ -1949,12 +1967,12 @@ static bool thumb2_co_loadstor(ARMSTATE *state, uint32_t instr)
     if (BIT_CLR(instr, 23))
       imm = -imm;
     if (BIT_SET(instr, 24)) {
-      sprintf(tail(state->text), "%u, cr%u, [%s, #%d]", FIELD(instr, 8, 4),
+      ARM_APP(state->text, sizeof(state->text), "%u, cr%u, [%s, #%d]", FIELD(instr, 8, 4),
               FIELD(instr, 12, 4), register_name(FIELD(instr, 20, 4)), imm);
       if (BIT_CLR(instr, 25))
-        strcat(state->text, "!");
+        tkl_strscat(state->text, "!", sizeof(state->text));
     } else {
-      sprintf(tail(state->text), "%u, cr%u, [%s], #%d", FIELD(instr, 8, 4),
+      ARM_APP(state->text, sizeof(state->text), "%u, cr%u, [%s], #%d", FIELD(instr, 8, 4),
               FIELD(instr, 12, 4), register_name(FIELD(instr, 20, 4)), imm);
     }
   }
@@ -1967,12 +1985,12 @@ static bool thumb2_co_dataproc(ARMSTATE *state, uint32_t instr)
 {
   /* 111x 1110 xxx0 xxxx - coprocessor */
   /* CDP / CDP2 */
-  strcpy(state->text, BIT_SET(instr, 20) ? "mrc" : "mcr");
+  tkl_strscpy(state->text, BIT_SET(instr, 20) ? "mrc" : "mcr", sizeof(state->text));
   if (BIT_SET(instr, 28))
-    strcat(state->text, "2");
+    tkl_strscat(state->text, "2", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%u, %u, cr%u, cr%u, cr%u, {%u}", FIELD(instr, 8, 4),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%u, %u, cr%u, cr%u, cr%u, {%u}", FIELD(instr, 8, 4),
           FIELD(instr, 20, 4), FIELD(instr, 12, 4), FIELD(instr, 16, 4),
           FIELD(instr, 0, 4), FIELD(instr, 5, 3));
   state->size = 4;
@@ -1986,15 +2004,15 @@ static bool thumb2_co_trans(ARMSTATE *state, uint32_t instr)
     return false;
 
   /* mrc and mcr coprocessor register transfers */
-  strcpy(state->text, BIT_SET(instr, 20) ? "mrc" : "mcr");
+  tkl_strscpy(state->text, BIT_SET(instr, 20) ? "mrc" : "mcr", sizeof(state->text));
   if (BIT_SET(instr, 28))
-    strcat(state->text, "2");
+    tkl_strscat(state->text, "2", sizeof(state->text));
   add_it_cond(state, 0);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
 
   int Rt = FIELD(instr, 12, 4);
   const char *Rt_name = (Rt == 15) ? "APSR_nzcv" : register_name(Rt);
-  sprintf(tail(state->text), "%u, %u, %s, cr%u, cr%u, {%u}", FIELD(instr, 8, 4),
+  ARM_APP(state->text, sizeof(state->text), "%u, %u, %s, cr%u, cr%u, {%u}", FIELD(instr, 8, 4),
           FIELD(instr, 21, 3), Rt_name, FIELD(instr, 16, 4),
           FIELD(instr, 0, 4), FIELD(instr, 5, 3));
   state->size = 4;
@@ -2077,66 +2095,66 @@ static const char *arm_opcode_name(unsigned opc, int variant, unsigned opc2)
     case 1:
       switch (opc2) {
       case 0:
-        strcpy(field, BIT_CLR(opc, 0) ? "mrs" : "msr");
+        tkl_strscpy(field, BIT_CLR(opc, 0) ? "mrs" : "msr", sizeof(field));
         break;
       case 1:
-        strcpy(field, "bxj");
+        tkl_strscpy(field, "bxj", sizeof(field));
         break;
       default:
         switch (opc & 3) {
         case 0:
-          strcpy(field, "smla");
+          tkl_strscpy(field, "smla", sizeof(field));
           break;
         case 1:
-          strcpy(field, BIT_CLR(opc2, 0) ? "smlaw" : "smluw");
+          tkl_strscpy(field, BIT_CLR(opc2, 0) ? "smlaw" : "smluw", sizeof(field));
           break;
         case 2:
-          strcpy(field, "smlal");
+          tkl_strscpy(field, "smlal", sizeof(field));
           break;
         case 3:
-          strcpy(field, "smul");
+          tkl_strscpy(field, "smul", sizeof(field));
           break;
         }
         if ((opc & 3) != 1)
-          strcat(field, BIT_CLR(opc, 0) ? "b" : "t");
-        strcat(field, BIT_CLR(opc, 1) ? "b" : "t");
+          tkl_strscat(field, BIT_CLR(opc, 0) ? "b" : "t", sizeof(field));
+        tkl_strscat(field, BIT_CLR(opc, 1) ? "b" : "t", sizeof(field));
       }
       break;
     case 2:
       switch (opc2) {
       case 0:
         if ((opc & 0x03) == 1)
-          strcpy(field, "bx");
+          tkl_strscpy(field, "bx", sizeof(field));
         else if ((opc & 0x03) == 3)
-          strcpy(field, "clz");
+          tkl_strscpy(field, "clz", sizeof(field));
         break;
       case 1:
         if ((opc & 0x03) == 1)
-          strcpy(field, "blx");
+          tkl_strscpy(field, "blx", sizeof(field));
         break;
       case 2:
         switch (opc & 0x03) {
         case 0:
-          strcpy(field, "qadd");
+          tkl_strscpy(field, "qadd", sizeof(field));
           break;
         case 1:
-          strcpy(field, "qadd");
+          tkl_strscpy(field, "qadd", sizeof(field));
           break;
         case 2:
-          strcpy(field, "qdadd");
+          tkl_strscpy(field, "qdadd", sizeof(field));
           break;
         case 3:
-          strcpy(field, "qdsub");
+          tkl_strscpy(field, "qdsub", sizeof(field));
           break;
         }
         break;
       case 3:
-        strcpy(field, "bkpt");
+        tkl_strscpy(field, "bkpt", sizeof(field));
         break;
       }
       break;
     case 4:
-      strcpy(field, "msr");
+      tkl_strscpy(field, "msr", sizeof(field));
       break;
     default:
       assert(0);  /* this case should not occur (invalid instruction) */
@@ -2168,15 +2186,15 @@ static bool arm_dataproc_imsh(ARMSTATE *state, uint32_t instr)
   int shiftcount = FIELD(instr, 7, 5);
   int opc = FIELD(instr, 21, 4);
   if (opc == 13 && (shifttype != 0 || shiftcount != 0))
-    strcpy(state->text, shift_type(shifttype)); /* preferred syntax */
+    tkl_strscpy(state->text, shift_type(shifttype), sizeof(state->text)); /* preferred syntax */
   else
-    strcpy(state->text, arm_opcode_name(opc, BIT_CLR(instr, 20), FIELD(instr, 5, 3)));
+    tkl_strscpy(state->text, arm_opcode_name(opc, BIT_CLR(instr, 20), FIELD(instr, 5, 3)), sizeof(state->text));
   if (strlen(state->text) == 0)
     return false;
   add_condition(state, cond);
   if (BIT_SET(instr, 20) && !(opc >= 8 && opc < 12))
-    strcat(state->text, "s");
-  padinstr(state->text);
+    tkl_strscat(state->text, "s", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
 
   if (opc >= 8 && opc < 12 && BIT_CLR(instr, 20)) {
     /* handle MRS, MSR, Jazelle & signed multiplies */
@@ -2185,29 +2203,29 @@ static bool arm_dataproc_imsh(ARMSTATE *state, uint32_t instr)
     case 0: {
       const char *status = BIT_CLR(instr, 22) ? "CPSR" : "SPSR";
       if (BIT_CLR(instr, 21))
-        sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)), status);
+        ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)), status);
       else
-        sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 0, 4)), status);
+        ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 0, 4)), status);
       break;
     }
     case 1:
-      sprintf(tail(state->text), "%s", register_name(FIELD(instr, 0, 4)));
+      ARM_APP(state->text, sizeof(state->text), "%s", register_name(FIELD(instr, 0, 4)));
       break;
     default:
       switch (opc & 3) {
       case 0:
       case 1:
-        sprintf(tail(state->text), "%s, %s, %s, %s",
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s",
                 register_name(FIELD(instr, 16, 4)), register_name(FIELD(instr, 0, 4)),
                 register_name(FIELD(instr, 8, 4)), register_name(FIELD(instr, 12, 4)));
         break;
       case 2:
-        sprintf(tail(state->text), "%s, %s, %s, %s",
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s",
                 register_name(FIELD(instr, 12, 4)), register_name(FIELD(instr, 16, 4)),
                 register_name(FIELD(instr, 0, 4)), register_name(FIELD(instr, 8, 4)));
         break;
       case 3:
-        sprintf(tail(state->text), "%s, %s, %s", register_name(FIELD(instr, 16, 4)),
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(FIELD(instr, 16, 4)),
                 register_name(FIELD(instr, 0, 4)), register_name(FIELD(instr, 8, 4)));
         break;
       }
@@ -2215,23 +2233,23 @@ static bool arm_dataproc_imsh(ARMSTATE *state, uint32_t instr)
   } else {
     switch (arm_opcode_form(opc)) {
     case 1:
-      sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 16, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 16, 4)),
               register_name(FIELD(instr, 0, 4)));
       break;
     case 2:
-      sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)),
               register_name(FIELD(instr, 0, 4)));
       break;
     case 3:
-      sprintf(tail(state->text), "%s, %s, %s", register_name(FIELD(instr, 12, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(FIELD(instr, 12, 4)),
               register_name(FIELD(instr, 16, 4)), register_name(FIELD(instr, 0, 4)));
       break;
     }
     if (shifttype != 0 || shiftcount != 0) {
       if (opc == 13)
-        sprintf(tail(state->text), ", #%d", shiftcount);
+        ARM_APP(state->text, sizeof(state->text), ", #%d", shiftcount);
       else
-        sprintf(tail(state->text), ", %s", decode_imm_shift(shifttype, shiftcount));
+        ARM_APP(state->text, sizeof(state->text), ", %s", decode_imm_shift(shifttype, shiftcount));
     }
   }
 
@@ -2247,45 +2265,45 @@ static bool arm_dataproc_rxsh(ARMSTATE *state, uint32_t instr)
     return false;
 
   int opc = FIELD(instr, 21, 4);
-  strcpy(state->text, arm_opcode_name(opc, 2*BIT_CLR(instr, 20), FIELD(instr, 5, 3)));
+  tkl_strscpy(state->text, arm_opcode_name(opc, 2*BIT_CLR(instr, 20), FIELD(instr, 5, 3)), sizeof(state->text));
   if (strlen(state->text) == 0)
     return false;
   add_condition(state, cond);
   if (BIT_SET(instr, 20) && !(opc >= 8 && opc < 12))
-    strcat(state->text, "s");
-  padinstr(state->text);
+    tkl_strscat(state->text, "s", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
 
   if (opc >= 8 && opc < 12 && BIT_CLR(instr, 20)) {
     int opc2 = FIELD(instr, 5, 3);
     if ((opc & 0x03) == 1 && opc2 < 2) {
-      sprintf(tail(state->text), "%s", register_name(FIELD(instr, 0, 4)));  /* bx & blx */
+      ARM_APP(state->text, sizeof(state->text), "%s", register_name(FIELD(instr, 0, 4)));  /* bx & blx */
     } else if ((opc & 0x03) == 3 && opc2 == 0) {
-      sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)),
               register_name(FIELD(instr, 0, 4)));  /* clz */
     } else if (opc2 == 2) {
-      sprintf(tail(state->text), "%s, %s, %s", register_name(FIELD(instr, 12, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(FIELD(instr, 12, 4)),
               register_name(FIELD(instr, 16, 4)), register_name(FIELD(instr, 0, 4)));
     } else if (opc2 == 3) {
       uint32_t imm = FIELD(instr, 0, 4) + (FIELD(instr, 8, 12) << 4);
-      sprintf(tail(state->text), "#%u", imm);
+      ARM_APP(state->text, sizeof(state->text), "#%u", imm);
       append_comment_hex(state, imm);
     }
   } else {
     switch (arm_opcode_form(opc)) {
     case 1:
-      sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 16, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 16, 4)),
               register_name(FIELD(instr, 0, 4)));
       break;
     case 2:
-      sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)),
               register_name(FIELD(instr, 0, 4)));
       break;
     case 3:
-      sprintf(tail(state->text), "%s, %s, %s", register_name(FIELD(instr, 12, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(FIELD(instr, 12, 4)),
               register_name(FIELD(instr, 16, 4)), register_name(FIELD(instr, 0, 4)));
       break;
     }
-    sprintf(tail(state->text), ", %s %s", shift_type(FIELD(instr, 5, 2)),
+    ARM_APP(state->text, sizeof(state->text), ", %s %s", shift_type(FIELD(instr, 5, 2)),
             register_name(FIELD(instr, 8, 4)));
   }
 
@@ -2305,38 +2323,38 @@ static bool arm_mult_loadstor(ARMSTATE *state, uint32_t instr)
     int opc = FIELD(instr, 21, 3);
     switch (opc) {
     case 0:
-      strcpy(state->text, "mul");
+      tkl_strscpy(state->text, "mul", sizeof(state->text));
       break;
     case 1:
-      strcpy(state->text, "mla");
+      tkl_strscpy(state->text, "mla", sizeof(state->text));
       break;
     case 4:
-      strcpy(state->text, "umull");
+      tkl_strscpy(state->text, "umull", sizeof(state->text));
       break;
     case 5:
-      strcpy(state->text, "umlal");
+      tkl_strscpy(state->text, "umlal", sizeof(state->text));
       break;
     case 6:
-      strcpy(state->text, "smull");
+      tkl_strscpy(state->text, "smull", sizeof(state->text));
       break;
     case 7:
-      strcpy(state->text, "smlal");
+      tkl_strscpy(state->text, "smlal", sizeof(state->text));
       break;
     }
     add_condition(state, cond);
     if (BIT_SET(instr, 20) && !(opc >= 8 && opc < 12))
-      strcat(state->text, "s");
-    padinstr(state->text);
+      tkl_strscat(state->text, "s", sizeof(state->text));
+    padinstr(state->text, sizeof(state->text));
     if (opc >= 4)
-      sprintf(tail(state->text), "%s, %s, %s, %s",
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s",
               register_name(FIELD(instr, 12, 4)), register_name(FIELD(instr, 16, 4)),
               register_name(FIELD(instr, 0, 4)), register_name(FIELD(instr, 8, 4)));
     else if (BIT_SET(instr, 21))
-      sprintf(tail(state->text), "%s, %s, %s, %s",
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s",
               register_name(FIELD(instr, 16, 4)), register_name(FIELD(instr, 0, 4)),
               register_name(FIELD(instr, 8, 4)), register_name(FIELD(instr, 12, 4)));
     else
-      sprintf(tail(state->text), "%s, %s, %s",
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s",
               register_name(FIELD(instr, 16, 4)), register_name(FIELD(instr, 0, 4)),
               register_name(FIELD(instr, 8, 4)));
   } else {
@@ -2344,28 +2362,28 @@ static bool arm_mult_loadstor(ARMSTATE *state, uint32_t instr)
     switch (opc2) {
     case 9:
       if (BIT_CLR(instr, 23)) {
-        strcpy(state->text, BIT_SET(instr, 22) ? "swpb" : "swp");
+        tkl_strscpy(state->text, BIT_SET(instr, 22) ? "swpb" : "swp", sizeof(state->text));
         format = 3;
       } else {
-        strcpy(state->text, BIT_SET(instr, 20) ? "ldrex" : "strex");
+        tkl_strscpy(state->text, BIT_SET(instr, 20) ? "ldrex" : "strex", sizeof(state->text));
         format = 2;
       }
       break;
     case 11:
-      strcpy(state->text, BIT_SET(instr, 20) ? "ldrh" : "strh");
+      tkl_strscpy(state->text, BIT_SET(instr, 20) ? "ldrh" : "strh", sizeof(state->text));
       break;
     case 13:
     case 15:
       if (BIT_CLR(instr, 20))
-        strcpy(state->text, BIT_SET(instr, 5) ? "ldrsh" : "ldrsb");
+        tkl_strscpy(state->text, BIT_SET(instr, 5) ? "ldrsh" : "ldrsb", sizeof(state->text));
       else
-        strcpy(state->text, BIT_CLR(instr, 5) ? "ldrd" : "strd");
+        tkl_strscpy(state->text, BIT_CLR(instr, 5) ? "ldrd" : "strd", sizeof(state->text));
       break;
     default:
       return false;
     }
     add_condition(state, cond);
-    padinstr(state->text);
+    padinstr(state->text, sizeof(state->text));
 
     assert(format != 0);
     switch (format) {
@@ -2373,28 +2391,28 @@ static bool arm_mult_loadstor(ARMSTATE *state, uint32_t instr)
       if (BIT_SET(instr, 22)) {
         uint32_t imm = FIELD(instr, 0, 4) + (FIELD(instr, 8, 4) << 4);
         if (BIT_SET(instr, 24))
-          sprintf(tail(state->text), "%s, [%s, #%u]", register_name(FIELD(instr, 12, 4)),
+          ARM_APP(state->text, sizeof(state->text), "%s, [%s, #%u]", register_name(FIELD(instr, 12, 4)),
                   register_name(FIELD(instr, 16, 4)), imm);
         else
-          sprintf(tail(state->text), "%s, [%s], #%u", register_name(FIELD(instr, 12, 4)),
+          ARM_APP(state->text, sizeof(state->text), "%s, [%s], #%u", register_name(FIELD(instr, 12, 4)),
                   register_name(FIELD(instr, 16, 4)), imm);
       } else {
         if (BIT_SET(instr, 24))
-          sprintf(tail(state->text), "%s, [%s, %s]", register_name(FIELD(instr, 12, 4)),
+          ARM_APP(state->text, sizeof(state->text), "%s, [%s, %s]", register_name(FIELD(instr, 12, 4)),
                   register_name(FIELD(instr, 16, 4)), register_name(FIELD(instr, 0, 4)));
         else
-          sprintf(tail(state->text), "%s, [%s], %s", register_name(FIELD(instr, 12, 4)),
+          ARM_APP(state->text, sizeof(state->text), "%s, [%s], %s", register_name(FIELD(instr, 12, 4)),
                   register_name(FIELD(instr, 16, 4)), register_name(FIELD(instr, 0, 4)));
       }
       if (BIT_SET(instr, 21))
-        strcat(state->text, "!");
+        tkl_strscat(state->text, "!", sizeof(state->text));
       break;
     case 2:
-      sprintf(tail(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(FIELD(instr, 12, 4)),
               register_name(FIELD(instr, 16, 4)));
       break;
     case 3:
-      sprintf(tail(state->text), "%s, %s, [%s]", register_name(FIELD(instr, 12, 4)),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, [%s]", register_name(FIELD(instr, 12, 4)),
               register_name(FIELD(instr, 0, 4)), register_name(FIELD(instr, 16, 4)));
       break;
     }
@@ -2411,31 +2429,31 @@ static bool arm_dataproc_imm(ARMSTATE *state, uint32_t instr)
     return false;
 
   int opc = FIELD(instr, 21, 4);
-  strcpy(state->text, arm_opcode_name(opc, 4*BIT_CLR(instr, 20), FIELD(instr, 5, 3)));
+  tkl_strscpy(state->text, arm_opcode_name(opc, 4*BIT_CLR(instr, 20), FIELD(instr, 5, 3)), sizeof(state->text));
   if (strlen(state->text) == 0)
     return false;
   add_condition(state, cond);
   if (BIT_SET(instr, 20))
-    strcat(state->text, "s");
-  padinstr(state->text);
+    tkl_strscat(state->text, "s", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
 
   uint32_t imm = FIELD(instr, 0, 8);
   int rot = FIELD(instr, 8, 4);
   if (rot != 0)
     imm = ROR32(imm, 2 * rot);
   if (opc >= 8 && opc < 12 && BIT_CLR(instr, 20)) {
-    strcat(state->text, "CPSR_");
+    tkl_strscat(state->text, "CPSR_", sizeof(state->text));
     if (BIT_SET(instr, 16))
-      strcat(state->text, "c");
+      tkl_strscat(state->text, "c", sizeof(state->text));
     if (BIT_SET(instr, 17))
-      strcat(state->text, "x");
+      tkl_strscat(state->text, "x", sizeof(state->text));
     if (BIT_SET(instr, 18))
-      strcat(state->text, "s");
+      tkl_strscat(state->text, "s", sizeof(state->text));
     if (BIT_SET(instr, 19))
-      strcat(state->text, "f");
-    sprintf(tail(state->text), ", #%u", imm);
+      tkl_strscat(state->text, "f", sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), ", #%u", imm);
   } else {
-    sprintf(tail(state->text), "%s, %s, #%u", register_name(FIELD(instr, 12, 4)),
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, #%u", register_name(FIELD(instr, 12, 4)),
             register_name(FIELD(instr, 16, 4)), imm);
   }
 
@@ -2448,26 +2466,26 @@ static bool arm_loadstor_imm(ARMSTATE *state, uint32_t instr)
   int cond = FIELD(instr, 28, 4);
   if (cond == 15)
     return false;
-  strcpy(state->text, BIT_SET(instr, 20) ? "ldr" : "str");
+  tkl_strscpy(state->text, BIT_SET(instr, 20) ? "ldr" : "str", sizeof(state->text));
   add_condition(state, cond);
   if (BIT_SET(instr, 22))
-    strcat(state->text, "b");
+    tkl_strscat(state->text, "b", sizeof(state->text));
   if (BIT_CLR(instr, 24) && BIT_SET(instr, 21))
-    strcat(state->text, "t");
-  padinstr(state->text);
+    tkl_strscat(state->text, "t", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
 
   int imm = FIELD(instr, 0, 12);
   if (BIT_CLR(instr, 23))
     imm = -imm;
   if (cond != 15)
-    sprintf(tail(state->text), "%s, ", register_name(FIELD(instr, 12, 4)));
+    ARM_APP(state->text, sizeof(state->text), "%s, ", register_name(FIELD(instr, 12, 4)));
   int Rn = FIELD(instr, 16, 4);
   if (BIT_SET(instr, 24))
-    sprintf(tail(state->text), "[%s, #%d]", register_name(Rn), imm);
+    ARM_APP(state->text, sizeof(state->text), "[%s, #%d]", register_name(Rn), imm);
   else
-    sprintf(tail(state->text), "[%s], #%d", register_name(Rn), imm);
+    ARM_APP(state->text, sizeof(state->text), "[%s], #%d", register_name(Rn), imm);
   if (BIT_SET(instr, 21))
-    strcat(state->text, "!");
+    tkl_strscat(state->text, "!", sizeof(state->text));
   if (Rn == 15 && BIT_SET(instr, 24) && BIT_CLR(instr, 21)) {
     imm += ALIGN4(state->address + 4);
     state->ldr_addr = imm;
@@ -2483,22 +2501,22 @@ static bool arm_loadstor_reg(ARMSTATE *state, uint32_t instr)
   int cond = FIELD(instr, 28, 4);
   if (cond == 15)
     return false;
-  strcpy(state->text, BIT_SET(instr, 20) ? "ldr" : "str");
+  tkl_strscpy(state->text, BIT_SET(instr, 20) ? "ldr" : "str", sizeof(state->text));
   add_condition(state, cond);
   if (BIT_SET(instr, 22))
-    strcat(state->text, "b");
+    tkl_strscat(state->text, "b", sizeof(state->text));
   if (BIT_CLR(instr, 24) && BIT_SET(instr, 21))
-    strcat(state->text, "t");
-  padinstr(state->text);
+    tkl_strscat(state->text, "t", sizeof(state->text));
+  padinstr(state->text, sizeof(state->text));
 
   const char *sign = BIT_CLR(instr, 23) ? "-" : "";
-  sprintf(tail(state->text), "%s, [%s, %s%s", register_name(FIELD(instr, 12, 4)),
+  ARM_APP(state->text, sizeof(state->text), "%s, [%s, %s%s", register_name(FIELD(instr, 12, 4)),
           register_name(FIELD(instr, 16, 4)), sign, register_name(FIELD(instr, 0, 4)));
   int shifttype = FIELD(instr, 5, 2);
   int shiftcount = FIELD(instr, 7, 5);
   if (shifttype != 0 || shiftcount != 0)
-    sprintf(tail(state->text), ", %s", decode_imm_shift(shifttype, shiftcount));
-  strcat(state->text, "]");
+    ARM_APP(state->text, sizeof(state->text), ", %s", decode_imm_shift(shifttype, shiftcount));
+  tkl_strscat(state->text, "]", sizeof(state->text));
   return true;
 }
 
@@ -2519,110 +2537,110 @@ static bool arm_media(ARMSTATE *state, uint32_t instr)
     int opc2 = FIELD(instr, 5, 3);
     int Rn = FIELD(instr, 16, 4);
     switch (opc1) {
-    case 1:      strcpy(state->text, "s");      break;
-    case 2:      strcpy(state->text, "q");      break;
-    case 3:      strcpy(state->text, "sh");      break;
-    case 5:      strcpy(state->text, "u");      break;
-    case 6:      strcpy(state->text, "uq");      break;
-    case 7:      strcpy(state->text, "uh");      break;
+    case 1:      tkl_strscpy(state->text, "s", sizeof(state->text));      break;
+    case 2:      tkl_strscpy(state->text, "q", sizeof(state->text));      break;
+    case 3:      tkl_strscpy(state->text, "sh", sizeof(state->text));      break;
+    case 5:      tkl_strscpy(state->text, "u", sizeof(state->text));      break;
+    case 6:      tkl_strscpy(state->text, "uq", sizeof(state->text));      break;
+    case 7:      tkl_strscpy(state->text, "uh", sizeof(state->text));      break;
     }
     switch (opc2) {
-    case 0:      strcat(state->text, "add16");      break;
-    case 1:      strcat(state->text, "addsubx");      break;
-    case 2:      strcat(state->text, "subaddx");      break;
-    case 3:      strcat(state->text, "sub16");      break;
-    case 4:      strcat(state->text, "add8");      break;
-    case 7:      strcat(state->text, "sub8");      break;
+    case 0:      tkl_strscat(state->text, "add16", sizeof(state->text));      break;
+    case 1:      tkl_strscat(state->text, "addsubx", sizeof(state->text));      break;
+    case 2:      tkl_strscat(state->text, "subaddx", sizeof(state->text));      break;
+    case 3:      tkl_strscat(state->text, "sub16", sizeof(state->text));      break;
+    case 4:      tkl_strscat(state->text, "add8", sizeof(state->text));      break;
+    case 7:      tkl_strscat(state->text, "sub8", sizeof(state->text));      break;
     default:      return false;
     }
     add_condition(state, cond);
-    padinstr(state->text);
-    sprintf(tail(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
+    padinstr(state->text, sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
             register_name(Rm));
   } else if (cat == 1) {
     /* halfword pack/saturate and others */
     int Rn = FIELD(instr, 16, 4);
     if (FIELD(instr, 20, 3) == 0 && BIT_CLR(instr, 5)) {
       /* halfword pack */
-      strcpy(state->text, BIT_CLR(instr, 6) ? "pkhbt" : "pkhtb");
+      tkl_strscpy(state->text, BIT_CLR(instr, 6) ? "pkhbt" : "pkhtb", sizeof(state->text));
       add_condition(state, cond);
-      padinstr(state->text);
-      sprintf(tail(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
+      padinstr(state->text, sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd), register_name(Rn),
               register_name(Rm));
       int shift = FIELD(instr, 7, 5);
       if (BIT_CLR(instr, 6)) {
         if (shift != 0)
-          sprintf(tail(state->text), ", lsl #%d", shift);
+          ARM_APP(state->text, sizeof(state->text), ", lsl #%d", shift);
       } else {
         if (shift == 0)
           shift = 32;
-        sprintf(tail(state->text), ", asr #%d", shift);
+        ARM_APP(state->text, sizeof(state->text), ", asr #%d", shift);
       }
     } else if (BIT_CLR(instr, 5)) {
       /* word saturate */
-      strcpy(state->text, BIT_CLR(instr, 22) ? "ssat" : "usat");
+      tkl_strscpy(state->text, BIT_CLR(instr, 22) ? "ssat" : "usat", sizeof(state->text));
       add_condition(state, cond);
-      padinstr(state->text);
-      sprintf(tail(state->text), "%s, #%u, %s", register_name(Rd),
+      padinstr(state->text, sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), "%s, #%u, %s", register_name(Rd),
               FIELD(instr, 16, 5), register_name(Rm));
       int shift = FIELD(instr, 7, 5);
       if (shift == 0 && BIT_SET(instr, 6))
         shift = 32;
       if (shift != 0) {
         if (BIT_SET(instr, 6))
-          sprintf(tail(state->text), ", asr #%d", shift);
+          ARM_APP(state->text, sizeof(state->text), ", asr #%d", shift);
         else
-          sprintf(tail(state->text), ", lsl #%d", shift);
+          ARM_APP(state->text, sizeof(state->text), ", lsl #%d", shift);
       }
     } else if (FIELD(instr, 20, 2) == 2 && FIELD(instr, 4, 4) == 0x03) {
       /* parallel halfword saturate */
-      strcpy(state->text, BIT_CLR(instr, 22) ? "ssat16" : "usat16");
+      tkl_strscpy(state->text, BIT_CLR(instr, 22) ? "ssat16" : "usat16", sizeof(state->text));
       add_condition(state, cond);
-      padinstr(state->text);
-      sprintf(tail(state->text), "%s, #%u, %s", register_name(Rd), FIELD(instr, 16, 4),
+      padinstr(state->text, sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), "%s, #%u, %s", register_name(Rd), FIELD(instr, 16, 4),
               register_name(Rm));
     } else if (FIELD(instr, 20, 2) == 0x03 && FIELD(instr, 4, 3) == 0x03) {
       /* byte reverse word, packed halfword & signed halfword */
-      strcpy(state->text, "rev");
+      tkl_strscpy(state->text, "rev", sizeof(state->text));
       if (BIT_SET(instr, 7))
-        strcat(state->text, BIT_CLR(instr, 22) ? "16" : "sh");
+        tkl_strscat(state->text, BIT_CLR(instr, 22) ? "16" : "sh", sizeof(state->text));
       add_condition(state, cond);
-      padinstr(state->text);
-      sprintf(tail(state->text), "%s, %s", register_name(Rd), register_name(Rm));
+      padinstr(state->text, sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(Rd), register_name(Rm));
     } else if (FIELD(instr, 20, 3) == 0 && FIELD(instr, 4, 4) == 0x0b) {
       /* select bytes */
-      strcpy(state->text, "sel");
+      tkl_strscpy(state->text, "sel", sizeof(state->text));
       add_condition(state, cond);
-      padinstr(state->text);
-      sprintf(tail(state->text), "%s, %s, %s", register_name(Rd),
+      padinstr(state->text, sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd),
               register_name(FIELD(instr, 16, 4)), register_name(Rm));
     } else if (FIELD(instr, 4, 4) == 0x07) {
       /* sign/zero extent */
-      strcpy(state->text, BIT_CLR(instr, 22) ? "s" : "u");
+      tkl_strscpy(state->text, BIT_CLR(instr, 22) ? "s" : "u", sizeof(state->text));
       switch (FIELD(instr, 20, 2)) {
       case 0:
-        strcpy(state->text, (Rn == 15) ? "xtb16" : "xtab16");
+        tkl_strscpy(state->text, (Rn == 15) ? "xtb16" : "xtab16", sizeof(state->text));
         break;
       case 2:
-        strcpy(state->text, (Rn == 15) ? "xtb" : "xtab");
+        tkl_strscpy(state->text, (Rn == 15) ? "xtb" : "xtab", sizeof(state->text));
         break;
       case 3:
-        strcpy(state->text, (Rn == 15) ? "xth" : "xtah");
+        tkl_strscpy(state->text, (Rn == 15) ? "xth" : "xtah", sizeof(state->text));
         break;
       default:
         return false;
       }
       add_condition(state, cond);
-      padinstr(state->text);
+      padinstr(state->text, sizeof(state->text));
       if (Rn == 15) {
-        sprintf(tail(state->text), "%s, %s", register_name(Rd), register_name(Rm));
+        ARM_APP(state->text, sizeof(state->text), "%s, %s", register_name(Rd), register_name(Rm));
       } else {
-        sprintf(tail(state->text), "%s, %s, %s", register_name(Rd),
+        ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd),
                 register_name(Rn), register_name(Rm));
       }
       int rot = FIELD(instr, 10, 2);
       if (rot != 0)
-        sprintf(tail(state->text), ", ror #%d", 8 * rot);
+        ARM_APP(state->text, sizeof(state->text), ", ror #%d", 8 * rot);
     } else {
       return false;   /* not a valid instruction pattern */
     }
@@ -2634,26 +2652,26 @@ static bool arm_media(ARMSTATE *state, uint32_t instr)
     int opc2 = FIELD(instr, 6, 2);
     if (opc1 == 0) {
       if (Rn == 15)
-        strcpy(state->text, (opc2 == 0) ? "smuad" : "smusd");
+        tkl_strscpy(state->text, (opc2 == 0) ? "smuad" : "smusd", sizeof(state->text));
       else
-        strcpy(state->text, (opc2 == 0) ? "smlad" : "smlsd");
+        tkl_strscpy(state->text, (opc2 == 0) ? "smlad" : "smlsd", sizeof(state->text));
     } else if (opc1 == 4) {
-      strcpy(state->text, (opc2 == 0) ? "smlald" : "smlsld");
+      tkl_strscpy(state->text, (opc2 == 0) ? "smlald" : "smlsld", sizeof(state->text));
     } else {
       return false;   /* not a valid instruction pattern */
     }
     if (BIT_SET(instr, 5))
-      strcat(state->text, "x");
+      tkl_strscat(state->text, "x", sizeof(state->text));
     add_condition(state, cond);
-    padinstr(state->text);
+    padinstr(state->text, sizeof(state->text));
     if (Rn == 15) {
-      sprintf(tail(state->text), "%s, %s, %s", register_name(Rd),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd),
               register_name(Rm), register_name(Rs));
     } else if (opc1 == 4) {
-      sprintf(tail(state->text), "%s, %s, %s, %s", register_name(Rd),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s", register_name(Rd),
               register_name(Rn), register_name(Rm), register_name(Rs));
     } else {
-      sprintf(tail(state->text), "%s, %s, %s, %s", register_name(Rd),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s", register_name(Rd),
               register_name(Rm), register_name(Rs), register_name(Rn));
     }
   } else {
@@ -2661,14 +2679,14 @@ static bool arm_media(ARMSTATE *state, uint32_t instr)
     Rd = FIELD(instr, 16, 4);
     int Rn = FIELD(instr, 12, 4);
     int Rs = FIELD(instr, 8, 4);
-    strcpy(state->text, (Rn == 15) ? "usad8" : "usada8");
+    tkl_strscpy(state->text, (Rn == 15) ? "usad8" : "usada8", sizeof(state->text));
     add_condition(state, cond);
-    padinstr(state->text);
+    padinstr(state->text, sizeof(state->text));
     if (Rn == 15)
-      sprintf(tail(state->text), "%s, %s, %s", register_name(Rd),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s", register_name(Rd),
               register_name(Rm), register_name(Rs));
     else
-      sprintf(tail(state->text), "%s, %s, %s, %s", register_name(Rd),
+      ARM_APP(state->text, sizeof(state->text), "%s, %s, %s, %s", register_name(Rd),
               register_name(Rm), register_name(Rs), register_name(Rn));
   }
 
@@ -2688,28 +2706,28 @@ static bool arm_loadstor_mult(ARMSTATE *state, uint32_t instr)
   if (BIT_SET(instr, 20)) {
     if (mode != 1)
       alt_syntax = 0;
-    strcpy(state->text, alt_syntax ? "pop" : "ldm");
+    tkl_strscpy(state->text, alt_syntax ? "pop" : "ldm", sizeof(state->text));
   } else {
     if (mode != 2)
       alt_syntax = 0;
-    strcpy(state->text, alt_syntax ? "push" : "stm");
+    tkl_strscpy(state->text, alt_syntax ? "push" : "stm", sizeof(state->text));
   }
   add_condition(state, cond);
   if (!alt_syntax) {
     static const char *modes[]= { "da", "ia", "db", "ib" };
-    strcat(state->text, modes[mode]);
+    tkl_strscat(state->text, modes[mode], sizeof(state->text));
   }
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
 
   if (!alt_syntax) {
-    strcat(state->text, register_name(Rn));
+    tkl_strscat(state->text, register_name(Rn), sizeof(state->text));
     if (BIT_SET(instr, 21))
-      strcat(state->text, "!");
-    strcat(state->text, ", ");
+      tkl_strscat(state->text, "!", sizeof(state->text));
+    tkl_strscat(state->text, ", ", sizeof(state->text));
   }
-  add_reglist(state->text, FIELD(instr, 0, 16));
+  add_reglist(state->text, sizeof(state->text), FIELD(instr, 0, 16));
   if (BIT_SET(instr, 22))
-    strcat(state->text, "^");
+    tkl_strscat(state->text, "^", sizeof(state->text));
 
   return true;
 }
@@ -2720,15 +2738,15 @@ static bool arm_branch(ARMSTATE *state, uint32_t instr)
   int cond = FIELD(instr, 28, 4);
   if (cond == 15)
     return false;
-  strcpy(state->text, "b");
+  tkl_strscpy(state->text, "b", sizeof(state->text));
   if (BIT_SET(instr, 24))
-    strcat(state->text, "l");
+    tkl_strscat(state->text, "l", sizeof(state->text));
   add_condition(state, cond);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   int32_t address = FIELD(instr, 0, 24);
   SIGN_EXT(address, 24);
   address = state->address + 8 + 4 * address;
-  sprintf(tail(state->text), "0x%07x", address);
+  ARM_APP(state->text, sizeof(state->text), "0x%07x", address);
   append_comment_symbol(state, address);
   mark_address_type(state, address, POOL_CODE);
   return true;
@@ -2741,18 +2759,18 @@ static bool arm_co_loadstor(ARMSTATE *state, uint32_t instr)
   int cond = FIELD(instr, 28, 4);
   int prefix = FIELD(instr, 20, 8);
   if (prefix == 0xc4)
-    strcpy(state->text, "mcrr");
+    tkl_strscpy(state->text, "mcrr", sizeof(state->text));
   else if (prefix == 0xc5)
-    strcpy(state->text, "mrrc");
+    tkl_strscpy(state->text, "mrrc", sizeof(state->text));
   else
-    strcpy(state->text, BIT_SET(instr, 20) ? "ldc" : "stc");
+    tkl_strscpy(state->text, BIT_SET(instr, 20) ? "ldc" : "stc", sizeof(state->text));
   if (cond == 15)
-    strcat(state->text, "2"); /* MRRC & MCRR -> ARMv6+, LDC2 & STC2 -> ARMv5+ */
+    tkl_strscat(state->text, "2", sizeof(state->text)); /* MRRC & MCRR -> ARMv6+, LDC2 & STC2 -> ARMv5+ */
   else
     add_condition(state, cond);
-  padinstr(state->text);
+  padinstr(state->text, sizeof(state->text));
   if (prefix == 0xc4 || prefix == 0xc5) {
-    sprintf(tail(state->text), "%u, %u, %s, %s, cr%u", FIELD(instr, 8, 4),
+    ARM_APP(state->text, sizeof(state->text), "%u, %u, %s, %s, cr%u", FIELD(instr, 8, 4),
             FIELD(instr, 4, 4), register_name(FIELD(instr, 12, 4)),
             register_name(FIELD(instr, 16, 4)), FIELD(instr, 0, 4));
   } else {
@@ -2760,15 +2778,15 @@ static bool arm_co_loadstor(ARMSTATE *state, uint32_t instr)
     if (BIT_CLR(instr, 23))
       imm = -imm;
     if (BIT_SET(instr, 24)) {
-      sprintf(tail(state->text), "%u, cr%u, [%s, #%d]", FIELD(instr, 8, 4),
+      ARM_APP(state->text, sizeof(state->text), "%u, cr%u, [%s, #%d]", FIELD(instr, 8, 4),
               FIELD(instr, 12, 4), register_name(FIELD(instr, 16, 4)), imm);
       if (BIT_SET(instr, 21))
-        strcat(state->text, "!");
+        tkl_strscat(state->text, "!", sizeof(state->text));
     } else if (BIT_CLR(instr, 21)) {
-      sprintf(tail(state->text), "%u, cr%u, [%s], #%d", FIELD(instr, 8, 4),
+      ARM_APP(state->text, sizeof(state->text), "%u, cr%u, [%s], #%d", FIELD(instr, 8, 4),
               FIELD(instr, 12, 4), register_name(FIELD(instr, 16, 4)), imm);
     } else {
-      sprintf(tail(state->text), "%u, cr%u, [%s], {%u}", FIELD(instr, 8, 4),
+      ARM_APP(state->text, sizeof(state->text), "%u, cr%u, [%s], {%u}", FIELD(instr, 8, 4),
               FIELD(instr, 12, 4), register_name(FIELD(instr, 16, 4)),
               FIELD(instr, 0, 8));
     }
@@ -2781,13 +2799,13 @@ static bool arm_co_dataproc(ARMSTATE *state, uint32_t instr)
 {
   /* xxxx 1110 xxxx xxxx : xxxx xxxx xxx0 xxxx - coprocessor data processing */
   int cond = FIELD(instr, 28, 4);
-  strcpy(state->text, "cdp");
+  tkl_strscpy(state->text, "cdp", sizeof(state->text));
   if (cond == 15)
-    strcat(state->text, "2"); /* ARMv5+ */
+    tkl_strscat(state->text, "2", sizeof(state->text)); /* ARMv5+ */
   else
     add_condition(state, cond);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%u, %u, cr%u, cr%u, cr%u, {%u}", FIELD(instr, 8, 4),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%u, %u, cr%u, cr%u, cr%u, {%u}", FIELD(instr, 8, 4),
           FIELD(instr, 20, 4), FIELD(instr, 12, 4), FIELD(instr, 16, 4),
           FIELD(instr, 0, 4), FIELD(instr, 5, 3));
   return true;
@@ -2797,13 +2815,13 @@ static bool arm_co_trans(ARMSTATE *state, uint32_t instr)
 {
   /* xxxx 1110 xxxx xxxx : xxxx xxxx xxx1 xxxx - coprocessor register transfers */
   int cond = FIELD(instr, 28, 4);
-  strcpy(state->text, BIT_CLR(instr, 20) ? "mcr" : "mrc");
+  tkl_strscpy(state->text, BIT_CLR(instr, 20) ? "mcr" : "mrc", sizeof(state->text));
   if (cond == 15)
-    strcat(state->text, "2"); /* ARMv5+ */
+    tkl_strscat(state->text, "2", sizeof(state->text)); /* ARMv5+ */
   else
     add_condition(state, cond);
-  padinstr(state->text);
-  sprintf(tail(state->text), "%u, %u, %s, cr%u, cr%u, {%u}", FIELD(instr, 8, 4),
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "%u, %u, %s, cr%u, cr%u, {%u}", FIELD(instr, 8, 4),
           FIELD(instr, 21, 3), register_name(FIELD(instr, 12, 4)),
           FIELD(instr, 16, 4), FIELD(instr, 0, 4), FIELD(instr, 5, 3));
   return true;
@@ -2815,10 +2833,10 @@ static bool arm_softintr(ARMSTATE *state, uint32_t instr)
   int cond = FIELD(instr, 28, 4);
   if (cond == 15)
     return false;
-  strcpy(state->text, "swi");
+  tkl_strscpy(state->text, "swi", sizeof(state->text));
   add_condition(state, cond);
-  padinstr(state->text);
-  sprintf(tail(state->text), "0x%06x", FIELD(instr, 0, 24));
+  padinstr(state->text, sizeof(state->text));
+  ARM_APP(state->text, sizeof(state->text), "0x%06x", FIELD(instr, 0, 24));
   return true;
 }
 
@@ -2828,34 +2846,34 @@ static bool arm_unconditional(ARMSTATE *state, uint32_t instr)
   if (FIELD(instr, 20, 8) == 0x10) {
     if (BIT_CLR(instr, 16)) {
       /* 1111 0001 0000 xxx0 : xxxx xxxx xx0x xxxx - CPS (ARMv6+) */
-      strcpy(state->text, "cps");
+      tkl_strscpy(state->text, "cps", sizeof(state->text));
       int imod = FIELD(instr, 18, 2);
       if (imod == 2)
-        strcat(state->text, "ie");
+        tkl_strscat(state->text, "ie", sizeof(state->text));
       else if (imod == 3)
-        strcat(state->text, "id");
-      padinstr(state->text);
+        tkl_strscat(state->text, "id", sizeof(state->text));
+      padinstr(state->text, sizeof(state->text));
       int mmod = BIT_SET(instr, 17);
       if (imod != 0) {
         int iflags = FIELD(instr, 6, 3);
         if (iflags & 4)
-          strcat(state->text, "a");
+          tkl_strscat(state->text, "a", sizeof(state->text));
         if (iflags & 2)
-          strcat(state->text, "i");
+          tkl_strscat(state->text, "i", sizeof(state->text));
         if (iflags & 1)
-          strcat(state->text, "f");
+          tkl_strscat(state->text, "f", sizeof(state->text));
         if (mmod)
-          strcat(state->text, ", ");
+          tkl_strscat(state->text, ", ", sizeof(state->text));
       }
       if (mmod)
-        sprintf(tail(state->text), "#%u", FIELD(instr, 0, 5));
+        ARM_APP(state->text, sizeof(state->text), "#%u", FIELD(instr, 0, 5));
     } else {
       /* 1111 0001 0000 0001 : xxxx xxxx 0000 xxxx - SETEND (ARMv6+) */
       if (FIELD(instr, 4, 4) != 0)
         return false;
-      strcpy(state->text, "setend");
-      padinstr(state->text);
-      strcat(state->text, BIT_SET(instr, 9) ? "BE" : "LE");
+      tkl_strscpy(state->text, "setend", sizeof(state->text));
+      padinstr(state->text, sizeof(state->text));
+      tkl_strscat(state->text, BIT_SET(instr, 9) ? "BE" : "LE", sizeof(state->text));
     }
     return true;
   }
@@ -2863,14 +2881,14 @@ static bool arm_unconditional(ARMSTATE *state, uint32_t instr)
     /* 1111 01x1 x101 xxxx : 1111 xxxx xxxx xxxx - PLD (ARMv5+ E variants) */
     if (FIELD(instr, 12, 4) != 0x0f || BIT_CLR(instr, 24))
       return false;
-    strcpy(state->text, "pld");
-    padinstr(state->text);
+    tkl_strscpy(state->text, "pld", sizeof(state->text));
+    padinstr(state->text, sizeof(state->text));
     int Rn = FIELD(instr, 16, 4);
     if (BIT_CLR(instr, 25)) {
       int imm = FIELD(instr, 0, 12);
       if (BIT_CLR(instr, 23))
         imm = -imm;
-      sprintf(tail(state->text), "[%s, #%d]", register_name(Rn), imm);
+      ARM_APP(state->text, sizeof(state->text), "[%s, #%d]", register_name(Rn), imm);
       if (Rn == 15 && BIT_SET(instr, 24) && BIT_CLR(instr, 21)) {
         imm += ALIGN4(state->address + 4);
         state->ldr_addr = imm;
@@ -2879,13 +2897,13 @@ static bool arm_unconditional(ARMSTATE *state, uint32_t instr)
       append_comment_hex(state, (uint32_t)imm);
     } else {
       const char *sign = BIT_CLR(instr, 23) ? "-" : "";
-      sprintf(tail(state->text), "[%s, %s%s", register_name(Rn),
+      ARM_APP(state->text, sizeof(state->text), "[%s, %s%s", register_name(Rn),
               sign, register_name(FIELD(instr, 0, 4)));
       int shifttype = FIELD(instr, 5, 2);
       int shiftcount = FIELD(instr, 7, 5);
       if (shifttype != 0 || shiftcount != 0)
-        sprintf(tail(state->text), ", %s", decode_imm_shift(shifttype, shiftcount));
-      strcat(state->text, "]");
+        ARM_APP(state->text, sizeof(state->text), ", %s", decode_imm_shift(shifttype, shiftcount));
+      tkl_strscat(state->text, "]", sizeof(state->text));
     }
     return true;
   }
@@ -2897,19 +2915,19 @@ static bool arm_unconditional(ARMSTATE *state, uint32_t instr)
       /* 1111 100x x1x0 1101 : xxxx 0101 xxxx xxxx SRS (ARMv6+) */
       if (FIELD(instr, 8, 4) != 0x05 || BIT_CLR(instr, 22) || Rn != 13)
         return false;
-      sprintf(state->text, "srs%s", modes[addr_mode]);
-      padinstr(state->text);
-      sprintf(tail(state->text), "#%u", FIELD(instr, 0, 5));
+      snprintf(state->text, sizeof(state->text), "srs%s", modes[addr_mode]);
+      padinstr(state->text, sizeof(state->text));
+      ARM_APP(state->text, sizeof(state->text), "#%u", FIELD(instr, 0, 5));
     } else {
       /* 1111 100x x0x1 xxxx : xxxx 1010 xxxx xxxx - RFE (ARMv6+) */
       if (FIELD(instr, 8, 4) != 0x0a || BIT_SET(instr, 22))
         return false;
-      sprintf(state->text, "rfe%s", modes[addr_mode]);
-      padinstr(state->text);
-      strcat(state->text, register_name(Rn));
+      snprintf(state->text, sizeof(state->text), "rfe%s", modes[addr_mode]);
+      padinstr(state->text, sizeof(state->text));
+      tkl_strscat(state->text, register_name(Rn), sizeof(state->text));
     }
     if (BIT_SET(instr,21))
-      strcat(state->text, "!");
+      tkl_strscat(state->text, "!", sizeof(state->text));
     return true;
   }
   if (FIELD(instr, 25, 3) == 0x05) {
@@ -2920,9 +2938,9 @@ static bool arm_unconditional(ARMSTATE *state, uint32_t instr)
     if (BIT_SET(instr, 24))
       imm += 2;
     int32_t address = state->address + 8 + imm;
-    strcpy(state->text, "blx");
-    padinstr(state->text);
-    sprintf(tail(state->text), "0x%07x", address);
+    tkl_strscpy(state->text, "blx", sizeof(state->text));
+    padinstr(state->text, sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), "0x%07x", address);
     append_comment_symbol(state, address);
     mark_address_type(state, address, POOL_CODE);
     disasm_symbol(state, NULL, address, ARMMODE_THUMB); /* also mark address as Thumb mode */
@@ -3022,13 +3040,13 @@ static void dump_word(ARMSTATE *state, uint32_t w)
 {
   assert(state);
   if (state->size == 4) {
-    strcpy(state->text, ".word");
-    padinstr(state->text);
-    sprintf(tail(state->text), "0x%08x", w);
+    tkl_strscpy(state->text, ".word", sizeof(state->text));
+    padinstr(state->text, sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), "0x%08x", w);
   } else {
-    strcpy(state->text, ".hword");
-    padinstr(state->text);
-    sprintf(tail(state->text), "0x%04x", w & 0xffff);
+    tkl_strscpy(state->text, ".hword", sizeof(state->text));
+    padinstr(state->text, sizeof(state->text));
+    ARM_APP(state->text, sizeof(state->text), "0x%04x", w & 0xffff);
   }
   if (state->add_cmt && state->size == 4) {
     if (get_symbol(state, w) >= 0) {
@@ -3045,16 +3063,16 @@ static void dump_word(ARMSTATE *state, uint32_t w)
       }
       if (all_ascii) {
         char field[16];
-        strcpy(field, "\"");
+        tkl_strscpy(field, "\"", sizeof(field));
         for (int i = 0; i < 4; i++) {
           if (c[i] == '\0') {
-            strcat(field, "\\0");
+            tkl_strscat(field, "\\0", sizeof(field));
           } else if (c[i] == '\n') {
-            strcat(field, "\\n");
+            tkl_strscat(field, "\\n", sizeof(field));
           } else if (c[i] == '\r') {
-            strcat(field, "\\r");
+            tkl_strscat(field, "\\r", sizeof(field));
           } else if (c[i] == '\t') {
-            strcat(field, "\\t");
+            tkl_strscat(field, "\\t", sizeof(field));
           } else {
             assert(isprint(c[i]));
             int len = strlen(field);
@@ -3062,7 +3080,7 @@ static void dump_word(ARMSTATE *state, uint32_t w)
             field[len + 1] = '\0';
           }
         }
-        strcat(field, "\"");
+        tkl_strscat(field, "\"", sizeof(field));
         append_comment(state, field, NULL);
       }
     }
@@ -3480,7 +3498,7 @@ bool disasm_buffer(ARMSTATE *state, const uint8_t *buffer, size_t buffersize,
           append_comment(state, state->symbols[sym_idx].name, " -> ");
         } else {
           char hex[40];
-          sprintf(hex, "0x%08x", address);
+          snprintf(hex, sizeof(hex), "0x%08x", address);
           append_comment(state, hex, " -> ");
           /* test whether that address points to a string literal */
           if (state->literals) {
@@ -3521,21 +3539,32 @@ bool disasm_buffer(ARMSTATE *state, const uint8_t *buffer, size_t buffersize,
   return true;
 }
 
-static bool disasm_callback(uint32_t address, const char *text, void *outbuf)
+/* disasm_buffer()'s `user` slot is the vendored CompuPhase API and stays as
+ * published; the capacity travels through it instead of through a new
+ * parameter.  state->text is 128 bytes, the caller's buffer may be smaller. */
+struct arm_out { char *buf; int cap; };
+
+static bool disasm_callback(uint32_t address, const char *text, void *user)
 {
+  struct arm_out *dst = (struct arm_out *)user;
   (void)address;  /* the editor view prints the text, not the PC */
   disasm_clear_codepool(&arm);
-  sprintf(outbuf, "%s", text);
+  if (dst && dst->buf && dst->cap > 0)
+    tkl_strscpy(dst->buf, text ? text : "", (size_t)dst->cap);
   return true;
 }
 
-char *decodeARM32(long unsigned int start, char *outbuf, int *lendis, long unsigned int out)
+char *decodeARM32(long unsigned int start, char *outbuf, int outbufsize, int *lendis, long unsigned int out)
 {
     (void)out;
     struct editor *e = editor();
+    struct arm_out dst;
+    dst.buf = outbuf;
+    dst.cap = outbufsize;
+    if (outbufsize > 0) outbuf[0] = '\0';
     disasm_init(&arm, 0);
     disasm_address(&arm, start);
-    disasm_buffer(&arm, (const uint8_t *)start, 4, e->seg_size < 32 ? ARMMODE_THUMB : ARMMODE_ARM, disasm_callback, outbuf);
+    disasm_buffer(&arm, (const uint8_t *)start, 4, e->seg_size < 32 ? ARMMODE_THUMB : ARMMODE_ARM, disasm_callback, &dst);
     *lendis = arm.size;
     disasm_cleanup(&arm);
     /* The buffer the caller passed is the result; falling off the end handed

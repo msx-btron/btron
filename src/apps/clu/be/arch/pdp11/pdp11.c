@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
+#include <libstr.h>
 
 #include "../../editor.h"
 
@@ -124,7 +125,6 @@ char* two[] = {
   0, "mov",  "cmp",  "bit",  "bic",  "bis",  "add", 0,
   0, "movb", "cmpb", "bitb", "bicb", "bisb", "sub", 0, 0 };
 
-char* reg_addr[] = { "%s", "(%s)", "(%s)+", "@(%s)+", "-(%s)", "@-(%s)", "0x%X(%s)", "@0x%X(%s)", 0 };
 char pdpout[1000];
 
 uint16_t pdp11word(unsigned long int address) {
@@ -133,42 +133,65 @@ uint16_t pdp11word(unsigned long int address) {
     return operation;
 }
 
-char * decodePDP11(unsigned long int address, char *outbuf, int *lendis, unsigned long int offset0)
+/* The eight addressing-mode spellings used to live in reg_addr[] as format
+ * strings indexed by a 3-bit mode field, so every call site handed sprintf a
+ * non-literal format -- and modes 6/7 took two arguments while several sites
+ * passed one, reading a vararg that was never pushed.  One helper, literal
+ * formats, one measured capacity. */
+static void pdp_mode(unsigned mod, unsigned word, const char *reg)
+{
+    char operand[64];
+    switch (mod) {
+        case 0:  snprintf(operand, sizeof(operand), "%s", reg); break;
+        case 1:  snprintf(operand, sizeof(operand), "(%s)", reg); break;
+        case 2:  snprintf(operand, sizeof(operand), "(%s)+", reg); break;
+        case 3:  snprintf(operand, sizeof(operand), "@(%s)+", reg); break;
+        case 4:  snprintf(operand, sizeof(operand), "-(%s)", reg); break;
+        case 5:  snprintf(operand, sizeof(operand), "@-(%s)", reg); break;
+        case 6:  snprintf(operand, sizeof(operand), "0x%X(%s)", word, reg); break;
+        default: snprintf(operand, sizeof(operand), "@0x%X(%s)", word, reg); break;
+    }
+    tkl_strscat(pdpout, operand, sizeof(pdpout));
+}
+
+char * decodePDP11(unsigned long int address, char *outbuf, int outbufsize, int *lendis, unsigned long int offset0)
 {
     (void)offset0;
     unsigned long int start = address, i;
     unsigned long int finish = address + 2;
     uint16_t operation = pdp11word(start);
-    for (i = 0; i < 1000; i++) pdpout[i] = 0;
+    pdpout[0] = '\0';
 
     for (i = 0; direct[i].name; i++) if (operation == direct[i].code) {
-         sprintf(pdpout, "%s", direct[i].name);
+         snprintf(pdpout, sizeof(pdpout), "%s", direct[i].name);
          goto end;
     }
 
     for (i = 0; one3[i].name; i++) if ((operation >> 3) == one3[i].code) {
          uint8_t dst_reg = (operation >> 0) & 7;
          uint8_t dst_mod = (operation >> 3) & 7;
-         sprintf(pdpout, "%s ", one3[i].name);
-         sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], regs[dst_reg]);
+         snprintf(pdpout, sizeof(pdpout), "%s ", one3[i].name);
+         /* This group has no extension word; modes 6/7 print 0 rather than
+          * reading a second argument that was never passed. */
+         pdp_mode(dst_mod, 0, regs[dst_reg]);
          goto end;
     }
 
     for (i = 0; one[i].name; i++) if ((operation >> 6) == one[i].code) {
          uint8_t dst_reg = (operation >> 0) & 7;
          uint8_t dst_mod = (operation >> 3) & 7;
-         sprintf(pdpout, "%s ", one[i].name);
-         if (dst_mod < 6) sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], regs[dst_reg]);
-         else { sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], pdp11word(finish), regs[dst_reg]); finish += 2; }
+         snprintf(pdpout, sizeof(pdpout), "%s ", one[i].name);
+         if (dst_mod < 6) pdp_mode(dst_mod, 0, regs[dst_reg]);
+         else { pdp_mode(dst_mod, pdp11word(finish), regs[dst_reg]); finish += 2; }
          goto end;
     }
 
     for (i = 0; fpu1[i].name; i++) if ((operation >> 6) == fpu1[i].code) {
          uint8_t dst_reg = (operation >> 0) & 7;
          uint8_t dst_mod = (operation >> 3) & 7;
-         sprintf(pdpout, "%s ", fpu1[i].name);
-         if (dst_mod < 6) sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], fpus[dst_reg]);
-         else { sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], pdp11word(finish), fpus[dst_reg]); finish += 2; }
+         snprintf(pdpout, sizeof(pdpout), "%s ", fpu1[i].name);
+         if (dst_mod < 6) pdp_mode(dst_mod, 0, fpus[dst_reg]);
+         else { pdp_mode(dst_mod, pdp11word(finish), fpus[dst_reg]); finish += 2; }
          goto end;
     }
 
@@ -176,35 +199,35 @@ char * decodePDP11(unsigned long int address, char *outbuf, int *lendis, unsigne
          uint8_t dst_reg = (operation >> 0) & 7;
          uint8_t dst_mod = (operation >> 3) & 7;
          uint8_t ac      = (operation >> 6) & 3;
-         sprintf(pdpout, "%s %s, ", fpu2[i].name, fpus[ac]);
-         if (dst_mod < 6) sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], fpus[dst_reg]);
-         else { sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], pdp11word(finish), fpus[dst_reg]); finish += 2; }
+         snprintf(pdpout, sizeof(pdpout), "%s %s, ", fpu2[i].name, fpus[ac]);
+         if (dst_mod < 6) pdp_mode(dst_mod, 0, fpus[dst_reg]);
+         else { pdp_mode(dst_mod, pdp11word(finish), fpus[dst_reg]); finish += 2; }
          goto end;
     }
 
     for (i = 0; jmp[i].name; i++) if ((operation >> 8) == jmp[i].code) {
-         sprintf(pdpout, "%s 0x%x", jmp[i].name, (operation & 0xFF) * 2 + 2);
+         snprintf(pdpout, sizeof(pdpout), "%s 0x%x", jmp[i].name, (operation & 0xFF) * 2 + 2);
          goto end;
     }
 
     for (i = 0; sob[i].name; i++) if ((operation >> 9) == sob[i].code) {
          uint8_t reg = (operation >> 6) & 7;
          uint8_t offset = operation & 0x3F;
-         sprintf(pdpout, "%s %s, 0x%x", sob[i].name, regs[reg], offset);
+         snprintf(pdpout, sizeof(pdpout), "%s %s, 0x%x", sob[i].name, regs[reg], offset);
          goto end;
     }
 
     for (i = 0; xor[i].name; i++) if ((operation >> 9) == xor[i].code) {
          uint8_t dst_reg = (operation >> 0) & 7;
          uint8_t dst_mod = (operation >> 3) & 7;
-         sprintf(pdpout, "%s %s, ", xor[i].name, regs[(operation >> 6) & 7]);
-         if (dst_mod < 6) sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], regs[dst_reg]);
-         else { sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], pdp11word(finish), regs[dst_reg]); finish += 2; }
+         snprintf(pdpout, sizeof(pdpout), "%s %s, ", xor[i].name, regs[(operation >> 6) & 7]);
+         if (dst_mod < 6) pdp_mode(dst_mod, 0, regs[dst_reg]);
+         else { pdp_mode(dst_mod, pdp11word(finish), regs[dst_reg]); finish += 2; }
          goto end;
     }
 
     for (i = 0; imm[i].name; i++) if ((operation >> imm[i].bits) == imm[i].code) {
-         sprintf(pdpout, "%s %u.", imm[i].name, operation & imm[i].mask);
+         snprintf(pdpout, sizeof(pdpout), "%s %u.", imm[i].name, operation & imm[i].mask);
          goto end;
     }
 
@@ -213,20 +236,20 @@ char * decodePDP11(unsigned long int address, char *outbuf, int *lendis, unsigne
          uint8_t dst_mod = (operation >> 3) & 7;
          uint8_t src_reg = (operation >> 6) & 7;
          uint8_t src_mod = (operation >> 9) & 7;
-         sprintf(pdpout, "%s ", two[i]);
-         if (src_mod < 6) sprintf(pdpout+strlen(pdpout), reg_addr[src_mod], regs[src_reg]);
-         else { sprintf(pdpout+strlen(pdpout), reg_addr[src_mod], pdp11word(finish), regs[src_reg]); finish += 2; }
-         sprintf(pdpout+strlen(pdpout), ", ");
-         if (dst_mod < 6) sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], regs[dst_reg]);
-         else { sprintf(pdpout+strlen(pdpout), reg_addr[dst_mod], pdp11word(finish), regs[dst_reg]); finish += 2; }
+         snprintf(pdpout, sizeof(pdpout), "%s ", two[i]);
+         if (src_mod < 6) pdp_mode(src_mod, 0, regs[src_reg]);
+         else { pdp_mode(src_mod, pdp11word(finish), regs[src_reg]); finish += 2; }
+         tkl_strscat(pdpout, ", ", sizeof(pdpout));
+         if (dst_mod < 6) pdp_mode(dst_mod, 0, regs[dst_reg]);
+         else { pdp_mode(dst_mod, pdp11word(finish), regs[dst_reg]); finish += 2; }
          goto end;
     }
 
-    sprintf(pdpout, ".word 0x%04X", (unsigned int)operation);
+    snprintf(pdpout, sizeof(pdpout), ".word 0x%04X", (unsigned int)operation);
 
 end:
-    memcpy(outbuf,pdpout,strlen(pdpout));
-    outbuf[strlen(pdpout)] = '\0';
+    /* pdpout is 1000 bytes; the caller's buffer was never measured. */
+    tkl_strscpy(outbuf, pdpout, (size_t)(outbufsize > 0 ? outbufsize : 0));
     *lendis = finish - start;
     return outbuf;
 }

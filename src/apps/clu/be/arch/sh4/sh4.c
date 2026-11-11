@@ -25,15 +25,21 @@ static void neo_asm_emit(char ch) {
         sh4asm_disas[sh4asm_disas_len++] = ch;
 }
 
-char * decodeSH4(unsigned long int address, char *outbuf, int *lendis, unsigned long int offset0)
+char * decodeSH4(unsigned long int address, char *outbuf, int outbufsize, int *lendis, unsigned long int offset0)
 {
      (void)offset0;  /* the SH4 table emits no PC-relative operand yet */
      uint16_t inst16 = (uint16_t)*((unsigned long int *)address);
      memset(sh4_buf, 0, sizeof(sh4_buf));
      clear_asm();
      sh4asm_disas_inst(inst16, neo_asm_emit, 0);
-     memcpy(outbuf,sh4asm_disas,sh4asm_disas_len);
-     memcpy(outbuf+sh4asm_disas_len,"\0",1);
+     /* neo_asm_emit caps the text at SH4ASM_TXT_LEN (228), but the caller's
+      * buffer was never measured -- 228 bytes went into whatever it passed. */
+     if (outbufsize > 0) {
+         size_t n = sh4asm_disas_len;
+         if (n > (size_t)outbufsize - 1u) n = (size_t)outbufsize - 1u;
+         memcpy(outbuf, sh4asm_disas, n);
+         outbuf[n] = '\0';
+     }
      *lendis = 2;
      /* decodeSH4 fills the caller's outbuf; without this the return value was
       * the previous call's register content. */

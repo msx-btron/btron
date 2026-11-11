@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <libstr.h>
 
 #include "adefs.h"
 #include "bits.h"
@@ -18,13 +19,19 @@
 unsigned int * opcode = NULL;
 struct ad_insn *insn = NULL;
 
-char *decodeARM64(unsigned long int start, char *outbuf, int *lendis, unsigned long int offset0)
+char *decodeARM64(unsigned long int start, char *outbuf, int outbufsize, int *lendis, unsigned long int offset0)
 {
      (void)offset0;  /* Armadillo is fed the buffer address below, not the file offset */
      *lendis = 4;
      opcode = (unsigned int *)start;
      ArmadilloDisassemble(*opcode, (unsigned long)opcode, &insn);
-     memcpy(outbuf,insn->decoded,strlen(insn->decoded)+1);
+     /* insn->decoded is a heap string whose length the decoder chooses.  The
+      * old memcpy copied strlen+1 bytes into a caller buffer it never
+      * measured; on the freestanding lanes that buffer can be 128 bytes. */
+     if (insn && insn->decoded)
+         tkl_strscpy(outbuf, insn->decoded, (size_t)(outbufsize > 0 ? outbufsize : 0));
+     else if (outbufsize > 0)
+         outbuf[0] = '\0';
      ArmadilloDone(&insn);
      return outbuf;
 }
@@ -90,6 +97,7 @@ int ArmadilloDisassemble(unsigned int opcode, unsigned long PC,
         return 1;
 
     *out = malloc(sizeof(struct ad_insn));
+    if (!*out) return 1;
 
     (*out)->decoded = NULL;
 

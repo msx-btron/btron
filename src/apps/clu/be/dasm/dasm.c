@@ -105,29 +105,35 @@ int offset_at_cursor_dasm(struct editor* e) {
     return offset;
 }
 
-char *decodeARM(unsigned long int start, char *outbuf, int *lendis, unsigned long int offset) {
+/* Every legacy decoder now takes the full capacity of outbuf (including the
+ * NUL) right after the pointer, the convention arch/x86/disasm.c already used
+ * for disasm().  Before this, none of them could see the buffer they wrote:
+ * decodeEM64T hardcoded 4096 into the 2048-byte outbuf below, decodePPC copied
+ * up to 3201 bytes, and the freestanding sprintf in include/rt/stdio.h caps at
+ * 8192 regardless of the destination. */
+char *decodeARM(unsigned long int start, char *outbuf, int outbufsize, int *lendis, unsigned long int offset) {
     struct editor *e = editor();
    /* Both branches return the callee's buffer; falling off the end of a
     * non-void function handed the caller whatever $v0 happened to hold. */
-   if (e->seg_size < 64) return decodeARM32 (start, outbuf, lendis, offset);
-   else return decodeARM64 (start, outbuf, lendis, offset);
+   if (e->seg_size < 64) return decodeARM32 (start, outbuf, outbufsize, lendis, offset);
+   else return decodeARM64 (start, outbuf, outbufsize, lendis, offset);
 }
 
-char *decode(unsigned long int start, char *outbuf, int *lendis, unsigned long int offset)
+char *decode(unsigned long int start, char *outbuf, int outbufsize, int *lendis, unsigned long int offset)
 {
     struct editor *e = editor();
     switch (e->arch) {
-         case ARCH_INTEL: decodeEM64T (start, outbuf, lendis, offset); break;
-         case ARCH_ARM:   decodeARM   (start, outbuf, lendis, offset); break;
-         case ARCH_PPC:   decodePPC   (start, outbuf, lendis, offset); break;
-         case ARCH_RISCV: decodeRISCV (start, outbuf, lendis, offset); break;
-         case ARCH_SH4:   decodeSH4   (start, outbuf, lendis, offset); break;
-         case ARCH_M68K:  decodeM68K  (start, outbuf, lendis, offset); break;
-         case ARCH_MIPS:  decodeMIPS  (start, outbuf, lendis, offset); break;
-         case ARCH_PDP11: decodePDP11 (start, outbuf, lendis, offset); break;
+         case ARCH_INTEL: decodeEM64T (start, outbuf, outbufsize, lendis, offset); break;
+         case ARCH_ARM:   decodeARM   (start, outbuf, outbufsize, lendis, offset); break;
+         case ARCH_PPC:   decodePPC   (start, outbuf, outbufsize, lendis, offset); break;
+         case ARCH_RISCV: decodeRISCV (start, outbuf, outbufsize, lendis, offset); break;
+         case ARCH_SH4:   decodeSH4   (start, outbuf, outbufsize, lendis, offset); break;
+         case ARCH_M68K:  decodeM68K  (start, outbuf, outbufsize, lendis, offset); break;
+         case ARCH_MIPS:  decodeMIPS  (start, outbuf, outbufsize, lendis, offset); break;
+         case ARCH_PDP11: decodePDP11 (start, outbuf, outbufsize, lendis, offset); break;
          case ARCH_NVIDIA:
              /* Release One has no NVIDIA decoder. Advance one byte. */
-             if (outbuf) outbuf[0] = '\0';
+             if (outbuf && outbufsize > 0) outbuf[0] = '\0';
              if (lendis) *lendis = 1;
              break;
          default: break;
@@ -144,7 +150,7 @@ void disassemble_screen(struct editor* e, struct charbuf* b)
     q = &e->contents[offset];
     for (int i = 0; i < e->screen_rows - 2; i++) if (offset < e->content_length)
     {
-        decode((unsigned long)q, outbuf, &lendis, offset);
+        decode((unsigned long)q, outbuf, (int)sizeof(outbuf), &lendis, offset);
         setup_instruction(i, e, b, offset, (uint8_t *) q, lendis, outbuf);
         q += lendis;
         offset += lendis;

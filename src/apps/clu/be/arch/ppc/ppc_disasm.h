@@ -22,6 +22,8 @@
 #ifndef PPC_DISASM_H
 #define PPC_DISASM_H
 
+#include <stddef.h>   /* size_t: the two buffer capacities below */
+
 #define PPC_GEKKO
 
 /* version/revision */
@@ -116,6 +118,12 @@ struct DisasmPara_PPC {
   ppc_word *iaddr;              /* instr.addr., usually the same as instr */
   char *opcode;                 /* buffer for opcode, min. 10 chars. */
   char *operands;               /* operand buffer, min. 24 chars. */
+  /* Full capacity of the two buffers above, including the NUL.  The
+   * disassembler writes through cursors into operands, so it needs the real
+   * size, not the documented minimum.  Set by the caller before
+   * PPC_Disassemble(); zero means "write nothing". */
+  size_t opcode_cap;
+  size_t operands_cap;
 /* changed by disassembler: */
   unsigned char type;           /* type of instruction, see below */
   unsigned char flags;          /* additional flags */
@@ -137,5 +145,6 @@ struct DisasmPara_PPC {
 
 extern ppc_word *PPC_Disassemble(struct DisasmPara_PPC *);
 
-char * decodePPC(unsigned long int start, char *outbuf, int *lendis, unsigned long int offset0);
+/* outbufsize is the full capacity of outbuf, including the NUL. */
+char * decodePPC(unsigned long int start, char *outbuf, int outbufsize, int *lendis, unsigned long int offset0);
 

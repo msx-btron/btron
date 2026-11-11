@@ -43,6 +43,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
+#include <libstr.h>
 #include "ppc_disasm.h"
 
 
@@ -99,16 +100,12 @@ static char *vmnames[] = {
 
 
 
-static void ierror(char *errtxt,...)
-/* display internal error and quit program */
+static void ierror(const char *errtxt)
+/* display internal error and quit program.  The only caller passes a
+ * literal with no arguments, so the variadic forwarder (and its
+ * caller-supplied format) is gone. */
 {
-  va_list vl;
-
-  fprintf(stderr,"\nINTERNAL ERROR (PPC disassembler): ");
-  va_start(vl,errtxt);
-  vfprintf(stderr,errtxt,vl);
-  va_end(vl);
-  fprintf(stderr,".\nAborting.\n");
+  fprintf(stderr,"\nINTERNAL ERROR (PPC disassembler): %s.\nAborting.\n",errtxt);
   exit(EXIT_FAILURE);
 }
 
@@ -127,8 +124,8 @@ static ppc_word swapab(ppc_word w)
 
 static void ill(struct DisasmPara_PPC *dp,ppc_word in)
 {
-  strcpy(dp->opcode,".word");
-  sprintf(dp->operands,"0x%08lx",(unsigned long)in);
+  tkl_strscpy(dp->opcode,".word", dp->opcode_cap);
+  snprintf(dp->operands, dp->operands_cap,"0x%08lx",(unsigned long)in);
   dp->flags |= PPCF_ILLEGAL;
 }
 
@@ -153,16 +150,16 @@ static void imm(struct DisasmPara_PPC *dp,ppc_word in,int uimm,int type)
 
   switch (type) {
     case 0:
-      sprintf(dp->operands,"r%d,r%d,%d",(int)PPCGETD(in),(int)PPCGETA(in),i);
+      snprintf(dp->operands, dp->operands_cap,"r%d,r%d,%d",(int)PPCGETD(in),(int)PPCGETA(in),i);
       break;
     case 1:
-      sprintf(dp->operands,"r%d,r%d,%d",(int)PPCGETA(in),(int)PPCGETD(in),i);
+      snprintf(dp->operands, dp->operands_cap,"r%d,r%d,%d",(int)PPCGETA(in),(int)PPCGETD(in),i);
       break;
     case 2:
-      sprintf(dp->operands,"r%d,%d",(int)PPCGETA(in),i);
+      snprintf(dp->operands, dp->operands_cap,"r%d,%d",(int)PPCGETA(in),i);
       break;
     case 3:
-      sprintf(dp->operands,"r%d,%d",(int)PPCGETD(in),i);
+      snprintf(dp->operands, dp->operands_cap,"r%d,%d",(int)PPCGETD(in),i);
       break;
     default:
       ierror("imm(): Wrong type");
@@ -171,75 +168,94 @@ static void imm(struct DisasmPara_PPC *dp,ppc_word in,int uimm,int type)
 }
 
 
-static void ra_rb(char *s,ppc_word in)
+/* Chars that actually landed in a buffer of `cap` from an snprintf that
+ * reported `n`.  snprintf's return value is the untruncated length. */
+static size_t ppc_written(int n, size_t cap)
 {
-  sprintf(s,"r%d,r%d",(int)PPCGETA(in),(int)PPCGETB(in));
+  if (n < 0) return 0u;
+  return ((size_t)n < cap) ? (size_t)n : (cap ? cap - 1u : 0u);
+}
+
+/* Every operand field is appended at a cursor into dp->operands.  snprintf
+ * returns the length it *would* have written, so the cursor has to advance by
+ * what actually landed or it walks past the end of the buffer.  `cap` is the
+ * room left at `s`, including the NUL, and is consumed as we go.  The format
+ * is a literal at every use: the old static const char *fmt / fmt+1 pairs
+ * handed sprintf a non-literal format and no bound at all. */
+#define PPC_APP(s, cap, ...) do { \
+    size_t ppc_w_ = ppc_written(snprintf((s), (cap), __VA_ARGS__), (cap)); \
+    (s) += ppc_w_; \
+    (cap) -= ppc_w_; \
+} while (0)
+
+static void ra_rb(char *s,size_t cap,ppc_word in)
+{
+  snprintf(s,cap,"r%d,r%d",(int)PPCGETA(in),(int)PPCGETB(in));
 }
 
 
-static char *rd_ra_rb(char *s,ppc_word in,int mask)
+static char *rd_ra_rb(char *s,size_t cap,ppc_word in,int mask)
 {
-  static const char *fmt = "r%d,";
+  char *start = s;
 
   if (mask) {
     if (mask & 4)
-      s += sprintf(s,fmt,(int)PPCGETD(in));
+      PPC_APP(s,cap,"r%d,",(int)PPCGETD(in));
     if (mask & 2)
-      s += sprintf(s,fmt,(int)PPCGETA(in));
+      PPC_APP(s,cap,"r%d,",(int)PPCGETA(in));
     if (mask & 1)
-      s += sprintf(s,fmt,(int)PPCGETB(in));
-    *--s = '\0';
+      PPC_APP(s,cap,"r%d,",(int)PPCGETB(in));
+    if (s > start) *--s = '\0';   /* drop the trailing comma */
   }
-  else
+  else if (cap)
     *s = '\0';
   return (s);
 }
 
 
-static char *fd_ra_rb(char *s,ppc_word in,int mask)
+static char *fd_ra_rb(char *s,size_t cap,ppc_word in,int mask)
 {
-  static const char *ffmt = "f%d,";
-  static const char *rfmt = "r%d,";
+  char *start = s;
 
   if (mask) {
     if (mask & 4)
-      s += sprintf(s,ffmt,(int)PPCGETD(in));
+      PPC_APP(s,cap,"f%d,",(int)PPCGETD(in));
     if (mask & 2)
-      s += sprintf(s,rfmt,(int)PPCGETA(in));
+      PPC_APP(s,cap,"r%d,",(int)PPCGETA(in));
     if (mask & 1)
-      s += sprintf(s,rfmt,(int)PPCGETB(in));
-    *--s = '\0';
+      PPC_APP(s,cap,"r%d,",(int)PPCGETB(in));
+    if (s > start) *--s = '\0';
   }
-  else
+  else if (cap)
     *s = '\0';
   return (s);
 }
 
 
-static char *vd_va_vb(char *s,ppc_word in,int mask)
+static char *vd_va_vb(char *s,size_t cap,ppc_word in,int mask)
 {
-  static const char *fmt = "v%d,";
+  char *start = s;
 
   if (mask) {
     if (mask & 4)
-      s += sprintf(s,fmt,(int)PPCGETD(in));
+      PPC_APP(s,cap,"v%d,",(int)PPCGETD(in));
 
     if (mask & 2) {
       if (mask & 16) {  /* A = SIMM */
         int a = PPCGETA(in);
-        s += sprintf(s,fmt+1,(a>15)?(a-32):a);
+        PPC_APP(s,cap,"%d,",(a>15)?(a-32):a);
       }
       else if (mask & 8)  /* A = UIMM */
-        s += sprintf(s,fmt+1,(int)PPCGETA(in));
+        PPC_APP(s,cap,"%d,",(int)PPCGETA(in));
       else
-        s += sprintf(s,fmt,(int)PPCGETA(in));
+        PPC_APP(s,cap,"v%d,",(int)PPCGETA(in));
     }
 
     if (mask & 1)
-      s += sprintf(s,fmt,(int)PPCGETB(in));
-    *--s = '\0';
+      PPC_APP(s,cap,"v%d,",(int)PPCGETB(in));
+    if (s > start) *--s = '\0';
   }
-  else
+  else if (cap)
     *s = '\0';
   return (s);
 }
@@ -251,7 +267,7 @@ static void trapi(struct DisasmPara_PPC *dp,ppc_word in,unsigned char dmode)
 
   if ((cnd = trap_condition[PPCGETD(in)])) {
     dp->flags |= dmode;
-    sprintf(dp->opcode,"t%c%s",dmode?'d':'w',cnd);
+    snprintf(dp->opcode, dp->opcode_cap,"t%c%s",dmode?'d':'w',cnd);
     imm(dp,in,0,2);
   }
   else
@@ -262,18 +278,23 @@ static void trapi(struct DisasmPara_PPC *dp,ppc_word in,unsigned char dmode)
 static void cmpi(struct DisasmPara_PPC *dp,ppc_word in,int uimm)
 {
   char *oper = dp->operands;
+  size_t cap = dp->operands_cap, cap0 = cap;
   int i = (int)PPCGETL(in);
 
   if (i < 2) {
     if (i)
       dp->flags |= PPCF_64;
-    sprintf(dp->opcode,"%si",cmpname[uimm*2+i]);
+    snprintf(dp->opcode, dp->opcode_cap,"%si",cmpname[uimm*2+i]);
     if ((i = (int)PPCGETCRD(in))) {
-      sprintf(oper,"cr%c,",'0'+i);
-      dp->operands += 4;
+      PPC_APP(oper,cap,"cr%c,",'0'+i);
+      /* imm() writes at the advanced cursor, so the capacity has to move
+       * with it; both are restored below. */
+      dp->operands = oper;
+      dp->operands_cap = cap;
     }
     imm(dp,in,uimm,2);
     dp->operands = oper;
+    dp->operands_cap = cap0;
   }
   else
     ill(dp,in);
@@ -283,11 +304,11 @@ static void cmpi(struct DisasmPara_PPC *dp,ppc_word in,int uimm)
 static void addi(struct DisasmPara_PPC *dp,ppc_word in,char *ext)
 {
   if ((in&0x08000000) && !PPCGETA(in)) {
-    sprintf(dp->opcode,"l%s",ext);  /* li, lis */
+    snprintf(dp->opcode, dp->opcode_cap,"l%s",ext);  /* li, lis */
     imm(dp,in,0,3);
   }
   else {
-    sprintf(dp->opcode,"%s%s",(in&0x8000)?"sub":"add",ext);
+    snprintf(dp->opcode, dp->opcode_cap,"%s%s",(in&0x8000)?"sub":"add",ext);
     if (in & 0x8000)
       in = (in^0xffff) + 1;
     imm(dp,in,1,0);
@@ -314,27 +335,27 @@ static int branch(struct DisasmPara_PPC *dp,ppc_word in,
     if (bo & 16) {
       /* branch always */
       if (PPCGETIDX(in) != 16) {
-        sprintf(dp->opcode,"b%s%s",bname,ext);
+        snprintf(dp->opcode, dp->opcode_cap,"b%s%s",bname,ext);
       }
       else {
-        sprintf(dp->opcode,"bc%s",ext);
-        opercnt = sprintf(dp->operands,"%d,%d",bo,bi);
+        snprintf(dp->opcode, dp->opcode_cap,"bc%s",ext);
+        opercnt = (int)ppc_written(snprintf(dp->operands, dp->operands_cap,"%d,%d",bo,bi), dp->operands_cap);
       }
     }
     else {
       /* branch conditional */
-      sprintf(dp->opcode,"b%s%s%s%c",b_condition[((bo&8)>>1)+(bi&3)],
+      snprintf(dp->opcode, dp->opcode_cap,"b%s%s%s%c",b_condition[((bo&8)>>1)+(bi&3)],
               bname,ext,y);
       if (bi >= 4)
-        opercnt = sprintf(dp->operands,"cr%d",bi>>2);
+        opercnt = (int)ppc_written(snprintf(dp->operands, dp->operands_cap,"cr%d",bi>>2), dp->operands_cap);
     }
   }
 
   else {
     /* CTR is decremented and checked */
-    sprintf(dp->opcode,"bd%s%s%s%c",b_decr[bo>>1],bname,ext,y);
+    snprintf(dp->opcode, dp->opcode_cap,"bd%s%s%s%c",b_decr[bo>>1],bname,ext,y);
     if (!(bo & 16))
-      opercnt = sprintf(dp->operands,"%d",bi);
+      opercnt = (int)ppc_written(snprintf(dp->operands, dp->operands_cap,"%d",bi), dp->operands_cap);
   }
 
   return (opercnt);
@@ -346,17 +367,19 @@ static void bc(struct DisasmPara_PPC *dp,ppc_word in)
   int d = (int)(in & 0xfffc);
   int offs;
   char *oper = dp->operands;
+  size_t cap = dp->operands_cap;
 
   if (d >= 0x8000)
     d -= 0x10000;
   if ((offs = branch(dp,in,"",(in&2)?1:0,d))) {
     oper += offs;
-    *oper++ = ',';
+    cap -= (size_t)offs;
+    if (cap > 1u) { *oper++ = ','; cap--; }
   }
   if (in & 2)  /* AA ? */
-    sprintf(dp->operands,"0x%lx",(unsigned long)d);
+    snprintf(dp->operands, dp->operands_cap,"0x%lx",(unsigned long)d);
   else
-    sprintf(oper,"0x%lx",(unsigned long)((char *)dp->iaddr + d));
+    snprintf(oper,cap,"0x%lx",(unsigned long)((char *)dp->iaddr + d));
   dp->type = PPCINSTR_BRANCH;
   dp->displacement = (ppc_word)d;
 }
@@ -368,11 +391,11 @@ static void bli(struct DisasmPara_PPC *dp,ppc_word in)
 
   if (d >= 0x2000000)
     d -= 0x4000000;
-  sprintf(dp->opcode,"b%s",b_ext[in&3]);
+  snprintf(dp->opcode, dp->opcode_cap,"b%s",b_ext[in&3]);
   if (in & 2)  /* AA ? */
-    sprintf(dp->operands,"0x%lx",(unsigned long)d);
+    snprintf(dp->operands, dp->operands_cap,"0x%lx",(unsigned long)d);
   else
-    sprintf(dp->operands,"0x%lx",(unsigned long)((char *)dp->iaddr + d));
+    snprintf(dp->operands, dp->operands_cap,"0x%lx",(unsigned long)((char *)dp->iaddr + d));
   dp->type = PPCINSTR_BRANCH;
   dp->displacement = (ppc_word)d;
 }
@@ -381,8 +404,8 @@ static void bli(struct DisasmPara_PPC *dp,ppc_word in)
 static void mcrf(struct DisasmPara_PPC *dp,ppc_word in,char c)
 {
   if (!(in & 0x0063f801)) {
-    sprintf(dp->opcode,"mcrf%c",c);
-    sprintf(dp->operands,"cr%d,cr%d",(int)PPCGETCRD(in),(int)PPCGETCRA(in));
+    snprintf(dp->opcode, dp->opcode_cap,"mcrf%c",c);
+    snprintf(dp->operands, dp->operands_cap,"cr%d,cr%d",(int)PPCGETCRD(in),(int)PPCGETCRA(in));
   }
   else
     ill(dp,in);
@@ -396,11 +419,11 @@ static void crop(struct DisasmPara_PPC *dp,ppc_word in,char *n1,char *n2)
   int crb = (int)PPCGETB(in);
 
   if (!(in & 1)) {
-    sprintf(dp->opcode,"cr%s",(cra==crb && n2)?n2:n1);
+    snprintf(dp->opcode, dp->opcode_cap,"cr%s",(cra==crb && n2)?n2:n1);
     if (cra == crb && n2)
-      sprintf(dp->operands,"%d,%d",crd,cra);
+      snprintf(dp->operands, dp->operands_cap,"%d,%d",crd,cra);
     else
-      sprintf(dp->operands,"%d,%d,%d",crd,cra,crb);
+      snprintf(dp->operands, dp->operands_cap,"%d,%d,%d",crd,cra,crb);
   }
   else
     ill(dp,in);
@@ -415,7 +438,7 @@ static void nooper(struct DisasmPara_PPC *dp,ppc_word in,char *name,
   }
   else {
     dp->flags |= dmode;
-    strcpy(dp->opcode,name);
+    tkl_strscpy(dp->opcode,name, dp->opcode_cap);
   }
 }
 
@@ -428,14 +451,14 @@ static void rlw(struct DisasmPara_PPC *dp,ppc_word in,char *name,int i)
   int mb = (int)PPCGETC(in);
   int me = (int)PPCGETM(in);
 
-  sprintf(dp->opcode,"rlw%s%c",name,in&1?'.':'\0');
-  sprintf(dp->operands,"r%d,r%d,%s%d,%d,%d",a,s,regsel[i],bsh,mb,me);
+  snprintf(dp->opcode, dp->opcode_cap,"rlw%s%c",name,in&1?'.':'\0');
+  snprintf(dp->operands, dp->operands_cap,"r%d,r%d,%s%d,%d,%d",a,s,regsel[i],bsh,mb,me);
 }
 
 
 static void ori(struct DisasmPara_PPC *dp,ppc_word in,char *name)
 {
-  strcpy(dp->opcode,name);
+  tkl_strscpy(dp->opcode,name, dp->opcode_cap);
   imm(dp,in,1,1);
 }
 
@@ -448,23 +471,24 @@ static void rld(struct DisasmPara_PPC *dp,ppc_word in,char *name,int i)
   int m = (int)(in&0x7e0)>>5;
 
   dp->flags |= PPCF_64;
-  sprintf(dp->opcode,"rld%s%c",name,in&1?'.':'\0');
-  sprintf(dp->operands,"r%d,r%d,%s%d,%d",a,s,regsel[i],bsh,m);
+  snprintf(dp->opcode, dp->opcode_cap,"rld%s%c",name,in&1?'.':'\0');
+  snprintf(dp->operands, dp->operands_cap,"r%d,r%d,%s%d,%d",a,s,regsel[i],bsh,m);
 }
 
 
 static void cmp(struct DisasmPara_PPC *dp,ppc_word in)
 {
   char *oper = dp->operands;
+  size_t cap = dp->operands_cap;
   int i = (int)PPCGETL(in);
 
   if (i < 2) {
     if (i)
       dp->flags |= PPCF_64;
-    strcpy(dp->opcode,cmpname[((in&PPCIDX2MASK)?2:0)+i]);
+    tkl_strscpy(dp->opcode,cmpname[((in&PPCIDX2MASK)?2:0)+i], dp->opcode_cap);
     if ((i = (int)PPCGETCRD(in)))
-      oper += sprintf(oper,"cr%c,",'0'+i);
-    ra_rb(oper,in);
+      PPC_APP(oper,cap,"cr%c,",'0'+i);
+    ra_rb(oper,cap,in);
   }
   else
     ill(dp,in);
@@ -478,18 +502,18 @@ static void trap(struct DisasmPara_PPC *dp,ppc_word in,unsigned char dmode)
 
   if ((cnd = trap_condition[to])) {
     dp->flags |= dmode;
-    sprintf(dp->opcode,"t%c%s",dmode?'d':'w',cnd);
-    ra_rb(dp->operands,in);
+    snprintf(dp->opcode, dp->opcode_cap,"t%c%s",dmode?'d':'w',cnd);
+    ra_rb(dp->operands,dp->operands_cap,in);
   }
   else {
     if (to == 31) {
       if (dmode) {
         dp->flags |= dmode;
-        strcpy(dp->opcode,"td");
-        strcpy(dp->operands,"31,0,0");
+        tkl_strscpy(dp->opcode,"td", dp->opcode_cap);
+        tkl_strscpy(dp->operands,"31,0,0", dp->operands_cap);
       }
       else
-        strcpy(dp->opcode,"trap");
+        tkl_strscpy(dp->opcode,"trap", dp->opcode_cap);
     }
     else
       ill(dp,in);
@@ -508,9 +532,9 @@ static void dab(struct DisasmPara_PPC *dp,ppc_word in,char *name,int mask,
     dp->flags |= dmode;
     if (smode)
       in = swapda(in);  /* rA,rS,rB */
-    sprintf(dp->opcode,"%s%s%s",name,
+    snprintf(dp->opcode, dp->opcode_cap,"%s%s%s",name,
             oesel[chkoe&&(in&PPCOE)],rcsel[(chkrc<0)&&(in&1)]);
-    rd_ra_rb(dp->operands,in,mask);
+    rd_ra_rb(dp->operands,dp->operands_cap,in,mask);
   }
 }
 
@@ -528,10 +552,10 @@ static void rrn(struct DisasmPara_PPC *dp,ppc_word in,char *name,
     dp->flags |= dmode;
     if (smode)
       in = swapda(in);  /* rA,rS,NB */
-    sprintf(dp->opcode,"%s%s%s",name,
+    snprintf(dp->opcode, dp->opcode_cap,"%s%s%s",name,
             oesel[chkoe&&(in&PPCOE)],rcsel[(chkrc<0)&&(in&1)]);
-    s = rd_ra_rb(dp->operands,in,6);
-    sprintf(s,",%d",(int)PPCGETB(in));
+    s = rd_ra_rb(dp->operands,dp->operands_cap,in,6);
+    snprintf(s, dp->operands_cap - (size_t)(s - dp->operands),",%d",(int)PPCGETB(in));
   }
 }
 
@@ -541,15 +565,16 @@ static void mtcr(struct DisasmPara_PPC *dp,ppc_word in)
   int s = (int)PPCGETD(in);
   int crm = (int)(in&0x000ff000)>>12;
   char *oper = dp->operands;
+  size_t cap = dp->operands_cap;
 
   if (in & 0x00100801) {
     ill(dp,in);
   }
   else {
-    sprintf(dp->opcode,"mtcr%c",crm==0xff?'\0':'f');
+    snprintf(dp->opcode, dp->opcode_cap,"mtcr%c",crm==0xff?'\0':'f');
     if (crm != 0xff)
-      oper += sprintf(oper,"0x%02x,",crm);
-    sprintf(oper,"r%d",s);
+      PPC_APP(oper,cap,"0x%02x,",crm);
+    snprintf(oper,cap,"r%d",s);
   }
 }
 
@@ -564,11 +589,11 @@ static void msr(struct DisasmPara_PPC *dp,ppc_word in,int smode)
   }
   else {
     dp->flags |= PPCF_SUPER;
-    sprintf(dp->opcode,"m%csr",smode?'t':'f');
+    snprintf(dp->opcode, dp->opcode_cap,"m%csr",smode?'t':'f');
     if (smode)
-      sprintf(dp->operands,"%d,r%d",sr,s);
+      snprintf(dp->operands, dp->operands_cap,"%d,r%d",sr,s);
     else
-      sprintf(dp->operands,"r%d,%d",s,sr);
+      snprintf(dp->operands, dp->operands_cap,"r%d,%d",s,sr);
   }
 }
 
@@ -676,15 +701,15 @@ static void mspr(struct DisasmPara_PPC *dp,ppc_word in,int smode)
         break;
     }
 
-    sprintf(dp->opcode,"m%c%s",smode?'t':'f',x);
+    snprintf(dp->opcode, dp->opcode_cap,"m%c%s",smode?'t':'f',x);
     if (fmt) {
       if (smode)
-        sprintf(dp->operands,"%d,r%d",spr,d);
+        snprintf(dp->operands, dp->operands_cap,"%d,r%d",spr,d);
       else
-        sprintf(dp->operands,"r%d,%d",d,spr);
+        snprintf(dp->operands, dp->operands_cap,"r%d,%d",d,spr);
     }
     else
-      sprintf(dp->operands,"r%d",d);
+      snprintf(dp->operands, dp->operands_cap,"r%d",d);
   }
 }
 
@@ -694,6 +719,7 @@ static void mtb(struct DisasmPara_PPC *dp,ppc_word in)
   int d = (int)PPCGETD(in);
   int tbr = (int)((PPCGETB(in)<<5)+PPCGETA(in));
   char *s = dp->operands;
+  size_t cap = dp->operands_cap;
   char x;
 
   if (in & 1) {
@@ -701,7 +727,7 @@ static void mtb(struct DisasmPara_PPC *dp,ppc_word in)
   }
 
   else {
-    s += sprintf(s,"r%d",d);
+    PPC_APP(s,cap,"r%d",d);
     switch (tbr) {
       case 268:
         x = 'l';
@@ -712,10 +738,10 @@ static void mtb(struct DisasmPara_PPC *dp,ppc_word in)
       default:
         x = '\0';
         dp->flags |= PPCF_SUPER;
-        sprintf(s,",%d",tbr);
+        PPC_APP(s,cap,",%d",tbr);
         break;
     }
-    sprintf(dp->opcode,"mftb%c",x);
+    snprintf(dp->opcode, dp->opcode_cap,"mftb%c",x);
   }
 }
 
@@ -727,8 +753,8 @@ static void sradi(struct DisasmPara_PPC *dp,ppc_word in)
   int bsh = (int)(((in&2)<<4)+PPCGETB(in));
 
   dp->flags |= PPCF_64;
-  sprintf(dp->opcode,"sradi%c",in&1?'.':'\0');
-  sprintf(dp->operands,"r%d,r%d,%d",a,s,bsh);
+  snprintf(dp->opcode, dp->opcode_cap,"sradi%c",in&1?'.':'\0');
+  snprintf(dp->operands, dp->operands_cap,"r%d,r%d,%d",a,s,bsh);
 }
 
 
@@ -745,8 +771,8 @@ static void ldst(struct DisasmPara_PPC *dp,ppc_word in,char *name,
   if (d >= 0x8000)
     d -= 0x10000;
   dp->displacement = (ppc_word)d;
-  strcpy(dp->opcode,name);
-  sprintf(dp->operands,"%c%d,%d(r%d)",reg,s,d,a);
+  tkl_strscpy(dp->opcode,name, dp->opcode_cap);
+  snprintf(dp->operands, dp->operands_cap,"%c%d,%d(r%d)",reg,s,d,a);
 }
 
 
@@ -754,26 +780,27 @@ static void fdabc(struct DisasmPara_PPC *dp,ppc_word in,char *name,
                   int mask,unsigned char dmode)
 /* standard floating point instruction: xxxx fD,fA,fC,fB */
 {
-  static const char *fmt = "f%d,";
   char *s = dp->operands;
+  char *start = s;
+  size_t cap = dp->operands_cap;
   int err = 0;
 
   dp->flags |= dmode;
-  sprintf(dp->opcode,"f%s%s",name,rcsel[in&1]);
-  s += sprintf(s,fmt,(int)PPCGETD(in));
+  snprintf(dp->opcode, dp->opcode_cap,"f%s%s",name,rcsel[in&1]);
+  PPC_APP(s,cap,"f%d,",(int)PPCGETD(in));
   if (mask & 4)
-    s += sprintf(s,fmt,(int)PPCGETA(in));
+    PPC_APP(s,cap,"f%d,",(int)PPCGETA(in));
   else
     err |= (int)PPCGETA(in);
   if (mask & 1)
-    s += sprintf(s,fmt,(int)PPCGETC(in));
+    PPC_APP(s,cap,"f%d,",(int)PPCGETC(in));
   else if (!(mask&8))
     err |= (int)PPCGETC(in);
   if (mask & 2)
-    s += sprintf(s,fmt,(int)PPCGETB(in));
+    PPC_APP(s,cap,"f%d,",(int)PPCGETB(in));
   else if (PPCGETB(in))
     err |= (int)PPCGETB(in);
-  *(s-1) = '\0';
+  if (s > start) *(s-1) = '\0';   /* drop the trailing comma */
   if (err)
     ill(dp,in);
 }
@@ -782,8 +809,8 @@ static void fdabc(struct DisasmPara_PPC *dp,ppc_word in,char *name,
 static void fdab(struct DisasmPara_PPC *dp,ppc_word in,char *name,int mask)
 /* indexed float instruction: xxxx fD,rA,rB */
 {
-  strcpy(dp->opcode,name);
-  fd_ra_rb(dp->operands,in,mask);
+  tkl_strscpy(dp->opcode,name, dp->opcode_cap);
+  fd_ra_rb(dp->operands,dp->operands_cap,in,mask);
 }
 
 
@@ -793,8 +820,8 @@ static void fcmp(struct DisasmPara_PPC *dp,ppc_word in,char c)
     ill(dp,in);
   }
   else {
-    sprintf(dp->opcode,"fcmp%c",c);
-    sprintf(dp->operands,"cr%d,f%d,f%d",(int)PPCGETCRD(in),
+    snprintf(dp->opcode, dp->opcode_cap,"fcmp%c",c);
+    snprintf(dp->operands, dp->operands_cap,"cr%d,f%d,f%d",(int)PPCGETCRD(in),
             (int)PPCGETA(in),(int)PPCGETB(in));
   }
 }
@@ -806,8 +833,8 @@ static void mtfsb(struct DisasmPara_PPC *dp,ppc_word in,int n)
     ill(dp,in);
   }
   else {
-    sprintf(dp->opcode,"mtfsb%d%s",n,rcsel[in&1]);
-    sprintf(dp->operands,"%d",(int)PPCGETD(in));
+    snprintf(dp->opcode, dp->opcode_cap,"mtfsb%d%s",n,rcsel[in&1]);
+    snprintf(dp->operands, dp->operands_cap,"%d",(int)PPCGETD(in));
   }
 }
 
@@ -816,8 +843,8 @@ static void vdab(struct DisasmPara_PPC *dp,ppc_word in,char *name,
                  int mask,int chkrc)
 /* standard AltiVec instruction: vxxx vD,vA,vB */
 {
-  sprintf(dp->opcode,"%s%s",name,rcsel[chkrc&&(in&PPCVRC)]);
-  vd_va_vb(dp->operands,in,mask);
+  snprintf(dp->opcode, dp->opcode_cap,"%s%s",name,rcsel[chkrc&&(in&PPCVRC)]);
+  vd_va_vb(dp->operands,dp->operands_cap,in,mask);
 }
 
 
@@ -833,9 +860,15 @@ static void vdabc(struct DisasmPara_PPC *dp,ppc_word in)
   int nameidx = (in & 0x3f) - 32;
 
   if (vmnames[nameidx]) {
-    sprintf(dp->opcode,"v%s",vmnames[nameidx]);
-    sprintf(vd_va_vb(dp->operands,in,7),
-            (nameidx==12) ? ",%d" : ",v%d", (int)PPCGETC(in));
+    char *s;
+    size_t cap;
+    snprintf(dp->opcode, dp->opcode_cap,"v%s",vmnames[nameidx]);
+    s = vd_va_vb(dp->operands,dp->operands_cap,in,7);
+    cap = dp->operands_cap - (size_t)(s - dp->operands);
+    if (nameidx==12)
+      snprintf(s,cap,",%d",(int)PPCGETC(in));
+    else
+      snprintf(s,cap,",v%d",(int)PPCGETC(in));
   }
   else
     ill(dp,in);
@@ -850,8 +883,8 @@ static void vldst(struct DisasmPara_PPC *dp,ppc_word in,char *name)
   }
   else {
     dp->flags |= PPCF_ALTIVEC;
-    strcpy(dp->opcode,name);
-    sprintf(dp->operands,"v%d,r%d,r%d",(int)PPCGETD(in),
+    tkl_strscpy(dp->opcode,name, dp->opcode_cap);
+    snprintf(dp->operands, dp->operands_cap,"v%d,r%d,r%d",(int)PPCGETD(in),
             (int)PPCGETA(in),(int)PPCGETB(in));
   }
 }
@@ -863,20 +896,21 @@ static void dstrm(struct DisasmPara_PPC *dp,ppc_word in,char *name)
     ill(dp,in);
   }
   else {
-    char *s = dp->operands;;
+    char *s = dp->operands;
+    size_t cap = dp->operands_cap;
 
     if (PPCGETIDX2(in) == 822) {  /* dss, dssall */
       if (PPCGETA(in) || PPCGETB(in)) {
         ill(dp,in);
         return;
       }
-      sprintf(dp->opcode,"d%s%s",name,(in&PPCDST) ? "all" : "");
+      snprintf(dp->opcode, dp->opcode_cap,"d%s%s",name,(in&PPCDST) ? "all" : "");
     }
     else {
-      sprintf(dp->opcode,"d%s%c",name,(in&PPCDST) ? 't' : '\0');
-      s += sprintf(s,"r%d,r%d,",(int)PPCGETA(in),(int)PPCGETB(in));
+      snprintf(dp->opcode, dp->opcode_cap,"d%s%c",name,(in&PPCDST) ? 't' : '\0');
+      PPC_APP(s,cap,"r%d,r%d,",(int)PPCGETA(in),(int)PPCGETB(in));
     }
-    sprintf(s,"%d",(int)PPCGETSTRM(in));
+    snprintf(s,cap,"%d",(int)PPCGETSTRM(in));
     dp->flags |= PPCF_ALTIVEC;
   }
 }
@@ -890,11 +924,11 @@ static void gps2(struct DisasmPara_PPC *dp,ppc_word in,char *name,short pcount)
     int a=PPCGETA(in);
     int b=PPCGETB(in);
 
-    sprintf(dp->opcode,"ps_%s",name);
+    snprintf(dp->opcode, dp->opcode_cap,"ps_%s",name);
     if(pcount == 3)
-        sprintf(dp->operands,"f%d,f%d,f%d",d,a,c);
+        snprintf(dp->operands, dp->operands_cap,"f%d,f%d,f%d",d,a,c);
     else
-        sprintf(dp->operands,"f%d,f%d,f%d,f%d",d,a,c,b);
+        snprintf(dp->operands, dp->operands_cap,"f%d,f%d,f%d,f%d",d,a,c,b);
 }
 
 static void gps(struct DisasmPara_PPC *dp,ppc_word in,char *name,short pcount,short dlength)
@@ -907,11 +941,11 @@ static void gps(struct DisasmPara_PPC *dp,ppc_word in,char *name,short pcount,sh
     int a=PPCGETA(in);
     int b=PPCGETB(in);
 
-    sprintf(dp->opcode,"ps_%s",name);
+    snprintf(dp->opcode, dp->opcode_cap,"ps_%s",name);
     if(pcount == 2)
-        sprintf(dp->operands,"f%d,f%d",d,b);
+        snprintf(dp->operands, dp->operands_cap,"f%d,f%d",d,b);
     else
-        sprintf(dp->operands,"f%d,f%d,f%d",d,a,b);
+        snprintf(dp->operands, dp->operands_cap,"f%d,f%d,f%d",d,a,b);
 }
 
 static void psqx(struct DisasmPara_PPC *dp,ppc_word in,char *name)
@@ -922,8 +956,8 @@ static void psqx(struct DisasmPara_PPC *dp,ppc_word in,char *name)
     int w=GEKKOGETW(in);
     int i=GEKKOGETI(in);
 
-    sprintf(dp->opcode,"psq_%sx",name);
-    sprintf(dp->operands,"f%d,r%d,r%d,%d,%d",d,a,b,w,i);
+    snprintf(dp->opcode, dp->opcode_cap,"psq_%sx",name);
+    snprintf(dp->operands, dp->operands_cap,"f%d,r%d,r%d,%d,%d",d,a,b,w,i);
 }
 
 static void psq(struct DisasmPara_PPC *dp,ppc_word in,char *name)
@@ -934,8 +968,8 @@ static void psq(struct DisasmPara_PPC *dp,ppc_word in,char *name)
     int i=GEKKOGETI2(in);
     int v=GEKKOGETV(in);
 
-    sprintf(dp->opcode,"psq_%s",name);
-    sprintf(dp->operands,"f%d,%d(r%d),%d,%d",d,v,a,w,i);
+    snprintf(dp->opcode, dp->opcode_cap,"psq_%s",name);
+    snprintf(dp->operands, dp->operands_cap,"f%d,%d(r%d),%d,%d",d,v,a,w,i);
 }
 #endif
 
@@ -1687,12 +1721,12 @@ ppc_word *PPC_Disassemble(struct DisasmPara_PPC *dp)
       break;
 
     case 7:
-      strcpy(dp->opcode,"mulli");
+      tkl_strscpy(dp->opcode,"mulli", dp->opcode_cap);
       imm(dp,in,0,0);
       break;
 
     case 8:
-      strcpy(dp->opcode,"subfic");
+      tkl_strscpy(dp->opcode,"subfic", dp->opcode_cap);
       imm(dp,in,0,0);
       break;
 
@@ -1726,7 +1760,7 @@ ppc_word *PPC_Disassemble(struct DisasmPara_PPC *dp)
 
     case 17:
       if ((in & ~PPCIDXMASK) == 2)
-        strcpy(dp->opcode,"sc");
+        tkl_strscpy(dp->opcode,"sc", dp->opcode_cap);
       else
         ill(dp,in);
       break;
@@ -1811,7 +1845,7 @@ ppc_word *PPC_Disassemble(struct DisasmPara_PPC *dp)
       if (in & ~PPCIDXMASK)
         ori(dp,in,"ori");
       else
-        strcpy(dp->opcode,"nop");
+        tkl_strscpy(dp->opcode,"nop", dp->opcode_cap);
       break;
 
     case 25:
@@ -2327,8 +2361,8 @@ ppc_word *PPC_Disassemble(struct DisasmPara_PPC *dp)
           if (in & 0x007ff801)
             ill(dp,in);
           else {
-            strcpy(dp->opcode,"mcrxr");
-            sprintf(dp->operands,"cr%d",(int)PPCGETCRD(in));
+            tkl_strscpy(dp->opcode,"mcrxr", dp->opcode_cap);
+            snprintf(dp->operands, dp->operands_cap,"cr%d",(int)PPCGETCRD(in));
           }
           break;
 
@@ -2718,8 +2752,8 @@ ppc_word *PPC_Disassemble(struct DisasmPara_PPC *dp)
 
           case 134:
             if (!(in & 0x006f0800)) {
-              sprintf(dp->opcode,"mtfsfi%s",rcsel[in&1]);
-              sprintf(dp->operands,"%d,%d",(int)PPCGETCRD(in),
+              snprintf(dp->opcode, dp->opcode_cap,"mtfsfi%s",rcsel[in&1]);
+              snprintf(dp->operands, dp->operands_cap,"%d,%d",(int)PPCGETCRD(in),
                       (int)(in & 0xf000)>>12);
             }
             else
@@ -2736,8 +2770,8 @@ ppc_word *PPC_Disassemble(struct DisasmPara_PPC *dp)
 
           case 583:
             if (!(in & (PPCAMASK|PPCBMASK))) {
-              sprintf(dp->opcode,"mffs%s",rcsel[in&1]);
-              sprintf(dp->operands,"f%d",(int)PPCGETD(in));
+              snprintf(dp->opcode, dp->opcode_cap,"mffs%s",rcsel[in&1]);
+              snprintf(dp->operands, dp->operands_cap,"f%d",(int)PPCGETD(in));
             }
             else
               ill(dp,in);
@@ -2745,8 +2779,8 @@ ppc_word *PPC_Disassemble(struct DisasmPara_PPC *dp)
 
           case 711:
             if (!(in & 0x02010000)) {
-              sprintf(dp->opcode,"mtfsf%s",rcsel[in&1]);
-              sprintf(dp->operands,"%d,f%d",
+              snprintf(dp->opcode, dp->opcode_cap,"mtfsf%s",rcsel[in&1]);
+              snprintf(dp->operands, dp->operands_cap,"%d,f%d",
                       (int)(in & 0x01fe0000)>>17,(int)PPCGETB(in));
             }
             else
@@ -2783,18 +2817,22 @@ ppc_word *PPC_Disassemble(struct DisasmPara_PPC *dp)
     char ppc_opcode[640];
     char ppc_operands[2560];
 
-char * decodePPC(unsigned long int start, char *outbuf, int *lendis, unsigned long int offset0)
+char * decodePPC(unsigned long int start, char *outbuf, int outbufsize, int *lendis, unsigned long int offset0)
 {
      (void)offset0;
      dp.opcode = ppc_opcode;
      dp.operands = ppc_operands;
+     dp.opcode_cap = sizeof(ppc_opcode);
+     dp.operands_cap = sizeof(ppc_operands);
      dp.iaddr = (unsigned int *)start;
      dp.instr = (unsigned int *)start;
+     ppc_opcode[0] = '\0';
      PPC_Disassemble(&dp);
-     memcpy(outbuf,ppc_opcode,strlen(ppc_opcode));
-     memcpy(outbuf+strlen(ppc_opcode)," ",1);
-     memcpy(outbuf+strlen(ppc_opcode)+1,ppc_operands,strlen(ppc_operands));
-     memcpy(outbuf+strlen(ppc_opcode)+1+strlen(ppc_operands),"\0",1);
+     /* ppc_opcode[640] + ' ' + ppc_operands[2560] is up to 3201 bytes.  The
+      * four unbounded memcpy calls wrote all of it into the caller's buffer,
+      * which is 2048 in dasm.c and 256 in native_dasm.c. */
+     snprintf(outbuf, (size_t)(outbufsize > 0 ? outbufsize : 0), "%s %s",
+              ppc_opcode, ppc_operands);
      *lendis = sizeof(ppc_word);
      return outbuf;
 }

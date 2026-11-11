@@ -94,7 +94,8 @@ const char *disasm_result(ARMSTATE *state, int *size);
 bool disasm_buffer(ARMSTATE *state, const uint8_t *buffer, size_t buffersize, int mode, DISASM_CALLBACK callback, void *user);
 bool disasm_literals(ARMSTATE *state, const uint8_t *block, size_t blocksize, uint32_t address);
 
-char *decodeARM32(long unsigned int start, char *outbuf, int *outlen, long unsigned int offset0);
+/* outbufsize is the full capacity of outbuf, including the NUL. */
+char *decodeARM32(long unsigned int start, char *outbuf, int outbufsize, int *outlen, long unsigned int offset0);
 
 #endif /* _ARMDISASM_H */
 

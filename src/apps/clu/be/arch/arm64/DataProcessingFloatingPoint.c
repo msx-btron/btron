@@ -1,5 +1,10 @@
 #include <stdio.h>
 #include <stdlib.h>
+/* tkl_memcpy, not host memcpy: this file is linked on every BE lane, and
+ * src/kernel/libstr.c provides the T-Kernel copy on all of them.  The three
+ * bit-pattern puns below were calling memcpy with no <string.h> in scope,
+ * which clang 16+/gcc 14 reject as an implicit declaration. */
+#include <libstr.h>
 
 #include "adefs.h"
 #include "bits.h"
@@ -2826,7 +2831,7 @@ static int DisassembleAdvancedSIMDModifiedImmediateInstr(struct instruction *i,
 
         unsigned tempimm = VFPExpandImm(imm8);
 
-        memcpy(&immf, &tempimm, sizeof(immf));
+        tkl_memcpy(&immf, &tempimm, sizeof(immf));
 
         Rd_Rtbl = AD_RTBL_FP_V_128;
         Rd_sz = _128_BIT;
@@ -2907,7 +2912,7 @@ static int DisassembleAdvancedSIMDModifiedImmediateInstr(struct instruction *i,
 
     if(instr_id == AD_INSTR_FMOV){
         unsigned immf_u = 0;
-        memcpy(&immf_u, &immf, sizeof(immf_u));
+        tkl_memcpy(&immf_u, &immf, sizeof(immf_u));
         ADD_IMM_OPERAND(out, AD_IMM_FLOAT, immf_u);
 
         {
@@ -4837,7 +4842,7 @@ static int DisassembleFloatingPointImmediateInstr(struct instruction *i,
     unsigned imm = VFPExpandImm(imm8);
 
     float immf;
-    memcpy(&immf, &imm, sizeof(immf));
+    tkl_memcpy(&immf, &imm, sizeof(immf));
     ADD_IMM_OPERAND(out, AD_IMM_FLOAT, imm);
 
     {

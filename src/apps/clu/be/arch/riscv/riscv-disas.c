@@ -2137,8 +2137,11 @@ static void decode_inst_format(char *buf, size_t buflen, size_t tab, rv_decode *
             while (strlen(buf) < tab * 2) {
                 append(buf, " ", buflen);
             }
-            snprintf(tmp, sizeof(tmp), "# 0x%" PRIx64,
-                dec->pc + dec->imm);
+            /* "# 0x%" PRIx64 is a literal only after the preprocessor runs;
+             * spelling the conversion out keeps it one at the source level
+             * too.  unsigned long long is 64 bits on every lane here. */
+            snprintf(tmp, sizeof(tmp), "# 0x%llx",
+                (unsigned long long)(dec->pc + dec->imm));
             append(buf, tmp, buflen);
             break;
         case 'c': {
@@ -2283,11 +2286,13 @@ rv_isa bitness(struct editor* e)
 
 static rv_inst rvinst = 0;
 
-char *decodeRISCV(unsigned long int address, char *outbuf, int *lendis, unsigned long int offset0) {
+char *decodeRISCV(unsigned long int address, char *outbuf, int outbufsize, int *lendis, unsigned long int offset0) {
      struct editor *e = editor();
      *lendis = 0;
      inst_fetch((uint8_t *)address, &rvinst, lendis);
-     disasm_inst(outbuf, sizeof(outbuf), bitness(e), address, rvinst);
+     /* sizeof(outbuf) on a char * parameter is the pointer width (8), not the
+      * buffer: every RISC-V line was truncated to 7 characters. */
+     disasm_inst(outbuf, (size_t)(outbufsize > 0 ? outbufsize : 0), bitness(e), address, rvinst);
      if (!*lendis) *lendis = 2;
      return outbuf;
 }

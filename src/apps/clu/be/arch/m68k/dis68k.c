@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <string.h>
+#include <libstr.h>
 
 struct OpcodeDetails {
 	uint16_t and;
@@ -99,27 +100,27 @@ uint16_t getword() {
 	@param mode 0 to 12, indicating addressing mode.
 	@param size 0 = byte, 1 = word, 2 = long.
 */
-void sprintmode(unsigned int mode, unsigned int reg, unsigned int size, char *out_s) {
+void sprintmode(unsigned int mode, unsigned int reg, unsigned int size, char *out_s, size_t out_cap) {
 	const char ir[2] = {'W','L'}; /* for mode 6 */
 
 	switch(mode) {
-		case 0  : sprintf(out_s, "D%i", reg);		break;
-		case 1  : sprintf(out_s, "A%i", reg);		break;
-		case 2  : sprintf(out_s, "(A%i)", reg);		break;
-		case 3  : sprintf(out_s, "(A%i)+", reg);	break;
-		case 4  : sprintf(out_s, "-(A%i)", reg);	break;
+		case 0  : snprintf(out_s, out_cap, "D%i", reg);		break;
+		case 1  : snprintf(out_s, out_cap, "A%i", reg);		break;
+		case 2  : snprintf(out_s, out_cap, "(A%i)", reg);		break;
+		case 3  : snprintf(out_s, out_cap, "(A%i)+", reg);	break;
+		case 4  : snprintf(out_s, out_cap, "-(A%i)", reg);	break;
 		case 5  : /* reg + disp */
 		case 9  : { /* pcr + disp */
 			int32_t displacement = (int32_t) getword();
 			if (displacement >= 32768) displacement -= 65536;
 			if (mode == 5) {
-				sprintf(out_s, "%+i(A%i)", displacement, reg);
+				snprintf(out_s, out_cap, "%+i(A%i)", displacement, reg);
 			} else {
 				const uint32_t ldata = address - 2 + displacement;
 				if (!rawmode) {
-					sprintf(out_s, "%+i(PC) {$%08u}", displacement, ldata);
+					snprintf(out_s, out_cap, "%+i(PC) {$%08u}", displacement, ldata);
 				} else {
-					sprintf(out_s, "%+i(PC)", displacement);
+					snprintf(out_s, out_cap, "%+i(PC)", displacement);
 				}
 			}
 		} break;
@@ -136,36 +137,36 @@ void sprintmode(unsigned int mode, unsigned int reg, unsigned int size, char *ou
 
 			if (mode == 6) {
 				if (itype == 0) {
-					sprintf(out_s, "%+i(A%i,D%i.%c)", displacement, reg, ireg, ir[isize]);
+					snprintf(out_s, out_cap, "%+i(A%i,D%i.%c)", displacement, reg, ireg, ir[isize]);
 				} else {
-					sprintf(out_s, "%+i(A%i,A%i.%c)", displacement, reg, ireg, ir[isize]);
+					snprintf(out_s, out_cap, "%+i(A%i,A%i.%c)", displacement, reg, ireg, ir[isize]);
 				}
 			} else { /* PC */
 				if (itype == 0) {
-					sprintf(out_s, "%+i(PC,D%i.%c)", displacement, ireg, ir[isize]);
+					snprintf(out_s, out_cap, "%+i(PC,D%i.%c)", displacement, ireg, ir[isize]);
 				} else {
-					sprintf(out_s, "%+i(PC,A%i.%c)", displacement, ireg, ir[isize]);
+					snprintf(out_s, out_cap, "%+i(PC,A%i.%c)", displacement, ireg, ir[isize]);
 				}
 			}
 		} break;
 		case 7  :
-			sprintf(out_s, "$0000%04x", getword());
+			snprintf(out_s, out_cap, "$0000%04x", getword());
 			break;
 		case 8  : {
 			const int data1 = getword();
 			const int data2 = getword();
-			sprintf(out_s, "$%04x%04x", data1, data2);
+			snprintf(out_s, out_cap, "$%04x%04x", data1, data2);
 		} break;
 		case 11 : {
 			const int data1 = getword();
 			switch(size) {
-				case 0 : sprintf(out_s, "#$%02x", (data1 & 0x00FF));
+				case 0 : snprintf(out_s, out_cap, "#$%02x", (data1 & 0x00FF));
 					break;
-				case 1 : sprintf(out_s, "#$%04x", data1);
+				case 1 : snprintf(out_s, out_cap, "#$%04x", data1);
 					break;
 				case 2 : {
 					const int data2 = getword();
-					sprintf(out_s, "#$%04x%04x", data1, data2);
+					snprintf(out_s, out_cap, "#$%04x%04x", data1, data2);
 				} break;
 			}
 		} break;
@@ -194,7 +195,7 @@ int getmode(int instruction) {
 	return mode;
 }
 
-void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned long int offset0) {
+void decodeM68K(unsigned long int start, char *outbuf, int outbufsize, int *outlen, unsigned long int offset0) {
 	(void)offset0;
 	unsigned long int end = start + 10;
 	address = start;
@@ -208,7 +209,9 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 
 		bool decoded = false;
 
-		char opcode_s[50], operand_s[100];
+		/* An unmatched word leaves both slots untouched; the copy below
+		 * used to read whatever the stack held. */
+		char opcode_s[50] = "", operand_s[100] = "";
 		for (int opnum = 1; opnum <= 87; ++opnum) {
 			if ((word & optab[opnum].and) == optab[opnum].xor) {
 
@@ -218,16 +221,16 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						const int sreg = word & 0x0007;
 						const int dreg = (word & 0x0E00) >> 9;
 						if (opnum == 1) {
-							sprintf(opcode_s, "ABCD");
+							snprintf(opcode_s, sizeof(opcode_s), "ABCD");
 						} else {
-							sprintf(opcode_s, "SBCD");
+							snprintf(opcode_s, sizeof(opcode_s), "SBCD");
 						}
 						if ((word & 0x0008) == 0) {
 							/* reg-reg */
-							sprintf(operand_s, "D%i,D%i", sreg, dreg);
+							snprintf(operand_s, sizeof(operand_s), "D%i,D%i", sreg, dreg);
 						} else {
 							/* mem-mem */
-							sprintf(operand_s, "-(A%i),-A(%i)", sreg, dreg);
+							snprintf(operand_s, sizeof(operand_s), "-(A%i),-A(%i)", sreg, dreg);
 						}
 						decoded = true;
 					} break;
@@ -253,29 +256,29 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if ((dir == 1) && (dmode >= 9)) break;
 
 						switch(opnum) {
-							case  2 : sprintf(opcode_s, "ADD.%c", size_arr[size]);
+							case  2 : snprintf(opcode_s, sizeof(opcode_s), "ADD.%c", size_arr[size]);
 								break;
-							case  7 : sprintf(opcode_s,"AND.%c", size_arr[size]);
+							case  7 : snprintf(opcode_s, sizeof(opcode_s),"AND.%c", size_arr[size]);
 								break;
-							case 31 : sprintf(opcode_s, "EOR.%c", size_arr[size]);
+							case 31 : snprintf(opcode_s, sizeof(opcode_s), "EOR.%c", size_arr[size]);
 								break;
-							case 59 : sprintf(opcode_s, "OR.%c", size_arr[size]);
+							case 59 : snprintf(opcode_s, sizeof(opcode_s), "OR.%c", size_arr[size]);
 								break;
-							case 77 : sprintf(opcode_s, "SUB.%c", size_arr[size]);
+							case 77 : snprintf(opcode_s, sizeof(opcode_s), "SUB.%c", size_arr[size]);
 								break;
 						}
 
-						char dest_s[50];
-						sprintmode(dmode, dreg, size, dest_s);
+						char dest_s[50] = "";
+						sprintmode(dmode, dreg, size, dest_s, sizeof(dest_s));
 
 						const int sreg = (word & 0x0E00) >> 9;
-						char source_s[50];
-						sprintf(source_s, "D%i", sreg);
+						char source_s[50] = "";
+						snprintf(source_s, sizeof(source_s), "D%i", sreg);
 						/* reverse source & dest if dir == 0 */
 						if (dir != 0) {
-							sprintf(operand_s, "%s,%s", source_s, dest_s);
+							snprintf(operand_s, sizeof(operand_s), "%s,%s", source_s, dest_s);
 						} else {
-							sprintf(operand_s, "%s,%s", dest_s, source_s);
+							snprintf(operand_s, sizeof(operand_s), "%s,%s", dest_s, source_s);
 						}
 						decoded = true;
 					} break;
@@ -286,17 +289,17 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						const int dreg = (word & 0x0E00) >> 9;
 						const int size = ((word & 0x0100) >> 8) + 1;
 						switch(opnum) {
-							case  3 : sprintf(opcode_s, "ADDA.%c", size_arr[size]);
+							case  3 : snprintf(opcode_s, sizeof(opcode_s), "ADDA.%c", size_arr[size]);
 								break;
-							case 78 : sprintf(opcode_s, "SUBA.%c", size_arr[size]);
+							case 78 : snprintf(opcode_s, sizeof(opcode_s), "SUBA.%c", size_arr[size]);
 								break;
 						}
-						char source_s[50];
-						sprintmode(smode, sreg, size, source_s);
+						char source_s[50] = "";
+						sprintmode(smode, sreg, size, source_s, sizeof(source_s));
 						/* The An destination is bits 9..11 (dreg), not the source
 						 * register; printing sreg here labelled every ADDA/SUBA
 						 * with the source's number.  dreg existed for this. */
-						sprintf(operand_s, "%s,A%i", source_s, dreg);
+						snprintf(operand_s, sizeof(operand_s), "%s,A%i", source_s, dreg);
 						decoded = true;
 					} break;
 					case 4  :
@@ -317,39 +320,39 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 							((opnum == 4) || (opnum == 26) || (opnum == 79))) break;
 
 						switch(opnum) {
-							case  4 : sprintf(opcode_s, "ADDI.%c", size_arr[size]);
+							case  4 : snprintf(opcode_s, sizeof(opcode_s), "ADDI.%c", size_arr[size]);
 								break;
-							case  8 : sprintf(opcode_s, "ANDI.%c", size_arr[size]);
+							case  8 : snprintf(opcode_s, sizeof(opcode_s), "ANDI.%c", size_arr[size]);
 								break;
-							case 26 : sprintf(opcode_s, "CMPI.%c", size_arr[size]);
+							case 26 : snprintf(opcode_s, sizeof(opcode_s), "CMPI.%c", size_arr[size]);
 								break;
-							case 32 : sprintf(opcode_s, "EORI.%c", size_arr[size]);
+							case 32 : snprintf(opcode_s, sizeof(opcode_s), "EORI.%c", size_arr[size]);
 								break;
-							case 60 : sprintf(opcode_s, "ORI.%c", size_arr[size]);
+							case 60 : snprintf(opcode_s, sizeof(opcode_s), "ORI.%c", size_arr[size]);
 								break;
-							case 79 : sprintf(opcode_s, "SUBI.%c", size_arr[size]);
+							case 79 : snprintf(opcode_s, sizeof(opcode_s), "SUBI.%c", size_arr[size]);
 								break;
 						}
 
 						const int data = getword();
-						char source_s[50];
+						char source_s[50] = "";
 						switch(size) {
-							case 0 : sprintf(source_s, "#$%02X", (data & 0x00FF));
+							case 0 : snprintf(source_s, sizeof(source_s), "#$%02X", (data & 0x00FF));
 								break;
-							case 1 : sprintf(source_s, "#$%04X", data);
+							case 1 : snprintf(source_s, sizeof(source_s), "#$%04X", data);
 								break;
 							case 2 :
-								sprintf(source_s, "#$%04X%04X", data, getword());
+								snprintf(source_s, sizeof(source_s), "#$%04X%04X", data, getword());
 								break;
 						}
 
-						char dest_s[50];
+						char dest_s[50] = "";
 						if (dmode == 11) {
-							sprintf(dest_s, "SR");
+							snprintf(dest_s, sizeof(dest_s), "SR");
 						} else {
-							sprintmode(dmode, dreg, size, dest_s);
+							sprintmode(dmode, dreg, size, dest_s, sizeof(dest_s));
 						}
-						sprintf(operand_s, "%s,%s", source_s, dest_s);
+						snprintf(operand_s, sizeof(operand_s), "%s,%s", source_s, dest_s);
 						decoded = true;
 					} break;
 					case 5  :
@@ -363,14 +366,14 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if ((size == 0) && (dmode == 1)) break;
 
 						if (opnum == 5) {
-							sprintf(opcode_s,"ADDQ.%c",size_arr[size]);
+							snprintf(opcode_s, sizeof(opcode_s),"ADDQ.%c",size_arr[size]);
 						} else {
-							sprintf(opcode_s,"SUBQ.%c",size_arr[size]);
+							snprintf(opcode_s, sizeof(opcode_s),"SUBQ.%c",size_arr[size]);
 						}
-						char dest_s[50];
-						sprintmode(dmode, dreg, size, dest_s);
+						char dest_s[50] = "";
+						sprintmode(dmode, dreg, size, dest_s, sizeof(dest_s));
 						const int count = (word & 0x0E00) >> 9;
-						sprintf(operand_s, "#%i,%s", count ? count : 8, dest_s);
+						snprintf(operand_s, sizeof(operand_s), "#%i,%s", count ? count : 8, dest_s);
 						decoded = true;
 					} break;
 					case 6  :
@@ -382,22 +385,22 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						const int sreg = word & 0x0007;
 						const int dreg = (word & 0x0E00) >> 9;
 						switch(opnum) {
-							case 6  : sprintf(opcode_s, "ADDX.%c", size_arr[size]);
+							case 6  : snprintf(opcode_s, sizeof(opcode_s), "ADDX.%c", size_arr[size]);
 								break;
-							case 81 : sprintf(opcode_s, "SUBX.%c", size_arr[size]);
+							case 81 : snprintf(opcode_s, sizeof(opcode_s), "SUBX.%c", size_arr[size]);
 								break;
-							case 27 : sprintf(opcode_s, "CMPM.%c", size_arr[size]);
+							case 27 : snprintf(opcode_s, sizeof(opcode_s), "CMPM.%c", size_arr[size]);
 								break;
 						}
 						if ((opnum != 27) && ((word & 0x0008) == 0)) {
 							/* reg-reg */
-							sprintf(operand_s,"D%i,D%i",sreg,dreg);
+							snprintf(operand_s, sizeof(operand_s),"D%i,D%i",sreg,dreg);
 						} else {
 							/* mem-mem */
-							sprintf(operand_s,"-(A%i),-(A%i)",sreg,dreg);
+							snprintf(operand_s, sizeof(operand_s),"-(A%i),-(A%i)",sreg,dreg);
 						}
 						if (opnum == 27) {
-							sprintf(operand_s,"(A%i)+,(A%i)+",sreg,dreg);
+							snprintf(operand_s, sizeof(operand_s),"(A%i)+,(A%i)+",sreg,dreg);
 						}
 						decoded = true;
 					} break;
@@ -414,29 +417,29 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (size == 3) break;
 
 						switch(opnum) {
-							case 9  : sprintf(opcode_s, "ASL.%c", size_arr[size]);
+							case 9  : snprintf(opcode_s, sizeof(opcode_s), "ASL.%c", size_arr[size]);
 								break;
-							case 11 : sprintf(opcode_s, "ASR.%c", size_arr[size]);
+							case 11 : snprintf(opcode_s, sizeof(opcode_s), "ASR.%c", size_arr[size]);
 								break;
-							case 39 : sprintf(opcode_s, "LSL.%c", size_arr[size]);
+							case 39 : snprintf(opcode_s, sizeof(opcode_s), "LSL.%c", size_arr[size]);
 								break;
-							case 41 : sprintf(opcode_s, "LSR.%c", size_arr[size]);
+							case 41 : snprintf(opcode_s, sizeof(opcode_s), "LSR.%c", size_arr[size]);
 								break;
-							case 63 : sprintf(opcode_s, "ROR.%c", size_arr[size]);
+							case 63 : snprintf(opcode_s, sizeof(opcode_s), "ROR.%c", size_arr[size]);
 								break;
-							case 65 : sprintf(opcode_s, "ROL.%c", size_arr[size]);
+							case 65 : snprintf(opcode_s, sizeof(opcode_s), "ROL.%c", size_arr[size]);
 								break;
-							case 67 : sprintf(opcode_s, "ROXL.%c", size_arr[size]);
+							case 67 : snprintf(opcode_s, sizeof(opcode_s), "ROXL.%c", size_arr[size]);
 								break;
-							case 69 : sprintf(opcode_s, "ROXR.%c", size_arr[size]);
+							case 69 : snprintf(opcode_s, sizeof(opcode_s), "ROXR.%c", size_arr[size]);
 								break;
 						}
 						int count = (word & 0x0E00) >> 9;
 						if (((word & 0x0020) >> 5) == 0) { /* imm */
 							if (count == 0) count = 8;
-							sprintf(operand_s, "#%i,D%i", count, dreg);
+							snprintf(operand_s, sizeof(operand_s), "#%i,D%i", count, dreg);
 						} else { /* count in dreg */
-							sprintf(operand_s, "D%i,D%i", count, dreg);
+							snprintf(operand_s, sizeof(operand_s), "D%i,D%i", count, dreg);
 						}
 						decoded = true;
 					} break;
@@ -453,45 +456,45 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if ((dmode <= 1) || (dmode >= 9)) break; /* Invalid */
 
 						switch(opnum) {
-							case 10 : sprintf(opcode_s,"ASL");
+							case 10 : snprintf(opcode_s, sizeof(opcode_s),"ASL");
 								break;
-							case 12 : sprintf(opcode_s,"ASR");
+							case 12 : snprintf(opcode_s, sizeof(opcode_s),"ASR");
 								break;
-							case 40 : sprintf(opcode_s,"LSL");
+							case 40 : snprintf(opcode_s, sizeof(opcode_s),"LSL");
 								break;
-							case 42 : sprintf(opcode_s,"LSR");
+							case 42 : snprintf(opcode_s, sizeof(opcode_s),"LSR");
 								break;
-							case 64 : sprintf(opcode_s,"ROR");
+							case 64 : snprintf(opcode_s, sizeof(opcode_s),"ROR");
 								break;
-							case 66 : sprintf(opcode_s,"ROL");
+							case 66 : snprintf(opcode_s, sizeof(opcode_s),"ROL");
 								break;
-							case 68 : sprintf(opcode_s,"ROXL");
+							case 68 : snprintf(opcode_s, sizeof(opcode_s),"ROXL");
 								break;
-							case 70 : sprintf(opcode_s,"ROXR");
+							case 70 : snprintf(opcode_s, sizeof(opcode_s),"ROXR");
 								break;
 						}
-						sprintmode(dmode, dreg, 0, operand_s);
+						sprintmode(dmode, dreg, 0, operand_s, sizeof(operand_s));
 						decoded = true;
 					} break;
 					case 13 : {/* Bcc */
 						const int cc = (word & 0x0F00) >> 8;
-						sprintf(opcode_s, "%s", bra_tab[cc]);
+						snprintf(opcode_s, sizeof(opcode_s), "%s", bra_tab[cc]);
 
 						int offset = (word & 0x00FF);
 						if (offset != 0) {
 							if (offset >= 128) offset -= 256;
 							if (!rawmode) {
-								sprintf(operand_s, "$%08lx", address + offset);
+								snprintf(operand_s, sizeof(operand_s), "$%08lx", address + offset);
 							} else {
-								sprintf(operand_s, "*%+d", offset);
+								snprintf(operand_s, sizeof(operand_s), "*%+d", offset);
 							}
 						} else {
 							offset = getword();
 							if (offset >= 32768l) offset -= 65536l;
 							if (!rawmode) {
-								sprintf(operand_s, "$%08lx" , address - 2 + offset);
+								snprintf(operand_s, sizeof(operand_s), "$%08lx" , address - 2 + offset);
 							} else {
-								sprintf(operand_s, "*%+d", offset);
+								snprintf(operand_s, sizeof(operand_s), "*%+d", offset);
 							}
 						}
 						decoded = true;
@@ -512,48 +515,48 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if ((opnum < 20) && (dmode >= 9)) break;
 
 						const int sreg = (word & 0x0E00) >> 9;
-						char source_s[50];
+						char source_s[50] = "";
 						switch(opnum) {
 							case 14 : /* BCHG_DREG */
-								sprintf(opcode_s, "BCHG");
-								sprintf(source_s, "D%i", sreg);
+								snprintf(opcode_s, sizeof(opcode_s), "BCHG");
+								snprintf(source_s, sizeof(source_s), "D%i", sreg);
 								break;
 							case 15 : {/* BCHG_IMM */
-								sprintf(opcode_s, "BCHG");
+								snprintf(opcode_s, sizeof(opcode_s), "BCHG");
 								const int data = getword() & 0x002F;
-								sprintf(source_s, "#%i", data);
+								snprintf(source_s, sizeof(source_s), "#%i", data);
 							} break;
 							case 16 : /* BCLR_DREG */
-								sprintf(opcode_s, "BCLR");
-								sprintf(source_s, "D%i", sreg);
+								snprintf(opcode_s, sizeof(opcode_s), "BCLR");
+								snprintf(source_s, sizeof(source_s), "D%i", sreg);
 								break;
 							case 17 : {/* BCLR_IMM */
-								sprintf(opcode_s, "BCLR");
+								snprintf(opcode_s, sizeof(opcode_s), "BCLR");
 								const int data = getword() & 0x002F;
-								sprintf(source_s, "#%i", data);
+								snprintf(source_s, sizeof(source_s), "#%i", data);
 							} break;
 							case 18 : /* BSET_DREG */
-								sprintf(opcode_s, "BSET");
-								sprintf(source_s, "D%i", sreg);
+								snprintf(opcode_s, sizeof(opcode_s), "BSET");
+								snprintf(source_s, sizeof(source_s), "D%i", sreg);
 								break;
 							case 19 : { /* BSET_IMM */
-								sprintf(opcode_s, "BSET");
+								snprintf(opcode_s, sizeof(opcode_s), "BSET");
 								const int data = getword() & 0x002F;
-								sprintf(source_s, "#%i", data);
+								snprintf(source_s, sizeof(source_s), "#%i", data);
 							} break;
 							case 20 : /* BTST_DREG */
-								sprintf(opcode_s,"BTST");
-								sprintf(source_s, "D%i", sreg);
+								snprintf(opcode_s, sizeof(opcode_s),"BTST");
+								snprintf(source_s, sizeof(source_s), "D%i", sreg);
 								break;
 							case 21 : {/* BTST_IMM */
-								sprintf(opcode_s,"BTST");
+								snprintf(opcode_s, sizeof(opcode_s),"BTST");
 								const int data = getword() & 0x002F;
-								sprintf(source_s, "#%i", data);
+								snprintf(source_s, sizeof(source_s), "#%i", data);
 							} break;
 						}
-						char dest_s[50];
-						sprintmode(dmode, dreg, 0, dest_s);
-						sprintf(operand_s, "%s,%s", source_s, dest_s);
+						char dest_s[50] = "";
+						sprintmode(dmode, dreg, 0, dest_s, sizeof(dest_s));
+						snprintf(operand_s, sizeof(operand_s), "%s,%s", source_s, dest_s);
 						decoded = true;
 					} break;
 					case 22 : /* CHK */
@@ -579,27 +582,27 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 
 						switch(opnum) {
 							case 22 : /* CHK */
-								sprintf(opcode_s, "CHK");
+								snprintf(opcode_s, sizeof(opcode_s), "CHK");
 								break;
 							case 24 : /* CMP */
-								sprintf(opcode_s, "CMP.%c", size_arr[size]);
+								snprintf(opcode_s, sizeof(opcode_s), "CMP.%c", size_arr[size]);
 								break;
 							case 29 : /* DIVS */
-								sprintf(opcode_s, "DIVS");
+								snprintf(opcode_s, sizeof(opcode_s), "DIVS");
 								break;
 							case 30 : /* DIVU */
-								sprintf(opcode_s, "DIVU");
+								snprintf(opcode_s, sizeof(opcode_s), "DIVU");
 								break;
 							case 52 : /* MULS */
-								sprintf(opcode_s, "MULS");
+								snprintf(opcode_s, sizeof(opcode_s), "MULS");
 								break;
 							case 53 : /* MULU */
-								sprintf(opcode_s, "MULU");
+								snprintf(opcode_s, sizeof(opcode_s), "MULU");
 								break;
 						}
-						char source_s[50];
-						sprintmode(smode, sreg, size, source_s);
-						sprintf(operand_s, "%s,D%i", source_s, dreg);
+						char source_s[50] = "";
+						sprintmode(smode, sreg, size, source_s, sizeof(source_s));
+						snprintf(operand_s, sizeof(operand_s), "%s,D%i", source_s, dreg);
 						decoded = true;
 					} break;
 					case 23 : {/* CLR */
@@ -610,8 +613,8 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						const int size = (word & 0x00C0) >> 6;
 						if (size == 3) break;
 
-						sprintf(opcode_s, "CLR.%c", size_arr[size]);
-						sprintmode(dmode, dreg, size, operand_s);
+						snprintf(opcode_s, sizeof(opcode_s), "CLR.%c", size_arr[size]);
+						sprintmode(dmode, dreg, size, operand_s, sizeof(operand_s));
 						decoded = true;
 					} break;
 					case 25 : {/* CMPA */
@@ -620,22 +623,22 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						const int areg = (word & 0x0E00) >> 9;
 						const int size = ((word & 0x0100) >> 8) + 1;
 
-						sprintf(opcode_s, "CMPA.%c", size_arr[size]);
-						char source_s[50];
-						sprintmode(smode, sreg, size, source_s);
-						sprintf(operand_s, "%s,A%i", source_s, areg);
+						snprintf(opcode_s, sizeof(opcode_s), "CMPA.%c", size_arr[size]);
+						char source_s[50] = "";
+						sprintmode(smode, sreg, size, source_s, sizeof(source_s));
+						snprintf(operand_s, sizeof(operand_s), "%s,A%i", source_s, areg);
 						decoded = true;
 					} break;
 					case 28 : { /* DBcc */
 						const int cc = (word & 0x0F00) >> 8;
-						sprintf(opcode_s, "D%s", bra_tab[cc]);
+						snprintf(opcode_s, sizeof(opcode_s), "D%s", bra_tab[cc]);
 
-						if (cc == 0) sprintf(opcode_s, "DBT");
-						if (cc == 1) sprintf(opcode_s, "DBF");
+						if (cc == 0) snprintf(opcode_s, sizeof(opcode_s), "DBT");
+						if (cc == 1) snprintf(opcode_s, sizeof(opcode_s), "DBF");
 						int offset = getword();
 						if (offset >= 32768) offset -= 65536;
 						const int dreg = word & 0x0007;
-						sprintf(operand_s, "D%i,$%08lx", dreg, address - 2 + offset);
+						snprintf(operand_s, sizeof(operand_s), "D%i,$%08lx", dreg, address - 2 + offset);
 						decoded = true;
 					} break;
 					case 33 : { /* EXG */
@@ -647,14 +650,14 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 
 						const int dreg = word & 0x0007;
 						const int areg = (word & 0x0E00) >> 9;
-						sprintf(opcode_s, "EXG");
+						snprintf(opcode_s, sizeof(opcode_s), "EXG");
 
 						switch(dmode) {
-							case 8  : sprintf(operand_s, "D%i,D%i", dreg, areg);
+							case 8  : snprintf(operand_s, sizeof(operand_s), "D%i,D%i", dreg, areg);
 								break;
-							case 9  : sprintf(operand_s, "A%i,A%i", dreg, areg);
+							case 9  : snprintf(operand_s, sizeof(operand_s), "A%i,A%i", dreg, areg);
 								break;
-							case 17 : sprintf(operand_s, "D%i,A%i", dreg, areg);
+							case 17 : snprintf(operand_s, sizeof(operand_s), "D%i,A%i", dreg, areg);
 								break;
 						}
 						decoded = true;
@@ -662,8 +665,8 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 					case 34 : {/* EXT */
 						const int dreg = word & 0x0007;
 						const int size = ((word & 0x0040) >> 6) + 1;
-						sprintf(opcode_s, "EXT.%c", size_arr[size]);
-						sprintf(operand_s, "D%i", dreg);
+						snprintf(opcode_s, sizeof(opcode_s), "EXT.%c", size_arr[size]);
+						snprintf(operand_s, sizeof(operand_s), "D%i", dreg);
 						decoded = true;
 					} break;
 					case 35 :
@@ -676,13 +679,13 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (dmode >= 11) break; /* Invalid */
 
 						switch(opnum) {
-							case 35 : sprintf(opcode_s, "JMP");
+							case 35 : snprintf(opcode_s, sizeof(opcode_s), "JMP");
 								break;
-							case 36 : sprintf(opcode_s, "JSR");
+							case 36 : snprintf(opcode_s, sizeof(opcode_s), "JSR");
 								break;
 						}
 
-						sprintmode(dmode, dreg, 0, operand_s);
+						sprintmode(dmode, dreg, 0, operand_s, sizeof(operand_s));
 						decoded = true;
 					} break;
 					case 37 : {/* LEA */
@@ -692,20 +695,20 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (smode >= 11) break;
 
 						const int sreg = word & 0x0007;
-						sprintf(opcode_s, "LEA");
-						char source_s[50];
-						sprintmode(smode, sreg, 0, source_s);
+						snprintf(opcode_s, sizeof(opcode_s), "LEA");
+						char source_s[50] = "";
+						sprintmode(smode, sreg, 0, source_s, sizeof(source_s));
 
 						const int dreg = (word & 0x0E00) >> 9;
-						sprintf(operand_s, "%s,A%i", source_s, dreg);
+						snprintf(operand_s, sizeof(operand_s), "%s,A%i", source_s, dreg);
 						decoded = true;
 					} break;
 					case 38 : {/* LINK */
 						const int areg = word & 0x0007;
 						int offset = getword();
 						if (offset >= 32768) offset -= 65536;
-						sprintf(opcode_s, "LINK");
-						sprintf(operand_s, "A%i,#%+i", areg, offset);
+						snprintf(opcode_s, sizeof(opcode_s), "LINK");
+						snprintf(operand_s, sizeof(operand_s), "A%i,#%+i", areg, offset);
 						decoded = true;
 					} break;
 					case 43 : {/* MOVE */
@@ -743,12 +746,12 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (dmode == 1) break;
 						if (dmode >= 9) break;
 
-						sprintf(opcode_s,"MOVE.%c",size_arr[size]);
+						snprintf(opcode_s, sizeof(opcode_s),"MOVE.%c",size_arr[size]);
 
-						char source_s[50], dest_s[50];
-						sprintmode(smode, sreg, size, source_s);
-						sprintmode(dmode, dreg, size, dest_s);
-						sprintf(operand_s, "%s,%s ", source_s, dest_s);
+						char source_s[50] = "", dest_s[50] = "";
+						sprintmode(smode, sreg, size, source_s, sizeof(source_s));
+						sprintmode(dmode, dreg, size, dest_s, sizeof(dest_s));
+						snprintf(operand_s, sizeof(operand_s), "%s,%s ", source_s, dest_s);
 						decoded = true;
 					} break;
 					case 44 : /* MOVE to CCR */
@@ -760,13 +763,13 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (smode == 1) break;
 						if (smode >= 12) break;
 
-						sprintf(opcode_s, "MOVE.W");
-						char source_s[50];
-						sprintmode(smode, sreg, size, source_s);
+						snprintf(opcode_s, sizeof(opcode_s), "MOVE.W");
+						char source_s[50] = "";
+						sprintmode(smode, sreg, size, source_s, sizeof(source_s));
 						if (opnum == 44) {
-							sprintf(operand_s, "%s,CCR", source_s);
+							snprintf(operand_s, sizeof(operand_s), "%s,CCR", source_s);
 						} else {
-							sprintf(operand_s, "%s,SR", source_s);
+							snprintf(operand_s, sizeof(operand_s), "%s,SR", source_s);
 						}
 						decoded = true;
 					} break;
@@ -778,21 +781,21 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (dmode == 1) break;
 						if (dmode >= 9) break;
 
-						sprintf(opcode_s, "MOVE.W");
-						char dest_s[50];
-						sprintmode(dmode, dreg, size, dest_s);
-						sprintf(operand_s, "SR,%s", dest_s);
+						snprintf(opcode_s, sizeof(opcode_s), "MOVE.W");
+						char dest_s[50] = "";
+						sprintmode(dmode, dreg, size, dest_s, sizeof(dest_s));
+						snprintf(operand_s, sizeof(operand_s), "SR,%s", dest_s);
 						decoded = true;
 					} break;
 					case 47 : { /* MOVE USP */
 						const int sreg = word & 0x0007;
-						sprintf(opcode_s, "MOVE");
+						snprintf(opcode_s, sizeof(opcode_s), "MOVE");
 						if ((word & 0x0008) == 0) {
 							/* to USP */
-							sprintf(operand_s, "A%i,USP", sreg);
+							snprintf(operand_s, sizeof(operand_s), "A%i,USP", sreg);
 						} else {
 							/* from USP */
-							sprintf(operand_s, "USP,A%i", sreg);
+							snprintf(operand_s, sizeof(operand_s), "USP,A%i", sreg);
 						}
 						decoded = true;
 					} break;
@@ -808,11 +811,11 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 
 						const int dreg = (word & 0x0e00) >> 9;
 
-						sprintf(opcode_s, "MOVEA.%c", size_arr[size]);
+						snprintf(opcode_s, sizeof(opcode_s), "MOVEA.%c", size_arr[size]);
 
-						char source_s[50];
-						sprintmode(smode, sreg, size, source_s);
-						sprintf(operand_s, "%s,A%i", source_s, dreg);
+						char source_s[50] = "";
+						sprintmode(smode, sreg, size, source_s, sizeof(source_s));
+						snprintf(operand_s, sizeof(operand_s), "%s,A%i", source_s, dreg);
 						decoded = true;
 					} break;
 					case 49 : {/* MOVEM */
@@ -855,20 +858,20 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 							if ((rlist[i-1] == 0) && (rlist[i] == 1) &&
 								(rlist[i+1] == 1) && (rlist[i+2] == 1)) {
 								/* first reg in list */
-								char temp_s[50];
-								sprintf(temp_s, "D%i-", i - 1);
-								strcat(source_s, temp_s);
+								char temp_s[50] = "";
+								snprintf(temp_s, sizeof(temp_s), "D%i-", i - 1);
+								tkl_strscat(source_s, temp_s, sizeof(source_s));
 							}
 							if ((rlist[i] == 1) && (rlist[i+1] == 0)) {
-								char temp_s[50];
-								sprintf(temp_s, "D%i,", i-1);
-								strcat(source_s, temp_s);
+								char temp_s[50] = "";
+								snprintf(temp_s, sizeof(temp_s), "D%i,", i-1);
+								tkl_strscat(source_s, temp_s, sizeof(source_s));
 							}
 							if ((rlist[i-1] == 0) && (rlist[i] == 1) &&
 								(rlist[i+1] == 1) && (rlist[i+2] == 0)) {
-								char temp_s[50];
-								sprintf(temp_s, "D%i,", i-1);
-								strcat(source_s, temp_s);
+								char temp_s[50] = "";
+								snprintf(temp_s, sizeof(temp_s), "D%i,", i-1);
+								tkl_strscat(source_s, temp_s, sizeof(source_s));
 							}
 						}
 
@@ -885,32 +888,32 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 							if ((rlist[i-1] == 0) && (rlist[i] == 1) &&
 								(rlist[i+1] == 1) && (rlist[i+2] == 1)) {
 								/* first reg in list */
-								char temp_s[50];
-								sprintf(temp_s, "A%i-", i - 1);
-								strcat(source_s, temp_s);
+								char temp_s[50] = "";
+								snprintf(temp_s, sizeof(temp_s), "A%i-", i - 1);
+								tkl_strscat(source_s, temp_s, sizeof(source_s));
 							}
 							if ((rlist[i] == 1) && (rlist[i+1] == 0)) {
-								char temp_s[50];
-								sprintf(temp_s, "A%i,", i - 1);
-								strcat(source_s, temp_s);
+								char temp_s[50] = "";
+								snprintf(temp_s, sizeof(temp_s), "A%i,", i - 1);
+								tkl_strscat(source_s, temp_s, sizeof(source_s));
 							}
 							if ((rlist[i-1] == 0) && (rlist[i] == 1) &&
 								(rlist[i+1] == 1) && (rlist[i+2] == 0)) {
-								char temp_s[50];
-								sprintf(temp_s,"A%i,", i - 1);
-								strcat(source_s, temp_s);
+								char temp_s[50] = "";
+								snprintf(temp_s, sizeof(temp_s),"A%i,", i - 1);
+								tkl_strscat(source_s, temp_s, sizeof(source_s));
 							}
 						}
 
-						sprintf(opcode_s, "MOVEM.%c", size_arr[size]);
-						sprintmode(dmode, dreg, size, dest_s);
+						snprintf(opcode_s, sizeof(opcode_s), "MOVEM.%c", size_arr[size]);
+						sprintmode(dmode, dreg, size, dest_s, sizeof(dest_s));
 						if (dir == 0) {
 							/* the comma comes from the reglist */
-							sprintf(operand_s, "%s%s", source_s, dest_s);
+							snprintf(operand_s, sizeof(operand_s), "%s%s", source_s, dest_s);
 						} else {
 							/* add the comma */
 							source_s[strlen(source_s)-1] = ' '; /* and remove the other one */
-							sprintf(operand_s, "%s,%s", dest_s, source_s);
+							snprintf(operand_s, sizeof(operand_s), "%s,%s", dest_s, source_s);
 						}
 						decoded = true;
 					} break;
@@ -922,20 +925,20 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (size == 3) break;
 
 						const int data = getword();
-						sprintf(opcode_s, "MOVEP.%c", size_arr[size]);
+						snprintf(opcode_s, sizeof(opcode_s), "MOVEP.%c", size_arr[size]);
 						if ((word & 0x0080) == 0) {
 							/* mem -> data reg */
-							sprintf(operand_s, "$%04X(A%i),D%i", data, areg, dreg);
+							snprintf(operand_s, sizeof(operand_s), "$%04X(A%i),D%i", data, areg, dreg);
 						} else {
 							/* data reg -> mem */
-							sprintf(operand_s, "D%i,$%04X(A%i)", dreg, data, areg);
+							snprintf(operand_s, sizeof(operand_s), "D%i,$%04X(A%i)", dreg, data, areg);
 						}
 						decoded = true;
 					} break;
 					case 51 : { /* MOVEQ */
 						const int dreg = (word & 0x0E00) >> 9;
-						sprintf(opcode_s, "MOVEQ");
-						sprintf(operand_s, "#$%02X,D%i", (word & 0x00FF), dreg);
+						snprintf(opcode_s, sizeof(opcode_s), "MOVEQ");
+						snprintf(operand_s, sizeof(operand_s), "#$%02X,D%i", (word & 0x00FF), dreg);
 						decoded = true;
 					} break;
 					case 54 : /* NBCD */
@@ -951,16 +954,16 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (size == 3) break;
 
 						switch(opnum) {
-							case 54 : sprintf(opcode_s, "NBCD.%c", size_arr[size]);
+							case 54 : snprintf(opcode_s, sizeof(opcode_s), "NBCD.%c", size_arr[size]);
 								break;
-							case 55 : sprintf(opcode_s, "NEG.%c", size_arr[size]);
+							case 55 : snprintf(opcode_s, sizeof(opcode_s), "NEG.%c", size_arr[size]);
 								break;
-							case 56 : sprintf(opcode_s, "NEGX.%c", size_arr[size]);
+							case 56 : snprintf(opcode_s, sizeof(opcode_s), "NEGX.%c", size_arr[size]);
 								break;
-							case 58 : sprintf(opcode_s, "NOT.%c", size_arr[size]);
+							case 58 : snprintf(opcode_s, sizeof(opcode_s), "NOT.%c", size_arr[size]);
 								break;
 						}
-						sprintmode(dmode, dreg, size, operand_s);
+						sprintmode(dmode, dreg, size, operand_s, sizeof(operand_s));
 						decoded = true;
 					} break;
 					case 57 :
@@ -971,26 +974,26 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 					case 76 :
 					case 85 : { /* NOP, RESET, RTE, RTR, RTS, STOP, TRAPV */
 						switch(opnum) {
-							case 57 : sprintf(opcode_s, "NOP");
-								sprintf(operand_s, " ");
+							case 57 : snprintf(opcode_s, sizeof(opcode_s), "NOP");
+								snprintf(operand_s, sizeof(operand_s), " ");
 								break;
-							case 62 : sprintf(opcode_s, "RESET");
-								sprintf(operand_s, " ");
+							case 62 : snprintf(opcode_s, sizeof(opcode_s), "RESET");
+								snprintf(operand_s, sizeof(operand_s), " ");
 								break;
-							case 71 : sprintf(opcode_s, "RTE");
-								sprintf(operand_s, " ");
+							case 71 : snprintf(opcode_s, sizeof(opcode_s), "RTE");
+								snprintf(operand_s, sizeof(operand_s), " ");
 								break;
-							case 72 : sprintf(opcode_s, "RTR");
-								sprintf(operand_s, " ");
+							case 72 : snprintf(opcode_s, sizeof(opcode_s), "RTR");
+								snprintf(operand_s, sizeof(operand_s), " ");
 								break;
-							case 73 : sprintf(opcode_s, "RTS");
-								sprintf(operand_s, " ");
+							case 73 : snprintf(opcode_s, sizeof(opcode_s), "RTS");
+								snprintf(operand_s, sizeof(operand_s), " ");
 								break;
-							case 76 : sprintf(opcode_s, "STOP");
-								sprintf(operand_s, " ");
+							case 76 : snprintf(opcode_s, sizeof(opcode_s), "STOP");
+								snprintf(operand_s, sizeof(operand_s), " ");
 								break;
-							case 85 : sprintf(opcode_s, "TRAPV");
-								sprintf(operand_s, " ");
+							case 85 : snprintf(opcode_s, sizeof(opcode_s), "TRAPV");
+								snprintf(operand_s, sizeof(operand_s), " ");
 								break;
 						}
 						decoded = true;
@@ -1001,9 +1004,9 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if ((smode == 3) || (smode == 4)) break;
 						if (smode >= 11) break;
 
-						sprintf(opcode_s, "PEA");
+						snprintf(opcode_s, sizeof(opcode_s), "PEA");
 						const int sreg = word & 0x0007;
-						sprintmode(smode, sreg, 0, operand_s);
+						sprintmode(smode, sreg, 0, operand_s, sizeof(operand_s));
 						decoded = true;
 					} break;
 					case 75 : {/* Scc */
@@ -1014,16 +1017,16 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						const int dreg = word & 0x0007;
 						const int cc = (word & 0x0F00) >> 8;
 
-						sprintf(opcode_s, "%s", scc_tab[cc]);
-						char dest_s[50];
-						sprintmode(dmode, dreg, 0, dest_s);
-						sprintf(operand_s, "%s", dest_s);
+						snprintf(opcode_s, sizeof(opcode_s), "%s", scc_tab[cc]);
+						char dest_s[50] = "";
+						sprintmode(dmode, dreg, 0, dest_s, sizeof(dest_s));
+						snprintf(operand_s, sizeof(operand_s), "%s", dest_s);
 						decoded = true;
 					} break;
 					case 82 : {/* SWAP */
 						const int dreg = word & 0x0007;
-						sprintf(opcode_s, "SWAP");
-						sprintf(operand_s, "D%i", dreg);
+						snprintf(opcode_s, sizeof(opcode_s), "SWAP");
+						snprintf(operand_s, sizeof(operand_s), "D%i", dreg);
 						decoded = true;
 					} break;
 					case 83 : { /* TAS */
@@ -1032,14 +1035,14 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (dmode == 1) break;
 						if (dmode >= 9) break;
 
-						sprintf(opcode_s, "TAS ");
-						sprintmode(dmode, dreg, 0, operand_s);
+						snprintf(opcode_s, sizeof(opcode_s), "TAS ");
+						sprintmode(dmode, dreg, 0, operand_s, sizeof(operand_s));
 						decoded = true;
 					} break;
 					case 84 : { /* TRAP */
 						const int dreg = word & 0x000F;
-						sprintf(opcode_s, "TRAP");
-						sprintf(operand_s, "%i", dreg);
+						snprintf(opcode_s, sizeof(opcode_s), "TRAP");
+						snprintf(operand_s, sizeof(operand_s), "%i", dreg);
 						decoded = true;
 					} break;
 					case 86 : { /* TST */
@@ -1051,14 +1054,14 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 						if (dmode >= 9) break;
 						if (size == 3) break;
 
-						sprintf(opcode_s, "TST ");
-						sprintmode(dmode, dreg, size, operand_s);
+						snprintf(opcode_s, sizeof(opcode_s), "TST ");
+						sprintmode(dmode, dreg, size, operand_s, sizeof(operand_s));
 						decoded = true;
 					} break;
 					case 87 : {/* UNLK */
 						const int areg = word & 0x0007;
-						sprintf(opcode_s, "UNLK");
-						sprintf(operand_s, "A%i", areg);
+						snprintf(opcode_s, sizeof(opcode_s), "UNLK");
+						snprintf(operand_s, sizeof(operand_s), "A%i", areg);
 						decoded = true;
 					} break;
 
@@ -1071,10 +1074,11 @@ void decodeM68K(unsigned long int start, char *outbuf, int *outlen, unsigned lon
 
 		const int fetched = address - start_address;
 
-                memcpy(outbuf,opcode_s,strlen(opcode_s));
-                memcpy(outbuf+strlen(opcode_s)," ",1);
-                memcpy(outbuf+strlen(opcode_s)+1,operand_s,strlen(operand_s));
-                memcpy(outbuf+strlen(opcode_s)+1+strlen(operand_s),"\0",1);
+                /* opcode_s[50] + ' ' + operand_s[100] is up to 151 bytes; the
+                 * four unbounded memcpy calls wrote all of it into a caller
+                 * buffer that was never measured. */
+                snprintf(outbuf, (size_t)(outbufsize > 0 ? outbufsize : 0),
+                         "%s %s", opcode_s, operand_s);
                 *outlen = fetched;
 
                 return;
