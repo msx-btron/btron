@@ -33,7 +33,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 MODULE_CONFIGS = [
     {
-        "folder": "src/workbench",
+        "folder": "src/apps/workbench",
         "name": "B-System Workbench Desktop Menu Tracker About",
         "includes": ["-Iinclude", "-Iinclude/apps/workbench", "-Isrc/apps/workbench"],
         "excludes": [],
