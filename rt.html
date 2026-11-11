@@ -405,6 +405,43 @@ ul.spec strong {
   line-height: 1.7;
 }
 
+/* Red Dot Table Lead & Section Architecture Commentary */
+.table-lead {
+  margin: clamp(2.2rem, 4.5vw, 3.4rem) 0 1.1rem;
+  padding: 0.25rem 0 0.25rem 1.15rem;
+  border-left: 2px solid var(--tron-teal);
+}
+.table-lead.gold {
+  border-left-color: var(--tron-gold);
+}
+.table-lead-kicker {
+  font-family: var(--mono-font);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--tron-teal);
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+}
+.table-lead.gold .table-lead-kicker {
+  color: var(--tron-gold);
+}
+.table-lead-title {
+  font-family: var(--mincho-font);
+  font-size: clamp(1.08rem, 2vw, 1.25rem);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0 0 0.5rem;
+  line-height: 1.35;
+}
+.table-lead p {
+  margin: 0;
+  font-size: 0.88rem;
+  line-height: 1.8;
+  color: var(--ink-2);
+  max-width: 95ch;
+}
+
 /* Three-column card grid */
 .card-grid {
   display: grid;
@@ -880,13 +917,19 @@ footer.site li { margin-bottom: 0.35rem; }
         </p>
       </div>
 
-      <p class="note">
-        <b>Standards Evolution &amp; Architectural Mismatch:</b> The IEEE 1003 Standard Series was originally architected for
-        virtual-memory Unix systems with multi-user permissions and fork-based process isolation. When standard POSIX interfaces like
-        <code>fork()</code>, asynchronous thread cancellation, and filesystem-backed IPC queues are retrofitted into microcontroller and
-        RTOS environments, they introduce non-deterministic latency spikes, stack-unwinding hazards, and heavy descriptor leakage.
-        BTRON 3.20 replaces these time-sharing abstractions with native real-time actors, hardware priority inheritance, and single-call shared memory blocks.
-      </p>
+      <div class="table-lead">
+        <div class="table-lead-kicker">Level 01 · Standards Synthesis</div>
+        <h3 class="table-lead-title">Macro Architecture: Why Virtual-Memory Unix Fails on Real-Time Silicon</h3>
+        <p>
+          The IEEE 1003 Standard Series was originally architected for time-sharing Unix minicomputers equipped with hardware MMUs,
+          coarse timeslicing, and fork-based process isolation. In safety-critical embedded systems and hard real-time workloads,
+          standard POSIX primitives impose non-deterministic latency spikes: <code>fork()</code> demands copy-on-write page table replication,
+          asynchronous thread cancellation unwinds dynamic call stacks with fatal deadlock risks, and filesystem-backed IPC queues leak descriptor
+          table entries. BTRON 3.20 rejects this minicomputer legacy, replacing process-heavy time-sharing with lightweight, cooperative
+          real-time task actors within deterministic memory planes—scaling seamlessly from 1 MB ROM images to SMP workstations without the fragmented
+          compromises of POSIX Realtime Profiles (PSE51–PSE54).
+        </p>
+      </div>
 
       <!-- Table 3.1: Standards Overview Table -->
       <figure class="plate">
@@ -946,15 +989,19 @@ footer.site li { margin-bottom: 0.35rem; }
         </figcaption>
       </figure>
 
-      <p class="note">
-        <b>Level 2: Subsystem Group Architecture (BTRON 3.20 vs Apache NuttX POSIX):</b> Apache NuttX is widely recognized
-        as the leading open-source POSIX microkernel, yet its strict commitment to Linux-like POSIX emulation forces significant
-        memory and latency penalties on microcontroller architectures. Every NuttX message queue, socket, and stream must allocate
-        a VFS file descriptor (<code>struct file</code>), threads incur mandatory Thread-Local Storage (TLS) and cancellation metadata
-        overhead in <code>struct tcb_s</code>, and message queues dynamically allocate heap nodes into linked priority lists.
-        By contrast, BTRON 3.20 operates with zero file-descriptor tables, constant-time $O(1)$ integer handle lookups, native multi-bit
-        event flags, and a fully decoupled C99 runtime (<code>include/rt</code>) requiring zero static tables and zero heap memory on boot.
-      </p>
+      <div class="table-lead gold">
+        <div class="table-lead-kicker">Level 02 · Subsystem Efficiency</div>
+        <h3 class="table-lead-title">Subsystem Overhead: The Hidden Tax of POSIX Emulation in Apache NuttX</h3>
+        <p>
+          Apache NuttX represents the modern benchmark for open-source POSIX microkernels, yet its commitment to Linux-compatible
+          abstractions introduces significant runtime overhead on microcontroller cores. Every NuttX message queue, socket, and stream must allocate
+          a VFS file descriptor (rapidly exhausting the fixed <code>struct file</code> table), threads incur mandatory Thread-Local Storage (TLS)
+          and signal mask allocations inside <code>struct tcb_s</code>, and message queues dynamically allocate heap nodes into linked priority lists.
+          In contrast, BTRON 3.20 eliminates the VFS indirection layer for core IPC. Kernel objects are identified by direct, constant-time $O(1)$
+          integer handles; mutual exclusion is enforced in silicon via the kernel Priority Inheritance Protocol (PIP); and shared memory is mapped in a
+          single call (<code>Smalloc</code>), slashing RAM consumption and eliminating heap fragmentation during burst communication.
+        </p>
+      </div>
 
       <!-- Table 3.2: Level 2 — Group Comparison: BTRON 3.20 vs Apache NuttX POSIX Subsystems -->
       <figure class="plate">
@@ -1042,13 +1089,19 @@ footer.site li { margin-bottom: 0.35rem; }
         </figcaption>
       </figure>
 
-      <p class="note">
-        <b>Level 3: Direct Function-by-Function API Signature Breakdown:</b> Below is the granular, function-by-function comparison
-        of BTRON 3.20 system calls (from <code>./b-spec/os_spec/kernel/</code>) versus their direct POSIX and Apache NuttX counterparts.
-        Where POSIX requires multi-step initialization, dynamic heap chunk allocation, timespec conversions, and errno thread-local pointers,
-        BTRON 3.20 specifies exact integer handles, direct millisecond timeouts (<code>TMOUT</code>), atomic multi-count semaphore updates,
-        and zero-copy rendezvous ports.
-      </p>
+      <div class="table-lead">
+        <div class="table-lead-kicker">Level 03 · Call-Level Determinism</div>
+        <h3 class="table-lead-title">Function-by-Function Execution: Eliminating Multi-Call Syscall Cascades</h3>
+        <p>
+          At the system call boundary, POSIX forces developers into fragile multi-step programming sequences. Setting up shared memory
+          requires four discrete calls (<code>shm_open</code> &rarr; <code>ftruncate</code> &rarr; <code>mmap</code> &rarr; <code>close</code>);
+          timed synchronization demands complex <code>timespec</code> arithmetic subject to system clock drift; and signaling conditions under mutexes
+          triggers thundering-herd contention or lost wakeups. As detailed below from the <code>./b-spec/os_spec/kernel/</code> specification,
+          every BTRON 3.20 system call is an atomic, bounded contract: <code>wai_sem()</code> acquires multi-unit resource counts in one step;
+          <code>wai_flg()</code> atomically evaluates 32-bit pattern conditions with automatic state clearing (<code>TWF_CLR</code>); and synchronous
+          rendezvous ports (<code>cal_por</code> / <code>acp_por</code>) execute client-server transactions without intermediate buffer copying or thread stack duplication.
+        </p>
+      </div>
 
       <!-- Table 3.3: Level 3 — Detailed Function-by-Function Comparison (One API Call Per Line) -->
       <figure class="plate">
