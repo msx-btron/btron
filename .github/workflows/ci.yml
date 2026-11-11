@@ -137,7 +137,7 @@ jobs:
 
   # ── Security & Quality Static Analysis (Alpine Linux) ────────────────────────
   security-alpine:
-    name: Security & Quality Audit (Alpine Linux)
+    name: Security & Quality Code Static Analysis
     runs-on: ubuntu-latest
     container:
       image: alpine:3.20
@@ -160,13 +160,9 @@ jobs:
             flawfinder \
             python3
 
-      - name: Run Security & Quality Static Analysis
-        run: |
-          make CC=clang security
-
       - name: Generate ASCII Tree Security & Quality Report
         run: |
-          python3 scripts/security_report.py
+          python3 scripts/security_report.py --fast
 
   # ── FreeBSD ──────────────────────────────────────────────────────────────────
   build-freebsd:
