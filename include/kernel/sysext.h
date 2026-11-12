@@ -21,8 +21,8 @@
 #ifndef __TK_SYSEXT_H__
 #define	__TK_SYSEXT_H__
 
-#include <basic.h>
-#include "typedef.h"
+#include <kernel/basic.h>
+#include <kernel/typedef.h>
 
 #include <kernel/segment.h>
 

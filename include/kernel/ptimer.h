@@ -21,8 +21,8 @@
 #ifndef __TK_PTIMER_H__
 #define __TK_PTIMER_H__
 
-#include <basic.h>
-#include "typedef.h"
+#include <kernel/basic.h>
+#include <kernel/typedef.h>
 
 #ifdef __cplusplus
 extern "C" {

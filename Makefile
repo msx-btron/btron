@@ -50,6 +50,16 @@ CC ?= gcc
 CXX ?= c++
 CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
 
+# Feature-test macros for hosted POSIX targets.
+# _DARWIN_C_SOURCE is a superset of POSIX.1-2008 and exposes BSD
+# extensions (SIGWINCH, etc.) that strict _POSIX_C_SOURCE=200809L hides on macOS.
+# On Linux/BSDs _POSIX_C_SOURCE=200809L is the standard knob.
+ifeq ($(shell uname -s), Darwin)
+    CFLAGS += -D_DARWIN_C_SOURCE
+else
+    CFLAGS += -D_POSIX_C_SOURCE=200809L
+endif
+
 .PHONY: all posix qemu kernel tkernel sakamura foma uefi pc98 arm-elf arm64-elf m68k ps2 mips \
         check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop \
         test-xmb-render test-xmb-render-tgl test-gl-context test-async-input \

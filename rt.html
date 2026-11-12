@@ -293,41 +293,44 @@ section.band { padding: clamp(3.8rem, 7vw, 6.5rem) 0; }
 }
 .plate figcaption b { color: var(--ink); font-weight: 600; }
 
+/* Museum Scroll Enclosure & Clean Overflow Surface */
 .scroll {
   width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Narrow, 100% width, fixed-layout table styling to eliminate horizontal scrollbars */
+/* Red Dot Standard: Unified, High-Density Full-Width Plate Table */
 table.cmp {
   width: 100%;
   border-collapse: collapse;
-  font-size: 0.75rem;
-  line-height: 1.35;
-  table-layout: fixed;
+  font-size: 0.74rem;
+  line-height: 1.40;
+  table-layout: auto;
 }
 table.cmp th,
 table.cmp td {
   text-align: left;
-  vertical-align: middle;
-  padding: 0.44rem 0.52rem;
-  word-break: break-word;
-  overflow-wrap: break-word;
+  vertical-align: top;
+  padding: 0.52rem 0.65rem;
 }
 table.cmp th {
   font-family: var(--mono-font);
   font-size: 0.62rem;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--ink-3);
   font-weight: 600;
   background: var(--paper-2);
   border-bottom: 1px solid var(--rule);
+  padding: 0.58rem 0.65rem;
+  white-space: nowrap;
+  word-break: keep-all;
 }
 table.cmp td {
   border-bottom: 1px solid rgba(216, 215, 209, 0.7);
   color: var(--ink-2);
+  word-break: normal;
 }
 table.cmp tr:last-child td { border-bottom: none; }
 table.cmp tr:hover td { background: rgba(0, 128, 128, 0.025); }
@@ -335,31 +338,44 @@ table.cmp tr:hover td { background: rgba(0, 128, 128, 0.025); }
 table.cmp td:first-child {
   font-weight: 600;
   color: var(--ink);
+  white-space: nowrap;
 }
 table.cmp b { color: var(--ink); font-weight: 600; }
 table.cmp code {
   font-family: var(--mono-font);
   font-size: 0.86em;
   color: var(--tron-teal);
-  word-break: normal;
+  white-space: nowrap;
+  word-break: keep-all;
+  overflow-wrap: normal;
 }
 
 .mono { font-family: var(--mono-font); }
-.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.num, th.num, td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+.center, th.center, td.center {
+  text-align: center;
+  white-space: nowrap;
+}
 
-/* Status Badges */
+/* Status Badges — Crisp, Indivisible Pills */
 .badge {
-  display: inline-flex;
-  align-items: center;
+  display: inline-block;
   font-family: var(--mono-font);
   font-size: 0.60rem;
-  line-height: 1;
-  padding: 0.18rem 0.38rem;
+  line-height: 1.2;
+  padding: 0.18rem 0.42rem;
   border-radius: 2px;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  font-weight: 500;
+  font-weight: 600;
+  text-align: center;
   white-space: nowrap;
+  word-break: keep-all;
 }
 .badge-teal { background: var(--tron-teal-soft); color: var(--tron-teal); border: 1px solid var(--tron-teal-border); }
 .badge-gold { background: var(--tron-gold-soft); color: var(--tron-gold); border: 1px solid var(--tron-gold-border); }
@@ -537,16 +553,100 @@ footer.site li { margin-bottom: 0.35rem; }
 }
 
 @media (max-width: 860px) {
+  .wrap {
+    padding: 0 clamp(0.75rem, 4vw, 1.5rem);
+  }
+  .band-head {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.35rem;
+  }
+  .band-eyebrow {
+    font-size: 0.62rem;
+    letter-spacing: 0.08em;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
   .band-intro { grid-template-columns: 1fr; }
   .band-intro .en { border-left: none; padding-left: 0; border-top: 1px solid var(--rule); padding-top: 1rem; }
   .nav-container { flex-direction: column; align-items: flex-start; }
   .nav-links { gap: 0.6rem 0.85rem; }
   header.hero { min-height: auto; }
-  table.cmp th, table.cmp td { padding: 0.40rem 0.45rem; font-size: 0.70rem; }
+  
+  /* Tables on Tablet / Mobile */
+  table.cmp {
+    font-size: 0.68rem;
+    line-height: 1.35;
+  }
+  table.cmp th, table.cmp td {
+    padding: 0.42rem 0.38rem;
+  }
+  table.cmp th {
+    font-size: 0.56rem;
+    letter-spacing: 0.03em;
+  }
+  table.cmp code {
+    font-size: 0.82em;
+  }
+  table.cmp .badge {
+    font-size: 0.52rem;
+    padding: 0.10rem 0.22rem;
+  }
   ul.spec li {
     grid-template-columns: minmax(0, 1fr);
     gap: 0.2rem;
     padding: 0.60rem 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .wrap {
+    padding: 0 0.55rem;
+  }
+  .hero-content {
+    padding: 3.2rem 0.85rem 3.8rem;
+  }
+  .hero-content h1 {
+    font-size: 2.1rem;
+  }
+  .hero-marks {
+    font-size: 0.62rem;
+    gap: 0.35rem 0.75rem;
+  }
+  .hero-lede {
+    font-size: 0.98rem;
+  }
+  .hero-lede-en {
+    font-size: 0.82rem;
+  }
+  .table-lead {
+    margin: 1.6rem 0 0.8rem;
+  }
+  .table-lead-title {
+    font-size: 0.82rem;
+  }
+  .plate figcaption {
+    font-size: 0.56rem;
+    padding: 0.50rem 0.65rem;
+    gap: 0.25rem 0.6rem;
+  }
+  table.cmp {
+    font-size: 0.58rem;
+    line-height: 1.25;
+  }
+  table.cmp th, table.cmp td {
+    padding: 0.32rem 0.22rem;
+  }
+  table.cmp th {
+    font-size: 0.50rem;
+    letter-spacing: 0.01em;
+  }
+  table.cmp code {
+    font-size: 0.78em;
+  }
+  table.cmp .badge {
+    font-size: 0.46rem;
+    padding: 0.06rem 0.14rem;
+    letter-spacing: 0.01em;
   }
 }
 </style>
@@ -567,6 +667,8 @@ footer.site li { margin-bottom: 0.35rem; }
       <li><a href="#missing">Missing</a></li>
       <li><a href="#security">Security</a></li>
       <li><a href="#selection">Matrix</a></li>
+      <li><a href="#btron-headers">BTRON</a></li>
+      <li><a href="#opengl">OpenGL</a></li>
     </ul>
   </div>
 </nav>
@@ -581,7 +683,7 @@ footer.site li { margin-bottom: 0.35rem; }
       engineered for high-integrity RTOS workstations and mission-critical microkernels.
     </p>
     <p class="hero-lede-en">
-      Rigorous benchmark against the IEEE 1003 Standard Series, musl, glibc, NuttX, picolibc, and dietlibc across three tiers:
+      Rigorous benchmark against the IEEE 1003 Standard Series, musl, glibc, NetBSD libc, NuttX, picolibc, and dietlibc across three tiers:
       rt API vs libc, TRON kernel vs POSIX, and B-System BTRON vs Unix desktop.
     </p>
     <div class="hero-marks">
@@ -610,7 +712,7 @@ footer.site li { margin-bottom: 0.35rem; }
         <p>
           In mission-critical embedded systems and real-time workstations, ranking runtime libraries
           merely by POSIX symbol count is an architectural fallacy. A runtime that provides
-          unbounded recursion in <code>qsort</code> or halts the processor inside <code>assert()</code>
+          unbounded recursion in <code>qsort</code> or halts the processor inside <code>assert/0</code>
           violates hard real-time guarantees, regardless of its compliance certificates.
         </p>
         <p class="en">
@@ -622,7 +724,7 @@ footer.site li { margin-bottom: 0.35rem; }
       </div>
       <figure class="plate">
         <ul class="spec">
-          <li><strong>In Scope</strong><span>B-System <code>include/rt</code>, musl libc (1.2.x), GNU glibc (2.39+), Apache NuttX libc, newlib/picolibc (nano-specs), dietlibc (0.34).</span></li>
+          <li><strong>In Scope</strong><span>B-System <code>include/rt</code>, musl libc (1.2.x), GNU glibc (2.39+), NetBSD libc (10.x), Apache NuttX libc, newlib/picolibc (nano-specs), dietlibc (0.34).</span></li>
           <li><strong>Hardware Targets</strong><span>Freestanding 32/64-bit architectures: ARM Cortex-A/R/M, x86/x86_64, MIPS (including Sony PlayStation 2 Emotion Engine COP1), UEFI, T-Kernel 2.0.</span></li>
           <li><strong>Measurement Basis</strong><span>Headers and shims under <code>include/rt</code> (1,151 LOC total). Memory footprints are reported as static object BSS/data and boot heap delta.</span></li>
           <li><strong>Fairness Protocol</strong><span>An absent header or symbol in <code>rt</code> is an intentional architectural boundary: services belonging to the document engine or RTOS kernel are not duplicated.</span></li>
@@ -661,75 +763,84 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 17%;">Library</th>
-                <th style="width: 20%;">Target Domain</th>
-                <th style="width: 13%;">Source LOC</th>
-                <th style="width: 13%;">Binary (.text)</th>
-                <th style="width: 13%;">Static BSS</th>
-                <th style="width: 12%;">Boot Heap</th>
-                <th style="width: 12%;">License</th>
+                <th>Library</th>
+                <th>Target Domain</th>
+                <th class="num">Source LOC</th>
+                <th class="num">Binary (.text)</th>
+                <th class="num">Static BSS</th>
+                <th class="num">Boot Heap</th>
+                <th class="center">License</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><b>B-System rt</b></td>
                 <td>BTRON / T-Kernel RTOS</td>
-                <td><code class="num">1,151 LOC</code></td>
-                <td><code class="num">~1.2 kB</code></td>
-                <td><code class="num">12 B</code></td>
-                <td><span class="badge badge-teal">0 B</span></td>
-                <td>ISC</td>
+                <td class="num"><code class="num">1,151 LOC</code></td>
+                <td class="num"><code class="num">1.2–10.5 kB</code></td>
+                <td class="num"><code class="num">88 B</code></td>
+                <td class="num"><span class="badge badge-teal">0 B</span></td>
+                <td class="center">ISC</td>
               </tr>
               <tr>
                 <td><b>dietlibc</b></td>
                 <td>Minimal Static Linux</td>
-                <td><code class="num">~22,000 LOC</code></td>
-                <td><code class="num">~6.0 kB</code></td>
-                <td><code class="num">~1.1 kB</code></td>
-                <td><span class="badge badge-gray">~4 kB</span></td>
-                <td>GPL-2.0</td>
+                <td class="num"><code class="num">~22,000 LOC</code></td>
+                <td class="num"><code class="num">~6.0 kB</code></td>
+                <td class="num"><code class="num">~1.1 kB</code></td>
+                <td class="num"><span class="badge badge-gray">~4 kB</span></td>
+                <td class="center">GPL-2.0</td>
               </tr>
               <tr>
                 <td><b>picolibc (nano)</b></td>
                 <td>MCU / Zephyr / FreeRTOS</td>
-                <td><code class="num">~82,000 LOC</code></td>
-                <td><code class="num">~8.5 kB</code></td>
-                <td><code class="num">~1.4 kB</code></td>
-                <td><span class="badge badge-gray">~2 kB</span></td>
-                <td>BSD-3</td>
+                <td class="num"><code class="num">~82,000 LOC</code></td>
+                <td class="num"><code class="num">~8.5 kB</code></td>
+                <td class="num"><code class="num">~1.4 kB</code></td>
+                <td class="num"><span class="badge badge-gray">~2 kB</span></td>
+                <td class="center">BSD-3</td>
               </tr>
               <tr>
                 <td><b>NuttX libc</b></td>
                 <td>Modular RTOS Flat/Protected</td>
-                <td><code class="num">~45,000 LOC</code></td>
-                <td><code class="num">~14–48 kB</code></td>
-                <td><code class="num">~1.8 kB</code></td>
-                <td><span class="badge badge-gray">Config</span></td>
-                <td>Apache-2</td>
+                <td class="num"><code class="num">~45,000 LOC</code></td>
+                <td class="num"><code class="num">~14–48 kB</code></td>
+                <td class="num"><code class="num">~1.8 kB</code></td>
+                <td class="num"><span class="badge badge-gray">Config</span></td>
+                <td class="center">Apache-2</td>
+              </tr>
+              <tr>
+                <td><b>NetBSD libc</b></td>
+                <td>Portable BSD / Rump Kernel</td>
+                <td class="num"><code class="num">~310,000 LOC</code></td>
+                <td class="num"><code class="num">~52.0 kB</code></td>
+                <td class="num"><code class="num">~14.5 kB</code></td>
+                <td class="num"><span class="badge badge-gold">jemalloc</span></td>
+                <td class="center">BSD-2</td>
               </tr>
               <tr>
                 <td><b>musl libc</b></td>
                 <td>Standards-Conformant Linux</td>
-                <td><code class="num">~85,000 LOC</code></td>
-                <td><code class="num">~13.2 kB</code></td>
-                <td><code class="num">~12.4 kB</code></td>
-                <td><span class="badge badge-gold">Dynamic</span></td>
-                <td>MIT</td>
+                <td class="num"><code class="num">~85,000 LOC</code></td>
+                <td class="num"><code class="num">~13.2 kB</code></td>
+                <td class="num"><code class="num">~12.4 kB</code></td>
+                <td class="num"><span class="badge badge-gold">Dynamic</span></td>
+                <td class="center">MIT</td>
               </tr>
               <tr>
                 <td><b>glibc (GNU)</b></td>
                 <td>Hosted GNU/Linux Desktops</td>
-                <td><code class="num">~1,250,000 LOC</code></td>
-                <td><code class="num">662.0 kB</code></td>
-                <td><code class="num">~140.0 kB</code></td>
-                <td><span class="badge badge-gold">ptmalloc</span></td>
-                <td>LGPL-2.1</td>
+                <td class="num"><code class="num">~1,250,000 LOC</code></td>
+                <td class="num"><code class="num">662.0 kB</code></td>
+                <td class="num"><code class="num">~140.0 kB</code></td>
+                <td class="num"><span class="badge badge-gold">ptmalloc</span></td>
+                <td class="center">LGPL-2.1</td>
               </tr>
             </tbody>
           </table>
         </div>
         <figcaption>
-          <span><b>Component Density</b> — Independent static analysis</span>
+          <span><b>Table 1.1: Component Density Matrix</b> — Independent static analysis (musl, glibc, NetBSD, Newlib, NuttX, Dietlibc, B-System)</span>
           <span>B-System: zero dynamic heap dependency at startup</span>
         </figcaption>
       </figure>
@@ -769,18 +880,22 @@ footer.site li { margin-bottom: 0.35rem; }
       <div class="band-head">
         <span class="band-index">02 / Breakdown</span>
         <h2>Detailed Files Breakdown</h2>
-        <p class="band-eyebrow">Component Resource Consumption · Execution Mechanics · Competitor Divergence</p>
+        <p class="band-eyebrow">Component Resource Consumption · ARM32 Disk Footprint · Execution Mechanics</p>
       </div>
       <div class="band-intro">
         <p>
-          Every header in <code>include/rt</code> is examined for lines of code, static RAM consumption,
-          dynamic overhead, and worst-case execution characteristics. Where traditional implementations
-          rely on lookup tables or deep recursion, <code>include/rt</code> enforces zero-table ALU
-          evaluations and iterative algorithms.
+          Every header in <code>include/rt</code> is audited for source lines, compiled 32-bit ARMv7-A
+          (ARM32 Cortex-A7 / BCM2836) binary footprint in bytes, static RAM consumption, and worst-case
+          execution characteristics. ARM code sizes on disk are not padded or artificially aligned to page
+          or cache boundaries, but represent the exact arithmetic sums of compiled machine instructions
+          directly extracted from object symbol tables. Where traditional general-purpose implementations rely
+          on large pre-computed lookup tables or unbounded recursion, <code>include/rt</code> enforces zero-table
+          ALU evaluation, strictly non-allocating formatting engines, and deterministic iterative sorting.
         </p>
         <p class="en">
-          The table below demonstrates how <code>include/rt</code> maintains strict C99 conformance
-          for compilers while stripping out runtime side effects that destabilize RTOS flight tasks.
+          The tables below demonstrate how <code>include/rt</code> maintains strict C99 conformance
+          for standard toolchains while eliminating the non-deterministic memory side effects that jeopardize
+          hard real-time avionics, medical robotics, and automotive RTOS deployments.
         </p>
       </div>
       <figure class="plate">
@@ -788,109 +903,186 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 14%;">File</th>
-                <th style="width: 8%;">LOC</th>
-                <th style="width: 11%;">RAM</th>
-                <th style="width: 26%;">B-System rt Implementation</th>
-                <th style="width: 25%;">Competitor Baseline</th>
-                <th style="width: 16%;">Real-Time Metric</th>
+                <th>File</th>
+                <th class="num">LOC</th>
+                <th class="num">ARM32 Code</th>
+                <th class="num">RAM</th>
+                <th>B-System rt Implementation</th>
+                <th>Competitor Baseline</th>
+                <th class="center">Real-Time Metric</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><code>assert.h</code></td>
-                <td><code class="num">23</code></td>
-                <td><code class="num">8 B</code></td>
-                <td>Sticky count + line; returns. No abort.</td>
-                <td>Stderr output + <code>abort()</code> panic</td>
-                <td><span class="badge badge-teal">Non-crashing O(1)</span></td>
+                <td class="num"><code class="num">23</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td class="num"><code class="num">8 B</code></td>
+                <td>Sticky counter + fail line; non-fatal return. Zero abort.</td>
+                <td>Stderr output + <code>abort/0</code> panic</td>
+                <td class="center"><span class="badge badge-teal">Non-crashing O(1)</span></td>
               </tr>
               <tr>
                 <td><code>ctype.h</code></td>
-                <td><code class="num">47</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>Inline range checks (<code>c &gt;= 'a' &amp;&amp; c &lt;= 'z'</code>)</td>
+                <td class="num"><code class="num">47</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>Inline ALU range arithmetic (<code>c &gt;= 'a' &amp;&amp; c &lt;= 'z'</code>)</td>
                 <td>256–384 B tables; TLS locale ptrs</td>
-                <td><span class="badge badge-teal">0 Cache Miss</span></td>
+                <td class="center"><span class="badge badge-teal">0 Cache Miss</span></td>
               </tr>
               <tr>
                 <td><code>inttypes.h</code></td>
-                <td><code class="num">88</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>Architecture-adaptive <code>PRI/SCN</code> literals</td>
+                <td class="num"><code class="num">88</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>Architecture-adaptive <code>PRI/SCN</code> format literals</td>
                 <td>Full macro tables + GNU extensions</td>
-                <td><span class="badge badge-teal">Compile Pure</span></td>
+                <td class="center"><span class="badge badge-teal">Compile Pure</span></td>
               </tr>
               <tr>
                 <td><code>math.h</code></td>
-                <td><code class="num">512</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>Bitwise exp/ldexp; x87 asm; PS2 COP1 fix</td>
+                <td class="num"><code class="num">512</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>Bitwise exponent/mantissa manipulation; arch intrinsics</td>
                 <td>Full libm (fdlibm, 50+ kB code)</td>
-                <td><span class="badge badge-teal">Errata Safe</span></td>
+                <td class="center"><span class="badge badge-teal">Errata Safe</span></td>
               </tr>
               <tr>
                 <td><code>stddef.h</code></td>
-                <td><code class="num">141</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>TRON &amp; LP64/ILP32 unified types</td>
+                <td class="num"><code class="num">141</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>TRON &amp; LP64/ILP32 unified types, <code>offsetof</code>, <code>size_t</code></td>
                 <td>Compiler stddef wrapper stubs</td>
-                <td><span class="badge badge-teal">ABI Unity</span></td>
+                <td class="center"><span class="badge badge-teal">ABI Unity</span></td>
               </tr>
               <tr>
                 <td><code>stdio.h</code></td>
-                <td><code class="num">67</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>printf no-op; snprintf bound; /SYS fopen</td>
+                <td class="num"><code class="num">67</code></td>
+                <td class="num"><code class="num">4,104 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>Bound snprintf/vsnprintf, binary32 f32 engine; zero stream heap</td>
                 <td>FILE structs; 1–8 kB stream buffers</td>
-                <td><span class="badge badge-teal">Zero Stream RAM</span></td>
+                <td class="center"><span class="badge badge-teal">Zero Stream RAM</span></td>
               </tr>
               <tr>
                 <td><code>stdlib.h</code></td>
-                <td><code class="num">131</code></td>
-                <td><code class="num">4 B</code></td>
-                <td>Ciura Shell sort ($O(1)$ stack); 24-bit LCG</td>
+                <td class="num"><code class="num">131</code></td>
+                <td class="num"><code class="num">2,700 B</code></td>
+                <td class="num"><code class="num">0 B*</code></td>
+                <td>Ciura Shell sort (O(1) stack); base-10/16 conversion; optional pool</td>
                 <td>Recursive quicksort; ptmalloc/brk</td>
-                <td><span class="badge badge-teal">O(1) Stack Sort</span></td>
+                <td class="center"><span class="badge badge-teal">O(1) Stack Sort</span></td>
               </tr>
               <tr>
                 <td><code>stdtype.h</code></td>
-                <td><code class="num">34</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>TRON types (<code>__size_t</code>, <code>__wchar_t</code>)</td>
+                <td class="num"><code class="num">34</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>Canonical TRON fundamental types (<code>__size_t</code>, <code>__wchar_t</code>)</td>
                 <td>Vendor proprietary kernel types</td>
-                <td><span class="badge badge-teal">TRON Aligned</span></td>
+                <td class="center"><span class="badge badge-teal">TRON Aligned</span></td>
               </tr>
               <tr>
                 <td><code>string.h</code></td>
-                <td><code class="num">69</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>Direct <code>tkl_*</code> asm; strdup cap &lt; 1 MB</td>
+                <td class="num"><code class="num">69</code></td>
+                <td class="num"><code class="num">3,696 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>Direct <code>tkl_*</code> bounded routines; word-aligned memset/memcpy</td>
                 <td>SIMD vector dispatch (AVX-512)</td>
-                <td><span class="badge badge-teal">Alloc Bounded</span></td>
+                <td class="center"><span class="badge badge-teal">Alloc Bounded</span></td>
               </tr>
               <tr>
-                <td><code>strings.h</code></td>
-                <td><code class="num">11</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>Direct forwarder to <code>string.h</code></td>
-                <td>BSD legacy comparison aliases</td>
-                <td><span class="badge badge-teal">Zero Redundancy</span></td>
+                <td><code>termios.h</code></td>
+                <td class="num"><code class="num">124</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>Freestanding <code>struct termios</code>, baud rates, NCCS 32, inline stubs</td>
+                <td>Heavy glibc/musl termios with terminfo, ioctl tables, locale line disciplines</td>
+                <td class="center"><span class="badge badge-teal">Zero TTY Heap</span></td>
               </tr>
               <tr>
                 <td><code>time.h</code></td>
-                <td><code class="num">28</code></td>
-                <td><code class="num">0 B</code></td>
-                <td>Plain <code>struct tm</code>; <code>clock()</code> returns 0</td>
+                <td class="num"><code class="num">28</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td class="num"><code class="num">0 B</code></td>
+                <td>Plain <code>struct tm</code>; <code>clock/0</code> returns tick reference</td>
                 <td>Olson tzdb parser, leap seconds</td>
-                <td><span class="badge badge-teal">Plane Clock</span></td>
+                <td class="center"><span class="badge badge-teal">Plane Clock</span></td>
               </tr>
             </tbody>
           </table>
         </div>
         <figcaption>
-          <span><b>File Matrix</b> — 11 include/rt files against standard libc implementations</span>
-          <span>Zero static tables, zero recursive algorithms, zero hidden allocations</span>
+          <span><b>Table 2.1: File Footprint Matrix</b> — 11 include/rt files measured on ARM32 (ARMv7-A Cortex-A7, -O2)</span>
+          <span>*Real unaligned instruction sums on disk: stdio.h (4,104 B), stdlib.h (2,700 B), string.h (3,696 B); optional allocator occupies 80 B in .bss</span>
+        </figcaption>
+      </figure>
+
+      <div class="table-lead">
+        <h3 class="table-lead-title">Granular Function Binary Footprint: ARM32 ARMv7-A Architecture</h3>
+        <p>
+          The entire compiled runtime (<code>src/kernel/libstr.c</code> and <code>include/rt/</code>) compiles
+          to exactly <b>10,500 bytes</b> of <code>.text</code> instructions on 32-bit ARMv7-A (Cortex-A7 / BCM2836).
+          Below is the precise symbol-by-symbol disk measurement in bytes alongside worst-case execution bounds
+          and static stack frame allocations.
+        </p>
+      </div>
+
+      <figure class="plate">
+        <div class="scroll">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>Function Symbol</th>
+                <th class="num">ARM32 Disk</th>
+                <th>Subsystem</th>
+                <th class="center">Complexity</th>
+                <th class="num">Stack Depth</th>
+                <th>Real-Time Quality Profile</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><code>tkl_atoi</code></td><td class="num"><code class="num">12 B</code></td><td>Numeric</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Leaf function, zero registers spilled</td></tr>
+              <tr><td><code>tkl_strcpy</code></td><td class="num"><code class="num">28 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Word-aligned byte streamer</td></tr>
+              <tr><td><code>tkl_strlen</code></td><td class="num"><code class="num">40 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Single-pass null termination check</td></tr>
+              <tr><td><code>tkl_snprintf</code></td><td class="num"><code class="num">44 B</code></td><td>Formatted I/O</td><td class="center">O(N)</td><td class="num"><code class="num">32 B</code></td><td>Varargs stub delegating to vsnprintf</td></tr>
+              <tr><td><code>tkl_strcat</code></td><td class="num"><code class="num">44 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Tail-pointer scan and copy</td></tr>
+              <tr><td><code>Icalloc</code></td><td class="num"><code class="num">48 B</code></td><td>Allocator</td><td class="center">O(N)</td><td class="num"><code class="num">8 B</code></td><td>Zero-initialized slab slice</td></tr>
+              <tr><td><code>tkl_strnlen</code></td><td class="num"><code class="num">56 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Bounded scan with guaranteed termination</td></tr>
+              <tr><td><code>tkl_strchr</code></td><td class="num"><code class="num">64 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Single-pass forward character scan</td></tr>
+              <tr><td><code>tkl_strcmp</code></td><td class="num"><code class="num">68 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Standard null-terminated equality</td></tr>
+              <tr><td><code>tkl_memcmp</code></td><td class="num"><code class="num">72 B</code></td><td>Memory</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Constant-time comparison candidate</td></tr>
+              <tr><td><code>tkl_strncpy</code></td><td class="num"><code class="num">80 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Standard null-padded bounded copy</td></tr>
+              <tr><td><code>tkl_strncmp</code></td><td class="num"><code class="num">80 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Length-capped lexicographic compare</td></tr>
+              <tr><td><code>tkl_strncat</code></td><td class="num"><code class="num">88 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Length-bounded string concatenation</td></tr>
+              <tr><td><code>tkl_strrchr</code></td><td class="num"><code class="num">88 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Reverse search pointer bookmarking</td></tr>
+              <tr><td><code>tkl_strpad</code></td><td class="num"><code class="num">100 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Fixed-field zero-padded slot copy</td></tr>
+              <tr><td><code>tkl_strscpy</code></td><td class="num"><code class="num">104 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Linux kernel-style truncation safe</td></tr>
+              <tr><td><code>tkl_strpbrk</code></td><td class="num"><code class="num">108 B</code></td><td>String</td><td class="center">O(N·M)</td><td class="num"><code class="num">0 B</code></td><td>Set-search without dynamic allocation</td></tr>
+              <tr><td><code>tkl_strstr</code></td><td class="num"><code class="num">132 B</code></td><td>String</td><td class="center">O(N·M)</td><td class="num"><code class="num">0 B</code></td><td>Sub-string locator without heap table</td></tr>
+              <tr><td><code>Irealloc</code></td><td class="num"><code class="num">132 B</code></td><td>Allocator</td><td class="center">O(N)</td><td class="num"><code class="num">16 B</code></td><td>In-place expansion or safe migration</td></tr>
+              <tr><td><code>tkl_fmt_f32</code></td><td class="num"><code class="num">168 B</code></td><td>Formatted I/O</td><td class="center">O(1)</td><td class="num"><code class="num">24 B</code></td><td>IEEE 754 float32 without double promotion</td></tr>
+              <tr><td><code>tkl_strscat</code></td><td class="num"><code class="num">184 B</code></td><td>String</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Capacity-aware string concatenation</td></tr>
+              <tr><td><code>Ifree</code></td><td class="num"><code class="num">300 B</code></td><td>Allocator</td><td class="center">O(1)</td><td class="num"><code class="num">0 B</code></td><td>Segregated slab block return</td></tr>
+              <tr><td><code>Imalloc</code></td><td class="num"><code class="num">320 B</code></td><td>Allocator</td><td class="center">O(1)</td><td class="num"><code class="num">0 B</code></td><td>First-fit bounded bitmap allocator</td></tr>
+              <tr><td><code>tkl_memset</code></td><td class="num"><code class="num">392 B</code></td><td>Memory</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Word-aligned unrolled 32-bit fill</td></tr>
+              <tr><td><code>sn_put_rev</code></td><td class="num"><code class="num">464 B</code></td><td>Formatted I/O</td><td class="center">O(N)</td><td class="num"><code class="num">16 B</code></td><td>Reversed integer digit emission engine</td></tr>
+              <tr><td><code>tkl_strtoull</code></td><td class="num"><code class="num">504 B</code></td><td>Numeric</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>64-bit integer parser with overflow clamp</td></tr>
+              <tr><td><code>tkl_strtoul</code></td><td class="num"><code class="num">520 B</code></td><td>Numeric</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>32-bit unsigned converter; bases 2–36</td></tr>
+              <tr><td><code>tkl_memcpy</code></td><td class="num"><code class="num">828 B</code></td><td>Memory</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Word-aligned unrolled copy pipeline</td></tr>
+              <tr><td><code>tkl_qsort</code></td><td class="num"><code class="num">864 B</code></td><td>Sorting</td><td class="center">O(N log N)</td><td class="num"><code class="num">48 B</code></td><td>Ciura Shell Sort; strictly bounded stack</td></tr>
+              <tr><td><code>tkl_fmt_f32_into</code></td><td class="num"><code class="num">1,064 B</code></td><td>Formatted I/O</td><td class="center">O(1)</td><td class="num"><code class="num">64 B</code></td><td>Deterministic decimal mantissa formatter</td></tr>
+              <tr><td><code>tkl_memmove</code></td><td class="num"><code class="num">1,140 B</code></td><td>Memory</td><td class="center">O(N)</td><td class="num"><code class="num">0 B</code></td><td>Overlap-safe dual-direction word copy</td></tr>
+              <tr><td><code>tkl_vsnprintf</code></td><td class="num"><code class="num">2,364 B</code></td><td>Formatted I/O</td><td class="center">O(N)</td><td class="num"><code class="num">128 B</code></td><td>Full C99 specifier engine; 0 B heap</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <figcaption>
+          <span><b>Table 2.2: ARM32 Symbol Footprint</b> — Exact byte sizes for all 32 compiled functions in include/rt and libstr.c</span>
+          <span>Target: arm-none-eabi Cortex-A7 (-O2) · Total .text: 10,500 B (10.2 KB) · Total .bss: 88 B · Total .rodata: 8 B</span>
         </figcaption>
       </figure>
     </div>
@@ -923,7 +1115,7 @@ footer.site li { margin-bottom: 0.35rem; }
         <p>
           The IEEE 1003 Standard Series was originally architected for time-sharing Unix minicomputers equipped with hardware MMUs,
           coarse timeslicing, and fork-based process isolation. In safety-critical embedded systems and hard real-time workloads,
-          standard POSIX primitives impose non-deterministic latency spikes: <code>fork()</code> demands copy-on-write page table replication,
+          standard POSIX primitives impose non-deterministic latency spikes: <code>fork/0</code> demands copy-on-write page table replication,
           asynchronous thread cancellation unwinds dynamic call stacks with fatal deadlock risks, and filesystem-backed IPC queues leak descriptor
           table entries. BTRON 3.20 rejects this minicomputer legacy, replacing process-heavy time-sharing with lightweight, cooperative
           real-time task actors within deterministic memory planes—scaling seamlessly from 1 MB ROM images to SMP workstations without the fragmented
@@ -937,10 +1129,10 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 17%;">IEEE Standard</th>
-                <th style="width: 25%;">POSIX Paradigm</th>
-                <th style="width: 26%;">RTOS Failure Mode</th>
-                <th style="width: 32%;">BTRON Solution &amp; Advantage</th>
+                <th>IEEE Standard</th>
+                <th>POSIX Paradigm</th>
+                <th>RTOS Failure Mode</th>
+                <th>BTRON Solution &amp; Advantage</th>
               </tr>
             </thead>
             <tbody>
@@ -997,7 +1189,7 @@ footer.site li { margin-bottom: 0.35rem; }
           abstractions introduces significant runtime overhead on microcontroller cores. Every NuttX message queue, socket, and stream must allocate
           a VFS file descriptor (rapidly exhausting the fixed <code>struct file</code> table), threads incur mandatory Thread-Local Storage (TLS)
           and signal mask allocations inside <code>struct tcb_s</code>, and message queues dynamically allocate heap nodes into linked priority lists.
-          In contrast, BTRON 3.20 eliminates the VFS indirection layer for core IPC. Kernel objects are identified by direct, constant-time $O(1)$
+          In contrast, BTRON 3.20 eliminates the VFS indirection layer for core IPC. Kernel objects are identified by direct, constant-time O(1)
           integer handles; mutual exclusion is enforced in silicon via the kernel Priority Inheritance Protocol (PIP); and shared memory is mapped in a
           single call (<code>Smalloc</code>), slashing RAM consumption and eliminating heap fragmentation during burst communication.
         </p>
@@ -1009,76 +1201,83 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 15%;">Subsystem</th>
-                <th style="width: 25%;">BTRON 3.20 Subsystem (./b-spec/)</th>
-                <th style="width: 25%;">Apache NuttX POSIX API</th>
-                <th style="width: 21%;">NuttX RTOS Overhead &amp; Bottleneck</th>
-                <th style="width: 14%;">BTRON Gain</th>
+                <th>Subsystem</th>
+                <th>BTRON 3.20 Subsystem (./b-spec/)</th>
+                <th>Apache NuttX POSIX API</th>
+                <th>NuttX RTOS Overhead &amp; Bottleneck</th>
+                <th class="center">BTRON Gain</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><b>Tasks / Threads</b></td>
-                <td><code>cre_tsk()</code>, <code>tk_sta_tsk()</code>, <code>cre_prc()</code></td>
-                <td><code>task_create()</code>, <code>pthread_create()</code></td>
+                <td><code>cre_tsk/0</code>, <code>tk_sta_tsk/0</code>, <code>cre_prc/0</code></td>
+                <td><code>task_create/0</code>, <code>pthread_create/0</code></td>
                 <td><code>struct tcb_s</code> allocates TLS, signal masks, file list</td>
-                <td><span class="badge badge-teal">&lt; 1.2 µs O(1)</span></td>
+                <td class="center"><span class="badge badge-teal">&lt; 1.2 µs O(1)</span></td>
               </tr>
               <tr>
                 <td><b>Mutex &amp; Priority</b></td>
-                <td><code>cre_sem(TA_TPRI)</code>, Kernel PIP</td>
-                <td><code>pthread_mutex_lock(PTHREAD_PRIO_INHERIT)</code></td>
+                <td><code>cre_sem/1</code>, Kernel PIP</td>
+                <td><code>pthread_mutex_lock/1</code></td>
                 <td>Dynamic holder allocation; priority inheritance list traversal</td>
-                <td><span class="badge badge-teal">Silicon PIP</span></td>
+                <td class="center"><span class="badge badge-teal">Silicon PIP</span></td>
               </tr>
               <tr>
                 <td><b>Semaphores</b></td>
-                <td><code>cre_sem()</code>, <code>sig_sem(cnt)</code>, <code>wai_sem()</code></td>
-                <td><code>sem_init()</code>, <code>sem_wait()</code>, <code>sem_post()</code></td>
+                <td><code>cre_sem/0</code>, <code>sig_sem/1</code>, <code>wai_sem/0</code></td>
+                <td><code>sem_init/0</code>, <code>sem_wait/0</code>, <code>sem_post/0</code></td>
                 <td>Single-unit post only; wraps <code>nxsem_*</code> with errno translation</td>
-                <td><span class="badge badge-teal">Multi-Unit Post</span></td>
+                <td class="center"><span class="badge badge-teal">Multi-Unit Post</span></td>
               </tr>
               <tr>
                 <td><b>Event Sync</b></td>
-                <td><code>cre_flg()</code>, <code>set_flg()</code>, <code>wai_flg(TWF_ANDW)</code></td>
-                <td><code>pthread_cond_wait()</code> + mutex predicates</td>
+                <td><code>cre_flg/0</code>, <code>set_flg/0</code>, <code>wai_flg/1</code></td>
+                <td><code>pthread_cond_wait/0</code> + mutex predicates</td>
                 <td>Lacks native bitflags; requires mutex locking &amp; predicate loops</td>
-                <td><span class="badge badge-teal">32-Bit AND/OR</span></td>
+                <td class="center"><span class="badge badge-teal">32-Bit AND/OR</span></td>
               </tr>
               <tr>
                 <td><b>Message Queuing</b></td>
-                <td><code>cre_mbf()</code>, <code>snd_mbf()</code>, <code>rcv_mbf()</code></td>
-                <td><code>mq_open()</code>, <code>mq_send()</code>, <code>mq_receive()</code></td>
+                <td><code>cre_mbf/0</code>, <code>snd_mbf/0</code>, <code>rcv_mbf/0</code></td>
+                <td><code>mq_open/0</code>, <code>mq_send/0</code>, <code>mq_receive/0</code></td>
                 <td>VFS path lookup (<code>/dev/mqueue</code>); dynamic node allocation</td>
-                <td><span class="badge badge-teal">Ringbuffer O(1)</span></td>
+                <td class="center"><span class="badge badge-teal">Ringbuffer O(1)</span></td>
               </tr>
               <tr>
                 <td><b>Shared Memory</b></td>
-                <td><code>Smalloc()</code>, <code>Sfree()</code>, <code>get_mbk()</code></td>
-                <td><code>shmget()</code>, <code>shmat()</code>, <code>gran_alloc()</code></td>
+                <td><code>Smalloc/0</code>, <code>Sfree/0</code>, <code>get_mbk/0</code></td>
+                <td><code>shmget/0</code>, <code>shmat/0</code>, <code>gran_alloc/0</code></td>
                 <td>Requires SysV IPC layer; granulator forces power-of-2 chunks</td>
-                <td><span class="badge badge-teal">1-Call Smalloc</span></td>
+                <td class="center"><span class="badge badge-teal">1-Call Smalloc</span></td>
               </tr>
               <tr>
                 <td><b>Synchronous RPC</b></td>
-                <td><code>cre_por()</code>, <code>cal_por()</code>, <code>acp_por()</code></td>
-                <td><code>pipe()</code> or <code>socketpair(AF_UNIX)</code></td>
+                <td><code>cre_por/0</code>, <code>cal_por/0</code>, <code>acp_por/0</code></td>
+                <td><code>pipe/0</code> or <code>socketpair/1</code></td>
                 <td>Requires VFS pipe/socket drivers; 2 context switches + buffer copy</td>
-                <td><span class="badge badge-teal">Zero-Copy Port</span></td>
+                <td class="center"><span class="badge badge-teal">Zero-Copy Port</span></td>
+              </tr>
+              <tr>
+                <td><b>Terminal / TTY</b></td>
+                <td><code>termios.h</code>, <code>tk_get_dev</code></td>
+                <td><code>tcgetattr/0</code>, <code>tcsetattr/0</code></td>
+                <td>VFS character driver inode traversal; dynamic <code>struct termios</code> allocation; heap line disciplines</td>
+                <td class="center"><span class="badge badge-teal">0 Heap TTY</span></td>
               </tr>
               <tr>
                 <td><b>Clocks &amp; Timers</b></td>
-                <td><code>dly_tsk(tmout)</code>, <code>get_tim()</code>, plane periods</td>
-                <td><code>clock_nanosleep()</code>, <code>wd_start()</code></td>
+                <td><code>dly_tsk/1</code>, <code>get_tim/0</code>, plane periods</td>
+                <td><code>clock_nanosleep/0</code>, <code>wd_start/0</code></td>
                 <td>Watchdog linked list traversal; periodic timer tick load</td>
-                <td><span class="badge badge-teal">50 µs Ceiling</span></td>
+                <td class="center"><span class="badge badge-teal">50 µs Ceiling</span></td>
               </tr>
               <tr>
                 <td><b>Runtime Shim</b></td>
                 <td><code>include/rt</code> (1,151 LOC, 0 B tables, 0 B heap)</td>
                 <td>NuttX libc (~45,000 LOC, coupled to <code>mm_heap</code>)</td>
                 <td>Deep kernel coupling; Kconfig sprawl; stream FILE RAM buffers</td>
-                <td><span class="badge badge-teal">Zero Coupled</span></td>
+                <td class="center"><span class="badge badge-teal">Zero Coupled</span></td>
               </tr>
             </tbody>
           </table>
@@ -1097,8 +1296,8 @@ footer.site li { margin-bottom: 0.35rem; }
           requires four discrete calls (<code>shm_open</code> &rarr; <code>ftruncate</code> &rarr; <code>mmap</code> &rarr; <code>close</code>);
           timed synchronization demands complex <code>timespec</code> arithmetic subject to system clock drift; and signaling conditions under mutexes
           triggers thundering-herd contention or lost wakeups. As detailed below from the <code>./b-spec/os_spec/kernel/</code> specification,
-          every BTRON 3.20 system call is an atomic, bounded contract: <code>wai_sem()</code> acquires multi-unit resource counts in one step;
-          <code>wai_flg()</code> atomically evaluates 32-bit pattern conditions with automatic state clearing (<code>TWF_CLR</code>); and synchronous
+          every BTRON 3.20 system call is an atomic, bounded contract: <code>wai_sem/0</code> acquires multi-unit resource counts in one step;
+          <code>wai_flg/0</code> atomically evaluates 32-bit pattern conditions with automatic state clearing (<code>TWF_CLR</code>); and synchronous
           rendezvous ports (<code>cal_por</code> / <code>acp_por</code>) execute client-server transactions without intermediate buffer copying or thread stack duplication.
         </p>
       </div>
@@ -1109,156 +1308,162 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 22%;">BTRON 3.20 System Call</th>
-                <th style="width: 24%;">POSIX / NuttX Function</th>
-                <th style="width: 38%;">Parameter Semantics &amp; Execution Mechanics</th>
-                <th style="width: 16%;">Real-Time Metric</th>
+                <th>BTRON 3.20 System Call</th>
+                <th>POSIX / NuttX Function</th>
+                <th>Parameter Semantics &amp; Execution Mechanics</th>
+                <th class="center">Real-Time Metric</th>
               </tr>
             </thead>
             <tbody>
               <tr>
-                <td><code>cre_tsk(p_ctsk)</code></td>
-                <td><code>pthread_create(&amp;th, &amp;a, fn, arg)</code></td>
+                <td><code>cre_tsk/1</code></td>
+                <td><code>pthread_create/4</code></td>
                 <td>Static TCB/stack binding; 0 heap alloc vs dynamic TCB/TLS heap allocation</td>
-                <td><span class="badge badge-teal">&lt; 1.2 µs O(1)</span></td>
+                <td class="center"><span class="badge badge-teal">&lt; 1.2 µs O(1)</span></td>
               </tr>
               <tr>
-                <td><code>ter_tsk(tskid)</code></td>
-                <td><code>pthread_cancel(th)</code></td>
+                <td><code>ter_tsk/1</code></td>
+                <td><code>pthread_cancel/1</code></td>
                 <td>Deterministic immediate task termination vs async cancellation unwind deadlocks</td>
-                <td><span class="badge badge-teal">Deterministic</span></td>
+                <td class="center"><span class="badge badge-teal">Deterministic</span></td>
               </tr>
               <tr>
-                <td><code>slp_tsk()</code></td>
-                <td><code>pthread_cond_wait(&amp;cv, &amp;mtx)</code></td>
+                <td><code>slp_tsk/0</code></td>
+                <td><code>pthread_cond_wait/2</code></td>
                 <td>Direct task self-suspension without mutex parameter vs mandatory lock/unlock cycle</td>
-                <td><span class="badge badge-teal">Zero Mutex</span></td>
+                <td class="center"><span class="badge badge-teal">Zero Mutex</span></td>
               </tr>
               <tr>
-                <td><code>wup_tsk(tskid)</code></td>
-                <td><code>pthread_cond_signal(&amp;cv)</code></td>
+                <td><code>wup_tsk/1</code></td>
+                <td><code>pthread_cond_signal/1</code></td>
                 <td>Direct target task wakeup with nestable count vs lost wakeup if thread not waiting</td>
-                <td><span class="badge badge-teal">Nestable Count</span></td>
+                <td class="center"><span class="badge badge-teal">Nestable Count</span></td>
               </tr>
               <tr>
-                <td><code>can_wup(tskid)</code></td>
+                <td><code>can_wup/1</code></td>
                 <td><i>(No POSIX Equivalent)</i></td>
                 <td>Cancels queued wakeup requests and returns pending count; impossible in POSIX</td>
-                <td><span class="badge badge-teal">Atomic Query</span></td>
+                <td class="center"><span class="badge badge-teal">Atomic Query</span></td>
               </tr>
               <tr>
-                <td><code>dly_tsk(tmout)</code></td>
-                <td><code>clock_nanosleep(CLOCK_MONO, ...)</code></td>
+                <td><code>dly_tsk/1</code></td>
+                <td><code>clock_nanosleep/2</code></td>
                 <td>Direct millisecond task delay; hardware plane timer binding vs timespec math &amp; errno</td>
-                <td><span class="badge badge-teal">Zero Drift</span></td>
+                <td class="center"><span class="badge badge-teal">Zero Drift</span></td>
               </tr>
               <tr>
-                <td><code>chg_pri(tskid, pri)</code></td>
-                <td><code>pthread_setschedprio(th, pri)</code></td>
+                <td><code>chg_pri/2</code></td>
+                <td><code>pthread_setschedprio/2</code></td>
                 <td>Instant re-queue across 140 priority queues vs dynamic scheduler policy recalculation</td>
-                <td><span class="badge badge-teal">O(1) 140 Pri</span></td>
+                <td class="center"><span class="badge badge-teal">O(1) 140 Pri</span></td>
               </tr>
               <tr>
-                <td><code>cre_sem(cnt, opt)</code></td>
-                <td><code>sem_init(&amp;sem, pshared, cnt)</code></td>
+                <td><code>cre_sem/2</code></td>
+                <td><code>sem_init/3</code></td>
                 <td>Kernel integer semaphore object; FIFO/priority queue vs wraps internal <code>nxsem_s</code></td>
-                <td><span class="badge badge-teal">0 Descriptor</span></td>
+                <td class="center"><span class="badge badge-teal">0 Descriptor</span></td>
               </tr>
               <tr>
-                <td><code>wai_sem(id, cnt, tmo)</code></td>
-                <td><code>sem_timedwait(&amp;sem, &amp;ts)</code></td>
+                <td><code>wai_sem/3</code></td>
+                <td><code>sem_timedwait/2</code></td>
                 <td>Multi-unit count acquisition in 1 atomic call vs single-unit decrement only; timespec math</td>
-                <td><span class="badge badge-teal">Multi-Count</span></td>
+                <td class="center"><span class="badge badge-teal">Multi-Count</span></td>
               </tr>
               <tr>
-                <td><code>sig_sem(id, cnt)</code></td>
-                <td><code>sem_post(&amp;sem)</code></td>
+                <td><code>sig_sem/2</code></td>
+                <td><code>sem_post/1</code></td>
                 <td>Multi-unit atomic release; awakens multiple tasks vs increments by 1; loop required</td>
-                <td><span class="badge badge-teal">Bulk Wakeup</span></td>
+                <td class="center"><span class="badge badge-teal">Bulk Wakeup</span></td>
               </tr>
               <tr>
-                <td><code>del_sem(semid)</code></td>
-                <td><code>sem_destroy(&amp;sem)</code></td>
+                <td><code>del_sem/1</code></td>
+                <td><code>sem_destroy/1</code></td>
                 <td>Deletes semaphore; awakens all blocked tasks with <code>ER_DLT</code> vs undefined behavior</td>
-                <td><span class="badge badge-teal">Clean Unblock</span></td>
+                <td class="center"><span class="badge badge-teal">Clean Unblock</span></td>
               </tr>
               <tr>
-                <td><code>cre_flg(flgptn, opt)</code></td>
-                <td><code>pthread_cond_init()</code> + mutex</td>
+                <td><code>cre_flg/2</code></td>
+                <td><code>pthread_cond_init/0</code> + mutex</td>
                 <td>Allocates 32-bit pattern flag; FIFO/priority wait vs dual POSIX objects (mutex+condvar)</td>
-                <td><span class="badge badge-teal">Atomic 32-Bit</span></td>
+                <td class="center"><span class="badge badge-teal">Atomic 32-Bit</span></td>
               </tr>
               <tr>
-                <td><code>wai_flg(p_f, id, ptn, m, tmo)</code></td>
-                <td><code>pthread_cond_timedwait()</code> loop</td>
+                <td><code>wai_flg/5</code></td>
+                <td><code>pthread_cond_timedwait/0</code> loop</td>
                 <td>Atomic wait for pattern (<code>TWF_ANDW/ORW</code>) with auto-clear vs while-loop under mutex</td>
-                <td><span class="badge badge-teal">Zero Spurious</span></td>
+                <td class="center"><span class="badge badge-teal">Zero Spurious</span></td>
               </tr>
               <tr>
-                <td><code>set_flg(flgid, setptn)</code></td>
-                <td><code>pthread_cond_broadcast(&amp;cv)</code></td>
+                <td><code>set_flg/2</code></td>
+                <td><code>pthread_cond_broadcast/1</code></td>
                 <td>Bitwise OR pattern update; awakens matching tasks vs thundering herd mutex contention</td>
-                <td><span class="badge badge-teal">No Herd Contend</span></td>
+                <td class="center"><span class="badge badge-teal">No Herd Contend</span></td>
               </tr>
               <tr>
-                <td><code>clr_flg(flgid, clrptn)</code></td>
+                <td><code>clr_flg/2</code></td>
                 <td><i>(Manual mutex flag assignment)</i></td>
                 <td>Atomic bitwise AND clear of flag pattern without holding separate synchronization locks</td>
-                <td><span class="badge badge-teal">Atomic Clear</span></td>
+                <td class="center"><span class="badge badge-teal">Atomic Clear</span></td>
               </tr>
               <tr>
-                <td><code>cre_mbf(mbfsz, maxmsz, opt)</code></td>
-                <td><code>mq_open(name, O_CREAT, ...)</code></td>
+                <td><code>cre_mbf/3</code></td>
+                <td><code>mq_open/3</code></td>
                 <td>Bounded intra-process ringbuffer vs VFS filesystem entry, inode allocation, permissions</td>
-                <td><span class="badge badge-teal">No VFS Inode</span></td>
+                <td class="center"><span class="badge badge-teal">No VFS Inode</span></td>
               </tr>
               <tr>
-                <td><code>snd_mbf(id, msg, sz, tmo)</code></td>
-                <td><code>mq_timedsend(mq, msg, sz, p, &amp;ts)</code></td>
+                <td><code>snd_mbf/4</code></td>
+                <td><code>mq_timedsend/5</code></td>
                 <td>Direct copy to bounded ringbuffer vs dynamic heap node allocation into priority list</td>
-                <td><span class="badge badge-teal">Bounded Ring</span></td>
+                <td class="center"><span class="badge badge-teal">Bounded Ring</span></td>
               </tr>
               <tr>
-                <td><code>rcv_mbf(id, msg, tmo)</code></td>
-                <td><code>mq_timedreceive(mq, msg, sz, ...)</code></td>
+                <td><code>rcv_mbf/3</code></td>
+                <td><code>mq_timedreceive/4</code></td>
                 <td>Pulls message from ringbuffer; unblocks sender vs unlinks priority node, frees heap</td>
-                <td><span class="badge badge-teal">0 Dynamic Heap</span></td>
+                <td class="center"><span class="badge badge-teal">0 Dynamic Heap</span></td>
               </tr>
               <tr>
-                <td><code>cal_por(id, ptn, cm, csz, rm, tmo)</code></td>
-                <td><code>write(fd)</code> + <code>read(fd)</code> pair</td>
+                <td><code>cal_por/6</code></td>
+                <td><code>write/1</code> + <code>read/1</code> pair</td>
                 <td>Synchronous Ada rendezvous; waits for server reply vs bilateral pipe, 2 context switches</td>
-                <td><span class="badge badge-teal">Zero-Copy RPC</span></td>
+                <td class="center"><span class="badge badge-teal">Zero-Copy RPC</span></td>
               </tr>
               <tr>
-                <td><code>acp_por(id, ptn, rdnvp, cm, tmo)</code></td>
-                <td><code>accept()</code> + <code>read(fd)</code></td>
+                <td><code>acp_por/5</code></td>
+                <td><code>accept/0</code> + <code>read/1</code></td>
                 <td>Server accepts transaction; receives caller context vs socket handshake, descriptor alloc</td>
-                <td><span class="badge badge-teal">Direct Port</span></td>
+                <td class="center"><span class="badge badge-teal">Direct Port</span></td>
               </tr>
               <tr>
-                <td><code>rpy_por(rdnvno, rmsg, rsz)</code></td>
-                <td><code>write(fd)</code> reply</td>
+                <td><code>rpy_por/3</code></td>
+                <td><code>write/1</code> reply</td>
                 <td>Server returns reply payload directly into caller buffer vs socket buffer write &amp; close</td>
-                <td><span class="badge badge-teal">Single Handoff</span></td>
+                <td class="center"><span class="badge badge-teal">Single Handoff</span></td>
               </tr>
               <tr>
-                <td><code>Smalloc(size)</code></td>
-                <td><code>shm_open()</code> + <code>ftruncate()</code> + <code>mmap()</code></td>
+                <td><code>tcsetattr/3</code></td>
+                <td><code>ioctl/3</code></td>
+                <td>Direct stack struct binding; zero terminfo/locale indirection vs VFS ioctl switch table</td>
+                <td class="center"><span class="badge badge-teal">Direct Driver</span></td>
+              </tr>
+              <tr>
+                <td><code>Smalloc/1</code></td>
+                <td><code>shm_open/0</code> + <code>ftruncate/0</code> + <code>mmap/0</code></td>
                 <td>1-call allocation of inter-task zero-copy shared memory vs 4 discrete POSIX syscalls</td>
-                <td><span class="badge badge-teal">1 Call (0 Descr)</span></td>
+                <td class="center"><span class="badge badge-teal">1 Call (0 Descr)</span></td>
               </tr>
               <tr>
-                <td><code>Sfree(ptr)</code></td>
-                <td><code>munmap()</code> + <code>close()</code> + <code>shm_unlink()</code></td>
+                <td><code>Sfree/1</code></td>
+                <td><code>munmap/0</code> + <code>close/0</code> + <code>shm_unlink/0</code></td>
                 <td>Releases shared buffer back to system pool instantly vs 3 cleanup syscalls &amp; TLB shootdown</td>
-                <td><span class="badge badge-teal">Immediate Free</span></td>
+                <td class="center"><span class="badge badge-teal">Immediate Free</span></td>
               </tr>
               <tr>
-                <td><code>get_mbk(size, opt, p_addr)</code></td>
-                <td><code>shmget(key, sz)</code> + <code>shmat()</code></td>
+                <td><code>get_mbk/3</code></td>
+                <td><code>shmget/2</code> + <code>shmat/0</code></td>
                 <td>Direct raw memory block allocation with alignment options vs System V IPC key search</td>
-                <td><span class="badge badge-teal">Raw Block O(1)</span></td>
+                <td class="center"><span class="badge badge-teal">Raw Block O(1)</span></td>
               </tr>
             </tbody>
           </table>
@@ -1275,11 +1480,11 @@ footer.site li { margin-bottom: 0.35rem; }
           <h3>Atomic Multi-Bit Primitives</h3>
           <p>
             POSIX requires pairing <code>pthread_mutex_t</code> with <code>pthread_cond_t</code> to signal state changes, risking missed signals.
-            BTRON 3.20 provides <code>cre_flg()</code> and <code>wai_flg()</code> with atomic 32-bit AND/OR patterns and automatic clear (<code>TWF_CLR</code>),
-            while <code>wai_sem()</code> accepts exact millisecond timeouts (<code>TMOUT</code>) with multi-unit acquisitions.
+            BTRON 3.20 provides <code>cre_flg/0</code> and <code>wai_flg/0</code> with atomic 32-bit AND/OR patterns and automatic clear (<code>TWF_CLR</code>),
+            while <code>wai_sem/0</code> accepts exact millisecond timeouts (<code>TMOUT</code>) with multi-unit acquisitions.
           </p>
-          <div class="metric-row"><span>Event Flags</span><span><code>wai_flg(TWF_ANDW)</code></span></div>
-          <div class="metric-row"><span>Semaphore Wait</span><span><code>wai_sem(cnt, tmout)</code></span></div>
+          <div class="metric-row"><span>Event Flags</span><span><code>wai_flg/1</code></span></div>
+          <div class="metric-row"><span>Semaphore Wait</span><span><code>wai_sem/2</code></span></div>
           <div class="metric-row"><span>Lock Convoying</span><span>Eliminated</span></div>
         </div>
 
@@ -1287,12 +1492,12 @@ footer.site li { margin-bottom: 0.35rem; }
           <div class="card-kicker">Memory: Shared &amp; Pools</div>
           <h3>1-Call Smalloc &amp; Memory Blocks</h3>
           <p>
-            POSIX shared memory requires four discrete syscalls: <code>shm_open()</code>, <code>ftruncate()</code>, <code>mmap()</code>, and <code>close()</code>.
-            BTRON 3.20 manages shared space via <code>Smalloc()</code> and raw blocks via <code>get_mbk()</code>, allocating zero-copy buffers instantly
+            POSIX shared memory requires four discrete syscalls: <code>shm_open/0</code>, <code>ftruncate/0</code>, <code>mmap/0</code>, and <code>close/0</code>.
+            BTRON 3.20 manages shared space via <code>Smalloc/0</code> and raw blocks via <code>get_mbk/0</code>, allocating zero-copy buffers instantly
             without filesystem namespace overhead or page table cloning.
           </p>
-          <div class="metric-row"><span>Shared Allocation</span><span><code>Smalloc()</code> / <code>Sfree()</code></span></div>
-          <div class="metric-row"><span>Raw Memory Block</span><span><code>get_mbk()</code> / <code>rel_mbk()</code></span></div>
+          <div class="metric-row"><span>Shared Allocation</span><span><code>Smalloc/0</code> / <code>Sfree/0</code></span></div>
+          <div class="metric-row"><span>Raw Memory Block</span><span><code>get_mbk/0</code> / <code>rel_mbk/0</code></span></div>
           <div class="metric-row"><span>Setup Complexity</span><span>1 Call (0 Descriptors)</span></div>
         </div>
 
@@ -1301,11 +1506,11 @@ footer.site li { margin-bottom: 0.35rem; }
           <h3>Synchronous Client-Server Ports</h3>
           <p>
             POSIX message queues (<code>mq_*</code>) require filesystem paths and lack synchronous handshakes.
-            BTRON 3.20 provides Ada-style rendezvous via <code>cre_por()</code>, <code>cal_por()</code>, and <code>acp_por()</code> for deterministic
-            two-way transaction execution, alongside bounded intra-process ringbuffers (<code>snd_mbf()</code>).
+            BTRON 3.20 provides Ada-style rendezvous via <code>cre_por/0</code>, <code>cal_por/0</code>, and <code>acp_por/0</code> for deterministic
+            two-way transaction execution, alongside bounded intra-process ringbuffers (<code>snd_mbf/0</code>).
           </p>
-          <div class="metric-row"><span>Rendezvous Port</span><span><code>cal_por()</code> / <code>acp_por()</code></span></div>
-          <div class="metric-row"><span>Message Buffer</span><span><code>snd_mbf()</code> / <code>rcv_mbf()</code></span></div>
+          <div class="metric-row"><span>Rendezvous Port</span><span><code>cal_por/0</code> / <code>acp_por/0</code></span></div>
+          <div class="metric-row"><span>Message Buffer</span><span><code>snd_mbf/0</code> / <code>rcv_mbf/0</code></span></div>
           <div class="metric-row"><span>Latency Profile</span><span>Deterministic bounded</span></div>
         </div>
       </div>
@@ -1339,11 +1544,11 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 17%;">Tier 1: C Run-Time</th>
-                <th style="width: 27%;">B-System include/rt</th>
-                <th style="width: 25%;">musl / glibc Series</th>
-                <th style="width: 19%;">NuttX / Newlib</th>
-                <th style="width: 12%;">Law</th>
+                <th>Tier 1: C Run-Time</th>
+                <th>B-System include/rt</th>
+                <th>musl / glibc Series</th>
+                <th>NuttX / Newlib</th>
+                <th class="center">Law</th>
               </tr>
             </thead>
             <tbody>
@@ -1352,48 +1557,48 @@ footer.site li { margin-bottom: 0.35rem; }
                 <td>Direct <code>tkl_*</code> shims; bounded <code>strdup</code></td>
                 <td>AVX-512 SIMD dispatch or C loops</td>
                 <td>Nano-specs or arch asm</td>
-                <td><span class="badge badge-teal">Zero Alloc</span></td>
+                <td class="center"><span class="badge badge-teal">Zero Alloc</span></td>
               </tr>
               <tr>
                 <td><b>Standard I/O</b></td>
                 <td>printf is <code>((void)0)</code>; snprintf bound; /SYS fopen</td>
                 <td>Heavy <code>FILE</code> with 1–8 kB heap buffers</td>
                 <td>Configurable; needs stubs</td>
-                <td><span class="badge badge-teal">0 Stream RAM</span></td>
+                <td class="center"><span class="badge badge-teal">0 Stream RAM</span></td>
               </tr>
               <tr>
                 <td><b>Standard Utility</b></td>
-                <td>Ciura Shell sort ($O(1)$ stack); 24-bit LCG</td>
+                <td>Ciura Shell sort (O(1) stack); 24-bit LCG</td>
                 <td>Recursive quicksort; multi-arena heap</td>
                 <td>Recursive sort; dlmalloc</td>
-                <td><span class="badge badge-teal">O(1) Stack</span></td>
+                <td class="center"><span class="badge badge-teal">O(1) Stack</span></td>
               </tr>
               <tr>
                 <td><b>Character Types</b></td>
                 <td>Inline ASCII range checks; 0 bytes RAM</td>
                 <td>256–384 B tables; TLS locale ptrs</td>
                 <td>256 B table or macros</td>
-                <td><span class="badge badge-teal">Zero Table</span></td>
+                <td class="center"><span class="badge badge-teal">Zero Table</span></td>
               </tr>
               <tr>
                 <td><b>Assertion Checks</b></td>
                 <td>Sticky <code>btron_assert_count</code>; returns cleanly</td>
-                <td>Writes stderr; calls <code>abort()</code></td>
+                <td>Writes stderr; calls <code>abort/0</code></td>
                 <td>Kernel panic or abort</td>
-                <td><span class="badge badge-teal">No Abort</span></td>
+                <td class="center"><span class="badge badge-teal">No Abort</span></td>
               </tr>
               <tr>
                 <td><b>Floating Math</b></td>
                 <td>Bitwise exp/ldexp; x87 asm; PS2 COP1 fix</td>
                 <td>Full IEEE-754 libm (fdlibm 50+ kB)</td>
                 <td>Modular float routines</td>
-                <td><span class="badge badge-teal">Errata Safe</span></td>
+                <td class="center"><span class="badge badge-teal">Errata Safe</span></td>
               </tr>
             </tbody>
           </table>
         </div>
         <figcaption>
-          <span><b>Tier 1 Matrix</b> — C Run-Time API vs Standard Libc Series</span>
+          <span><b>Table 4.1: Tier 1 Matrix</b> — C Run-Time API vs Standard Libc Series</span>
           <span>Zero static lookup tables, zero recursive algorithms, zero hidden heap allocations</span>
         </figcaption>
       </figure>
@@ -1404,68 +1609,68 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 17%;">Tier 2: Kernel Core</th>
-                <th style="width: 27%;">Kernel TRON API (T-Kernel)</th>
-                <th style="width: 25%;">POSIX / libc Syscall</th>
-                <th style="width: 19%;">RTOS Latency Penalty</th>
-                <th style="width: 12%;">Advantage</th>
+                <th>Tier 2: Kernel Core</th>
+                <th>Kernel TRON API (T-Kernel)</th>
+                <th>POSIX / libc Syscall</th>
+                <th>RTOS Latency Penalty</th>
+                <th class="center">Advantage</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><b>Task Lifecycle</b></td>
                 <td><code>tk_cre_tsk</code>, <code>tk_sta_tsk</code></td>
-                <td><code>fork()</code>, <code>execve()</code>, <code>waitpid()</code></td>
+                <td><code>fork/0</code>, <code>execve/0</code>, <code>waitpid/0</code></td>
                 <td>Page-table cloning spikes</td>
-                <td><span class="badge badge-teal">&lt; 1.2 µs</span></td>
+                <td class="center"><span class="badge badge-teal">&lt; 1.2 µs</span></td>
               </tr>
               <tr>
                 <td><b>Scheduling Model</b></td>
                 <td>140 strict priority levels; preemptive</td>
                 <td>CFS fairness / POSIX SCHED_FIFO</td>
                 <td>Timeslice jitter / inversion</td>
-                <td><span class="badge badge-teal">Strict Pri</span></td>
+                <td class="center"><span class="badge badge-teal">Strict Pri</span></td>
               </tr>
               <tr>
                 <td><b>Synchronization</b></td>
                 <td>Event Flags (<code>tk_set_flg</code> AND/OR)</td>
                 <td>Signals (<code>sigaction</code>), condvars</td>
                 <td>Async signal race conditions</td>
-                <td><span class="badge badge-teal">Multi-Bit</span></td>
+                <td class="center"><span class="badge badge-teal">Multi-Bit</span></td>
               </tr>
               <tr>
                 <td><b>Message Passing</b></td>
                 <td>Direct Mailboxes (<code>tk_snd_mbx</code>)</td>
                 <td>POSIX queues (<code>mq_*</code>), sockets</td>
                 <td>Descriptor leaks, copy cost</td>
-                <td><span class="badge badge-teal">&lt; 280 ns</span></td>
+                <td class="center"><span class="badge badge-teal">&lt; 280 ns</span></td>
               </tr>
               <tr>
                 <td><b>Mutual Exclusion</b></td>
                 <td>Kernel Priority Inheritance Protocol</td>
                 <td><code>pthread_mutex_lock</code> attributes</td>
                 <td>Unbounded priority inversion</td>
-                <td><span class="badge badge-teal">Kernel PIP</span></td>
+                <td class="center"><span class="badge badge-teal">Kernel PIP</span></td>
               </tr>
               <tr>
                 <td><b>Memory Allocation</b></td>
                 <td>Fixed pools (<code>tk_get_mpf</code>, 0 frag)</td>
-                <td><code>sbrk()</code>, <code>mmap()</code>, heap fragmentation</td>
+                <td><code>sbrk/0</code>, <code>mmap/0</code>, heap fragmentation</td>
                 <td>Unpredictable heap search</td>
-                <td><span class="badge badge-teal">0 Frag MPF</span></td>
+                <td class="center"><span class="badge badge-teal">0 Frag MPF</span></td>
               </tr>
               <tr>
                 <td><b>Interrupt Control</b></td>
                 <td>Interrupt handlers (<code>tk_def_int</code>)</td>
                 <td>User signals; ring 0 to ring 3 swap</td>
                 <td>Heavy context switch latency</td>
-                <td><span class="badge badge-teal">50 µs Ceiling</span></td>
+                <td class="center"><span class="badge badge-teal">50 µs Ceiling</span></td>
               </tr>
             </tbody>
           </table>
         </div>
         <figcaption>
-          <span><b>Tier 2 Matrix</b> — Kernel TRON API vs POSIX/libc Syscall Core</span>
+          <span><b>Table 4.2: Tier 2 Matrix</b> — Kernel TRON API vs POSIX/libc Syscall Core</span>
           <span>Single-address-space real-time microkernel vs time-sharing Unix processes</span>
         </figcaption>
       </figure>
@@ -1476,11 +1681,11 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 17%;">Tier 3: OS Layer</th>
-                <th style="width: 27%;">B-System BTRON Workstation</th>
-                <th style="width: 25%;">Unix / Linux Desktop Stack</th>
-                <th style="width: 19%;">Linux Bloat Factor</th>
-                <th style="width: 12%;">Gain</th>
+                <th>Tier 3: OS Layer</th>
+                <th>B-System BTRON Workstation</th>
+                <th>Unix / Linux Desktop Stack</th>
+                <th>Linux Bloat Factor</th>
+                <th class="center">Gain</th>
               </tr>
             </thead>
             <tbody>
@@ -1489,48 +1694,48 @@ footer.site li { margin-bottom: 0.35rem; }
                 <td>Real-Object / Virtual-Object links</td>
                 <td>Hierarchical VFS tree (<code>/</code>, inodes)</td>
                 <td>Path breaks, deep recursion</td>
-                <td><span class="badge badge-teal">Hypermedia</span></td>
+                <td class="center"><span class="badge badge-teal">Hypermedia</span></td>
               </tr>
               <tr>
                 <td><b>Text Encodings</b></td>
                 <td>TAD text segments, TRON Code</td>
                 <td>POSIX locale, glibc <code>gconv</code>, HarfBuzz</td>
                 <td>Megabyte tables, CVEs</td>
-                <td><span class="badge badge-teal">Clean RT</span></td>
+                <td class="center"><span class="badge badge-teal">Clean RT</span></td>
               </tr>
               <tr>
                 <td><b>Display &amp; GUI</b></td>
                 <td>Direct display planes; 1 ms refresh</td>
                 <td>X11/Wayland sockets, Mesa/DRM</td>
                 <td>Socket latency, GL state</td>
-                <td><span class="badge badge-teal">1 ms Plane</span></td>
+                <td class="center"><span class="badge badge-teal">1 ms Plane</span></td>
               </tr>
               <tr>
                 <td><b>Data Exchange</b></td>
                 <td>TAD structured binary records</td>
                 <td>Unstructured byte streams, pipes</td>
                 <td>Fragile text scraping regex</td>
-                <td><span class="badge badge-teal">Binary TAD</span></td>
+                <td class="center"><span class="badge badge-teal">Binary TAD</span></td>
               </tr>
               <tr>
                 <td><b>Concurrency</b></td>
                 <td>Pinned actors; InterCore lock-free</td>
                 <td>Fork-and-pipe, pthreads cancel</td>
                 <td>Cancellation deadlocks</td>
-                <td><span class="badge badge-teal">Nexus Ring</span></td>
+                <td class="center"><span class="badge badge-teal">Nexus Ring</span></td>
               </tr>
               <tr>
                 <td><b>Footprint &amp; Boot</b></td>
                 <td>Boots in &lt; 4 MB RAM from ROM image</td>
                 <td>Requires 512 MB – 2 GB RAM + systemd</td>
                 <td>100×–500× memory bloat</td>
-                <td><span class="badge badge-teal">&lt; 4 MB ROM</span></td>
+                <td class="center"><span class="badge badge-teal">&lt; 4 MB ROM</span></td>
               </tr>
             </tbody>
           </table>
         </div>
         <figcaption>
-          <span><b>Tier 3 Matrix</b> — B-System BTRON Workstation Architecture vs POSIX/Unix Stack</span>
+          <span><b>Table 4.3: Tier 3 Matrix</b> — B-System BTRON Workstation Architecture vs POSIX/Unix Stack</span>
           <span>Integrated hypermedia workstation architecture vs fragmented Unix legacy software layers</span>
         </figcaption>
       </figure>
@@ -1604,7 +1809,7 @@ footer.site li { margin-bottom: 0.35rem; }
         <ul class="spec">
           <li><strong>Text &amp; Scripts</strong><span>TRON Multilingual Code, UTF-8 stream handling, and Mozc Japanese IME live in the HMI windowing system. <code>rt</code> is clean.</span></li>
           <li><strong>Dynamic Heaps</strong><span>No invisible background allocations for locale caching or character properties. Zero heap after boot is fully supported.</span></li>
-          <li><strong>Filesystem Decoupling</strong><span><code>fopen()</code>, <code>fread()</code>, <code>fwrite()</code> exist only when the <code>/SYS</code> record stream engine is linked; absent builds fail at link-time rather than returning deceptive null bytes.</span></li>
+          <li><strong>Filesystem Decoupling</strong><span><code>fopen/0</code>, <code>fread/0</code>, <code>fwrite/0</code> exist only when the <code>/SYS</code> record stream engine is linked; absent builds fail at link-time rather than returning deceptive null bytes.</span></li>
           <li><strong>Deterministic Time</strong><span>No complex Olson timezone parsing or leap-second tables in <code>time.h</code>. Real-time tasks synchronize to microsecond hardware planes.</span></li>
         </ul>
         <figcaption>
@@ -1642,54 +1847,54 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 18%;">Safety Principle</th>
-                <th style="width: 27%;">Standard Libc Vulnerability</th>
-                <th style="width: 37%;">B-System rt Hardened Implementation</th>
-                <th style="width: 18%;">Target Rule</th>
+                <th>Safety Principle</th>
+                <th>Standard Libc Vulnerability</th>
+                <th>B-System rt Hardened Implementation</th>
+                <th class="center">Target Rule</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><b>Non-Recursive Sorting</b></td>
                 <td>Recursive quicksort; blows task stack under adversarial inputs.</td>
-                <td>In-place Shell sort with Ciura gaps (<code>701, 301, 132... 1</code>); guaranteed $O(1)$ stack.</td>
-                <td><span class="badge badge-teal">MISRA C R17.2</span></td>
+                <td>In-place Shell sort with Ciura gaps (<code>701, 301, 132... 1</code>); guaranteed O(1) stack.</td>
+                <td class="center"><span class="badge badge-teal">MISRA C R17.2</span></td>
               </tr>
               <tr>
                 <td><b>Non-Aborting Assert</b></td>
-                <td><code>assert()</code> prints to stderr, calls <code>abort()</code>, halting flight loops.</td>
+                <td><code>assert/0</code> prints to stderr, calls <code>abort/0</code>, halting flight loops.</td>
                 <td>Sticky counter (<code>btron_assert_count</code>) and line logger; non-terminating.</td>
-                <td><span class="badge badge-teal">MISRA C R21.8</span></td>
+                <td class="center"><span class="badge badge-teal">MISRA C R21.8</span></td>
               </tr>
               <tr>
                 <td><b>Format String Immunity</b></td>
                 <td><code>printf</code> format string exploits (CWE-134) on unbuffered serial.</td>
                 <td><code>printf</code>/<code>fprintf</code> compiled to <code>((void)0)</code>; snprintf safe.</td>
-                <td><span class="badge badge-teal">CERT FIO30-C</span></td>
+                <td class="center"><span class="badge badge-teal">CERT FIO30-C</span></td>
               </tr>
               <tr>
                 <td><b>String Boundaries</b></td>
                 <td>Unbounded <code>strdup</code>/<code>strcpy</code> leading to buffer overflows.</td>
                 <td>Safe bounded wrappers: <code>strscpy</code>; <code>strdup</code> capped at 1 MB allocation ceiling.</td>
-                <td><span class="badge badge-teal">CERT STR31-C</span></td>
+                <td class="center"><span class="badge badge-teal">CERT STR31-C</span></td>
               </tr>
               <tr>
                 <td><b>Deterministic Jitter</b></td>
-                <td>Shared global state in <code>rand()</code> with non-reentrant mutex locks.</td>
+                <td>Shared global state in <code>rand/0</code> with non-reentrant mutex locks.</td>
                 <td>24-bit linear congruential generator matching Quake QC runtime; deterministic.</td>
-                <td><span class="badge badge-teal">Deterministic</span></td>
+                <td class="center"><span class="badge badge-teal">Deterministic</span></td>
               </tr>
               <tr>
                 <td><b>Hardware Errata Safe</b></td>
                 <td>Compiler emits <code>trunc.w.s</code> failing silently on PS2 Emotion Engine COP1.</td>
                 <td>Exponent-band truncation (<code>ps2_sf_fixsfsi</code>) bypasses COP1 silicon errata.</td>
-                <td><span class="badge badge-teal">Silicon Defense</span></td>
+                <td class="center"><span class="badge badge-teal">Silicon Defense</span></td>
               </tr>
             </tbody>
           </table>
         </div>
         <figcaption>
-          <span><b>Quality Benchmark</b> — Real-Time Safety &amp; Defensive Coding Audits</span>
+          <span><b>Table 6.1: Quality Benchmark</b> — Real-Time Safety &amp; Defensive Coding Audits</span>
           <span>Zero stack exhaustion, zero abort traps, zero format injection vectors</span>
         </figcaption>
       </figure>
@@ -1716,46 +1921,46 @@ footer.site li { margin-bottom: 0.35rem; }
           <table class="cmp">
             <thead>
               <tr>
-                <th style="width: 20%;">Product Profile</th>
-                <th style="width: 14%;">Recommended</th>
-                <th style="width: 38%;">Primary Technical Justification</th>
-                <th style="width: 28%;">Conceded Trade-off</th>
+                <th>Product Profile</th>
+                <th class="center">Recommended</th>
+                <th>Primary Technical Justification</th>
+                <th>Conceded Trade-off</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><b>General GNU/Linux server or desktop</b></td>
-                <td><b>glibc</b></td>
+                <td class="center"><span class="badge badge-gray">glibc</span></td>
                 <td>Full POSIX.1-2024 compliance, NSS, NPTL, GNU extensions.</td>
                 <td>Massive memory footprint (&gt;660 kB hello), non-RT aborts.</td>
               </tr>
               <tr>
                 <td><b>Container base or Linux microservice</b></td>
-                <td><b>musl</b></td>
+                <td class="center"><span class="badge badge-gray">musl</span></td>
                 <td>Clean standards conformance, predictable failure, lightweight static.</td>
                 <td>Requires Linux syscall kernel; lacks RTOS flat primitives.</td>
               </tr>
               <tr>
                 <td><b>Configurable open POSIX microkernel</b></td>
-                <td><b>NuttX libc</b></td>
+                <td class="center"><span class="badge badge-gray">NuttX libc</span></td>
                 <td>Tight integration with NuttX device drivers, VFS, and task pools.</td>
                 <td>Deep kernel coupling; hard to port to other microkernels.</td>
               </tr>
               <tr>
                 <td><b>Bare-metal microcontroller (Cortex-M)</b></td>
-                <td><b>picolibc</b></td>
+                <td class="center"><span class="badge badge-gray">picolibc</span></td>
                 <td>Small flash consumption, mature toolchain integration (LLVM/GCC).</td>
                 <td>Relies on syscall stubs; lacks native workstation graphics.</td>
               </tr>
               <tr>
                 <td><b>Emergency static Linux rescue image</b></td>
-                <td><b>dietlibc</b></td>
+                <td class="center"><span class="badge badge-gray">dietlibc</span></td>
                 <td>Minimal possible static binary size on Linux x86/ARM targets.</td>
                 <td>Severe POSIX omissions; rudimentary math precision.</td>
               </tr>
               <tr>
                 <td><b>High-integrity RTOS workstation / flight</b></td>
-                <td><b>B-System rt</b></td>
+                <td class="center"><span class="badge badge-teal">B-System rt</span></td>
                 <td>Zero-heap boot, O(1) stack sort, no abort in assert, errata safe.</td>
                 <td>No hosted POSIX filesystem; requires TRON/B-System host.</td>
               </tr>
@@ -1763,7 +1968,7 @@ footer.site li { margin-bottom: 0.35rem; }
           </table>
         </div>
         <figcaption>
-          <span><b>Architectural Matrix</b> — Fit-for-Purpose Runtime Selection</span>
+          <span><b>Table 7.1: Architectural Matrix</b> — Fit-for-Purpose Runtime Selection</span>
           <span>Select the runtime whose deliberate omissions match your product requirements</span>
         </figcaption>
       </figure>
@@ -1773,6 +1978,367 @@ footer.site li { margin-bottom: 0.35rem; }
         times, and zero silent crashes—B-System <code>include/rt</code> establishes the gold standard
         for next-generation embedded RTOS workstations, medical robotics, and avionics platforms.
       </p>
+    </div>
+  </section>
+
+  <!-- 08 / BTRON OS Headers Architecture -->
+  <section class="band" id="btron-headers">
+    <div class="wrap">
+      <div class="band-head">
+        <span class="band-index">08 / BTRON OS Headers</span>
+        <h2>BTRON 3.20 System Architecture &amp; Desktop Subsystems</h2>
+        <p class="band-eyebrow">include/btron/ · Real-Time Microkernel · Shell · Window Compositor · Hyper-Object TAD Bus</p>
+      </div>
+      <div class="band-intro">
+        <p>
+          The <code>include/btron/</code> directory embodies the complete operating system specification
+          governed by the BTRON 3.20 standard. Unlike conventional Unix environments where real-time
+          capabilities are retrofitted atop time-sharing abstractions, BTRON was architected from inception
+          as a cohesive, single-address-space real-time platform with native human-machine interface (HMI) integration.
+        </p>
+        <p class="en">
+          The table below maps the complete native BTRON 3.20 system header surface against the fragmented
+          counterparts of the standard Linux / POSIX / X11 / Wayland stack. Where Unix requires disparate
+          daemons, file-descriptor multiplexing, and unstructured byte streams, B-System delivers deterministic,
+          zero-copy TAD hyper-media routing, priority-inherited event delivery, and sub-millisecond context switches.
+        </p>
+      </div>
+
+      <figure class="plate">
+        <div class="scroll">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>BTRON Header</th>
+                <th>Subsystem</th>
+                <th>Unix / POSIX Counterpart</th>
+                <th>B-System Architectural Paradigm</th>
+                <th class="center">Real-Time Quality</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>basic.h</code></td>
+                <td>Foundation</td>
+                <td><code>stdint.h</code>, <code>types.h</code></td>
+                <td>TRON unified primitive types (W, H, B)</td>
+                <td class="center"><span class="badge badge-teal">Zero Redefinition</span></td>
+              </tr>
+              <tr>
+                <td><code>types.h</code></td>
+                <td>Geometry</td>
+                <td>X11/Xlib, DirectFB</td>
+                <td>PNT, RECT, COLOR target primitives</td>
+                <td class="center"><span class="badge badge-teal">Hardware Direct</span></td>
+              </tr>
+              <tr>
+                <td><code>error.h</code></td>
+                <td>Diagnostics</td>
+                <td><code>errno.h</code> (global errno)</td>
+                <td>Structured ER codes; zero TLS; re-entrant</td>
+                <td class="center"><span class="badge badge-teal">Thread Pure</span></td>
+              </tr>
+              <tr>
+                <td><code>proc.h</code></td>
+                <td>Process/Task</td>
+                <td><code>fork/0</code>, <code>execve/0</code></td>
+                <td>Single-space real-time actors</td>
+                <td class="center"><span class="badge badge-teal">Deterministic Spawn</span></td>
+              </tr>
+              <tr>
+                <td><code>memory.h</code></td>
+                <td>Memory Subsys</td>
+                <td><code>malloc/0</code>, <code>mman.h</code></td>
+                <td>Fixed memory pools; zero fragmentation</td>
+                <td class="center"><span class="badge badge-teal">Zero Boot Heap</span></td>
+              </tr>
+              <tr>
+                <td><code>message.h</code></td>
+                <td>IPC Mailbox</td>
+                <td><code>mq_*()</code>, SysV IPC</td>
+                <td>Synchronous zero-copy mailbox exchange</td>
+                <td class="center"><span class="badge badge-teal">Zero-Copy IPC</span></td>
+              </tr>
+              <tr>
+                <td><code>event.h</code></td>
+                <td>Event Router</td>
+                <td><code>evdev</code>, <code>epoll</code></td>
+                <td>Priority queue with priority inheritance</td>
+                <td class="center"><span class="badge badge-teal">Bounded Latency</span></td>
+              </tr>
+              <tr>
+                <td><code>clk.h</code></td>
+                <td>Timer/RTC</td>
+                <td><code>clock_gettime/0</code></td>
+                <td>Hardware microsecond timer abstraction</td>
+                <td class="center"><span class="badge badge-teal">Jitter Bounded</span></td>
+              </tr>
+              <tr>
+                <td><code>device.h</code></td>
+                <td>Device I/O</td>
+                <td><code>/dev/*</code>, <code>ioctl/0</code></td>
+                <td>Typed kernel device descriptors</td>
+                <td class="center"><span class="badge badge-teal">Direct Register I/O</span></td>
+              </tr>
+              <tr>
+                <td><code>file.h</code></td>
+                <td>VFS &amp; Storage</td>
+                <td><code>open/0</code>, <code>read/0</code></td>
+                <td>Record storage; native TAD streams</td>
+                <td class="center"><span class="badge badge-teal">Structured Stream</span></td>
+              </tr>
+              <tr>
+                <td><code>tad.h</code></td>
+                <td>Data Engine</td>
+                <td>MIME, JSON, <code>libxml2</code></td>
+                <td>TRON Application Databus hyper-segments</td>
+                <td class="center"><span class="badge badge-teal">Native Hyper-Data</span></td>
+              </tr>
+              <tr>
+                <td><code>vobj.h</code></td>
+                <td>Hyper-Link</td>
+                <td>symlinks, XDG desktop</td>
+                <td>Virtual Object Real/Virtual Body links</td>
+                <td class="center"><span class="badge badge-teal">Object Integrity</span></td>
+              </tr>
+              <tr>
+                <td><code>omgr.h</code></td>
+                <td>Object Manager</td>
+                <td>D-Bus, XDG MIME</td>
+                <td>Live type routing and object binding</td>
+                <td class="center"><span class="badge badge-teal">Decentralized VFS</span></td>
+              </tr>
+              <tr>
+                <td><code>wnd.h</code></td>
+                <td>Window Server</td>
+                <td>Wayland, X11</td>
+                <td>Hardware surfaces; damage routing</td>
+                <td class="center"><span class="badge badge-teal">60 FPS VSYNC</span></td>
+              </tr>
+              <tr>
+                <td><code>compositor.h</code></td>
+                <td>Compositor</td>
+                <td>Mutter, <code>wlroots</code></td>
+                <td>Zero-copy multi-layer GPU compositor</td>
+                <td class="center"><span class="badge badge-teal">Hardware Tile Clip</span></td>
+              </tr>
+              <tr>
+                <td><code>dp.h</code></td>
+                <td>2D Vector Engine</td>
+                <td>Cairo, Skia</td>
+                <td>Display Primitives: integer 2D vectors</td>
+                <td class="center"><span class="badge badge-teal">Fixed-Point ALU</span></td>
+              </tr>
+              <tr>
+                <td><code>dp_accel.h</code></td>
+                <td>2D Acceleration</td>
+                <td>Glamor, DRM planes</td>
+                <td>Direct 2D hardware blit pipeline</td>
+                <td class="center"><span class="badge badge-teal">Zero-Buffer Blit</span></td>
+              </tr>
+              <tr>
+                <td><code>hmi.h</code></td>
+                <td>Widget Toolkit</td>
+                <td>GTK 4, Qt 6</td>
+                <td>TRON HMI native tactile widgets</td>
+                <td class="center"><span class="badge badge-teal">Workstation Polish</span></td>
+              </tr>
+              <tr>
+                <td><code>app_menu.h</code></td>
+                <td>Menu Subsys</td>
+                <td><code>GMenuModel</code>, Qt</td>
+                <td>Application menus; hardware-backed render</td>
+                <td class="center"><span class="badge badge-teal">Instant Response</span></td>
+              </tr>
+              <tr>
+                <td><code>global_menu.h</code></td>
+                <td>Global Menus</td>
+                <td>macOS NSMenu</td>
+                <td>Top-screen compositor-integrated menubar</td>
+                <td class="center"><span class="badge badge-teal">Fitts' Law Optimal</span></td>
+              </tr>
+              <tr>
+                <td><code>dnd.h</code></td>
+                <td>Drag &amp; Drop</td>
+                <td>XDND, Wayland DND</td>
+                <td>TAD live multi-body drag-and-drop</td>
+                <td class="center"><span class="badge badge-teal">Zero-Pipe Transfer</span></td>
+              </tr>
+              <tr>
+                <td><code>font_mgr.h</code></td>
+                <td>Font Engine</td>
+                <td>FreeType 2, HarfBuzz</td>
+                <td>Deterministic outline and bitmap cache</td>
+                <td class="center"><span class="badge badge-teal">Predictable Cache</span></td>
+              </tr>
+              <tr>
+                <td><code>tip.h</code></td>
+                <td>Input Method</td>
+                <td>IBus, Fcitx</td>
+                <td>Text Input Processor for CJK / IME</td>
+                <td class="center"><span class="badge badge-teal">Non-Blocking IME</span></td>
+              </tr>
+              <tr>
+                <td><code>tcpip.h</code></td>
+                <td>Networking</td>
+                <td>BSD Sockets, <code>AF_INET</code></td>
+                <td>Embedded TCP/IP; BSD socket interface</td>
+                <td class="center"><span class="badge badge-teal">Zero-Copy MBuf</span></td>
+              </tr>
+              <tr>
+                <td><code>tty.h</code></td>
+                <td>Terminal/TTY</td>
+                <td>Linux TTY, PTY</td>
+                <td>Software line discipline (ICANON, ECHO)</td>
+                <td class="center"><span class="badge badge-teal">Deterministic TTY</span></td>
+              </tr>
+              <tr>
+                <td><code>smp.h</code></td>
+                <td>Multiprocessing</td>
+                <td>Linux SMP, spinlocks</td>
+                <td>Lockless scheduler; CPU affinity</td>
+                <td class="center"><span class="badge badge-teal">Linear Scalability</span></td>
+              </tr>
+              <tr>
+                <td><code>async_rt.h</code></td>
+                <td>Async Engine</td>
+                <td><code>io_uring</code>, POSIX AIO</td>
+                <td>Lock-free async completion pipeline</td>
+                <td class="center"><span class="badge badge-teal">Sub-Microsecond AIO</span></td>
+              </tr>
+              <tr>
+                <td><code>nexus_ring.h</code></td>
+                <td>Lock-Free Ring</td>
+                <td><code>io_uring</code> SQ/CQ</td>
+                <td>Zero-copy SPSC circular ringbuffer</td>
+                <td class="center"><span class="badge badge-teal">Memory Barrier Safe</span></td>
+              </tr>
+              <tr>
+                <td><code>bpk.h</code></td>
+                <td>Package Mgmt</td>
+                <td><code>dpkg</code>, Flatpak</td>
+                <td>B-Package TAD container bundle</td>
+                <td class="center"><span class="badge badge-teal">Atomic Verification</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <figcaption>
+          <span><b>Table 8.1: BTRON 3.20 OS Headers</b> — include/btron/ Native API mapped to Unix & POSIX Counterparts</span>
+          <span>Single-Address-Space Real-Time Actors · Zero-Copy TAD Messaging · Bounded Kernel Latencies</span>
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <!-- 09 / OpenGL ES Multi-Backend Graphics -->
+  <section class="band" id="opengl">
+    <div class="wrap">
+      <div class="band-head">
+        <span class="band-index">09 / OpenGL ES Graphics</span>
+        <h2>Workstation 3D Acceleration: Multi-Backend OpenGL ES 2.0</h2>
+        <p class="band-eyebrow">Embedded Silicon Drivers · Zero Mesa/DRM/X11 Overhead · Direct Register DMA</p>
+      </div>
+      <div class="band-intro">
+        <p>
+          Real-time workstations demand responsive, hardware-accelerated 3D graphics for flight instruments,
+          medical imaging, and spatial user interfaces. In conventional Linux environments, deploying OpenGL
+          entails dragging in the entire Mesa 3D graphics stack, the DRM/KMS kernel subsystem, Wayland/X11 protocols,
+          and a multi-megabyte LLVM shader compiler—totalling over <b>200 MB</b> of binary disk bloat.
+        </p>
+        <p class="en">
+          B-System breaks this dependency chain by delivering a clean, direct-to-metal OpenGL ES 2.0 runtime
+          operating across five hardware and virtualization backends. Each backend compiles to a self-contained
+          translation unit with zero external library dependencies, consuming under <b>50 KB</b> of compiled code.
+        </p>
+      </div>
+
+      <figure class="plate">
+        <div class="scroll">
+          <table class="cmp">
+            <thead>
+              <tr>
+                <th>Backend</th>
+                <th>Target Silicon</th>
+                <th>API Standard</th>
+                <th class="center">Acceleration</th>
+                <th class="num">Object Footprint</th>
+                <th>Pipeline Architecture</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>gles/</code></td>
+                <td>Embedded GPU SoC</td>
+                <td>OpenGL ES 2.0 / EGL</td>
+                <td class="center"><span class="badge badge-teal">Full Hardware</span></td>
+                <td class="num"><code class="num">48 KB</code></td>
+                <td>Native EGL context; shader-driven hardware pipeline</td>
+              </tr>
+              <tr>
+                <td><code>virgl/</code></td>
+                <td>VirtIO-GPU (QEMU/KVM)</td>
+                <td>VirGL 3D Protocol</td>
+                <td class="center"><span class="badge badge-gold">Host Accelerated</span></td>
+                <td class="num"><code class="num">36 KB</code></td>
+                <td>Gallium3D command streaming over VirtIO ring buffers</td>
+              </tr>
+              <tr>
+                <td><code>v3d/</code></td>
+                <td>Broadcom BCM2837/2711</td>
+                <td>VideoCore IV / VI</td>
+                <td class="center"><span class="badge badge-teal">Full Hardware</span></td>
+                <td class="num"><code class="num">42 KB</code></td>
+                <td>Direct register DMA, tile-based binning rasterizer</td>
+              </tr>
+              <tr>
+                <td><code>eegs/</code></td>
+                <td>PlayStation 2 EE + GS</td>
+                <td>Vector Pipeline</td>
+                <td class="center"><span class="badge badge-teal">Full Hardware</span></td>
+                <td class="num"><code class="num">38 KB</code></td>
+                <td>VU1 vector transformation + Graphics Synthesizer eDRAM</td>
+              </tr>
+              <tr>
+                <td><code>tinygl/</code></td>
+                <td>Universal Fallback</td>
+                <td>OpenGL 1.3 / ES Subset</td>
+                <td class="center"><span class="badge badge-gray">Pure CPU</span></td>
+                <td class="num"><code class="num">34 KB</code></td>
+                <td>Sub-pixel rasterizer; FBO render-to-texture; 0 GPU deps</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <figcaption>
+          <span><b>Table 9.1: Multi-Backend 3D Graphics</b> — Workstation-Grade OpenGL ES 2.0 Hardware Acceleration</span>
+          <span>Freestanding Drivers &lt; 50 KB · Direct Register DMA · Zero Mesa / DRM / X11 Bloat</span>
+        </figcaption>
+      </figure>
+
+      <div class="card-grid two-up">
+        <div class="card">
+          <div class="card-kicker">Zero-Dependency 3D Architecture</div>
+          <h3>Eliminating the 200 MB Mesa Stack</h3>
+          <p>
+            Standard Linux desktop graphics stacks require <code>libGL.so</code>, <code>libEGL.so</code>,
+            <code>libdrm.so</code>, the Linux KMS kernel driver, and LLVM-based JIT compilers for shader execution.
+            On embedded RTOS targets where flash storage is measured in tens of megabytes, this stack is prohibitive.
+            B-System drives GPU hardware registers directly through kernel device handles, ensuring that standard
+            3D rendering, texture mapping, and frame composition operate with deterministic memory overhead.
+          </p>
+        </div>
+        <div class="card">
+          <div class="card-kicker">Unified Window Compositor</div>
+          <h3>One Surface API, Five GPU Implementations</h3>
+          <p>
+            The B-System window compositor (<code>compositor.h</code>) presents a single damage-tracked surface
+            interface to interactive applications. The active graphics backend is dispatched transparently:
+            texture uploads, alpha blending, and double-buffered presents route through unified function pointers
+            whether drawing to a high-speed Broadcom V3D tile buffer, a VirtIO-GPU ring, or the PS2 Graphics Synthesizer.
+          </p>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1791,6 +2357,8 @@ footer.site li { margin-bottom: 0.35rem; }
         <li><a href="#missing">05 Missing</a></li>
         <li><a href="#security">06 Security</a></li>
         <li><a href="#selection">07 Matrix</a></li>
+        <li><a href="#btron-headers">08 BTRON</a></li>
+        <li><a href="#opengl">09 OpenGL</a></li>
       </ul>
     </div>
     <div>
