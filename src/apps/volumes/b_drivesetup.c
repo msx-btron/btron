@@ -27,7 +27,6 @@
 #include <btron/settings_dlg.h>
 #include <stdio.h>
 #include <string.h>
-#include <string.h>   /* strcasecmp (POSIX; not in <string.h> on glibc) */
 
 #define DRIVESETUP_DEF_W  740
 #define DRIVESETUP_DEF_H  512
@@ -930,8 +929,8 @@ bool b_drivesetup_mount(DriveSetupState *st, int dev_idx, int part_idx) {
         p->block_count = vol_total_blocks(v);
         p->free_blocks = vol_free_blocks(v);
         p->total_fids = vol_nfmax(v);
-        if (!g_sys_vol && strcasecmp(p->label, "SYS") == 0) g_sys_vol = v;
-        else if (!g_chokanji_vol && (strcasecmp(p->label, "CHOKANJI") == 0 || p->fs_type == FS_CHOKANJI)) g_chokanji_vol = v;
+        if (!g_sys_vol && strncmp(p->label, "SYS", 3) == 0) g_sys_vol = v;
+        else if (!g_chokanji_vol && (strncmp(p->label, "CHOKANJI", 8) == 0 || p->fs_type == FS_CHOKANJI)) g_chokanji_vol = v;
         else g_anders_vol = v;
     } else {
         const char *vname = p->label[0] ? p->label : "VOL";
