@@ -53,9 +53,12 @@ CFLAGS ?= -O2 -Wall -Wextra -std=c99 $(COMMON_INCLUDES)
 # Feature-test macros for hosted POSIX targets.
 # _DARWIN_C_SOURCE is a superset of POSIX.1-2008 and exposes BSD
 # extensions (SIGWINCH, etc.) that strict _POSIX_C_SOURCE=200809L hides on macOS.
-# On Linux/BSDs _POSIX_C_SOURCE=200809L is the standard knob.
-ifeq ($(shell uname -s), Darwin)
+# On BSDs we expose __BSD_VISIBLE, _XOPEN_SOURCE, and _NETBSD_SOURCE.
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S), Darwin)
     CFLAGS += -D_DARWIN_C_SOURCE
+else ifneq ($(findstring BSD,$(UNAME_S)),)
+    CFLAGS += -D_POSIX_C_SOURCE=200809L -D_XOPEN_SOURCE=700 -D__BSD_VISIBLE=1 -D_NETBSD_SOURCE
 else
     CFLAGS += -D_POSIX_C_SOURCE=200809L
 endif

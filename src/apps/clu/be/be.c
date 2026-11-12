@@ -81,7 +81,9 @@ int main(int argc, char* argv[]) {
     struct sigaction act;
     memset(&act, 0, sizeof(struct sigaction));
     act.sa_handler = handle_term_resize;
+#ifdef SIGWINCH
     sigaction(SIGWINCH, &act, NULL);
+#endif
     resizeflag = 0;
 
     editor_init();

@@ -70,7 +70,9 @@ static int h_raw(int on, int isig)
     if (!h_hooked) {
         h_hooked = 1;
         (void)atexit(h_restore);
+#ifdef SIGWINCH
         (void)signal(SIGWINCH, h_winch);
+#endif
         (void)signal(SIGTERM, h_fatal);
         (void)signal(SIGHUP, h_fatal);
         (void)signal(SIGINT, h_fatal);
