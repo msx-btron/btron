@@ -49,6 +49,10 @@ typedef __wchar_t	wchar_t;
 #define NULL 0
 #endif
 
+#include <stdarg.h>
+
+// T-Kernel 2.0
+
 extern void* tkl_memset( void *s, int c, size_t n );
 extern int tkl_memcmp( const void *s1, const void *s2, size_t n );
 extern void* tkl_memcpy( void *dst, const void *src, size_t n );
@@ -60,6 +64,24 @@ extern int tkl_strcmp( const char *s1, const char *s2 );
 extern int tkl_strncmp( const char *s1, const char *s2, size_t n );
 extern char* tkl_strcpy( char *dst, const char *src );
 extern char* tkl_strncpy( char *dst, const char *src, size_t n );
+extern char* tkl_strcat( char *dst, const char *src );
+extern char* tkl_strncat( char *dst, const char *src, size_t n );
+extern char* tkl_strstr( const char *haystack, const char *needle );
+extern char* tkl_strchr( const char *s, int c );
+extern char* tkl_strrchr( const char *s, int c );
+extern char* tkl_strpbrk( const char *s, const char *accept );
+
+extern int tkl_snprintf( char *str, size_t size, const char *format, ... );
+extern int tkl_vsnprintf( char *str, size_t size, const char *format, va_list ap );
+extern unsigned long int tkl_strtoul( const char *nptr, char **endptr, int base );
+extern unsigned long long tkl_strtoull( const char *nptr, char **endptr, int base );
+extern int tkl_atoi( const char *nptr );
+
+// B-System BTRON 3.20 Extensions
+
+/* Format a binary32 without going through varargs (no float→double promote).
+ * conv is 'f', 'e', or 'g' (uppercase allowed). C99 length, excluding NUL. */
+extern int tkl_fmt_f32( char *str, size_t size, float x, int prec, int conv );
 /* n is the full capacity of dst, including the NUL.
  * Reads at most n bytes of src. Always terminates when n > 0.
  * Does not zero the tail. Returns the count copied, excluding the NUL,
@@ -70,22 +92,6 @@ extern size_t tkl_strscat( char *dst, const char *src, size_t n );
 /* Writes exactly n bytes: the string, then zeros. Stops reading src after n.
  * No NUL beyond n. For a fixed slot whose padding is the format. */
 extern void tkl_strpad( char *dst, const char *src, size_t n );
-extern char* tkl_strcat( char *dst, const char *src );
-extern char* tkl_strncat( char *dst, const char *src, size_t n );
-extern char* tkl_strstr( const char *haystack, const char *needle );
-extern char* tkl_strchr( const char *s, int c );
-extern char* tkl_strrchr( const char *s, int c );
-extern char* tkl_strpbrk( const char *s, const char *accept );
-extern int tkl_snprintf( char *str, size_t size, const char *format, ... );
-#include <stdarg.h>
-extern int tkl_vsnprintf( char *str, size_t size, const char *format, va_list ap );
-/* Format a binary32 without going through varargs (no float→double promote).
- * conv is 'f', 'e', or 'g' (uppercase allowed). C99 length, excluding NUL. */
-extern int tkl_fmt_f32( char *str, size_t size, float x, int prec, int conv );
-
-extern unsigned long int tkl_strtoul( const char *nptr, char **endptr, int base );
-extern unsigned long long tkl_strtoull( const char *nptr, char **endptr, int base );
-extern int tkl_atoi( const char *nptr );
 
 #define	MEMSET	tkl_memset
 #define	MEMCMP	tkl_memcmp
