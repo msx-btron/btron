@@ -67,6 +67,20 @@ int main(void)
         const char *prose_line = "Суть перебуває як світло (bum nang gi mar me lta bu'o).";
         clarity_wylie_line_to_tibetan(prose_line, out_line, sizeof(out_line));
         TEST_ASSERT(strstr(out_line, "བུམ་ནང་གི་མར་མེ་ལྟ་བུའོ") != NULL, "Parenthesized Wylie transliterated inside prose");
+
+        /* F. Term definition with slash without leading slash */
+        const char *term_def = "rtsa ba/ root";
+        clarity_wylie_line_to_tibetan(term_def, out_line, sizeof(out_line));
+        TEST_ASSERT(strstr(out_line, "རྩ་བ") != NULL, "Term 'rtsa ba' transliterated to རྩ་བ");
+        TEST_ASSERT(strstr(out_line, "root") != NULL, "English 'root' preserved");
+
+        /* G. Numbered catalog line with optional category */
+        const char *cat_line = "001 rang grol skor gsum la (spyi don)/ Start of Rang Grol Korsum";
+        clarity_wylie_line_to_tibetan(cat_line, out_line, sizeof(out_line));
+        TEST_ASSERT(strstr(out_line, "001") != NULL, "Number 001 preserved");
+        TEST_ASSERT(strstr(out_line, "རང་གྲོལ་སྐོར་གསུམ་ལ") != NULL, "Catalog title transliterated to རང་གྲོལ་སྐོར་གསུམ་ལ");
+        TEST_ASSERT(strstr(out_line, "སྤྱི་དོན") != NULL, "Category 'spyi don' transliterated to སྤྱི་དོན");
+        TEST_ASSERT(strstr(out_line, "Start of Rang Grol Korsum") != NULL, "Translation preserved");
     }
 
     /* ── Test Group 2: Osal Source Directory Ingestion & Classifier ─── */
@@ -129,6 +143,46 @@ int main(void)
         /* Test navigation: Prev chapter */
         clarity_book_prev_chapter(&book, &doc);
         TEST_ASSERT(book.active_chapter_idx == 0, "Navigated back to Chapter 0");
+    }
+
+    /* ── Test Group 3b: test.txt Format Calibration & QuarkXPress Rollout */
+    printf("\n==> Test Group 3b: test.txt Format Calibration & Multi-Page Rollout\n");
+    {
+        ClarityBook test_book;
+        clarity_book_init(&test_book);
+        int t_rc = clarity_book_open_dir(&test_book, "./assets/osal/test.txt", PECHA_SIZE_KANGYUR, TRUE);
+        TEST_ASSERT(t_rc == 0, "Directly opened ./assets/osal/test.txt as single chapter");
+        TEST_ASSERT(test_book.chapter_count == 1, "Single chapter initialized for test.txt");
+
+        ClarityDoc t_doc;
+        memset(&t_doc, 0, sizeof(ClarityDoc));
+        int load_rc = clarity_book_load_chapter_into_doc(&test_book, 0, &t_doc);
+        TEST_ASSERT(load_rc == 0, "Loaded test.txt into ClarityDoc");
+        TEST_ASSERT(t_doc.page_count >= 2, "test.txt paginated into multiple pages (>= 2)");
+        TEST_ASSERT(t_doc.frame_count == t_doc.page_count, "Every page has an assigned text frame placeholder");
+
+        /* Verify each page has a correctly positioned frame rectangle */
+        int px_w = (t_doc.page_w_mm * CLARITY_DPI * 10) / 254;
+        int px_h = (t_doc.page_h_mm * CLARITY_DPI * 10) / 254;
+        int p_gap = CLARITY_PAGE_GAP_PX;
+        int margin_x = 40, margin_y = 20;
+
+        for (int p = 0; p < t_doc.page_count; p++) {
+            ClarityFrame *f = &t_doc.frames[p];
+            TEST_ASSERT(f->type == FRAME_TEXT, "Frame is FRAME_TEXT");
+            int expected_y = margin_y + p * (px_h + p_gap);
+            TEST_ASSERT(f->bounds.top == expected_y, "Frame Y offset matches page sheet top");
+            TEST_ASSERT(f->bounds.left == margin_x, "Frame left margin matches page");
+            TEST_ASSERT(f->bounds.right - f->bounds.left == px_w - margin_x * 2, "Frame width fills printable area");
+        }
+
+        /* Check that first frame has calibration lines */
+        ClarityFrame *f0 = &t_doc.frames[0];
+        TEST_ASSERT(f0->text_len > 0, "Page 1 frame populated with initial lines");
+
+        /* Check that Page 2 frame also has text rolled out */
+        ClarityFrame *f1 = &t_doc.frames[1];
+        TEST_ASSERT(f1->text_len > 0, "Page 2 frame populated with rolled-out continuation lines");
     }
 
     /* ── Test Group 4: Legal Binary TAD Book Export ─────────────────── */

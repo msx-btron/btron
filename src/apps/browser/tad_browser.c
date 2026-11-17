@@ -105,7 +105,7 @@ static void parse_text_tad_lines(TAD_BROWSER *tb, const char *text, UW len) {
     UW pos = 0;
     while (pos < len && tb->span_count < TAD_MAX_SPANS) {
         /* Read line */
-        char line[512];
+        char line[2048];
         int l_idx = 0;
         while (pos < len && text[pos] != '\n' && text[pos] != '\r' && l_idx < (int)sizeof(line) - 1) {
             line[l_idx++] = text[pos++];
@@ -386,7 +386,7 @@ ER tad_browser_load_buffer(TAD_BROWSER *tb, const void *buf, UW len, const char 
 
                 UW max_off = offset;
                 offset = txt_start;
-                char line[512];
+                char line[2048];
                 int l_idx = 0;
                 while (offset < max_off && p[offset] != '\n' && l_idx < (int)sizeof(line) - 1) {
                     line[l_idx++] = p[offset++];
@@ -525,9 +525,11 @@ int tad_browser_wrap_text(const char *utf8_text, int max_w, tad_wrap_line_cb cb,
         if (*p == '\n' || *p == '\r') {
             /* Explicit newline */
             if (cb) {
-                char buf[512];
+                char buf[2048];
                 int len = (int)(p - line_start);
                 if (len > (int)sizeof(buf) - 1) len = (int)sizeof(buf) - 1;
+                /* Ensure we don't cut a UTF-8 multi-byte sequence */
+                while (len > 0 && ((unsigned char)line_start[len] & 0xC0) == 0x80) len--;
                 memcpy(buf, line_start, len);
                 buf[len] = '\0';
                 cb(buf, len, cur_line_w, line_idx, user_data);
@@ -580,9 +582,11 @@ int tad_browser_wrap_text(const char *utf8_text, int max_w, tad_wrap_line_cb cb,
 
             /* Emit line from line_start to break_pt */
             if (cb) {
-                char buf[512];
+                char buf[2048];
                 int len = (int)(break_pt - line_start);
                 if (len > (int)sizeof(buf) - 1) len = (int)sizeof(buf) - 1;
+                /* Ensure we don't cut a UTF-8 multi-byte sequence */
+                while (len > 0 && ((unsigned char)line_start[len] & 0xC0) == 0x80) len--;
                 memcpy(buf, line_start, len);
                 buf[len] = '\0';
                 cb(buf, len, break_w, line_idx, user_data);
@@ -610,9 +614,11 @@ int tad_browser_wrap_text(const char *utf8_text, int max_w, tad_wrap_line_cb cb,
     /* Emit remaining tail of line */
     if (p > line_start || line_idx == 0) {
         if (cb) {
-            char buf[512];
+            char buf[2048];
             int len = (int)(p - line_start);
             if (len > (int)sizeof(buf) - 1) len = (int)sizeof(buf) - 1;
+            /* Ensure we don't cut a UTF-8 multi-byte sequence */
+            while (len > 0 && ((unsigned char)line_start[len] & 0xC0) == 0x80) len--;
             memcpy(buf, line_start, len);
             buf[len] = '\0';
             cb(buf, len, cur_line_w, line_idx, user_data);
@@ -627,6 +633,7 @@ void tad_browser_layout(TAD_BROWSER *tb, int view_width) {
     if (!tb) return;
     tb->doc_width = (view_width > 200) ? view_width : 640;
 
+    int max_w = tb->doc_width;
     int cur_y = 36; /* Start below the 32px navigation toolbar */
     for (int i = 0; i < tb->span_count; i++) {
         TAD_SPAN *s = &tb->spans[i];
@@ -644,6 +651,7 @@ void tad_browser_layout(TAD_BROWSER *tb, int view_width) {
             s->bounds.top = cur_y;
             s->bounds.right = s->bounds.left + box_w;
             s->bounds.bottom = cur_y + fig_h + 46;
+            if (s->bounds.right + 24 > max_w) max_w = s->bounds.right + 24;
             cur_y += fig_h + 52;
             continue;
         }
@@ -676,9 +684,9 @@ void tad_browser_layout(TAD_BROWSER *tb, int view_width) {
         if (avail_w < 80) avail_w = 80;
 
         int num_lines = 1;
-        if (s->style.font_id == 2) {
-            /* Monospace Preformatted Text (Code block / ASCII diagram / Table) */
-            /* Count non-empty explicit lines separated by \n */
+        if (s->style.font_id == 2 || !tb->wrap_text) {
+            /* Monospace Preformatted Text or Unwrapped Mode:
+             * Count non-empty explicit lines separated by \n */
             const char *q = s->text;
             num_lines = 0;
             while (*q) {
@@ -694,19 +702,38 @@ void tad_browser_layout(TAD_BROWSER *tb, int view_width) {
         }
         int span_h = num_lines * pitch;
 
-        int text_len = (int)strlen(s->text);
-        int calc_w = text_len * ((s->style.font_size >= 16) ? 10 : 8);
-        if (calc_w > avail_w || num_lines > 1) calc_w = avail_w;
-        if (calc_w < 50 && s->style.is_vobj) calc_w = 260;
-        if (calc_w > avail_w) calc_w = avail_w;
+        int calc_w = 0;
+        if (tb->wrap_text) {
+            int text_len = (int)strlen(s->text);
+            calc_w = text_len * ((s->style.font_size >= 16) ? 10 : 8);
+            if (calc_w > avail_w || num_lines > 1) calc_w = avail_w;
+            if (calc_w < 50 && s->style.is_vobj) calc_w = 260;
+            if (calc_w > avail_w) calc_w = avail_w;
+        } else {
+            const char *q = s->text;
+            while (*q) {
+                const char *nl = strchr(q, '\n');
+                int llen = nl ? (int)(nl - q) : (int)strlen(q);
+                int lw = tc_calc_string_width(q, llen);
+                if (lw > calc_w) calc_w = lw;
+                if (!nl) break;
+                q = nl + 1;
+            }
+            if (calc_w < 50 && s->style.is_vobj) calc_w = 260;
+        }
 
         s->bounds.left = indent;
         s->bounds.top = cur_y;
         s->bounds.right = indent + calc_w;
         s->bounds.bottom = cur_y + span_h;
 
+        if (s->bounds.right + 24 > max_w) {
+            max_w = s->bounds.right + 24;
+        }
+
         cur_y += span_h;
     }
+    tb->max_content_width = max_w;
     tb->doc_height = cur_y + 30;
 }
 
@@ -1488,30 +1515,6 @@ static void paint_wrap_line_cb(const char *line_str, int line_len, H line_w, int
 #define TMENU_HDR_HELP          3
 #define MAX_TAD_FILES           32
 
-enum {
-    TCMD_NONE = 0,
-    /* File */
-    TCMD_FILE_OPEN_CASCADE = 10,
-    TCMD_FILE_PRINT,
-    TCMD_FILE_CLOSE,
-    /* View */
-    TCMD_VIEW_BACK = 20,
-    TCMD_VIEW_FORWARD,
-    TCMD_VIEW_HOME,
-    TCMD_VIEW_RELOAD,
-    TCMD_VIEW_ZOOM_IN,
-    TCMD_VIEW_ZOOM_OUT,
-    TCMD_VIEW_ZOOM_100,
-    TCMD_VIEW_WRAP_TOGGLE,
-    /* VObj */
-    TCMD_VOBJ_FOLLOW = 30,
-    TCMD_VOBJ_OPEN_NEW,
-    TCMD_VOBJ_CABINET,
-    /* Help */
-    TCMD_HELP_ABOUT = 40,
-    TCMD_HELP_SPEC
-};
-
 static void tad_sync_menu_state(TAD_BROWSER *tb) {
     if (!tb) return;
     tb->active_menu = tb->menu_bar.active_menu;
@@ -1527,7 +1530,7 @@ static void tad_init_menu_bar(TAD_BROWSER *tb) {
     int h0 = app_menu_add_header(&tb->menu_bar, "ファイル(F)", 104);
     app_menu_add_submenu_item(&tb->menu_bar, h0, "開く (Open Document...) ▶", TCMD_FILE_OPEN_CASCADE, 1);
     app_menu_add_separator(&tb->menu_bar, h0);
-    app_menu_add_item(&tb->menu_bar, h0, "閉じる (Close Window)", "Ctrl+W", TCMD_FILE_CLOSE, TRUE);
+    app_menu_add_item(&tb->menu_bar, h0, "閉じる (Close Window)", "Ctrl+Q", TCMD_FILE_CLOSE, TRUE);
 
     int h1 = app_menu_add_header(&tb->menu_bar, "表示(V)", 72);
     app_menu_add_item(&tb->menu_bar, h1, "戻る (Back)", "Alt+Left", TCMD_VIEW_BACK, TRUE);
@@ -1540,6 +1543,7 @@ static void tad_init_menu_bar(TAD_BROWSER *tb) {
     app_menu_add_item(&tb->menu_bar, h1, "標準サイズ (100%)", "0", TCMD_VIEW_ZOOM_100, TRUE);
     app_menu_add_separator(&tb->menu_bar, h1);
     app_menu_add_item(&tb->menu_bar, h1, "行折り返し (Wrap Text)", "Ctrl+W", TCMD_VIEW_WRAP_TOGGLE, TRUE);
+    app_menu_set_item_checked(&tb->menu_bar, TCMD_VIEW_WRAP_TOGGLE, tb->wrap_text);
 
     int h2 = app_menu_add_header(&tb->menu_bar, "仮身(O)", 72);
     app_menu_add_item(&tb->menu_bar, h2, "リンク先を開く (Follow Fusen)", "Enter", TCMD_VOBJ_FOLLOW, TRUE);
@@ -1604,6 +1608,8 @@ WND* open_tad_browser_about_window(void) {
 #define TAD_SB_W   16
 #define TAD_SB_BTN 16
 #define TAD_SB_TOP 48
+#define TAD_HSB_H  16
+#define TAD_HSB_BTN 16
 
 typedef struct {
     RECT  bar, up_btn, dn_btn, thumb;
@@ -1613,7 +1619,7 @@ typedef struct {
 
 static void tad_sbar_layout(TAD_BROWSER *tb, GDEV *dev, tad_sbar_t *sb) {
     int bar_top = TAD_SB_TOP;
-    int bar_bot = dev->height - 22;
+    int bar_bot = dev->height - 22 - (tb->wrap_text ? 0 : TAD_HSB_H);
     sb->bar.left = dev->width - TAD_SB_W;   sb->bar.top = bar_top;
     sb->bar.right = dev->width;             sb->bar.bottom = bar_bot;
     sb->up_btn.left = sb->bar.left; sb->up_btn.right = sb->bar.right;
@@ -1652,6 +1658,105 @@ static void tad_set_scroll_clamped(TAD_BROWSER *tb, int ns) {
     if (ns < 0) ns = 0;
     if (ns > max_scroll) ns = max_scroll;
     tb->scroll_y = ns;
+}
+
+typedef struct {
+    RECT  bar, left_btn, right_btn, thumb;
+    int   track_left, track_right;
+    BOOL  overflow;
+} tad_hsbar_t;
+
+static void tad_hsbar_layout(TAD_BROWSER *tb, GDEV *dev, tad_hsbar_t *sb) {
+    int bar_left = 0;
+    int bar_right = dev->width - TAD_SB_W;
+    int bar_top = dev->height - 22 - TAD_HSB_H;
+    int bar_bot = dev->height - 22;
+
+    sb->bar.left = bar_left;   sb->bar.top = bar_top;
+    sb->bar.right = bar_right; sb->bar.bottom = bar_bot;
+
+    sb->left_btn.left = bar_left; sb->left_btn.right = bar_left + TAD_HSB_BTN;
+    sb->left_btn.top = bar_top;   sb->left_btn.bottom = bar_bot;
+
+    sb->right_btn.left = bar_right - TAD_HSB_BTN; sb->right_btn.right = bar_right;
+    sb->right_btn.top = bar_top;   sb->right_btn.bottom = bar_bot;
+
+    sb->track_left = bar_left + TAD_HSB_BTN;
+    sb->track_right = bar_right - TAD_HSB_BTN;
+    int track_w = sb->track_right - sb->track_left;
+    if (track_w < 1) track_w = 1;
+
+    int max_scroll = tb->max_content_width - tb->page_width;
+    if (max_scroll < 0) max_scroll = 0;
+    sb->overflow = (max_scroll > 0 && bar_right > bar_left + 2 * TAD_HSB_BTN);
+
+    int th_w, tx;
+    if (sb->overflow && tb->max_content_width > 0) {
+        th_w = (tb->page_width * track_w) / tb->max_content_width;
+        if (th_w < 15) th_w = 15;
+        if (th_w > track_w) th_w = track_w;
+        int sx = tb->scroll_x;
+        if (sx < 0) sx = 0;
+        if (sx > max_scroll) sx = max_scroll;
+        tx = sb->track_left + (sx * (track_w - th_w)) / max_scroll;
+    } else {
+        th_w = track_w;
+        tx = sb->track_left;
+    }
+    sb->thumb.left = tx;              sb->thumb.right = tx + th_w;
+    sb->thumb.top = sb->bar.top + 2;  sb->thumb.bottom = sb->bar.bottom - 2;
+}
+
+static void tad_set_hscroll_clamped(TAD_BROWSER *tb, int ns) {
+    int max_scroll = tb->max_content_width - tb->page_width;
+    if (max_scroll < 0) max_scroll = 0;
+    if (ns < 0) ns = 0;
+    if (ns > max_scroll) ns = max_scroll;
+    tb->scroll_x = ns;
+}
+
+static void tad_draw_hscrollbar(TAD_BROWSER *tb, GDEV *dev) {
+    if (dev->height <= 90 || dev->width <= 60) return;
+    tad_hsbar_t sb;
+    tad_hsbar_layout(tb, dev, &sb);
+    const int sx = sb.bar.left, sy = sb.bar.top, sw = sb.bar.right - sb.bar.left;
+    const COLOR btn_pen = sb.overflow ? COLOR_BLACK : COLOR_DKGRAY;
+
+    fill_rec(dev, &sb.bar, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_lin(dev, sx, sy, sx + sw, sy);
+    drw_lin(dev, sx + TAD_HSB_BTN, sy, sx + TAD_HSB_BTN, sy + TAD_HSB_H - 1);
+    drw_lin(dev, sx + sw - TAD_HSB_BTN, sy, sx + sw - TAD_HSB_BTN, sy + TAD_HSB_H - 1);
+
+    fill_rec(dev, &sb.left_btn, COLOR_LTGRAY);
+    drw_rec(dev, &sb.left_btn);
+    set_col(dev, btn_pen, COLOR_LTGRAY);
+    drw_lin(dev, sx + 4, sy + 8, sx + 11, sy + 4);
+    drw_lin(dev, sx + 4, sy + 8, sx + 11, sy + 12);
+    drw_lin(dev, sx + 11, sy + 4, sx + 11, sy + 12);
+
+    const int rx = sb.right_btn.left;
+    fill_rec(dev, &sb.right_btn, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &sb.right_btn);
+    set_col(dev, btn_pen, COLOR_LTGRAY);
+    drw_lin(dev, rx + 11, sy + 8, rx + 4, sy + 4);
+    drw_lin(dev, rx + 11, sy + 8, rx + 4, sy + 12);
+    drw_lin(dev, rx + 4, sy + 4, rx + 4, sy + 12);
+
+    fill_rec(dev, &sb.thumb, sb.overflow ? COLOR_GRAY : COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &sb.thumb);
+    drw_lin(dev, sb.thumb.left, sb.thumb.top, sb.thumb.right - 1, sb.thumb.top);
+    drw_lin(dev, sb.thumb.left, sb.thumb.top, sb.thumb.left, sb.thumb.bottom - 1);
+    drw_lin(dev, sb.thumb.left, sb.thumb.bottom - 1, sb.thumb.right - 1, sb.thumb.bottom - 1);
+    drw_lin(dev, sb.thumb.right - 1, sb.thumb.top, sb.thumb.right - 1, sb.thumb.bottom - 1);
+
+    /* Corner junction between vertical and horizontal scrollbars */
+    RECT corner = { dev->width - TAD_SB_W, sy, dev->width, sy + TAD_HSB_H };
+    fill_rec(dev, &corner, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &corner);
 }
 
 static void tad_draw_scrollbar(TAD_BROWSER *tb, GDEV *dev) {
@@ -1703,30 +1808,42 @@ void tad_browser_paint(TAD_BROWSER *tb, GDEV *dev, const RECT *client_rect) {
     RECT bg = { 0, 0, dev->width, dev->height };
     fill_rec(dev, &bg, COLOR_WHITE);
 
-    int view_h = client_rect->bottom - client_rect->top;
-    tb->page_height = view_h - 72; /* Account for Menu Bar, Toolbar & status bar */
+    int content_bot = dev->height - 22 - (tb->wrap_text ? 0 : TAD_HSB_H);
+    tb->page_height = content_bot - 48; /* Account for Menu Bar, Toolbar & status bar */
+    tb->page_width = dev->width - TAD_SB_W;
 
     int max_scroll = tb->doc_height - tb->page_height;
     if (max_scroll < 0) max_scroll = 0;
     if (tb->scroll_y > max_scroll) tb->scroll_y = max_scroll;
     if (tb->scroll_y < 0) tb->scroll_y = 0;
 
+    int max_hscroll = tb->max_content_width - tb->page_width;
+    if (max_hscroll < 0) max_hscroll = 0;
+    if (tb->wrap_text) {
+        tb->scroll_x = 0;
+    } else {
+        if (tb->scroll_x > max_hscroll) tb->scroll_x = max_hscroll;
+        if (tb->scroll_x < 0) tb->scroll_x = 0;
+    }
+
     /* ── Render Visible Document Spans (Strictly Clipped to Content Viewport) ── */
     RECT orig_clip = dev->clip;
-    RECT content_clip = { 0, 48, dev->width, dev->height - 22 };
+    RECT content_clip = { 0, 48, dev->width - TAD_SB_W, content_bot };
     set_clip(dev, &content_clip);
 
     for (int i = 0; i < tb->span_count; i++) {
         TAD_SPAN *s = &tb->spans[i];
         int vy = s->bounds.top - tb->scroll_y;
+        int vx = s->bounds.left - (tb->wrap_text ? 0 : tb->scroll_x);
         int span_h = s->bounds.bottom - s->bounds.top;
+        int span_w = s->bounds.right - s->bounds.left;
 
         /* Skip items entirely outside the vertical viewport */
-        if (vy + span_h < 48 || vy >= dev->height - 22) continue;
+        if (vy + span_h < 48 || vy >= content_bot) continue;
 
         if (s->style.is_image) {
             /* ── BTRON3 Figure / Picture Box Container (TS_FPRIM 0xFFB0 SubID 10) ── */
-            RECT pic_box = { s->bounds.left, vy, s->bounds.right, vy + span_h - 4 };
+            RECT pic_box = { vx, vy, vx + span_w, vy + span_h - 4 };
             fill_rec(dev, &pic_box, COLOR_LTGRAY);
             drw_rec(dev, &pic_box);
 
@@ -1752,14 +1869,14 @@ void tad_browser_paint(TAD_BROWSER *tb, GDEV *dev, const RECT *client_rect) {
             drw_tc_string(dev, pic_box.left + 8, pic_box.bottom - 17, s->style.img_caption[0] ? s->style.img_caption : "BTRON3 Figure Segment", COLOR_BLACK, 0x00000000);
         } else if (s->style.is_hr) {
             /* Vector horizontal separator */
-            drw_lin(dev, s->bounds.left, vy + 6, dev->width - 30, vy + 6);
+            drw_lin(dev, vx, vy + 6, vx + span_w, vy + 6);
         } else if (s->style.is_vobj || s->is_link) {
             /* Virtual Body Hyper-Link Container */
             int avail_w = tb->doc_width - s->bounds.left - 24;
             if (avail_w < 80) avail_w = 80;
             int pitch = (s->style.line_pitch > 0) ? s->style.line_pitch : 22;
 
-            RECT link_bg = { s->bounds.left - 2, vy - 1, s->bounds.right + 4, vy + span_h - 2 };
+            RECT link_bg = { vx - 2, vy - 1, vx + span_w + 4, vy + span_h - 2 };
             COLOR bg_col = (tb->hovered_link_idx == i) ? COLOR_LTGRAY : COLOR_WHITE;
 
             fill_rec(dev, &link_bg, bg_col);
@@ -1767,14 +1884,18 @@ void tad_browser_paint(TAD_BROWSER *tb, GDEV *dev, const RECT *client_rect) {
 
             TAD_PAINT_WRAP_CTX ctx;
             ctx.dev = dev;
-            ctx.x = s->bounds.left + 4;
+            ctx.x = vx + 4;
             ctx.y = vy;
             ctx.pitch = pitch;
             ctx.text_col = COLOR_BLUE;
-            tad_browser_wrap_text(s->text, avail_w - 8, paint_wrap_line_cb, &ctx);
+            if (tb->wrap_text) {
+                tad_browser_wrap_text(s->text, avail_w - 8, paint_wrap_line_cb, &ctx);
+            } else {
+                paint_wrap_line_cb(s->text, (int)strlen(s->text), 0, 0, &ctx);
+            }
 
             if (tb->hovered_link_idx == i) {
-                drw_lin(dev, s->bounds.left + 4, vy + span_h - 3, s->bounds.right + 2, vy + span_h - 3);
+                drw_lin(dev, vx + 4, vy + span_h - 3, vx + span_w + 2, vy + span_h - 3);
             }
         } else {
             /* Standard text line / paragraph */
@@ -1786,12 +1907,12 @@ void tad_browser_paint(TAD_BROWSER *tb, GDEV *dev, const RECT *client_rect) {
 
                 TAD_PAINT_WRAP_CTX ctx;
                 ctx.dev = dev;
-                ctx.x = s->bounds.left;
+                ctx.x = vx;
                 ctx.y = vy;
                 ctx.pitch = pitch;
                 ctx.text_col = text_col;
-                if (s->style.font_id == 2) {
-                    /* Monospace / Preformatted: render line by line split by \n */
+                if (s->style.font_id == 2 || !tb->wrap_text) {
+                    /* Monospace / Preformatted or Unwrapped: render line by line split by \n */
                     const char *lp = s->text;
                     int l_idx = 0;
                     while (*lp) {
@@ -1810,7 +1931,6 @@ void tad_browser_paint(TAD_BROWSER *tb, GDEV *dev, const RECT *client_rect) {
                 }
             }
         }
-
     }
 
     /* Restore device clip for window chrome layer */
@@ -1866,8 +1986,11 @@ void tad_browser_paint(TAD_BROWSER *tb, GDEV *dev, const RECT *client_rect) {
         drw_tc_string(dev, 278, 26, loc_text, COLOR_DKGRAY, 0x00000000);
     }
 
-    /* ── 3. Windows 95 vertical scrollbar (right margin) ───────────────────── */
+    /* ── 3. Windows 95 scrollbars (right gutter and optional bottom gutter) ── */
     tad_draw_scrollbar(tb, dev);
+    if (!tb->wrap_text) {
+        tad_draw_hscrollbar(tb, dev);
+    }
 
     /* ── 4. Status Bar Footer (Bottom: height-22 .. height) ────────────────── */
     RECT status_r = { 0, dev->height - 22, dev->width, dev->height };
@@ -2086,13 +2209,14 @@ BOOL tad_browser_handle_mouse(TAD_BROWSER *tb, int mouse_x, int mouse_y, BOOL is
 
     /* Document span clicks / hovers */
     int doc_y = mouse_y + tb->scroll_y;
+    int doc_x = mouse_x + (tb->wrap_text ? 0 : tb->scroll_x);
     tb->hovered_link_idx = -1;
 
     for (int i = 0; i < tb->span_count; i++) {
         TAD_SPAN *s = &tb->spans[i];
         if (!s->is_link) continue;
 
-        if (mouse_x >= s->bounds.left && mouse_x <= s->bounds.right &&
+        if (doc_x >= s->bounds.left && doc_x <= s->bounds.right &&
             doc_y >= s->bounds.top && doc_y <= s->bounds.bottom) {
             tb->hovered_link_idx = i;
             if (is_click) {
@@ -2124,6 +2248,55 @@ static void destroy_browser_wnd(WND *wnd) {
     }
 }
 
+static void tad_browser_execute_menu_cmd(TAD_BROWSER *tb, WND *wnd, int cmd) {
+    if (!tb) return;
+    switch (cmd) {
+        case TCMD_FILE_CLOSE:
+            if (wnd) cls_wnd(wnd);
+            return;
+        case TCMD_VIEW_BACK:
+            tad_browser_go_back(tb);
+            break;
+        case TCMD_VIEW_FORWARD:
+            tad_browser_go_forward(tb);
+            break;
+        case TCMD_VIEW_HOME:
+            tad_browser_go_home(tb);
+            break;
+        case TCMD_VIEW_RELOAD:
+            tad_browser_reload(tb);
+            break;
+        case TCMD_VIEW_ZOOM_IN:
+            tb->zoom_percent += 10;
+            if (tb->zoom_percent > 200) tb->zoom_percent = 200;
+            break;
+        case TCMD_VIEW_ZOOM_OUT:
+            tb->zoom_percent -= 10;
+            if (tb->zoom_percent < 50) tb->zoom_percent = 50;
+            break;
+        case TCMD_VIEW_ZOOM_100:
+            tb->zoom_percent = 100;
+            break;
+        case TCMD_VIEW_WRAP_TOGGLE:
+            tb->wrap_text = !tb->wrap_text;
+            app_menu_set_item_checked(&tb->menu_bar, TCMD_VIEW_WRAP_TOGGLE, tb->wrap_text);
+            if (tb->wrap_text) {
+                tb->scroll_x = 0;
+            }
+            tad_browser_layout(tb, tb->doc_width);
+            break;
+        case TCMD_VOBJ_CABINET:
+            if (open_vobj_manager_window) open_vobj_manager_window();
+            break;
+        case TCMD_HELP_ABOUT:
+            open_tad_browser_about_window();
+            break;
+        default:
+            break;
+    }
+    if (wnd) inval_wnd(wnd);
+}
+
 static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
     if (!wnd || !evt) return;
     TAD_BROWSER *tb = (wnd->user_data) ? (TAD_BROWSER*)(uintptr_t)wnd->user_data : &g_active_browser;
@@ -2139,7 +2312,7 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
         }
         tad_sync_menu_state(tb);
 
-        /* Windows 95 thumb drag: proportional to pointer travel. */
+        /* Windows 95 vertical thumb drag: proportional to pointer travel. */
         if (tb->sb_dragging && wnd->dev) {
             tad_sbar_t sb;
             tad_sbar_layout(tb, wnd->dev, &sb);
@@ -2149,6 +2322,21 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
             if (travel > 0 && max_scroll > 0) {
                 int dy = rel_y - tb->sb_drag_start_y;
                 tad_set_scroll_clamped(tb, tb->sb_drag_start_scroll + (dy * max_scroll) / travel);
+                inval_wnd(wnd);
+            }
+            return;
+        }
+
+        /* Windows 95 horizontal thumb drag: proportional to pointer travel */
+        if (tb->hsb_dragging && wnd->dev && !tb->wrap_text) {
+            tad_hsbar_t hsb;
+            tad_hsbar_layout(tb, wnd->dev, &hsb);
+            int max_scroll = tb->max_content_width - tb->page_width;
+            if (max_scroll < 0) max_scroll = 0;
+            int travel = (hsb.track_right - hsb.track_left) - (hsb.thumb.right - hsb.thumb.left);
+            if (travel > 0 && max_scroll > 0) {
+                int dx = rel_x - tb->hsb_drag_start_x;
+                tad_set_hscroll_clamped(tb, tb->hsb_drag_start_scroll + (dx * max_scroll) / travel);
                 inval_wnd(wnd);
             }
             return;
@@ -2170,48 +2358,11 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
                 int cnt = tad_scan_available_files(files);
                 if (sub_idx < cnt) {
                     tad_browser_navigate(tb, files[sub_idx]);
+                    inval_wnd(wnd);
                 }
             } else if (cmd != 0) {
-                switch (cmd) {
-                    case TCMD_FILE_CLOSE:
-                        cls_wnd(wnd);
-                        return;
-                    case TCMD_VIEW_BACK:
-                        tad_browser_go_back(tb);
-                        break;
-                    case TCMD_VIEW_FORWARD:
-                        tad_browser_go_forward(tb);
-                        break;
-                    case TCMD_VIEW_HOME:
-                        tad_browser_go_home(tb);
-                        break;
-                    case TCMD_VIEW_RELOAD:
-                        tad_browser_reload(tb);
-                        break;
-                    case TCMD_VIEW_ZOOM_IN:
-                        tb->zoom_percent += 10;
-                        if (tb->zoom_percent > 200) tb->zoom_percent = 200;
-                        break;
-                    case TCMD_VIEW_ZOOM_OUT:
-                        tb->zoom_percent -= 10;
-                        if (tb->zoom_percent < 50) tb->zoom_percent = 50;
-                        break;
-                    case TCMD_VIEW_ZOOM_100:
-                        tb->zoom_percent = 100;
-                        break;
-                    case TCMD_VIEW_WRAP_TOGGLE:
-                        tb->wrap_text = !tb->wrap_text;
-                        tad_browser_layout(tb, tb->doc_width);
-                        break;
-                    case TCMD_VOBJ_CABINET:
-                        if (open_vobj_manager_window) open_vobj_manager_window();
-                        break;
-                    case TCMD_HELP_ABOUT:
-                        open_tad_browser_about_window();
-                        break;
-                    default:
-                        break;
-                }
+                tad_browser_execute_menu_cmd(tb, wnd, cmd);
+                return;
             }
             inval_wnd(wnd);
             return;
@@ -2259,7 +2410,7 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
             return;
         }
 
-        /* Windows 95 scrollbar: arrows step, track pages, thumb drags. */
+        /* Windows 95 vertical scrollbar: arrows step, track pages, thumb drags. */
         if (wnd->dev) {
             tad_sbar_t sb;
             tad_sbar_layout(tb, wnd->dev, &sb);
@@ -2285,6 +2436,32 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
             }
         }
 
+        /* Horizontal scrollbar (when unwrapped): arrows step, track pages, thumb drags */
+        if (!tb->wrap_text && wnd->dev) {
+            tad_hsbar_t hsb;
+            tad_hsbar_layout(tb, wnd->dev, &hsb);
+            if (rel_x >= hsb.bar.left && rel_x < hsb.bar.right &&
+                rel_y >= hsb.bar.top && rel_y < hsb.bar.bottom) {
+                if (hsb.overflow) {
+                    if (rel_x >= hsb.left_btn.left && rel_x < hsb.left_btn.right) {
+                        tad_set_hscroll_clamped(tb, tb->scroll_x - 32);
+                    } else if (rel_x >= hsb.right_btn.left && rel_x < hsb.right_btn.right) {
+                        tad_set_hscroll_clamped(tb, tb->scroll_x + 32);
+                    } else if (rel_x < hsb.thumb.left || rel_x >= hsb.thumb.right) {
+                        int pg = tb->page_width / 2;
+                        if (pg < 32) pg = 32;
+                        tad_set_hscroll_clamped(tb, tb->scroll_x + ((rel_x < hsb.thumb.left) ? -pg : pg));
+                    } else {
+                        tb->hsb_dragging = TRUE;
+                        tb->hsb_drag_start_x = rel_x;
+                        tb->hsb_drag_start_scroll = tb->scroll_x;
+                    }
+                    inval_wnd(wnd);
+                }
+                return;
+            }
+        }
+
         /* D. Document Content Link Clicks (y >= 48) */
         tb->addr_active = FALSE;
         ID clicked_robj = 0;
@@ -2292,21 +2469,36 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
         if (tad_browser_handle_mouse(tb, rel_x, rel_y, TRUE, &clicked_robj, clicked_path)) {
             if (clicked_path[0] != '\0') {
                 tad_browser_navigate(tb, clicked_path);
+                inval_wnd(wnd);  /* FIX: repaint after navigation – content changed */
             }
         }
         return;
     }
 
     if (evt->type == EV_BUT_UP) {
+        BOOL need_inv = FALSE;
         if (tb->sb_dragging) {
             tb->sb_dragging = FALSE;
-            inval_wnd(wnd);
+            need_inv = TRUE;
         }
+        if (tb->hsb_dragging) {
+            tb->hsb_dragging = FALSE;
+            need_inv = TRUE;
+        }
+        if (need_inv) inval_wnd(wnd);
         return;
     }
 
     if (evt->type == EV_KEY_DOWN) {
         UW key = evt->key;
+
+        /* Wheel scroll events tagged from event.c */
+        if (evt->button == EV_KEY_FROM_WHEEL) {
+            tb->addr_active = FALSE;
+            tad_browser_scroll(tb, (key == BTRON_KEY_UP) ? -24 : 24);
+            inval_wnd(wnd);
+            return;
+        }
 
         /* Address Bar Text Input */
         if (tb->addr_active) {
@@ -2314,58 +2506,93 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
                 tb->addr_active = FALSE;
                 if (tb->addr_input[0] != '\0') {
                     tad_browser_navigate(tb, tb->addr_input);
+                    inval_wnd(wnd);
                 }
                 return;
             } else if (key == BTRON_KEY_ESCAPE || key == 27) {
                 tb->addr_active = FALSE;
+                inval_wnd(wnd);
                 return;
             } else if (key == BTRON_KEY_BACKSPACE || key == 8 || key == 127) {
                 if (tb->addr_cursor > 0) {
                     tb->addr_cursor--;
                     tb->addr_input[tb->addr_cursor] = '\0';
+                    inval_wnd(wnd);
                 }
                 return;
             } else if (key >= 32 && key <= 126 && tb->addr_cursor < (int)sizeof(tb->addr_input) - 2) {
                 tb->addr_input[tb->addr_cursor++] = (char)key;
                 tb->addr_input[tb->addr_cursor] = '\0';
+                inval_wnd(wnd);
                 return;
             }
             return;
         }
 
-        if (key == BTRON_KEY_ESCAPE || key == 27) {
-            int cmd = 0;
-            if (app_menu_handle_key(&tb->menu_bar, key, (uint16_t)(uintptr_t)evt->data, &cmd)) {
-                tad_sync_menu_state(tb);
-                return;
-            }
+        /* Menu shortcuts & navigation */
+        int menu_cmd = 0;
+        if (app_menu_handle_key(&tb->menu_bar, key, (uint16_t)(uintptr_t)evt->data, &menu_cmd)) {
             tad_sync_menu_state(tb);
+            if (menu_cmd != 0) {
+                tad_browser_execute_menu_cmd(tb, wnd, menu_cmd);
+            }
+            inval_wnd(wnd);
+            return;
+        }
+        tad_sync_menu_state(tb);
+
+        /* Explicit Ctrl+W accelerator check */
+        BOOL is_ctrl = (((uint16_t)(uintptr_t)evt->data & (BTRON_KMOD_CTRL | 0x00C0)) != 0);
+        if (is_ctrl && (key == 'w' || key == 'W' || key == 23)) {
+            tad_browser_execute_menu_cmd(tb, wnd, TCMD_VIEW_WRAP_TOGGLE);
+            return;
         }
 
         if (key == BTRON_KEY_BACKSPACE || key == 'b' || key == 'B') {
             tad_browser_go_back(tb);
+            inval_wnd(wnd);
         } else if (key == 'f' || key == 'F') {
             tad_browser_go_forward(tb);
+            inval_wnd(wnd);
         } else if (key == 'h' || key == 'H') {
             tad_browser_go_home(tb);
+            inval_wnd(wnd);
         } else if (key == 'r' || key == 'R') {
             tad_browser_reload(tb);
+            inval_wnd(wnd);
         } else if (key == '+' || key == '=') {
             tb->zoom_percent += 10;
             if (tb->zoom_percent > 200) tb->zoom_percent = 200;
+            inval_wnd(wnd);
         } else if (key == '-') {
             tb->zoom_percent -= 10;
             if (tb->zoom_percent < 50) tb->zoom_percent = 50;
+            inval_wnd(wnd);
         } else if (key == '0') {
             tb->zoom_percent = 100;
+            inval_wnd(wnd);
         } else if (key == BTRON_KEY_UP || key == 'k') {
             tad_browser_scroll(tb, -24);
+            inval_wnd(wnd);
         } else if (key == BTRON_KEY_DOWN || key == 'j') {
             tad_browser_scroll(tb, 24);
+            inval_wnd(wnd);
         } else if (key == BTRON_KEY_PAGE_UP) {
             tad_browser_scroll(tb, -tb->page_height + 40);
+            inval_wnd(wnd);
         } else if (key == BTRON_KEY_PAGE_DOWN || key == ' ') {
             tad_browser_scroll(tb, tb->page_height - 40);
+            inval_wnd(wnd);
+        } else if (key == BTRON_KEY_LEFT) {
+            if (!tb->wrap_text) {
+                tad_set_hscroll_clamped(tb, tb->scroll_x - 32);
+                inval_wnd(wnd);
+            }
+        } else if (key == BTRON_KEY_RIGHT) {
+            if (!tb->wrap_text) {
+                tad_set_hscroll_clamped(tb, tb->scroll_x + 32);
+                inval_wnd(wnd);
+            }
         }
     }
 }

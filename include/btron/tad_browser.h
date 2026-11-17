@@ -27,6 +27,31 @@ extern "C" {
 #define TAD_MAX_PATH    256
 #define TAD_MAX_HISTORY 32
 
+/* TAD Browser Menu Command IDs (also used in test harnesses) */
+enum {
+    TCMD_NONE = 0,
+    /* File */
+    TCMD_FILE_OPEN_CASCADE = 10,
+    TCMD_FILE_PRINT,
+    TCMD_FILE_CLOSE,
+    /* View */
+    TCMD_VIEW_BACK = 20,
+    TCMD_VIEW_FORWARD,
+    TCMD_VIEW_HOME,
+    TCMD_VIEW_RELOAD,
+    TCMD_VIEW_ZOOM_IN,
+    TCMD_VIEW_ZOOM_OUT,
+    TCMD_VIEW_ZOOM_100,
+    TCMD_VIEW_WRAP_TOGGLE,
+    /* VObj */
+    TCMD_VOBJ_FOLLOW = 30,
+    TCMD_VOBJ_OPEN_NEW,
+    TCMD_VOBJ_CABINET,
+    /* Help */
+    TCMD_HELP_ABOUT = 40,
+    TCMD_HELP_SPEC
+};
+
 /* Text Span Style Attributes */
 typedef struct {
     UH font_id;     /* 0=Mincho, 1=Gothic, 2=Monospace */
@@ -55,7 +80,7 @@ typedef void (*tad_wrap_line_cb)(const char *line_str, int line_len, H line_w, i
 typedef struct {
     RECT bounds;            /* Visual bounding box (x, y, w, h) in document space */
     TAD_STYLE style;        /* Fusen styling */
-    char text[512];         /* Text segment buffer */
+    char text[2048];        /* Text segment buffer (UTF-8; Tibetan lines can be ~2KB) */
     BOOL is_link;           /* Clickable VOBJ link */
 } TAD_SPAN;
 
@@ -76,6 +101,15 @@ typedef struct {
     int doc_width;          /* Document pixel width */
     int scroll_y;           /* Viewport vertical scroll offset */
     int page_height;        /* Viewport visible height */
+
+    int max_content_width;  /* Maximum content width across all spans */
+    int scroll_x;           /* Viewport horizontal scroll offset */
+    int page_width;         /* Viewport visible width */
+
+    /* Windows 95 scrollbar drag state (horizontal, bottom gutter) */
+    BOOL hsb_dragging;
+    int  hsb_drag_start_x;
+    int  hsb_drag_start_scroll;
 
     /* Interactive Hyper-Data Links */
     int hovered_link_idx;   /* Currently mouse-hovered link span index (-1 if none) */

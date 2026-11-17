@@ -133,7 +133,7 @@ typedef struct {
 
 #define CLARITY_DPI               72   /* 72 pt/in calibrated DTP scale   */
 #define CLARITY_CANVAS_MARGIN_PX  24   /* grey border around page         */
-#define CLARITY_PAGE_GAP_PX       40   /* vertical space between pages    */
+#define CLARITY_PAGE_GAP_PX       48   /* vertical space between pages    */
 #define CLARITY_HANDLE_RADIUS      4   /* resize handle half-size px      */
 #define CLARITY_MARGIN_GUIDE_MM   15   /* inner printable margin guide mm */
 

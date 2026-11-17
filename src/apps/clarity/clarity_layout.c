@@ -80,10 +80,18 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
     if (p_gap < 24) p_gap = 24;
 
     int pages = doc->page_count > 0 ? doc->page_count : 1;
+    RECT vclip = dev->clip;
 
     for (int p = 0; p < pages; p++) {
         int page_ox = ox;
         int page_oy = oy + p * (ph + p_gap);
+
+        /* Viewport culling: skip sheets entirely outside the viewport */
+        int page_top = (p == 0) ? (page_oy - 28) : (page_oy - 4);
+        int page_bottom = (p < pages - 1) ? (page_oy + ph + p_gap) : (page_oy + ph + 8);
+        if (page_bottom < vclip.top || page_top > vclip.bottom) {
+            continue;
+        }
 
         /* 1. Realistic Physical Sheet 3D Drop-Shadow (Bottom & Right) */
         RECT shadow;
@@ -105,27 +113,26 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
         set_col(dev, COLOR_DKGRAY, COLOR_WHITE);
         drw_rec(dev, &page);
 
-        /* 3. Page Header Label / Badge */
-        char page_lbl[64];
-        if (doc->fmt == FMT_SHIROKU) {
-            snprintf(page_lbl, sizeof(page_lbl), "四六判 [ 第 %d 頁・%s ]",
-                     p + 1, (p % 2 == 0) ? "表" : "裏");
-        } else if (doc->fmt == FMT_PECHA) {
-            ClarityBook *bk = clarity_get_book();
-            if (bk && bk->is_loaded && bk->chapter_count > 0 &&
-                bk->active_chapter_idx >= 0 && bk->active_chapter_idx < bk->chapter_count) {
-                const ClarityBookChapter *ch = &bk->chapters[bk->active_chapter_idx];
-                snprintf(page_lbl, sizeof(page_lbl), "Pecha དཔེ་ཆ་ [ 葉 %d/%d ] ༄༅། %s",
-                         p + 1, pages, ch->tibetan_title);
+        /* 3. Folio Header Indicator (above Sheet 1 in top desk area) */
+        if (p == 0) {
+            char page_lbl[128];
+            if (doc->fmt == FMT_SHIROKU) {
+                snprintf(page_lbl, sizeof(page_lbl), "四六判 [ 第 1 頁・表 / 全 %d 頁 ]", pages);
+            } else if (doc->fmt == FMT_PECHA) {
+                ClarityBook *bk = clarity_get_book();
+                if (bk && bk->is_loaded && bk->chapter_count > 0 &&
+                    bk->active_chapter_idx >= 0 && bk->active_chapter_idx < bk->chapter_count) {
+                    const ClarityBookChapter *ch = &bk->chapters[bk->active_chapter_idx];
+                    snprintf(page_lbl, sizeof(page_lbl), "Pecha [ 葉 1 / %d ]  ༄༅། %s",
+                             pages, ch->tibetan_title);
+                } else {
+                    snprintf(page_lbl, sizeof(page_lbl), "Pecha [ 葉 1 / %d ]", pages);
+                }
             } else {
-                snprintf(page_lbl, sizeof(page_lbl), "Pecha དཔེ་ཆ་ [ 葉 %d / %d ]",
-                         p + 1, pages);
+                snprintf(page_lbl, sizeof(page_lbl), "A4 [ Page 1 of %d ]", pages);
             }
-        } else {
-            snprintf(page_lbl, sizeof(page_lbl), "A4 Portrait [ Page %d of %d ]",
-                     p + 1, pages);
+            drw_tc_string(dev, page_ox + 4, page_oy - 18, page_lbl, COLOR_DKGRAY, 0);
         }
-        drw_tc_string(dev, page_ox + 4, page_oy - 16, page_lbl, COLOR_DKGRAY, 0);
 
         /* 4. DTP Printable Margin Guides (15 mm inset) */
         int mg_x = clarity_mm_to_px(CLARITY_MARGIN_GUIDE_MM, zoom);
@@ -161,26 +168,60 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
             drw_rec(dev, &page);
         }
 
-        /* 7. Page Separator (between consecutive pages) */
+        /* 7. Professional Folio Separator (between consecutive sheets) */
         if (p < pages - 1) {
             int sep_y = page_oy + ph + p_gap / 2;
             int sep_w = pw > 200 ? pw : 200;
 
-            /* Etched double lines */
-            drw_lin(dev, (H)(page_ox - 10), (H)(sep_y - 1), (H)(page_ox + sep_w + 10), (H)(sep_y - 1));
-            set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
-            drw_lin(dev, (H)(page_ox - 10), (H)sep_y, (H)(page_ox + sep_w + 10), (H)sep_y);
+            /* Clean, professional DTP folio indicator (InDesign / QuarkXPress style) */
+            char sep_buf[128];
+            if (doc->fmt == FMT_PECHA) {
+                ClarityBook *bk = clarity_get_book();
+                if (bk && bk->is_loaded && bk->chapter_count > 0 &&
+                    bk->active_chapter_idx >= 0 && bk->active_chapter_idx < bk->chapter_count) {
+                    const ClarityBookChapter *ch = &bk->chapters[bk->active_chapter_idx];
+                    snprintf(sep_buf, sizeof(sep_buf), "Pecha [ 葉 %d / %d ]  ༄༅། %s",
+                             p + 2, pages, ch->tibetan_title);
+                } else {
+                    snprintf(sep_buf, sizeof(sep_buf), "Pecha [ 葉 %d / %d ]",
+                             p + 2, pages);
+                }
+            } else if (doc->fmt == FMT_SHIROKU) {
+                snprintf(sep_buf, sizeof(sep_buf), "四六判 [ 第 %d 頁・%s / 全 %d 頁 ]",
+                         p + 2, ((p + 1) % 2 == 0) ? "表" : "裏", pages);
+            } else {
+                snprintf(sep_buf, sizeof(sep_buf), "A4 [ Page %d of %d ]",
+                         p + 2, pages);
+            }
 
-            /* Center Page Break Plate */
-            char sep_buf[80];
-            snprintf(sep_buf, sizeof(sep_buf), "── 頁区切り [ Page Break: %d / %d ] ──",
-                     p + 1, p + 2);
-            int tw = (int)strlen(sep_buf) * 8;
+            int tw = tc_calc_string_width(sep_buf, (int)strlen(sep_buf));
             int bx = page_ox + (sep_w - tw) / 2;
-            RECT badge_r = { (H)(bx - 6), (H)(sep_y - 8), (H)(bx + tw + 6), (H)(sep_y + 9) };
+            if (bx < page_ox + 10) bx = page_ox + 10;
+
+            /* Precision etched hairline rules on left and right of badge */
+            if (bx > page_ox + 14) {
+                set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+                drw_lin(dev, (H)(page_ox - 10), (H)(sep_y - 1), (H)(bx - 8), (H)(sep_y - 1));
+                set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+                drw_lin(dev, (H)(page_ox - 10), (H)sep_y, (H)(bx - 8), (H)sep_y);
+
+                set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+                drw_lin(dev, (H)(bx + tw + 8), (H)(sep_y - 1), (H)(page_ox + sep_w + 10), (H)(sep_y - 1));
+                set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+                drw_lin(dev, (H)(bx + tw + 8), (H)sep_y, (H)(page_ox + sep_w + 10), (H)sep_y);
+            }
+
+            /* Professional 3D beveled plate */
+            RECT badge_r = { (H)(bx - 8), (H)(sep_y - 9), (H)(bx + tw + 8), (H)(sep_y + 10) };
             fill_rec(dev, &badge_r, COLOR_LTGRAY);
             set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
             drw_rec(dev, &badge_r);
+
+            /* Bevel top/left light highlight */
+            set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+            drw_lin(dev, (H)(bx - 7), (H)(sep_y - 8), (H)(bx + tw + 7), (H)(sep_y - 8));
+            drw_lin(dev, (H)(bx - 7), (H)(sep_y - 8), (H)(bx - 7), (H)(sep_y + 9));
+
             drw_tc_string(dev, bx, sep_y - 6, sep_buf, COLOR_NAVY, COLOR_LTGRAY);
         }
     }
@@ -220,6 +261,10 @@ void clarity_draw_frames(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
     for (int i = 0; i < doc->frame_count; i++) {
         const ClarityFrame *f = &doc->frames[i];
         if (f->id == 0) continue;
+
+        int fy0 = oy + (f->bounds.top    * zoom) / 100;
+        int fy1 = oy + (f->bounds.bottom * zoom) / 100;
+        if (fy1 < dev->clip.top || fy0 > dev->clip.bottom) continue; /* Viewport culling */
 
         RECT sr = frame_screen_rect_zoom(f, ox, oy, zoom);
         BOOL sel = (i == doc->selected_frame);

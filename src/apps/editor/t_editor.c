@@ -1476,6 +1476,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
         H client_h = wnd->dev ? wnd->dev->height : (wnd->bounds.bottom - wnd->bounds.top - 26);
         if (rel_y >= client_h - 22) {
             tip_toggle_mode();
+            inval_wnd(wnd);
             return;
         }
 
@@ -1490,6 +1491,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
                 ed->sel_anchor_r = ed->cursor_row;
                 ed->sel_anchor_c = ed->cursor_col;
                 teditor_ensure_cursor_visible(ed);
+                inval_wnd(wnd);
             }
         }
         return;
@@ -1499,6 +1501,24 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
         UW key_code = evt->key;
         uint16_t mod = (uint16_t)(uintptr_t)evt->data;
 
+        /* Mouse wheel arrives as EV_KEY_FROM_WHEEL or with cursor position pos.x/y > 0.
+         * Smoothly scroll the content viewport without moving the text caret. */
+        BOOL is_wheel = (evt->button == EV_KEY_FROM_WHEEL ||
+                         (evt->pos.x > 0 || evt->pos.y > 0));
+        if (is_wheel) {
+            H dev_h = wnd->dev ? wnd->dev->height : (wnd->bounds.bottom - wnd->bounds.top - 26);
+            if (dev_h < 60) dev_h = 360;
+            if (key_code == BTRON_KEY_UP || key_code == BTRON_KEY_PAGE_UP || key_code == 0x8052) {
+                te_set_scroll_clamped(ed, ed->scroll_row - 1, dev_h);
+                inval_wnd(wnd);
+                return;
+            } else if (key_code == BTRON_KEY_DOWN || key_code == BTRON_KEY_PAGE_DOWN || key_code == 0x8053) {
+                te_set_scroll_clamped(ed, ed->scroll_row + 1, dev_h);
+                inval_wnd(wnd);
+                return;
+            }
+        }
+
         /* Forward to in-window menu bar shortcuts & keyboard navigation */
         int menu_cmd = 0;
         if (app_menu_handle_key(&ed->menu_bar, key_code, mod, &menu_cmd)) {
@@ -1506,6 +1526,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
             if (menu_cmd != 0) {
                 teditor_execute_menu_cmd(ed, wnd, menu_cmd, -1);
             }
+            inval_wnd(wnd);
             return;
         }
 
@@ -1518,6 +1539,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
             if (commit_buf[0] != '\0') {
                 teditor_insert_text(ed, commit_buf);
             }
+            inval_wnd(wnd);
             return;
         }
 
@@ -1526,6 +1548,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
         if (sym == BTRON_KEY_ESCAPE || sym == 27) {
             if (ed->active_menu >= 0) {
                 teditor_close_menu(ed);
+                inval_wnd(wnd);
                 return;
             }
         }
@@ -1537,31 +1560,38 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
             } else if (sym == 'x' || sym == 'X') {
                 teditor_copy_selection(ed);
                 teditor_delete_selection(ed);
+                inval_wnd(wnd);
                 return;
             } else if (sym == 'v' || sym == 'V') {
                 teditor_paste_clipboard(ed);
+                inval_wnd(wnd);
                 return;
             } else if (sym == 'a' || sym == 'A') {
                 teditor_move_cursor(ed, 0, 0, FALSE);
                 teditor_move_cursor(ed, ed->total_lines - 1, (int)strlen(ed->lines[ed->total_lines - 1]), TRUE);
+                inval_wnd(wnd);
                 return;
             } else if (sym == 's' || sym == 'S') {
                 ed->is_modified = FALSE;
+                inval_wnd(wnd);
                 return;
             } else if (sym == 'n' || sym == 'N') {
                 teditor_init_default(ed);
                 ed->total_lines = 1;
                 ed->lines[0][0] = '\0';
                 snprintf(wnd->title, sizeof(wnd->title), "Editor - Untitled.txt");
+                inval_wnd(wnd);
                 return;
             } else if (sym == 'o' || sym == 'O') {
                 /* Ctrl+O: Open File Menu with cascading document list */
                 teditor_open_menu(ed, TMENU_FILE);
                 ed->menu_bar.active_submenu = 1;
                 teditor_sync_menu_state(ed);
+                inval_wnd(wnd);
                 return;
             } else if (sym == 'w' || sym == 'W') {
                 teditor_toggle_wrap(ed);
+                inval_wnd(wnd);
                 return;
             } else if (sym == 'q' || sym == 'Q') {
                 cls_wnd(wnd);
@@ -1571,12 +1601,15 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
 
         if (sym == BTRON_KEY_RETURN || sym == BTRON_KEY_KP_ENTER || sym == '\r' || sym == '\n') {
             teditor_insert_newline(ed);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_BACKSPACE || sym == 0x08) {
             teditor_backspace(ed);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_DELETE || sym == 0x7F) {
             teditor_delete_char_forward(ed);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_LEFT) {
             int nr = ed->cursor_row;
@@ -1597,6 +1630,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
                 }
             }
             teditor_move_cursor(ed, nr, nc, shift);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_RIGHT) {
             int nr = ed->cursor_row;
@@ -1618,14 +1652,17 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
                 }
             }
             teditor_move_cursor(ed, nr, nc, shift);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_UP) {
             int nr = (ed->cursor_row > 0) ? ed->cursor_row - 1 : 0;
             teditor_move_cursor(ed, nr, ed->cursor_col, shift);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_DOWN) {
             int nr = (ed->cursor_row < ed->total_lines - 1) ? ed->cursor_row + 1 : ed->total_lines - 1;
             teditor_move_cursor(ed, nr, ed->cursor_col, shift);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_HOME) {
             if (ctrl) {
@@ -1633,6 +1670,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
             } else {
                 teditor_move_cursor(ed, ed->cursor_row, 0, shift);
             }
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_END) {
             if (ctrl) {
@@ -1641,21 +1679,25 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
             } else {
                 teditor_move_cursor(ed, ed->cursor_row, (int)strlen(ed->lines[ed->cursor_row]), shift);
             }
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_PAGE_UP || sym == 0x8052) {
             int vrows = (wnd && wnd->dev) ? (wnd->dev->height - 60) / 18 : 14;
             int nr = ed->cursor_row - vrows;
             if (nr < 0) nr = 0;
             teditor_move_cursor(ed, nr, ed->cursor_col, shift);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_PAGE_DOWN || sym == 0x8053) {
             int vrows = (wnd && wnd->dev) ? (wnd->dev->height - 60) / 18 : 14;
             int nr = ed->cursor_row + vrows;
             if (nr >= ed->total_lines) nr = ed->total_lines - 1;
             teditor_move_cursor(ed, nr, ed->cursor_col, shift);
+            inval_wnd(wnd);
             return;
         } else if (sym == BTRON_KEY_TAB || sym == '\t') {
             teditor_insert_text(ed, "    ");
+            inval_wnd(wnd);
             return;
         }
 
@@ -1663,6 +1705,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
         if (!ctrl && sym >= 32 && sym <= 126) {
             char ch = get_ascii_char_with_shift((UW)sym, mod);
             teditor_insert_char(ed, ch);
+            inval_wnd(wnd);
             return;
         }
     }

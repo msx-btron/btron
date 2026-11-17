@@ -1681,10 +1681,15 @@ BOOL wnd_mgr_handle_event(const EVT *ev) {
     }
 
     if (ev->type == EV_KEY_DOWN || ev->type == EV_KEY_UP) {
-        WND *top = get_top_wnd();
-        if (top && top->event_handler) {
-            top->focused = TRUE;
-            top->event_handler(top, ev);
+        WND *target = NULL;
+        /* Route wheel-generated arrow keys to window under mouse cursor if present */
+        if (ev->pos.x > 0 || ev->pos.y > 0) {
+            target = find_wnd_at(ev->pos.x, ev->pos.y);
+        }
+        if (!target) target = get_top_wnd();
+        if (target && target->event_handler) {
+            target->focused = TRUE;
+            target->event_handler(target, ev);
             return TRUE;
         }
         return FALSE;

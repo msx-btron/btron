@@ -74,6 +74,8 @@ int  app_menu_add_item(APP_MENU_BAR *bar, int header_idx, const char *label, con
 int  app_menu_add_separator(APP_MENU_BAR *bar, int header_idx);
 int  app_menu_add_submenu_item(APP_MENU_BAR *bar, int header_idx, const char *label, int cmd_id, int submenu_id);
 void app_menu_set_right_text(APP_MENU_BAR *bar, const char *text);
+void app_menu_set_item_checked(APP_MENU_BAR *bar, int cmd_id, BOOL checked);
+BOOL app_menu_is_item_checked(const APP_MENU_BAR *bar, int cmd_id);
 
 /* ── Interaction & Event Handlers ──────────────────────────────────────── */
 BOOL app_menu_handle_mouse_move(APP_MENU_BAR *bar, H rel_x, H rel_y);

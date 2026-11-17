@@ -707,6 +707,7 @@ static const char* deduce_gif_icon(const CABINET_ITEM *it) {
     return "tad_browser";
 }
 
+#if !BTRON_HOSTED
 static void cabinet_discover_vfs(CABINET_EXPLORER *cab, const char *dir_path) {
     VfsEntry entries[64];
     int count = vfs_list_dir(dir_path, entries, 64);
@@ -745,6 +746,7 @@ static void cabinet_discover_vfs(CABINET_EXPLORER *cab, const char *dir_path) {
         }
     }
 }
+#endif
 
 static void cabinet_init_defaults(CABINET_EXPLORER *cab) {
     memset(cab, 0, sizeof(CABINET_EXPLORER));
@@ -1305,12 +1307,14 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
             return;
         }
 
-        /* Mouse wheel arrives as PAGE_UP/PAGE_DOWN: move the viewport exactly
-         * one unit per notch (no acceleration), without moving the selection. */
-        if (key == BTRON_KEY_PAGE_UP || key == BTRON_KEY_PAGE_DOWN) {
+        /* Mouse wheel arrives as EV_KEY_FROM_WHEEL (or PAGE_UP/PAGE_DOWN): move the viewport
+         * exactly one unit per notch (no acceleration), without moving the selection. */
+        BOOL is_wheel = (evt->button == EV_KEY_FROM_WHEEL ||
+                         key == BTRON_KEY_PAGE_UP || key == BTRON_KEY_PAGE_DOWN);
+        if (is_wheel) {
             int cur = (g_cabinet.view_mode == CAB_VIEW_GRID)
                         ? g_cabinet.grid_scroll_rows : g_cabinet.scroll_offset;
-            int step = (key == BTRON_KEY_PAGE_DOWN) ? 1 : -1;
+            int step = (key == BTRON_KEY_PAGE_DOWN || key == BTRON_KEY_DOWN) ? 1 : -1;
             cab_set_offset_clamped(cur + step, dev_w, dev_h);
             inval_wnd(wnd);
             return;

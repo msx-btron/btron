@@ -44,6 +44,8 @@ typedef struct {
 #define EVENT_QUEUE_SIZE  256
 #define EV_MASK_ALL       0xFFFFFFFFU
 
+#define EV_KEY_FROM_WHEEL 0x5748 /* 'WH' - Wheel-generated Key Event */
+
 /* Standard Keyboard Modifier Bitmasks */
 #define BTRON_KMOD_NONE   0x0000
 #define BTRON_KMOD_LSHIFT 0x0001

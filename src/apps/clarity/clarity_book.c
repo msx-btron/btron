@@ -63,6 +63,7 @@ static const char *s_canonical_chapters[] = {
     "skong.bshags.txt",
     "yon.tan.mdzod.txt",
     "zhi.gnas.txt",
+    "test.txt",
     NULL
 };
 
@@ -236,6 +237,50 @@ int clarity_wylie_line_to_tibetan(const char *in_line, char *out_line, size_t ma
         }
     }
 
+    /* 3b. Numbered entries: "N) wylie_text: Translation"
+     *     The wylie portion is everything between ") " and ":", if it looks like Wylie.
+     *     e.g. "1) rdo rje gsung: Ваджрні склади"
+     *          "4) badz+ra gu ru bla ma'i rnal 'byor: гуру-йога Падмасамбхави"
+     */
+    if (isdigit((unsigned char)p[0])) {
+        const char *paren = strchr(p, ')');
+        if (paren && paren[1] == ' ') {
+            /* Number prefix e.g. "1) " or "12) " */
+            char num_part[8] = "";
+            int np_len = (int)(paren - p + 2); /* "N) " */
+            if (np_len > 7) np_len = 7;
+            strncpy(num_part, p, np_len);
+            num_part[np_len] = '\0';
+
+            const char *wstart = paren + 2; /* text after "N) " */
+            const char *colon  = strchr(wstart, ':');
+            if (colon) {
+                int w_len = (int)(colon - wstart);
+                /* Only convert if chunk looks like Tibetan Wylie */
+                if (w_len > 0 && w_len < 200) {
+                    char wylie_part[200];
+                    strncpy(wylie_part, wstart, w_len);
+                    wylie_part[w_len] = '\0';
+                    /* Strip trailing spaces */
+                    for (char *c = wylie_part + w_len - 1; c >= wylie_part && *c == ' '; c--) *c = '\0';
+                    if (is_wylie_str(wylie_part, (int)strlen(wylie_part))) {
+                        char tb_part[512] = "";
+                        wylie_to_tibetan(wylie_part, tb_part, sizeof(tb_part));
+                        const char *def = colon + 1;
+                        while (*def == ' ') def++;
+                        snprintf(out_line, max_out, "%s%s: %s", num_part, tb_part, def);
+                        /* Ensure newline */
+                        size_t ol = strlen(out_line);
+                        if (ol > 0 && out_line[ol-1] != '\n' && ol + 1 < max_out) {
+                            out_line[ol] = '\n'; out_line[ol+1] = '\0';
+                        }
+                        return (int)strlen(out_line);
+                    }
+                }
+            }
+        }
+    }
+
     /* 4. Definition entries starting with /wylie/ Definition */
     if (p[0] == '/') {
         const char *sl2 = strchr(p + 1, '/');
@@ -252,6 +297,133 @@ int clarity_wylie_line_to_tibetan(const char *in_line, char *out_line, size_t ma
                 while (*def == ' ') def++;
                 snprintf(out_line, max_out, "[ %s། ] %s\n", tb_term, def);
                 return (int)strlen(out_line);
+            }
+        }
+    }
+
+    /* 4b. Catalog entries starting with digits: e.g. "001 wylie (cat)/ transl" or "4. wylie/ transl" */
+    if (isdigit((unsigned char)p[0])) {
+        const char *sl = strchr(p, '/');
+        if (sl && sl > p + 1) {
+            const char *num_end = p;
+            while (isdigit((unsigned char)*num_end)) num_end++;
+            if (*num_end == '.' || *num_end == ' ') {
+                if (*num_end == '.') num_end++;
+                while (*num_end == ' ') num_end++;
+
+                int n_len = (int)(num_end - p);
+                char num_buf[32] = "";
+                if (n_len > 31) n_len = 31;
+                strncpy(num_buf, p, n_len);
+                num_buf[n_len] = '\0';
+
+                int w_len = (int)(sl - num_end);
+                if (w_len > 0 && w_len < 512) {
+                    char w_buf[512];
+                    strncpy(w_buf, num_end, w_len);
+                    w_buf[w_len] = '\0';
+                    for (char *c = w_buf + strlen(w_buf) - 1; c >= w_buf && *c == ' '; c--) *c = '\0';
+
+                    char cat_tb[256] = "";
+                    char *lp = strchr(w_buf, '(');
+                    char *rp = lp ? strchr(lp, ')') : NULL;
+                    if (lp && rp && rp > lp) {
+                        int c_len = (int)(rp - lp - 1);
+                        if (c_len > 0 && c_len < 127) {
+                            char cat_w[128];
+                            strncpy(cat_w, lp + 1, c_len);
+                            cat_w[c_len] = '\0';
+                            wylie_to_tibetan(cat_w, cat_tb, sizeof(cat_tb));
+                        }
+                        *lp = '\0';
+                        for (char *c = w_buf + strlen(w_buf) - 1; c >= w_buf && *c == ' '; c--) *c = '\0';
+                    }
+
+                    if (is_wylie_str(w_buf, (int)strlen(w_buf))) {
+                        char tb_text[512] = "";
+                        wylie_to_tibetan(w_buf, tb_text, sizeof(tb_text));
+                        const char *transl = sl + 1;
+                        while (*transl == ' ') transl++;
+                        if (cat_tb[0]) {
+                            snprintf(out_line, max_out, "%s%s (%s) — %s", num_buf, tb_text, cat_tb, transl);
+                        } else {
+                            snprintf(out_line, max_out, "%s%s — %s", num_buf, tb_text, transl);
+                        }
+                        size_t ol = strlen(out_line);
+                        if (ol > 0 && out_line[ol - 1] != '\n' && ol + 1 < max_out) {
+                            out_line[ol] = '\n'; out_line[ol + 1] = '\0';
+                        }
+                        return (int)strlen(out_line);
+                    }
+                }
+            }
+        }
+    }
+
+    /* 4c. Term definitions with slash: "wylie / translation" e.g. "rtsa ba/ root", "thig le/ Тіглє" */
+    {
+        const char *sl = strchr(p, '/');
+        if (sl && sl != p && *(sl - 1) != '@' && *(sl + 1) != '/') {
+            int w_len = (int)(sl - p);
+            if (w_len > 0 && w_len < 256) {
+                char w_buf[256];
+                strncpy(w_buf, p, w_len);
+                w_buf[w_len] = '\0';
+                for (char *c = w_buf + strlen(w_buf) - 1; c >= w_buf && *c == ' '; c--) *c = '\0';
+                if (is_wylie_str(w_buf, (int)strlen(w_buf))) {
+                    char tb_term[512] = "";
+                    wylie_to_tibetan(w_buf, tb_term, sizeof(tb_term));
+                    const char *def = sl + 1;
+                    while (*def == ' ') def++;
+                    snprintf(out_line, max_out, "[ %s། ] %s", tb_term, def);
+                    size_t ol = strlen(out_line);
+                    if (ol > 0 && out_line[ol - 1] != '\n' && ol + 1 < max_out) {
+                        out_line[ol] = '\n'; out_line[ol + 1] = '\0';
+                    }
+                    return (int)strlen(out_line);
+                }
+            }
+        }
+    }
+
+    /* 4d. Lines with // ... /: e.g. "1) //Самозвільнене мислення སེམས་ཉིད་རང་གྲོལ། sems nyid rang grol/ ..." */
+    if (strstr(p, "//")) {
+        const char *dbs = strstr(p, "//");
+        const char *sl = strchr(dbs + 2, '/');
+        if (sl) {
+            const char *mid = dbs + 2;
+            int mid_len = (int)(sl - mid);
+            char mid_buf[512];
+            if (mid_len > 0 && mid_len < 511) {
+                strncpy(mid_buf, mid, mid_len);
+                mid_buf[mid_len] = '\0';
+                char *tail = mid_buf + mid_len - 1;
+                while (tail >= mid_buf && *tail == ' ') *tail-- = '\0';
+                char *wstart = tail;
+                while (wstart >= mid_buf && (isalpha((unsigned char)*wstart) || *wstart == ' ' || *wstart == '\'')) {
+                    wstart--;
+                }
+                wstart++;
+                while (*wstart == ' ') wstart++;
+                if (wstart <= tail && is_wylie_str(wstart, (int)strlen(wstart)) && strlen(wstart) >= 3) {
+                    char tb_w[256] = "";
+                    wylie_to_tibetan(wstart, tb_w, sizeof(tb_w));
+                    *wstart = '\0';
+                    const char *def = sl + 1;
+                    while (*def == ' ') def++;
+                    int pre_len = (int)(dbs - p);
+                    char pre_buf[64] = "";
+                    if (pre_len > 0 && pre_len < 63) {
+                        strncpy(pre_buf, p, pre_len);
+                        pre_buf[pre_len] = '\0';
+                    }
+                    snprintf(out_line, max_out, "%s%s %s — %s", pre_buf, mid_buf, tb_w, def);
+                    size_t ol = strlen(out_line);
+                    if (ol > 0 && out_line[ol - 1] != '\n' && ol + 1 < max_out) {
+                        out_line[ol] = '\n'; out_line[ol + 1] = '\0';
+                    }
+                    return (int)strlen(out_line);
+                }
             }
         }
     }
@@ -416,6 +588,61 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
 
     init_default_classes(book);
 
+#if BTRON_HOSTED
+    /* Support opening a single .txt file directly as Chapter 0 */
+    struct stat st_single;
+    if (stat(dir_path, &st_single) == 0 && !S_ISDIR(st_single.st_mode)) {
+        ClarityBookChapter *ch = &book->chapters[book->chapter_count];
+        ch->id = 1;
+        ch->class_id = map_file_to_class(dir_path);
+        const char *slash = strrchr(dir_path, '/');
+        const char *fname = slash ? slash + 1 : dir_path;
+        strncpy(ch->filename, fname, sizeof(ch->filename) - 1);
+        strncpy(ch->file_path, dir_path, sizeof(ch->file_path) - 1);
+        ch->file_size = (size_t)st_single.st_size;
+
+        char w_name[128] = "";
+        strncpy(w_name, fname, sizeof(w_name) - 1);
+        char *dot = strstr(w_name, ".txt");
+        if (dot) *dot = '\0';
+        for (char *c = w_name; *c; c++) if (*c == '.') *c = ' ';
+        strncpy(ch->wylie_title, w_name, sizeof(ch->wylie_title) - 1);
+        wylie_to_tibetan(w_name, ch->tibetan_title, sizeof(ch->tibetan_title));
+
+        FILE *fp = fopen(dir_path, "r");
+        if (fp) {
+            char line_buf[512];
+            int l_cnt = 0;
+            while (fgets(line_buf, sizeof(line_buf), fp)) {
+                l_cnt++;
+                if (l_cnt == 1 && line_buf[0]) {
+                    const char *s = strrchr(line_buf, '/');
+                    if (s && s[1]) {
+                        const char *tr = s + 1;
+                        while (*tr == ' ') tr++;
+                        strncpy(ch->transl_title, tr, sizeof(ch->transl_title) - 1);
+                        char *nl = strchr(ch->transl_title, '\n');
+                        if (nl) *nl = '\0';
+                    }
+                }
+            }
+            ch->line_count = l_cnt;
+            fclose(fp);
+        }
+        if (!ch->transl_title[0]) {
+            strncpy(ch->transl_title, ch->wylie_title, sizeof(ch->transl_title) - 1);
+        }
+        int cls_idx = ch->class_id - 1;
+        if (cls_idx >= 0 && cls_idx < book->class_count) {
+            book->classes[cls_idx].chapter_indices[book->classes[cls_idx].chapter_count++] = 0;
+        }
+        book->chapter_count = 1;
+        book->is_loaded = TRUE;
+        s_active_book = *book;
+        return 0;
+    }
+#endif
+
     /* Enumerate canonical chapters in order */
     for (int i = 0; s_canonical_chapters[i] != NULL && book->chapter_count < CLARITY_MAX_CHAPTERS; i++) {
         const char *cname = s_canonical_chapters[i];
@@ -511,7 +738,7 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     /* Set up Pecha document layout */
     doc->fmt = FMT_PECHA;
     clarity_get_pecha_dimensions(book->pecha_size, &doc->page_w_mm, &doc->page_h_mm, NULL);
-    doc->page_count = 2; /* 2-page Pecha loose-leaf spread */
+    doc->page_count  = 0;
     doc->active_page = 0;
     doc->frame_count = 0;
     doc->selected_frame = -1;
@@ -520,62 +747,138 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     FILE *fp = fopen(ch->file_path, "r");
     if (!fp) return -1;
 
-    char raw_acc[16384] = "";
-    char line[1024];
-    int lines_read = 0;
-
-    /* Build formatted Pecha header */
-    char head_str[512];
-    snprintf(head_str, sizeof(head_str), "[PECHA %s]\n༄༅། །%s །%s\n────────────────────────────────────────\n\n",
-             ch->filename, ch->tibetan_title, ch->transl_title);
-    strcat(raw_acc, head_str);
-
-    while (fgets(line, sizeof(line), fp) && lines_read < 80) {
-        lines_read++;
-        char conv[1536];
-        if (book->auto_tibetan) {
-            clarity_wylie_line_to_tibetan(line, conv, sizeof(conv));
-        } else {
-            strncpy(conv, line, sizeof(conv) - 1);
-            conv[sizeof(conv) - 1] = '\0';
-        }
-
-        if (strlen(raw_acc) + strlen(conv) < sizeof(raw_acc) - 1) {
-            strcat(raw_acc, conv);
-        } else {
-            break;
-        }
-    }
-    fclose(fp);
-
-    /* Create primary Pecha Text Frame */
+    /* Pecha page pixel dimensions (at unzoomed 72dpi) */
     int px_w = (doc->page_w_mm * CLARITY_DPI * 10) / 254;
     int px_h = (doc->page_h_mm * CLARITY_DPI * 10) / 254;
     int margin_x = 40, margin_y = 20;
+    int inner_h  = px_h - margin_y * 2;
+    int glyph_lh = 19;  /* GLYPH_H(16) + 3 line spacing */
 
-    ClarityFrame *f = clarity_doc_add_frame(doc, FRAME_TEXT,
-                                           margin_x, margin_y,
-                                           px_w - margin_x * 2, px_h - margin_y * 2);
-    if (f) {
-        f->flow = FLOW_H_LTR;
-        int tc_len = utf8_to_tc_string(raw_acc, (TC*)f->text, CLARITY_TEXT_BUF - 1);
-        f->text_len = (tc_len > 0) ? (UW)tc_len : 0;
-        f->text[f->text_len] = 0;
-        f->cursor_pos = 0;
-        f->scroll_y = 0;
-        strncpy(f->text_path, ch->file_path, sizeof(f->text_path) - 1);
+    /* How many lines of body text fit on one Pecha folio */
+    int lines_per_page = (inner_h > glyph_lh) ? (inner_h / glyph_lh) : 8;
+    if (lines_per_page < 4) lines_per_page = 4;
 
-        /* Set moniker */
-        f->vobj_count = 1;
-        f->vobjs[0].text_offset = 0;
-        f->vobjs[0].target_robj = 1000 + ch->id;
-        f->vobjs[0].type = VOBJ_TYPE_TEXT;
-        strncpy(f->vobjs[0].label, ch->tibetan_title, sizeof(f->vobjs[0].label) - 1);
-        strncpy(f->vobjs[0].path, ch->file_path, sizeof(f->vobjs[0].path) - 1);
+    /* Accumulate all file lines into heap buffer */
+    char  *raw_lines[4096];
+    int    raw_count = 0;
+    char  line_buf[1024];
+
+    /* Pecha chapter header occupies first few lines */
+    {
+        char head[640];
+        snprintf(head, sizeof(head),
+                 "[PECHA %s]\n༄༅། །%s །%s\n────────────────────────────────────────\n",
+                 ch->filename, ch->tibetan_title, ch->transl_title);
+        raw_lines[raw_count] = (char*)malloc(strlen(head) + 1);
+        if (raw_lines[raw_count]) { strcpy(raw_lines[raw_count], head); raw_count++; }
     }
 
+    while (fgets(line_buf, sizeof(line_buf), fp) && raw_count < 4094) {
+        char conv[2048];
+        if (book->auto_tibetan) {
+            clarity_wylie_line_to_tibetan(line_buf, conv, sizeof(conv));
+        } else {
+            strncpy(conv, line_buf, sizeof(conv) - 1);
+            conv[sizeof(conv) - 1] = '\0';
+        }
+        raw_lines[raw_count] = (char*)malloc(strlen(conv) + 1);
+        if (raw_lines[raw_count]) { strcpy(raw_lines[raw_count], conv); raw_count++; }
+    }
+    fclose(fp);
+
+    /* Page gap in unzoomed pixels (matches clarity_draw_page p_gap at 100%) */
+    int p_gap = CLARITY_PAGE_GAP_PX;
+    if (p_gap < 24) p_gap = 24;
+
+    /* Distribute lines into pages of CLARITY_MAX_FRAMES max */
+    int page_idx = 0;
+    int line_cursor = 0;
+    int max_pages = CLARITY_MAX_FRAMES;
+    if (max_pages > 32) max_pages = 32;
+
+    while (line_cursor < raw_count && page_idx < max_pages) {
+        /* Accumulate one page worth of lines */
+        char page_buf[16384];
+        page_buf[0] = '\0';
+        int lines_on_page = 0;
+
+        while (line_cursor < raw_count && lines_on_page < lines_per_page) {
+            const char *ln = raw_lines[line_cursor];
+            /* Count newlines in ln to avoid overflowing visual lines */
+            int newlines_here = 0;
+            for (const char *p = ln; *p; p++) {
+                if (*p == '\n') newlines_here++;
+            }
+            if (newlines_here == 0) newlines_here = 1;
+            if (strlen(page_buf) + strlen(ln) < sizeof(page_buf) - 2) {
+                strcat(page_buf, ln);
+                lines_on_page += newlines_here;
+            } else {
+                break; /* page_buf full — flush */
+            }
+            line_cursor++;
+        }
+
+        /* Frame Y-origin for this page (each page stacked below previous) */
+        int frame_y = margin_y + page_idx * (px_h + p_gap);
+
+        /* Create one FRAME_TEXT per page, positioned on its own page sheet */
+        ClarityFrame *f = clarity_doc_add_frame(doc, FRAME_TEXT,
+                                                margin_x, frame_y,
+                                                px_w - margin_x * 2,
+                                                px_h - margin_y * 2);
+        if (f) {
+            f->flow = FLOW_H_LTR;
+            int tc_len = utf8_to_tc_string(page_buf, (TC*)f->text, CLARITY_TEXT_BUF - 1);
+            f->text_len = (tc_len > 0) ? (UW)tc_len : 0;
+            f->text[f->text_len] = 0;
+            f->cursor_pos = 0;
+            f->scroll_y   = 0;
+            strncpy(f->text_path, ch->file_path, sizeof(f->text_path) - 1);
+
+            /* Mark first frame with chapter moniker */
+            if (page_idx == 0) {
+                f->vobj_count = 1;
+                f->vobjs[0].text_offset  = 0;
+                f->vobjs[0].target_robj  = 1000 + ch->id;
+                f->vobjs[0].type         = VOBJ_TYPE_TEXT;
+                strncpy(f->vobjs[0].label, ch->tibetan_title, sizeof(f->vobjs[0].label) - 1);
+                strncpy(f->vobjs[0].path,  ch->file_path,     sizeof(f->vobjs[0].path)  - 1);
+            }
+        }
+        page_idx++;
+    }
+
+    /* Free heap lines */
+    for (int i = 0; i < raw_count; i++) {
+        free(raw_lines[i]);
+    }
+
+    int total_pages = (page_idx > 0) ? page_idx : 1;
+    if (total_pages < 2) total_pages = 2; /* At least a 2-page Pecha spread */
+    if (total_pages > max_pages) total_pages = max_pages;
+
+    /* Fill all remaining pages in doc with rectangular text frame placeholders */
+    while (page_idx < total_pages) {
+        int frame_y = margin_y + page_idx * (px_h + p_gap);
+        ClarityFrame *f = clarity_doc_add_frame(doc, FRAME_TEXT,
+                                                margin_x, frame_y,
+                                                px_w - margin_x * 2,
+                                                px_h - margin_y * 2);
+        if (f) {
+            f->flow = FLOW_H_LTR;
+            f->text_len = 0;
+            f->text[0] = 0;
+            f->cursor_pos = 0;
+            f->scroll_y   = 0;
+            strncpy(f->text_path, ch->file_path, sizeof(f->text_path) - 1);
+        }
+        page_idx++;
+    }
+
+    doc->page_count     = total_pages;
     doc->selected_frame = 0;
-    doc->dirty = FALSE;
+    doc->dirty          = FALSE;
     book->active_chapter_idx = chapter_idx;
     s_active_book = *book;
     return 0;
@@ -722,7 +1025,7 @@ int clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const 
     char toc_path[512];
     snprintf(toc_path, sizeof(toc_path), "%s/index.tad", target_dir);
 
-    UW buf_cap = 1024 * 1024;
+    UW buf_cap = 4 * 1024 * 1024;  /* 4 MB — large enough for 1000-line Tibetan chapters */
     UB *buf = (UB*)malloc(buf_cap);
     if (!buf) return -1;
 
@@ -820,11 +1123,9 @@ int clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const 
 
         FILE *f_src = fopen(ch->file_path, "r");
         if (f_src) {
-            char l_buf[1024];
-            int l_num = 0;
-            while (fgets(l_buf, sizeof(l_buf), f_src) && pos + 2048 < buf_cap && l_num < 400) {
-                l_num++;
-                char conv_line[1536];
+            char l_buf[4096];
+            while (fgets(l_buf, sizeof(l_buf), f_src) && pos + 8192 < buf_cap) {
+                char conv_line[8192];
                 if (book->auto_tibetan) {
                     clarity_wylie_line_to_tibetan(l_buf, conv_line, sizeof(conv_line));
                 } else {
@@ -887,11 +1188,9 @@ int clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const 
 
         FILE *f_src = fopen(ch->file_path, "r");
         if (f_src) {
-            char l_buf[1024];
-            int l_num = 0;
-            while (fgets(l_buf, sizeof(l_buf), f_src) && pos + 2048 < buf_cap && l_num < 150) {
-                l_num++;
-                char conv_line[1536];
+            char l_buf[4096];
+            while (fgets(l_buf, sizeof(l_buf), f_src) && pos + 8192 < buf_cap) {
+                char conv_line[8192];
                 if (book->auto_tibetan) {
                     clarity_wylie_line_to_tibetan(l_buf, conv_line, sizeof(conv_line));
                 } else {

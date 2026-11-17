@@ -237,8 +237,14 @@ ER get_evt(EVT *p_evt, W timeout_ms) {
                 int notches = (int)s_wheel_accum;
                 if (notches != 0) {
                     s_wheel_accum -= (float)notches;
+                    /* Use UP/DOWN for smooth 24px-per-notch scroll (not full PAGE_UP/DOWN) */
                     ev.type = EV_KEY_DOWN;
-                    ev.key = (notches > 0) ? BTRON_KEY_PAGE_UP : BTRON_KEY_PAGE_DOWN;
+                    ev.key = (notches > 0) ? BTRON_KEY_UP : BTRON_KEY_DOWN;
+                    int mx = 0, my = 0;
+                    SDL_GetMouseState(&mx, &my);
+                    ev.pos.x = (H)mx;
+                    ev.pos.y = (H)my;
+                    ev.button = EV_KEY_FROM_WHEEL;
                     int n = (notches > 0) ? notches : -notches;
                     for (int i = 0; i < n; i++) snd_evt(&ev);
                 }

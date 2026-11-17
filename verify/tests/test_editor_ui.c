@@ -1126,6 +1126,92 @@ static void test_volume_and_markdown_file_operations(void) {
     blk_destroy(dev);
 }
 
+static void test_editor_mouse_scroll(void) {
+    printf("\n[UI TEST 19] Mouse Wheel Scrolling in Editor Window\n");
+    WND *wnd = open_t_editor_window();
+    TEST_ASSERT(wnd != NULL, "Opened Editor window for mouse scroll verification");
+    TEditor *ed = (TEditor*)(uintptr_t)wnd->user_data;
+    TEST_ASSERT(ed != NULL, "TEditor instance valid");
+
+    /* Populate with 60 lines so there is abundant scroll overflow */
+    ed->total_lines = 60;
+    for (int i = 0; i < 60; i++) {
+        snprintf(ed->lines[i], sizeof(ed->lines[i]), "Line %02d: BTRON Editor Mouse Scroll Test", i + 1);
+    }
+    ed->scroll_row = 0;
+    ed->cursor_row = 0;
+    ed->cursor_col = 0;
+    wnd->img_valid = TRUE;
+
+    /* 1. Simulate mouse scroll down (notches > 0) */
+    EVT ev_wheel_down;
+    memset(&ev_wheel_down, 0, sizeof(EVT));
+    ev_wheel_down.type = EV_KEY_DOWN;
+    ev_wheel_down.key = BTRON_KEY_DOWN;
+    ev_wheel_down.button = EV_KEY_FROM_WHEEL;
+    ev_wheel_down.pos.x = wnd->bounds.left + 50;
+    ev_wheel_down.pos.y = wnd->bounds.top + 60;
+
+    wnd->event_handler(wnd, &ev_wheel_down);
+    TEST_ASSERT(ed->scroll_row == 1, "Mouse wheel down scrolled viewport by 1 line (scroll_row == 1)");
+    TEST_ASSERT(ed->cursor_row == 0, "Mouse wheel scroll did not move text caret (cursor_row == 0)");
+    TEST_ASSERT(wnd->img_valid == FALSE, "Window invalidated for immediate repaint");
+
+    /* Mark valid, then scroll down 4 more times */
+    for (int s = 0; s < 4; s++) {
+        wnd->img_valid = TRUE;
+        wnd->event_handler(wnd, &ev_wheel_down);
+    }
+    TEST_ASSERT(ed->scroll_row == 5, "Repeated wheel scroll down advanced viewport (scroll_row == 5)");
+    TEST_ASSERT(ed->cursor_row == 0, "Caret stayed locked at (0, 0)");
+
+    /* 2. Simulate mouse scroll up (notches < 0) */
+    EVT ev_wheel_up;
+    memset(&ev_wheel_up, 0, sizeof(EVT));
+    ev_wheel_up.type = EV_KEY_DOWN;
+    ev_wheel_up.key = BTRON_KEY_UP;
+    ev_wheel_up.button = EV_KEY_FROM_WHEEL;
+    ev_wheel_up.pos.x = wnd->bounds.left + 50;
+    ev_wheel_up.pos.y = wnd->bounds.top + 60;
+
+    wnd->img_valid = TRUE;
+    wnd->event_handler(wnd, &ev_wheel_up);
+    TEST_ASSERT(ed->scroll_row == 4, "Mouse wheel up scrolled viewport up by 1 line (scroll_row == 4)");
+    TEST_ASSERT(ed->cursor_row == 0, "Caret still unchanged at (0, 0)");
+    TEST_ASSERT(wnd->img_valid == FALSE, "Window invalidated for repaint on scroll up");
+
+    /* 3. Mouse wheel with PAGE_DOWN key */
+    EVT ev_wheel_pgdn;
+    memset(&ev_wheel_pgdn, 0, sizeof(EVT));
+    ev_wheel_pgdn.type = EV_KEY_DOWN;
+    ev_wheel_pgdn.key = BTRON_KEY_PAGE_DOWN;
+    ev_wheel_pgdn.button = EV_KEY_FROM_WHEEL;
+    ev_wheel_pgdn.pos.x = wnd->bounds.left + 50;
+    ev_wheel_pgdn.pos.y = wnd->bounds.top + 60;
+
+    wnd->event_handler(wnd, &ev_wheel_pgdn);
+    TEST_ASSERT(ed->scroll_row == 5, "Wheel PAGE_DOWN scrolled viewport by 1 line");
+    TEST_ASSERT(ed->cursor_row == 0, "Caret still at (0, 0)");
+
+    /* 4. Normal physical keyboard DOWN key (pos.x=0, pos.y=0, button=0) moves the caret */
+    EVT ev_kbd_down;
+    memset(&ev_kbd_down, 0, sizeof(EVT));
+    ev_kbd_down.type = EV_KEY_DOWN;
+    ev_kbd_down.key = BTRON_KEY_DOWN;
+    wnd->img_valid = TRUE;
+    wnd->event_handler(wnd, &ev_kbd_down);
+    TEST_ASSERT(ed->cursor_row == 1, "Physical keyboard DOWN key moved caret to row 1");
+    TEST_ASSERT(wnd->img_valid == FALSE, "Physical keyboard DOWN invalidated window for immediate caret update");
+
+    /* 5. Clamp top boundary: scroll all the way up */
+    for (int s = 0; s < 10; s++) {
+        wnd->event_handler(wnd, &ev_wheel_up);
+    }
+    TEST_ASSERT(ed->scroll_row == 0, "Wheel scroll up clamped properly at top boundary (scroll_row == 0)");
+
+    cls_wnd(wnd);
+}
+
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
@@ -1152,6 +1238,7 @@ int main(int argc, char **argv) {
     test_modern_menu_bar_and_asset_discovery();
     test_teditor_nano_about_box();
     test_volume_and_markdown_file_operations();
+    test_editor_mouse_scroll();
 
     printf("\n==========================================================\n");
     printf(" Editor TEST RESULTS: %d / %d tests passed (%.1f%%)\n",

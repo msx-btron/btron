@@ -127,6 +127,32 @@ void app_menu_set_right_text(APP_MENU_BAR *bar, const char *text) {
     }
 }
 
+void app_menu_set_item_checked(APP_MENU_BAR *bar, int cmd_id, BOOL checked) {
+    if (!bar) return;
+    for (int h = 0; h < bar->header_count; h++) {
+        APP_MENU_HEADER *hdr = &bar->headers[h];
+        for (int i = 0; i < hdr->item_count; i++) {
+            if (hdr->items[i].cmd_id == cmd_id) {
+                hdr->items[i].is_checked = checked;
+                return;
+            }
+        }
+    }
+}
+
+BOOL app_menu_is_item_checked(const APP_MENU_BAR *bar, int cmd_id) {
+    if (!bar) return FALSE;
+    for (int h = 0; h < bar->header_count; h++) {
+        const APP_MENU_HEADER *hdr = &bar->headers[h];
+        for (int i = 0; i < hdr->item_count; i++) {
+            if (hdr->items[i].cmd_id == cmd_id) {
+                return hdr->items[i].is_checked;
+            }
+        }
+    }
+    return FALSE;
+}
+
 void app_menu_close(APP_MENU_BAR *bar) {
     if (!bar) return;
     bar->active_menu = -1;
@@ -556,7 +582,16 @@ void app_menu_paint_dropdown(const APP_MENU_BAR *bar, GDEV *dev) {
         COLOR txt_col = is_hov ? COLOR_WHITE : (it->enabled ? COLOR_BLACK : COLOR_GRAY);
         COLOR acc_col = is_hov ? COLOR_LTGRAY : (it->enabled ? COLOR_DKGRAY : COLOR_GRAY);
 
-        drw_tc_string(dev, ir.left + 8, ir.top + 3, it->label, txt_col, 0x00000000);
+        if (it->is_checked) {
+            /* Crisp 2D checkmark icon on left */
+            set_col(dev, txt_col, 0x00000000);
+            drw_lin(dev, (H)(ir.left + 5), (H)(ir.top + 8),  (H)(ir.left + 8),  (H)(ir.top + 12));
+            drw_lin(dev, (H)(ir.left + 5), (H)(ir.top + 9),  (H)(ir.left + 8),  (H)(ir.top + 13));
+            drw_lin(dev, (H)(ir.left + 8), (H)(ir.top + 12), (H)(ir.left + 14), (H)(ir.top + 4));
+            drw_lin(dev, (H)(ir.left + 8), (H)(ir.top + 13), (H)(ir.left + 14), (H)(ir.top + 5));
+        }
+
+        drw_tc_string(dev, ir.left + 18, ir.top + 3, it->label, txt_col, 0x00000000);
 
         if (it->accel[0] != '\0') {
             int acc_w = tc_calc_string_width(it->accel, (int)strlen(it->accel));
