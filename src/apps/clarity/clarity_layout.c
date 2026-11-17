@@ -6,6 +6,7 @@
  */
 
 #include "clarity_doc.h"
+#include "clarity_book.h"
 #include <btron/vobj.h>
 #include <btron/image_decode.h>
 #include <btron/dnd.h>
@@ -51,9 +52,9 @@ void clarity_fmt_dimensions(ClarityDoc *doc)
             doc->page_h_mm = 188;
             break;
         case FMT_PECHA:
-            /* Tibetan Kangyur Pecha loose-leaf: 560 x 110 mm */
-            doc->page_w_mm = 560;
-            doc->page_h_mm = 110;
+            /* Canonical Tibetan Pecha loose-leaf sizes */
+            clarity_get_pecha_dimensions((ClarityPechaSize)doc->pecha_size,
+                                         &doc->page_w_mm, &doc->page_h_mm, NULL);
             break;
         default:
             doc->page_w_mm = 210;
@@ -110,8 +111,16 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
             snprintf(page_lbl, sizeof(page_lbl), "四六判 [ 第 %d 頁・%s ]",
                      p + 1, (p % 2 == 0) ? "表" : "裏");
         } else if (doc->fmt == FMT_PECHA) {
-            snprintf(page_lbl, sizeof(page_lbl), "Pecha དཔེ་ཆ་ [ 葉 %d / %d ]",
-                     p + 1, pages);
+            ClarityBook *bk = clarity_get_book();
+            if (bk && bk->is_loaded && bk->chapter_count > 0 &&
+                bk->active_chapter_idx >= 0 && bk->active_chapter_idx < bk->chapter_count) {
+                const ClarityBookChapter *ch = &bk->chapters[bk->active_chapter_idx];
+                snprintf(page_lbl, sizeof(page_lbl), "Pecha དཔེ་ཆ་ [ 葉 %d/%d ] ༄༅། %s",
+                         p + 1, pages, ch->tibetan_title);
+            } else {
+                snprintf(page_lbl, sizeof(page_lbl), "Pecha དཔེ་ཆ་ [ 葉 %d / %d ]",
+                         p + 1, pages);
+            }
         } else {
             snprintf(page_lbl, sizeof(page_lbl), "A4 Portrait [ Page %d of %d ]",
                      p + 1, pages);
