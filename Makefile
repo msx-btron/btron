@@ -688,16 +688,10 @@ ARM64_APPS_SRCS = \
     src/apps/chokanji/bpk_core.c    \
     src/apps/chokanji/unpack.c      \
     src/apps/chokanji/launchers.c   \
-    src/apps/clarity/clarity.c         \
-    src/apps/clarity/clarity_layout.c  \
-    src/apps/clarity/clarity_render.c  \
-    src/apps/clarity/clarity_export.c  \
-    src/apps/clarity/clarity_book.c    \
     src/apps/browser/pdf_reader.c      \
     src/apps/review/review.c          \
     src/fs/blk_file.c          \
     src/fs/blk_qcow2.c         \
-    src/desktop/graphics/image_decode.c \
     src/media/sdk/mars.c       \
     src/desktop/industrial/hmi/hmi_core.c         \
     src/desktop/industrial/hmi/hmi_switch.c       \

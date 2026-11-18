@@ -47,7 +47,7 @@ static inline void cpu_relax(void) {
 
 /* ── x86 PCI Configuration Port I/O ──────────────────────────────────── */
 
-#if defined(BTRON_UEFI_TARGET) || (!defined(__STDC_HOSTED__) || __STDC_HOSTED__ == 0)
+#if (defined(__x86_64__) || defined(__i386__)) && (defined(BTRON_UEFI_TARGET) || (!defined(__STDC_HOSTED__) || __STDC_HOSTED__ == 0))
 
 static inline void outl_pci(uint16_t port, uint32_t val) {
     __asm__ volatile("outl %0, %1" : : "a"(val), "Nd"(port));
