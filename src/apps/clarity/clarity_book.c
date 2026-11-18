@@ -943,6 +943,15 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     FILE *fp = fopen(ch->file_path, "r");
     if (!fp) return -1;
 
+    ClarityFileIntegrity fi;
+    if (clarity_check_file_integrity(ch->file_path, &fi) == 0 && fi.is_valid) {
+        doc->source_bytes = fi.file_size;
+        doc->source_checksum = fi.checksum;
+    } else {
+        doc->source_bytes = 0;
+        doc->source_checksum = 0;
+    }
+
     /* Pecha page pixel dimensions (at unzoomed 72dpi) */
     int px_w = (doc->page_w_mm * CLARITY_DPI * 10) / 254;
     int px_h = (doc->page_h_mm * CLARITY_DPI * 10) / 254;
@@ -985,7 +994,9 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
         if (raw_lines[raw_count]) { strcpy(raw_lines[raw_count], head); raw_count++; }
     }
 
+    int file_lines = 0;
     while (fgets(line_buf, sizeof(line_buf), fp) && raw_count < 4094) {
+        file_lines++;
         char conv[2048];
         if (book->auto_tibetan) {
             clarity_wylie_line_to_tibetan(line_buf, conv, sizeof(conv));
@@ -1005,7 +1016,6 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     int page_idx = 0;
     int line_cursor = 0;
     int max_pages = CLARITY_MAX_FRAMES;
-    if (max_pages > 32) max_pages = 32;
 
     while (line_cursor < raw_count && page_idx < max_pages) {
         /* Accumulate one page worth of lines */
@@ -1126,12 +1136,112 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     doc->page_count     = total_pages;
     doc->selected_frame = 0;
     doc->dirty          = FALSE;
+    doc->source_lines   = file_lines;
+    doc->loaded_lines   = (line_cursor > 0) ? (line_cursor - 1) : 0;
+    doc->is_complete    = (line_cursor >= raw_count);
     book->active_chapter_idx = chapter_idx;
     s_active_book = *book;
-    return 0;
+    return doc->is_complete ? 0 : 1;
 #else
     return -1;
 #endif
+}
+
+/* ── Chapter & Document Consistency & Completeness Verification ───── */
+
+int clarity_doc_check_consistency(const ClarityDoc *doc, const char *source_path,
+                                  ClarityIntegrityReport *report)
+{
+    if (report) {
+        memset(report, 0, sizeof(ClarityIntegrityReport));
+    }
+    if (!doc) {
+        if (report) strncpy(report->err_msg, "ClarityDoc is null", sizeof(report->err_msg) - 1);
+        return -1;
+    }
+
+    if (report) {
+        report->source_lines    = doc->source_lines;
+        report->loaded_lines    = doc->loaded_lines;
+        report->page_count      = doc->page_count;
+        report->frame_count     = doc->frame_count;
+        report->source_bytes    = doc->source_bytes;
+        report->source_checksum = doc->source_checksum;
+        report->is_complete     = doc->is_complete;
+    }
+
+    /* 1. Completeness: verify all source lines were ingested into frames */
+    if (!doc->is_complete || (doc->source_lines > 0 && doc->loaded_lines < doc->source_lines)) {
+        if (report) {
+            snprintf(report->err_msg, sizeof(report->err_msg),
+                     "Unfinished source loading: %d / %d lines loaded (%d pages allocated)",
+                     doc->loaded_lines, doc->source_lines, doc->page_count);
+        }
+        return -1;
+    }
+
+    /* 2. Page & Frame alignment: each page must have its allocated frame */
+    if (doc->page_count <= 0 || doc->frame_count != doc->page_count) {
+        if (report) {
+            snprintf(report->err_msg, sizeof(report->err_msg),
+                     "Page/frame count mismatch: %d pages vs %d frames",
+                     doc->page_count, doc->frame_count);
+        }
+        return -1;
+    }
+
+    /* 3. Physical file verification if source_path is supplied */
+    if (source_path && source_path[0]) {
+        ClarityFileIntegrity fi;
+        if (clarity_check_file_integrity(source_path, &fi) != 0 || !fi.is_valid) {
+            if (report) {
+                snprintf(report->err_msg, sizeof(report->err_msg),
+                         "Source file integrity failure: %s", fi.err_msg);
+            }
+            return -1;
+        }
+        if (doc->source_bytes > 0 && fi.file_size != doc->source_bytes) {
+            if (report) {
+                snprintf(report->err_msg, sizeof(report->err_msg),
+                         "File size mismatch: recorded %u bytes vs on-disk %u bytes",
+                         (unsigned)doc->source_bytes, (unsigned)fi.file_size);
+            }
+            return -1;
+        }
+    }
+
+    /* 4. Frame content verification: ensure frames are not corrupted or empty */
+    for (int i = 0; i < doc->frame_count; i++) {
+        const ClarityFrame *f = &doc->frames[i];
+        if (f->type != FRAME_TEXT) continue;
+        /* Every loaded Pecha page should have non-empty text */
+        if (f->text_len == 0 && i < doc->page_count - 1) {
+            if (report) {
+                snprintf(report->err_msg, sizeof(report->err_msg),
+                         "Intermediate page %d has empty frame buffer", i + 1);
+            }
+            return -1;
+        }
+    }
+
+    if (report) {
+        report->err_msg[0] = '\0';
+    }
+    return 0;
+}
+
+int clarity_book_check_integrity(const ClarityBook *book, int chapter_idx,
+                                 const ClarityDoc *doc, ClarityIntegrityReport *report)
+{
+    if (!book || !book->is_loaded || chapter_idx < 0 || chapter_idx >= book->chapter_count) {
+        if (report) {
+            memset(report, 0, sizeof(ClarityIntegrityReport));
+            strncpy(report->err_msg, "Invalid book or chapter index", sizeof(report->err_msg) - 1);
+        }
+        return -1;
+    }
+    const ClarityBookChapter *ch = &book->chapters[chapter_idx];
+    return clarity_doc_check_consistency(doc, ch->file_path, report);
 }
 
 int clarity_book_next_chapter(ClarityBook *book, ClarityDoc *doc)

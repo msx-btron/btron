@@ -95,6 +95,23 @@ int  clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const
 /* Robust file integrity verification */
 int  clarity_check_file_integrity(const char *path, ClarityFileIntegrity *out_info);
 
+/* Chapter / Document Consistency & Completeness Verification */
+typedef struct {
+    int  source_lines;       /* total lines counted in source file */
+    int  loaded_lines;       /* lines paginated into frames */
+    int  page_count;         /* total pages allocated */
+    int  frame_count;        /* total frames in document */
+    BOOL is_complete;        /* TRUE if 100% of source lines loaded */
+    UW   source_bytes;       /* file size in bytes */
+    UW   source_checksum;    /* Adler-32 checksum */
+    char err_msg[128];       /* error description if inconsistent */
+} ClarityIntegrityReport;
+
+int  clarity_book_check_integrity(const ClarityBook *book, int chapter_idx,
+                                  const ClarityDoc *doc, ClarityIntegrityReport *report);
+int  clarity_doc_check_consistency(const ClarityDoc *doc, const char *source_path,
+                                   ClarityIntegrityReport *report);
+
 #ifdef __cplusplus
 }
 #endif

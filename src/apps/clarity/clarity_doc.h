@@ -62,7 +62,7 @@ typedef enum {
  * ================================================================ */
 
 #define CLARITY_TEXT_BUF   4096   /* max TRON code units per frame   */
-#define CLARITY_MAX_FRAMES   32   /* frames per document             */
+#define CLARITY_MAX_FRAMES  160   /* frames per document (supports full books up to 160 pages) */
 #define CLARITY_MAX_VOBJS    16   /* virtual bodies per text frame   */
 
 typedef struct {
@@ -118,6 +118,13 @@ typedef struct {
     int            selected_frame;  /* index into frames[], or -1      */
     ClarityTool    tool;
     BOOL           dirty;           /* unsaved changes flag            */
+
+    /* Source text loading & consistency verification */
+    int            source_lines;    /* total lines in source file */
+    int            loaded_lines;    /* lines successfully loaded into pages */
+    BOOL           is_complete;     /* TRUE if 100% of source lines were paginated */
+    UW             source_bytes;    /* size of source file in bytes */
+    UW             source_checksum; /* Adler-32 checksum of source file */
 
     /* Drag state for frame creation / resize */
     BOOL           dragging;

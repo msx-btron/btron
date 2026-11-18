@@ -291,10 +291,65 @@ int main(void)
         TEST_ASSERT(d_doc.frame_count >= 2, "Derge Woodblock import paginated into >= 2 pages");
         /* Each page should hold at most 13 visual rows — text must not be a single giant block */
         TEST_ASSERT(d_doc.frame_count >= 10, "dkar.chag.txt (959 lines) produces >= 10 Derge pages");
+        printf("       -> Derge Woodblock dkar.chag.txt loaded %d pages (frames)\n", d_doc.page_count);
+    }
+
+    /* ── Test Group 7: Source Ingestion Completeness & Consistency Check ── */
+    printf("\n==> Test Group 7: Source Ingestion Completeness & Consistency Check\n");
+    {
+        ClarityBook book;
+        clarity_book_init(&book);
+        int rc = clarity_book_open_dir(&book, "./assets/osal", PECHA_SIZE_DERGE, TRUE);
+        TEST_ASSERT(rc == 0, "Opened osal directory for consistency verification");
+
+        ClarityDoc doc;
+        memset(&doc, 0, sizeof(ClarityDoc));
+        int load_rc = clarity_book_load_chapter_into_doc(&book, 0, &doc);
+        TEST_ASSERT(load_rc == 0, "Loaded dkar.chag.txt with full integrity tracking");
+
+        /* Basic consistency check on dkar.chag.txt */
+        ClarityIntegrityReport rep;
+        int check_rc = clarity_book_check_integrity(&book, 0, &doc, &rep);
+        TEST_ASSERT(check_rc == 0, "clarity_book_check_integrity succeeded for dkar.chag.txt");
+        TEST_ASSERT(rep.is_complete == TRUE, "dkar.chag.txt marked complete (is_complete == TRUE)");
+        TEST_ASSERT(rep.source_lines >= 950, "dkar.chag.txt source lines counted (>= 950)");
+        TEST_ASSERT(rep.loaded_lines == rep.source_lines, "All source lines paginated without dropping");
+        TEST_ASSERT(rep.page_count >= 70, "dkar.chag.txt paginated into full ~80 pages (not truncated at 32)");
+        TEST_ASSERT(rep.frame_count == rep.page_count, "Frame count matches page count");
+        TEST_ASSERT(rep.source_bytes > 0, "Source file size recorded in integrity report");
+        TEST_ASSERT(rep.source_checksum > 0, "Source file Adler-32 checksum computed");
+
+        /* Verify final frame contains closing colophon */
+        ClarityFrame *last_frame = &doc.frames[doc.frame_count - 1];
+        TEST_ASSERT(last_frame->text_len > 0, "Final page frame has non-empty text");
+        char last_utf8[2048];
+        tc_to_utf8_string((const TC*)last_frame->text, last_frame->text_len, last_utf8, sizeof(last_utf8));
+        TEST_ASSERT(strstr(last_utf8, "2025") != NULL, "Final page contains end-of-file colophon ('2025')");
+
+        /* Test incomplete loading detection: mock truncated doc */
+        ClarityDoc trunc_doc = doc;
+        trunc_doc.is_complete = FALSE;
+        trunc_doc.loaded_lines = 300;
+        ClarityIntegrityReport trunc_rep;
+        int trunc_rc = clarity_doc_check_consistency(&trunc_doc, "./assets/osal/dkar.chag.txt", &trunc_rep);
+        TEST_ASSERT(trunc_rc == -1, "clarity_doc_check_consistency correctly caught unfinished loading");
+        TEST_ASSERT(trunc_rep.is_complete == FALSE, "Unfinished loading flagged is_complete == FALSE");
+        TEST_ASSERT(strstr(trunc_rep.err_msg, "Unfinished source loading") != NULL,
+                    "Integrity check produced diagnostic error message for unfinished load");
+
+        /* Test single chapter integrity: smon.lam.txt (chapter 1) */
+        ClarityDoc smon_doc;
+        memset(&smon_doc, 0, sizeof(ClarityDoc));
+        int smon_load = clarity_book_load_chapter_into_doc(&book, 1, &smon_doc);
+        TEST_ASSERT(smon_load == 0, "Loaded smon.lam.txt");
+        ClarityIntegrityReport smon_rep;
+        int smon_check = clarity_book_check_integrity(&book, 1, &smon_doc, &smon_rep);
+        TEST_ASSERT(smon_check == 0, "smon.lam.txt passed consistency check");
+        TEST_ASSERT(smon_rep.is_complete == TRUE, "smon.lam.txt is fully loaded");
     }
 
     printf("\n=================================================================\n");
-    printf(" ALL 34 CLARITY OSAL TIBETAN BOOK & TAD TESTS PASSED (100%%)\n");
+    printf(" ALL 50 CLARITY OSAL TIBETAN BOOK & TAD TESTS PASSED (100%%)\n");
     printf("=================================================================\n");
     return 0;
 }
