@@ -237,6 +237,12 @@ int main(void)
                         "Virtual Body label preserves full Ukrainian title ('Коментар на Зміст')");
             TEST_ASSERT(strstr(txt, "Коментар на Зміст") != NULL,
                         "Virtual Body span text displays full untruncated title in TAD Browser");
+
+            /* Verify link bounding box matches string width with respect to encoding/language */
+            int link_w = tb.spans[target_link_idx].bounds.right - tb.spans[target_link_idx].bounds.left;
+            int avail_w = tb.doc_width - tb.spans[target_link_idx].bounds.left - 24;
+            TEST_ASSERT(link_w > 100, "Link bounding box has positive width matching content");
+            TEST_ASSERT(link_w < avail_w, "Link bounding box matches string width and does not stretch enormously across window");
         }
 
         /* B. Simulate Clicking Chapter Link and Navigating */

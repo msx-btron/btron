@@ -545,6 +545,24 @@ int tad_browser_wrap_text(const char *utf8_text, int max_w, tad_wrap_line_cb cb,
     return btron_wrap_text(utf8_text, max_w, (btron_wrap_line_cb)cb, user_data);
 }
 
+typedef struct {
+    int max_line_w;
+    int line_count;
+} TAD_WRAP_MEAS_CTX;
+
+static void tad_measure_wrap_cb(const char *line_str, int line_len, H line_w, int line_idx, void *user_data) {
+    (void)line_str;
+    (void)line_len;
+    (void)line_idx;
+    TAD_WRAP_MEAS_CTX *ctx = (TAD_WRAP_MEAS_CTX*)user_data;
+    if (ctx) {
+        ctx->line_count++;
+        if (line_w > ctx->max_line_w) {
+            ctx->max_line_w = line_w;
+        }
+    }
+}
+
 void tad_browser_layout(TAD_BROWSER *tb, int view_width) {
     if (!tb) return;
     tb->doc_width = (view_width > 200) ? view_width : 640;
@@ -601,42 +619,45 @@ void tad_browser_layout(TAD_BROWSER *tb, int view_width) {
         int wrap_w = (s->style.is_vobj) ? (avail_w - 8) : avail_w;
 
         int num_lines = 1;
+        int max_line_w = 0;
         if (s->style.font_id == 2 || !tb->wrap_text) {
             /* Monospace Preformatted Text or Unwrapped Mode:
-             * Count non-empty explicit lines separated by \n */
+             * Measure each explicit line separated by \n with respect to font/encoding */
             const char *q = s->text;
             num_lines = 0;
             while (*q) {
                 num_lines++;
                 const char *nl = strchr(q, '\n');
+                int llen = nl ? (int)(nl - q) : (int)strlen(q);
+                int lw = tc_calc_string_width(q, llen);
+                if (lw > max_line_w) max_line_w = lw;
                 if (!nl) break;
                 q = nl + 1;
             }
             if (num_lines < 1) num_lines = 1;
         } else {
-            num_lines = tad_browser_wrap_text(s->text, wrap_w, NULL, NULL);
-            if (num_lines < 1) num_lines = 1;
+            /* Wrapped Mode: Wrap text and measure exact line width in pixels using TRON Code advances */
+            TAD_WRAP_MEAS_CTX meas = { 0, 0 };
+            tad_browser_wrap_text(s->text, wrap_w, tad_measure_wrap_cb, &meas);
+            num_lines = (meas.line_count > 0) ? meas.line_count : 1;
+            max_line_w = meas.max_line_w;
         }
         int span_h = num_lines * pitch + (s->style.is_vobj ? 4 : 0);
 
         int calc_w = 0;
-        if (tb->wrap_text) {
-            int text_len = (int)strlen(s->text);
-            calc_w = text_len * ((s->style.font_size >= 16) ? 10 : 8);
-            if (calc_w > avail_w || num_lines > 1) calc_w = avail_w;
-            if (calc_w < 50 && s->style.is_vobj) calc_w = 260;
-            if (calc_w > avail_w) calc_w = avail_w;
+        if (s->style.is_vobj || s->is_link) {
+            /* Virtual Body Link Bounding Box matches exact string width with respect to encoding/language */
+            calc_w = max_line_w + 6;
+            if (calc_w > wrap_w) calc_w = wrap_w;
+            if (calc_w < 32) calc_w = 32;
         } else {
-            const char *q = s->text;
-            while (*q) {
-                const char *nl = strchr(q, '\n');
-                int llen = nl ? (int)(nl - q) : (int)strlen(q);
-                int lw = tc_calc_string_width(q, llen);
-                if (lw > calc_w) calc_w = lw;
-                if (!nl) break;
-                q = nl + 1;
+            /* Standard text line / paragraph */
+            if (tb->wrap_text && num_lines > 1) {
+                calc_w = avail_w;
+            } else {
+                calc_w = max_line_w;
+                if (calc_w > avail_w) calc_w = avail_w;
             }
-            if (calc_w < 50 && s->style.is_vobj) calc_w = 260;
         }
 
         s->bounds.left = indent;
@@ -1812,7 +1833,7 @@ void tad_browser_paint(TAD_BROWSER *tb, GDEV *dev, const RECT *client_rect) {
             }
 
             if (tb->hovered_link_idx == i) {
-                drw_lin(dev, vx + 4, vy + span_h - 3, vx + span_w + 2, vy + span_h - 3);
+                drw_lin(dev, vx + 4, vy + span_h - 3, vx + span_w - 2, vy + span_h - 3);
             }
         } else {
             /* Standard text line / paragraph */
@@ -2133,7 +2154,9 @@ BOOL tad_browser_handle_mouse(TAD_BROWSER *tb, int mouse_x, int mouse_y, BOOL is
         TAD_SPAN *s = &tb->spans[i];
         if (!s->is_link) continue;
 
-        if (doc_x >= s->bounds.left && doc_x <= s->bounds.right &&
+        int pad_l = s->style.is_vobj ? 2 : 0;
+        int pad_r = s->style.is_vobj ? 4 : 0;
+        if (doc_x >= s->bounds.left - pad_l && doc_x <= s->bounds.right + pad_r &&
             doc_y >= s->bounds.top && doc_y <= s->bounds.bottom) {
             tb->hovered_link_idx = i;
             if (is_click) {
