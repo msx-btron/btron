@@ -362,9 +362,14 @@ TC utf8_to_tc(const char *utf8_str, int *bytes_consumed) {
         if (bytes_consumed) *bytes_consumed = 3;
         UW cp = ((s[0] & 0x0F) << 12) | ((s[1] & 0x3F) << 6) | (s[2] & 0x3F);
 
-        /* Tibetan block U+0F00 - U+0FFF -> TRON Code Plane 10 (0x9F00 | (cp - 0x0F00)) */
+        /* Tibetan block U+0F00 - U+0FFF -> TRON Code Plane 10 (0x9F00 | (cp - 0F00)) */
         if (cp >= 0x0F00 && cp <= 0x0FFF) {
             return (TC)(0x9F00 | (cp - 0x0F00));
+        }
+
+        /* Sanskrit / Devanagari block U+0900 - U+097F -> TRON Code Plane 10 (0x9E00 | (cp - 0x0900)) */
+        if (cp >= 0x0900 && cp <= 0x097F) {
+            return (TC)(0x9E00 | (cp - 0x0900));
         }
 
         /* CJK Symbols and Punctuation U+3000 - U+303F -> Plane 1 (0x21xx) */
@@ -489,6 +494,14 @@ int tc_to_utf8(TC code, char *utf8_buf, int max_len) {
     if (high == 0x9F) {
         /* Tibetan Block: U+0F00 + low */
         UW cp = 0x0F00 + low;
+        utf8_buf[0] = (char)(0xE0 | ((cp >> 12) & 0x0F));
+        utf8_buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
+        utf8_buf[2] = (char)(0x80 | (cp & 0x3F));
+        utf8_buf[3] = '\0';
+        return 3;
+    } else if (high == 0x9E && low <= 0x7F) {
+        /* Sanskrit / Devanagari Block: U+0900 + low */
+        UW cp = 0x0900 + low;
         utf8_buf[0] = (char)(0xE0 | ((cp >> 12) & 0x0F));
         utf8_buf[1] = (char)(0x80 | ((cp >> 6) & 0x3F));
         utf8_buf[2] = (char)(0x80 | (cp & 0x3F));
@@ -1089,6 +1102,7 @@ static const UB* synthesize_japanese_glyph(TC code) {
 
 #include <btron/jis_fonts.h>
 #include <btron/tibetan_fonts.h>
+#include <btron/sanskrit_fonts.h>
 
 const UB* get_glyph_bitmap(TC code, H *out_width, H *out_height) {
     if (code < 256) {
@@ -1116,6 +1130,12 @@ const UB* get_glyph_bitmap(TC code, H *out_width, H *out_height) {
     if ((code >> 8) == 0x9F) {
         UW cp = 0x0F00 + (code & 0xFF);
         return get_tibetan_glyph_bitmap_ex(cp, out_width, out_height);
+    }
+
+    /* Sanskrit / Devanagari Block in TRON Code Plane 10 (0x9E00..0x9EFF) */
+    if ((code >> 8) == 0x9E) {
+        UW cp = 0x0900 + (code & 0xFF);
+        return get_sanskrit_glyph_bitmap_ex(cp, out_width, out_height);
     }
 
     /* Cyrillic & Ukrainian Block in TRON Code Plane 1 (0x2700..0x27FF) */
@@ -1153,7 +1173,7 @@ const UB* get_glyph_bitmap(TC code, H *out_width, H *out_height) {
         if (bmp) {
             return bmp;
         }
-    } else if (n >= 3) {
+    } else if (n == 3) {
         UW cp = (((unsigned char)utf8_buf[0] & 0x0F) << 12) |
                 (((unsigned char)utf8_buf[1] & 0x3F) << 6) |
                 ((unsigned char)utf8_buf[2] & 0x3F);
@@ -1163,6 +1183,14 @@ const UB* get_glyph_bitmap(TC code, H *out_width, H *out_height) {
             const UB *tb_bmp = get_tibetan_glyph_bitmap(cp);
             if (tb_bmp) {
                 return tb_bmp;
+            }
+        }
+
+        /* Sanskrit / Devanagari Unicode Block (U+0900..U+097F) */
+        if (cp >= 0x0900 && cp <= 0x097F) {
+            const UB *sk_bmp = get_sanskrit_glyph_bitmap(cp);
+            if (sk_bmp) {
+                return sk_bmp;
             }
         }
 
@@ -1199,6 +1227,20 @@ H tc_get_char_advance(TC code, TC prev_code) {
             /* Root consonant: 8px advance */
             return 8;
         }
+    } else if ((code >> 8) == 0x9E) {
+        UW cp = 0x0900 + (code & 0xFF);
+        if (cp == 0x0901 || cp == 0x0902 || cp == 0x093C ||
+            (cp >= 0x0941 && cp <= 0x0948) || cp == 0x094D ||
+            (cp >= 0x0951 && cp <= 0x0954) || (cp >= 0x0962 && cp <= 0x0963)) {
+            /* Combining mark / virama: stacks onto previous base (0 advance) */
+            return 0;
+        } else if (cp == 0x0964 || cp == 0x0965) {
+            /* Danda / Double Danda: compact 8px advance */
+            return 8;
+        } else {
+            /* Consonants / vowels / digits: 16px advance */
+            return 16;
+        }
     } else if (code == ' ') {
         if (prev_code == 0x9F0B) {
             /* Collapse redundant ASCII space following Tsheg */
@@ -1208,7 +1250,8 @@ H tc_get_char_advance(TC code, TC prev_code) {
     } else if (code < 256 || ((code >> 8) == 0x20 && (code & 0xFF) >= 0x80) ||
                (code >> 8) == 0x27 || (code >> 8) == 0x23 || code == 0x2116 ||
                (code >> 8) == 0x28 || (code >> 8) == 0x2E ||
-               (code >> 8) == 0x2B) {
+               (code >> 8) == 0x2B ||
+               (code >= 0x8BCE && code <= 0x8BE1)) {
         return 8;
     } else {
         return 16;
@@ -1227,7 +1270,7 @@ H tc_calc_string_width(const char *utf8_text, int max_bytes) {
         int step = (consumed > 0 ? consumed : 1);
         H adv = tc_get_char_advance(code, prev_code);
         total_w += adv;
-        if (adv > 0 || (code >> 8) != 0x9F) {
+        if (adv > 0 || ((code >> 8) != 0x9F && (code >> 8) != 0x9E)) {
             prev_code = code;
         }
         bi += step;
@@ -1276,7 +1319,7 @@ static ER render_tc_string(GDEV *dev, H x, H y, const char *text, COLOR fg_col, 
 
         BOOL is_combining = FALSE;
         H render_x = cur_x;
-        H advance = gw;
+        H advance = tc_get_char_advance(code, prev_code);
 
         /* Tibetan Typography & Stacking Rules */
         if ((code >> 8) == 0x9F) {
@@ -1285,16 +1328,17 @@ static ER render_tc_string(GDEV *dev, H x, H y, const char *text, COLOR fg_col, 
                 /* Combining Vowel Sign / Subjoined Consonant: stack onto previous base */
                 is_combining = TRUE;
                 render_x = (prev_adv > 0) ? (cur_x - prev_adv) : cur_x;
-                advance = 0;
-            } else if (cp == 0x0F0B || cp == 0x0F0C) {
-                /* Tsheg syllable dot: compact advance */
-                advance = 3;
-            } else if (cp == 0x0F0D || cp == 0x0F0E) {
-                /* Shad verse bar: compact advance */
-                advance = 3;
-            } else {
-                /* Base consonants: compact 8px advance */
-                advance = 8;
+            }
+        }
+        /* Sanskrit / Devanagari Typography & Stacking Rules */
+        else if ((code >> 8) == 0x9E) {
+            UW cp = 0x0900 + (code & 0xFF);
+            if (cp == 0x0901 || cp == 0x0902 || cp == 0x093C ||
+                (cp >= 0x0941 && cp <= 0x0948) || cp == 0x094D ||
+                (cp >= 0x0951 && cp <= 0x0954) || (cp >= 0x0962 && cp <= 0x0963)) {
+                /* Combining Mark / Virama: stack onto previous base */
+                is_combining = TRUE;
+                render_x = (prev_adv > 0) ? (cur_x - prev_adv) : cur_x;
             }
         }
 
@@ -1317,7 +1361,11 @@ static ER render_tc_string(GDEV *dev, H x, H y, const char *text, COLOR fg_col, 
             } else {
                 UB b0 = bmp[row * 2];
                 UB b1 = bmp[row * 2 + 1];
-                for (int col = 0; col < 16; col++) {
+                int max_cols = 16;
+                if (!is_combining && advance > 0 && advance < 16 && b1 == 0) {
+                    max_cols = advance;
+                }
+                for (int col = 0; col < max_cols; col++) {
                     H px = render_x + col;
                     if (px >= dev->clip.left && px < dev->clip.right) {
                         UB bit = (col < 8) ? (b0 & (0x80 >> col)) : (b1 & (0x80 >> (col - 8)));

@@ -7,6 +7,7 @@
 #include <btron/types.h>
 #include <btron/troncode.h>
 #include <btron/jis_fonts.h>
+#include <btron/sanskrit_fonts.h>
 #include <stddef.h>
 
 typedef struct {
@@ -7053,7 +7054,29 @@ static const struct {
 #include "anders_math_glyphs.inc"
 };
 
+#include "sanskrit_fonts.inc"
+
+const UB* get_sanskrit_glyph_bitmap(UW cp) {
+    if (cp >= 0x0900 && cp <= 0x097F) {
+        return g_sanskrit_glyphs[cp - 0x0900];
+    }
+    return NULL;
+}
+
+const UB* get_sanskrit_glyph_bitmap_ex(UW cp, H *w, H *h) {
+    const UB *bmp = get_sanskrit_glyph_bitmap(cp);
+    if (!bmp) return NULL;
+    if (w) *w = 16;
+    if (h) *h = 16;
+    return bmp;
+}
+
 const UB* get_jis_glyph_bitmap(UW cp) {
+    /* Check Sanskrit / Devanagari (U+0900 - U+097F) */
+    if (cp >= 0x0900 && cp <= 0x097F) {
+        return get_sanskrit_glyph_bitmap(cp);
+    }
+
     /* Check special Ukrainian extensions */
     for (size_t i = 0; i < sizeof(g_ukrainian_glyphs)/sizeof(g_ukrainian_glyphs[0]); i++) {
         if (g_ukrainian_glyphs[i].cp == cp) {

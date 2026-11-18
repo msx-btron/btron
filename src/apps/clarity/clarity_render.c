@@ -641,6 +641,22 @@ static void render_text_hltr_zoom(GDEV *dev, const ClarityFrame *f,
             } else if (tc == ' ' && prev_tc == 0x9F0B) {
                 adv = 0;
             }
+            /* Sanskrit / Devanagari Typography & Stacking Rules */
+            else if ((tc >> 8) == 0x9E) {
+                UW cp = 0x0900 + (tc & 0xFF);
+                if (cp == 0x0901 || cp == 0x0902 || cp == 0x093C ||
+                    (cp >= 0x0941 && cp <= 0x0948) || cp == 0x094D ||
+                    (cp >= 0x0951 && cp <= 0x0954) || (cp >= 0x0962 && cp <= 0x0963)) {
+                    /* Combining Mark / Virama: stack onto previous base */
+                    render_x = (prev_adv > 0) ? (cx - prev_adv) : cx;
+                    adv = 0;
+                } else if (cp == 0x0964 || cp == 0x0965) {
+                    /* Danda / Double Danda: compact 8px advance */
+                    adv = 8;
+                } else {
+                    adv = 16;
+                }
+            }
 
             if (bmp) {
                 blit_glyph_1bit(dev, bmp, render_x, cy, COLOR_BLACK, gw, gh);
@@ -651,7 +667,7 @@ static void render_text_hltr_zoom(GDEV *dev, const ClarityFrame *f,
             }
 
             cx += adv;
-            if (adv > 0 || (tc >> 8) != 0x9F) {
+            if (adv > 0 || ((tc >> 8) != 0x9F && (tc >> 8) != 0x9E)) {
                 prev_adv = adv;
                 prev_tc = tc;
             }

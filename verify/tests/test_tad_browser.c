@@ -6,6 +6,7 @@
 #include <btron/tad_browser.h>
 #include <btron/vobj.h>
 #include <btron/troncode.h>
+#include <btron/sanskrit_fonts.h>
 #include <btron/dp.h>
 #include <btron/error.h>
 #include <stdio.h>
@@ -1139,6 +1140,163 @@ static void test_word_wrap_and_hscrollbar(void) {
     cls_wnd(wnd);
 }
 
+static void test_font_glyphs_and_sanskrit(void) {
+    printf("\n[TEST GROUP 20] Math Digits, Double-Struck Letters, Superscripts/Subscripts & Sanskrit Devanagari Fonts\n");
+
+    /* 1. Bold Digits 0..9 (U+1D7CE..U+1D7D7) */
+    const char *bold_digits = "𝟎𝟏𝟐𝟑𝟒𝟓𝟔𝟕𝟖𝟗";
+    const char *p = bold_digits;
+    int digit_idx = 0;
+    while (*p) {
+        int consumed = 0;
+        TC code = utf8_to_tc(p, &consumed);
+        TEST_ASSERT(consumed == 4, "Bold digit UTF-8 sequence is 4 bytes");
+        TEST_ASSERT(code == (TC)(0x8BCE + digit_idx), "Bold digit maps to TRON Code 0x8BCE..0x8BD7");
+        H adv = tc_get_char_advance(code, 0);
+        TEST_ASSERT(adv == 8, "Bold digit advance is strictly 8px");
+
+        H gw = 0, gh = 0;
+        const UB *bmp = get_glyph_bitmap(code, &gw, &gh);
+        TEST_ASSERT(bmp != NULL, "Bold digit bitmap resolved");
+
+        /* Check that byte 1 (cols 8..15) is strictly 0x00 across all 16 rows */
+        BOOL spill = FALSE;
+        for (int r = 0; r < 16; r++) {
+            if (bmp[r * 2 + 1] != 0) spill = TRUE;
+        }
+        TEST_ASSERT(!spill, "Bold digit glyph strictly bounded to 8px (byte 1 is 0)");
+
+        char utf8_out[8];
+        int n = tc_to_utf8(code, utf8_out, sizeof(utf8_out));
+        TEST_ASSERT(n == 4 && memcmp(p, utf8_out, 4) == 0, "Bold digit round-trips to UTF-8");
+
+        p += consumed;
+        digit_idx++;
+    }
+    TEST_ASSERT(digit_idx == 10, "Tested all 10 bold digits (0..9)");
+
+    /* 2. Double-Struck Digits 0..9 (U+1D7D8..U+1D7E1) */
+    const char *ds_digits = "𝟘𝟙𝟚𝟛𝟜𝟝𝟞𝟟𝟠𝟡";
+    p = ds_digits;
+    digit_idx = 0;
+    while (*p) {
+        int consumed = 0;
+        TC code = utf8_to_tc(p, &consumed);
+        TEST_ASSERT(consumed == 4, "Double-struck digit UTF-8 sequence is 4 bytes");
+        TEST_ASSERT(code == (TC)(0x8BD8 + digit_idx), "Double-struck digit maps to TRON Code 0x8BD8..0x8BE1");
+        H adv = tc_get_char_advance(code, 0);
+        TEST_ASSERT(adv == 8, "Double-struck digit advance is strictly 8px");
+
+        H gw = 0, gh = 0;
+        const UB *bmp = get_glyph_bitmap(code, &gw, &gh);
+        TEST_ASSERT(bmp != NULL, "Double-struck digit bitmap resolved");
+
+        BOOL spill = FALSE;
+        for (int r = 0; r < 16; r++) {
+            if (bmp[r * 2 + 1] != 0) spill = TRUE;
+        }
+        TEST_ASSERT(!spill, "Double-struck digit glyph strictly bounded to 8px (byte 1 is 0)");
+
+        char utf8_out[8];
+        int n = tc_to_utf8(code, utf8_out, sizeof(utf8_out));
+        TEST_ASSERT(n == 4 && memcmp(p, utf8_out, 4) == 0, "Double-struck digit round-trips to UTF-8");
+
+        p += consumed;
+        digit_idx++;
+    }
+    TEST_ASSERT(digit_idx == 10, "Tested all 10 double-struck digits (0..9)");
+
+    /* 3. Subscripts: 0..9 (U+2080..U+2089), +, -, n */
+    const char *subscripts = "₀₁₂₃₄₅₆₇₈₉₊₋ₙ";
+    p = subscripts;
+    while (*p) {
+        int consumed = 0;
+        TC code = utf8_to_tc(p, &consumed);
+        H adv = tc_get_char_advance(code, 0);
+        TEST_ASSERT(adv == 8, "Subscript advance is strictly 8px");
+
+        H gw = 0, gh = 0;
+        const UB *bmp = get_glyph_bitmap(code, &gw, &gh);
+        TEST_ASSERT(bmp != NULL, "Subscript bitmap resolved");
+
+        BOOL spill = FALSE;
+        for (int r = 0; r < 16; r++) {
+            if (bmp[r * 2 + 1] != 0) spill = TRUE;
+        }
+        TEST_ASSERT(!spill, "Subscript glyph strictly bounded to cols 0..7 (byte 1 is 0)");
+
+        p += consumed;
+    }
+
+    /* Subscript 0 (U+2080) specific verification: right stroke must not spill to col 8 */
+    TC tc_sub0 = utf8_to_tc("₀", NULL);
+    H gw0 = 0, gh0 = 0;
+    const UB *bmp_sub0 = get_glyph_bitmap(tc_sub0, &gw0, &gh0);
+    TEST_ASSERT(bmp_sub0 != NULL, "Subscript 0 bitmap valid");
+    /* In row 10 (index 20), byte 0 is 0x42 (bits at col 1 and col 6) and byte 1 is 0x00 */
+    TEST_ASSERT(bmp_sub0[20] == 0x42 && bmp_sub0[21] == 0x00, "Subscript 0 right edge is at col 6, fully inside 8px box");
+
+    /* 4. Superscripts: W (U+1D42), K (U+1D37), T (U+1D40), U (U+1D41) */
+    const char *superscripts = "ᵂᴷᵀᵁ";
+    p = superscripts;
+    while (*p) {
+        int consumed = 0;
+        TC code = utf8_to_tc(p, &consumed);
+        H adv = tc_get_char_advance(code, 0);
+        TEST_ASSERT(adv == 8, "Superscript advance is strictly 8px");
+
+        H gw = 0, gh = 0;
+        const UB *bmp = get_glyph_bitmap(code, &gw, &gh);
+        TEST_ASSERT(bmp != NULL, "Superscript bitmap resolved");
+
+        BOOL spill = FALSE;
+        for (int r = 0; r < 16; r++) {
+            if (bmp[r * 2 + 1] != 0) spill = TRUE;
+        }
+        TEST_ASSERT(!spill, "Superscript glyph strictly bounded to cols 0..7 (byte 1 is 0)");
+
+        p += consumed;
+    }
+
+    /* 5. Sanskrit / Devanagari Glyph Font Table (U+0900..U+097F) */
+    BOOL all_sanskrit_present = TRUE;
+    for (UW cp = 0x0900; cp <= 0x097F; cp++) {
+        const UB *bmp = get_sanskrit_glyph_bitmap(cp);
+        if (!bmp) {
+            all_sanskrit_present = FALSE;
+            break;
+        }
+    }
+    TEST_ASSERT(all_sanskrit_present, "All 128 Sanskrit Devanagari glyphs (U+0900..U+097F) loaded");
+
+    /* Sanskrit TRON Code Plane 10 mapping and round-trip */
+    TC tc_om = utf8_to_tc("ॐ", NULL);
+    TEST_ASSERT(tc_om == (TC)0x9E50, "Sanskrit Om (U+0950) maps to TRON Code 0x9E50");
+    char om_utf8[8];
+    int n_om = tc_to_utf8(tc_om, om_utf8, sizeof(om_utf8));
+    TEST_ASSERT(n_om == 3 && strcmp(om_utf8, "ॐ") == 0, "Sanskrit Om round-trips to UTF-8");
+
+    /* Sanskrit Combining Marks advance rules */
+    TC tc_ka = utf8_to_tc("क", NULL);
+    TC tc_virama = utf8_to_tc("्", NULL);
+    TC tc_anusvara = utf8_to_tc("ं", NULL);
+    TC tc_vowel_u = utf8_to_tc("ु", NULL);
+    TC tc_vowel_e = utf8_to_tc("े", NULL);
+    TC tc_danda = utf8_to_tc("।", NULL);
+
+    TEST_ASSERT(tc_get_char_advance(tc_ka, 0) == 16, "Sanskrit consonant Ka has 16px advance");
+    TEST_ASSERT(tc_get_char_advance(tc_virama, tc_ka) == 0, "Sanskrit Virama (halant) is combining (0 advance)");
+    TEST_ASSERT(tc_get_char_advance(tc_anusvara, tc_ka) == 0, "Sanskrit Anusvara is combining (0 advance)");
+    TEST_ASSERT(tc_get_char_advance(tc_vowel_u, tc_ka) == 0, "Sanskrit Vowel U is combining (0 advance)");
+    TEST_ASSERT(tc_get_char_advance(tc_vowel_e, tc_ka) == 0, "Sanskrit Vowel E is combining (0 advance)");
+    TEST_ASSERT(tc_get_char_advance(tc_danda, 0) == 8, "Sanskrit Danda punctuation has 8px advance");
+
+    /* String width of 'नमस्ते' (Na-Ma-S-Ta-E) */
+    /* Na (16) + Ma (16) + Sa (16) + Virama (0) + Ta (16) + E (0) = 64px */
+    H namaste_w = tc_calc_string_width("नमस्ते", 32);
+    TEST_ASSERT(namaste_w == 64, "Sanskrit 'नमस्ते' string width calculated correctly with combining marks (64px)");
+}
+
 int main(void) {
     printf("==========================================================\n");
     printf(" B-System Native TAD Document Browser & Cabinet Test Suite\n");
@@ -1164,6 +1322,7 @@ int main(void) {
     test_box_drawing_and_monospace_layout();
     test_address_bar_and_ascii_spacing_alignment();
     test_word_wrap_and_hscrollbar();
+    test_font_glyphs_and_sanskrit();
 
     printf("\n==========================================================\n");
     printf(" TEST RESULTS: %d / %d tests passed (%.1f%%)",
