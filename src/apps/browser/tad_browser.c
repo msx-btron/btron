@@ -126,14 +126,23 @@ static void parse_text_tad_lines(TAD_BROWSER *tb, const char *text, UW len) {
                 line[l_idx] = '\0';
             }
         }
-        while (pos < len && (text[pos] == '\n' || text[pos] == '\r')) pos++;
+        if (pos < len && text[pos] == '\r') pos++;
+        if (pos < len && text[pos] == '\n') pos++;
 
-        if (l_idx == 0) {
-            /* Empty line spacing */
+        BOOL all_whitespace = TRUE;
+        for (int c = 0; c < l_idx; c++) {
+            if ((unsigned char)line[c] > ' ') {
+                all_whitespace = FALSE;
+                break;
+            }
+        }
+
+        if (l_idx == 0 || all_whitespace) {
+            /* Empty line spacing for double newlines (\n\n) / paragraph breaks */
             TAD_SPAN *span = &tb->spans[tb->span_count++];
             memset(span, 0, sizeof(TAD_SPAN));
             span->style = cur_style;
-            span->style.line_pitch = 10;
+            span->style.line_pitch = (cur_style.line_pitch > 0) ? cur_style.line_pitch : 18;
             span->text[0] = '\0';
             continue;
         }
@@ -246,8 +255,9 @@ ER tad_browser_load_buffer(TAD_BROWSER *tb, const void *buf, UW len, const char 
         cur_style.line_pitch = 20;
         cur_style.indent = 10;
 
-        while (offset + 6 <= len && tb->span_count < TAD_MAX_SPANS) {
+        while (offset < len && tb->span_count < TAD_MAX_SPANS) {
             if (p[offset] == 0xFF) {
+                if (offset + 6 > len) break;
                 UB tag_sub = p[offset + 1];
                 UW seg_len = (p[offset + 2] << 24) | (p[offset + 3] << 16) | (p[offset + 4] << 8) | p[offset + 5];
                 offset += 6;
@@ -433,7 +443,19 @@ ER tad_browser_load_buffer(TAD_BROWSER *tb, const void *buf, UW len, const char 
                 }
                 if (offset < max_off && p[offset] == '\n') offset++;
 
-                if (l_idx > 0) {
+                while (l_idx > 0 && line[l_idx - 1] == '\r') {
+                    line[--l_idx] = '\0';
+                }
+
+                BOOL all_whitespace = TRUE;
+                for (int c = 0; c < l_idx; c++) {
+                    if ((unsigned char)line[c] > ' ') {
+                        all_whitespace = FALSE;
+                        break;
+                    }
+                }
+
+                if (l_idx > 0 && !all_whitespace) {
                     TAD_SPAN *span = &tb->spans[tb->span_count++];
                     memset(span, 0, sizeof(TAD_SPAN));
                     span->style = cur_style;
@@ -441,6 +463,13 @@ ER tad_browser_load_buffer(TAD_BROWSER *tb, const void *buf, UW len, const char 
                         span->style.font_id = 2;
                     }
                     strncpy(span->text, line, sizeof(span->text) - 1);
+                } else {
+                    /* Empty line spacing for double newlines (\n\n) / paragraph breaks */
+                    TAD_SPAN *span = &tb->spans[tb->span_count++];
+                    memset(span, 0, sizeof(TAD_SPAN));
+                    span->style = cur_style;
+                    span->style.line_pitch = (cur_style.line_pitch > 0) ? cur_style.line_pitch : 18;
+                    span->text[0] = '\0';
                 }
             }
         }

@@ -280,6 +280,43 @@ int main(void)
         TEST_ASSERT(s_er == E_OK, "tad_browser_load_file loaded complete roll volume tad_bin/osal_shog_dril.tad");
         TEST_ASSERT(tb.is_binary_tad == TRUE, "Scroll volume is valid binary TAD");
         TEST_ASSERT(tb.span_count > 50, "Scroll volume loaded comprehensive book spans (> 50)");
+
+        /* D. Double Newline (\n\n) Preservation & Empty Line Spacing */
+        /* D1: Text TAD source with intentional \n\n between paragraphs */
+        TAD_BROWSER tb_nl;
+        tad_browser_init(&tb_nl);
+        const char *txt_source =
+            "Paragraph One: Introductory invocation.\n"
+            "\n"
+            "Paragraph Two: Main commentary text.\n"
+            "\n"
+            "\n"
+            "Paragraph Three: Conclusion.";
+        ER nl_er = tad_browser_load_buffer(&tb_nl, txt_source, (UW)strlen(txt_source), "Newline Test");
+        TEST_ASSERT(nl_er == E_OK, "tad_browser_load_buffer parsed text with intentional double newlines");
+        TEST_ASSERT(tb_nl.span_count >= 5, "Generated spans including empty lines for double newlines");
+
+        int empty_count = 0;
+        for (int i = 0; i < tb_nl.span_count; i++) {
+            if (tb_nl.spans[i].text[0] == '\0') empty_count++;
+        }
+        TEST_ASSERT(empty_count >= 3, "Intentional blank lines preserved as empty spacing spans (3 empty spans for 1+2 blank lines)");
+
+        tad_browser_layout(&tb_nl, 640);
+        /* Verify that empty span adds vertical separation */
+        int gap_p1_p2 = tb_nl.spans[2].bounds.top - tb_nl.spans[0].bounds.bottom;
+        TEST_ASSERT(gap_p1_p2 >= 18, "Vertical spacing between P1 and P2 reflects intentional blank line");
+
+        /* D2: Binary TAD chapter with intentional \n\n */
+        TAD_BROWSER tb_ch;
+        tad_browser_init(&tb_ch);
+        ER y_er = tad_browser_load_file(&tb_ch, "tad_bin/osal/yang_ti.tad");
+        TEST_ASSERT(y_er == E_OK, "Loaded produced chapter tad_bin/osal/yang_ti.tad");
+        int bin_empty = 0;
+        for (int i = 0; i < tb_ch.span_count; i++) {
+            if (tb_ch.spans[i].text[0] == '\0') bin_empty++;
+        }
+        TEST_ASSERT(bin_empty > 10, "Binary chapter TAD preserves intentional double newlines as empty line spans in TAD Browser");
     }
 
     /* ── Test Group 6: Pecha Size Enum & Proportional Dimensions ───── */
