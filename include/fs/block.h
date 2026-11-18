@@ -65,6 +65,9 @@ BlkDev *blk_file_create(const char *path, int create_new, UW nblocks);
  */
 void blk_destroy(BlkDev *dev);
 
+/* Release a partition descriptor made by blk_partition_create / blk_mbr_find_* */
+void blk_partition_release(BlkDev *dev);
+
 /*
  * blk_file_close — close the FILE* and free a file-backed BlkDev.
  * Use instead of blk_destroy() for BlkDevs created by blk_file_create().
@@ -98,6 +101,8 @@ BlkDev *blk_partition_create(BlkDev *parent, UW start_lba, UW nblocks, UW block_
  * Returns the partition BlkDev, or NULL if not found / on error.
  */
 BlkDev *blk_mbr_find_btron_partition(BlkDev *dev, UW fs_block_size);
+BlkDev *blk_mbr_find_btron_partition_idx(BlkDev *dev, int part_idx, UW fs_block_size);
+BlkDev *blk_mbr_find_partition_by_slot(BlkDev *dev, int slot_idx, UW fs_block_size);
 
 #ifdef __cplusplus
 }

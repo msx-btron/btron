@@ -345,6 +345,33 @@ static char app_menu_get_header_mnemonic(const char *title) {
     return 0;
 }
 
+static inline char menu_ascii_toupper(char c) {
+    return (c >= 'a' && c <= 'z') ? (char)(c - 'a' + 'A') : c;
+}
+
+static BOOL menu_accel_match(const char *accel, char key_char, BOOL is_ctrl) {
+    if (!accel || !accel[0] || key_char == 0) return FALSE;
+    char k = menu_ascii_toupper(key_char);
+    if (is_ctrl) {
+        if (accel[0] == 'C' && (accel[1] == 't' || accel[1] == 'T') &&
+            (accel[2] == 'r' || accel[2] == 'R') && (accel[3] == 'l' || accel[3] == 'L') &&
+            accel[4] == '+') {
+            return (menu_ascii_toupper(accel[5]) == k && accel[6] == '\0');
+        }
+        if (accel[1] == '\0' && menu_ascii_toupper(accel[0]) == k) {
+            return TRUE;
+        }
+    } else {
+        if (accel[1] == '\0' && menu_ascii_toupper(accel[0]) == k) {
+            return TRUE;
+        }
+        if (accel[0] == key_char && accel[1] == '\0') {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 BOOL app_menu_handle_key(APP_MENU_BAR *bar, UW key, uint16_t mod, int *out_cmd) {
     if (!bar) return FALSE;
     if (out_cmd) *out_cmd = 0;
@@ -467,22 +494,18 @@ BOOL app_menu_handle_key(APP_MENU_BAR *bar, UW key, uint16_t mod, int *out_cmd) 
         return TRUE;
     }
 
-    /* 4. Ctrl + Accelerator execution while menu is closed */
-    if (is_ctrl) {
-        char target_key = 0;
-        if (key >= 'a' && key <= 'z') target_key = (char)(key - 'a' + 'A');
-        else if (key >= 'A' && key <= 'Z') target_key = (char)key;
+    /* 4. Accelerator execution while menu is closed */
+    char target_key = 0;
+    if (key >= 'a' && key <= 'z') target_key = (char)(key - 'a' + 'A');
+    else if (key >= ' ' && key <= '~') target_key = (char)key;
 
-        if (target_key != 0) {
-            char target_accel[16];
-            snprintf(target_accel, sizeof(target_accel), "Ctrl+%c", target_key);
-            for (int h = 0; h < bar->header_count; h++) {
-                for (int i = 0; i < bar->headers[h].item_count; i++) {
-                    if (bar->headers[h].items[i].enabled &&
-                        strcmp(bar->headers[h].items[i].accel, target_accel) == 0) {
-                        if (out_cmd) *out_cmd = bar->headers[h].items[i].cmd_id;
-                        return TRUE;
-                    }
+    if (target_key != 0) {
+        for (int h = 0; h < bar->header_count; h++) {
+            for (int i = 0; i < bar->headers[h].item_count; i++) {
+                if (bar->headers[h].items[i].enabled &&
+                    menu_accel_match(bar->headers[h].items[i].accel, target_key, is_ctrl)) {
+                    if (out_cmd) *out_cmd = bar->headers[h].items[i].cmd_id;
+                    return TRUE;
                 }
             }
         }

@@ -62,6 +62,7 @@ __attribute__((weak, weak_import)) WND* open_gterm_window(void);
 __attribute__((weak, weak_import)) WND* open_audio_player_window(void);
 __attribute__((weak, weak_import)) WND* open_orchestra_window(void);
 __attribute__((weak, weak_import)) WND* open_drivesetup_window(void);
+__attribute__((weak, weak_import)) WND* open_installer_window(void);
 __attribute__((weak, weak_import)) WND* launch_beos_chat(void);
 __attribute__((weak, weak_import)) WND* open_clarity_window(void);
 __attribute__((weak, weak_import)) WND* open_quake_window(int x, int y, int width, int height);
@@ -74,6 +75,7 @@ extern WND* open_gterm_window(void);
 extern WND* open_audio_player_window(void);
 extern WND* open_orchestra_window(void);
 extern WND* open_drivesetup_window(void);
+extern WND* open_installer_window(void);
 extern WND* launch_beos_chat(void);
 extern WND* open_clarity_window(void);
 extern WND* open_quake_window(int x, int y, int width, int height);
@@ -330,6 +332,9 @@ static void tracker_execute_item(H index) {
             break;
         case TRACKER_CMD_DRIVESETUP:
             if (open_drivesetup_window) open_drivesetup_window();
+            break;
+        case TRACKER_CMD_INSTALLER:
+            if (open_installer_window) open_installer_window();
             break;
         case TRACKER_CMD_CLARITY:
             if (open_clarity_window) open_clarity_window();

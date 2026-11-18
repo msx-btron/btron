@@ -61,6 +61,7 @@ extern size_t fwrite(const void *ptr, size_t size, size_t count, FILE *stream);
 extern int fclose(FILE *stream);
 extern int fseek(FILE *stream, long offset, int whence);
 extern long ftell(FILE *stream);
+extern char *fgets(char *s, int size, FILE *stream);
 
 #endif /* _GL_STDIO_H_ */
 #endif /* HOSTED */

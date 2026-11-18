@@ -177,6 +177,8 @@ void execute_command(const char *cmd)
         load_files(&right_panel);
     } else if (strcmp(cmd_name, "sync") == 0) {
         clu_sync_cmd(arg, clu_collect_output, &ctx);
+    } else if (strcmp(cmd_name, "reboot") == 0 || strcmp(cmd_name, "restart") == 0) {
+        clu_reboot(arg, clu_collect_output, &ctx);
     } else {
         snprintf(out_buf, sizeof(out_buf), "Unknown B-System command: %s (type 'help')\n", cmd_name);
     }

@@ -15,6 +15,9 @@
 #include <btron/workbench.h>
 #include <drivers/vesa/vesa.h>
 #include <drivers/virtio/virtio_gpu.h>
+#include <drivers/virtio/virtio_blk.h>
+#include <fs/vol_api.h>
+#include <fs/volume.h>
 #include <drivers/uefi/ps2_mouse.h>
 #include <drivers/pc98/pc98_mouse.h>
 #include <btron/libc_shim.h>
@@ -87,8 +90,16 @@ static char uart_getc(void) {
 
 static int ps2_has_key(void) {
     /* Bit 0 = Output Buffer Full, Bit 5 = Auxiliary (Mouse) data */
-    uint8_t st = inb(0x64);
-    return ((st & 0x21) == 0x01) ? 1 : 0;
+    for (int i = 0; i < 16; i++) {
+        uint8_t st = inb(0x64);
+        if (!(st & 0x01)) return 0;
+        if (st & 0x20) {
+            (void)inb(0x60); /* Drain auxiliary mouse byte so keyboard is never blocked */
+            continue;
+        }
+        return 1;
+    }
+    return 0;
 }
 
 static uint8_t ps2_get_scancode(void) {
@@ -258,73 +269,374 @@ static void vga_print_at(int x, int y, const char *str, uint8_t attr) {
  * Ski Bootloader
  * ═══════════════════════════════════════════════════════════════════ */
 
+#define SKI_MAX_TARGETS 24
+
 typedef struct {
-    const char *title;
-    const char *cmdline;
+    char        title[64];
+    char        cmdline[128];
     int         cores;
+    int         dev_idx;       /* VirtIO block device index or -1 */
+    int         part_idx;      /* Partition slot (0..3) or -1 */
+    int         is_bootable;   /* 1 if active bootable B-System partition */
+    int         is_installer;  /* 1 if installer mode */
+    uint8_t     status;        /* MBR partition status (0x80 = active boot) */
 } ski_target_t;
 
-static ski_target_t s_targets[3] = {
-    {"B-System BTRON3 Workstation (x86_64 UEFI SMP)", "btron3 root=vobj0 smp=4 acpi=6.5", 4},
-    {"Raspberry Pi 5 BCM2712 / RP1 ARM64",            "btron3 rpi5 mailbox=mmio",        4},
-    {"NEC PC-9801 / PC-9821 VM (Awe Morris Kernel)",   "btron3 pc98 gdc=0xa0000",         1}
-};
+static ski_target_t s_targets[SKI_MAX_TARGETS];
+static int          s_target_count = 0;
 
+static void safe_strcpy_boot(char *dst, const char *src, size_t dst_sz) {
+    if (!dst || dst_sz == 0) return;
+    if (!src) { dst[0] = '\0'; return; }
+    size_t i = 0;
+    while (src[i] && i + 1 < dst_sz) {
+        dst[i] = src[i];
+        i++;
+    }
+    dst[i] = '\0';
+}
+
+extern Volume *g_sys_vol;
+extern Volume *g_anders_vol;
+extern WND* open_installer_window(void) __attribute__((weak));
+
+static void btron_storage_probe_and_mount(void) {
+#if !defined(BTRON_PC98_TARGET)
+    if (virtio_blk_get_device_count() == 0) {
+        virtio_blk_pci_probe_all();
+    }
+    int vcnt = virtio_blk_get_device_count();
+    for (int i = 0; i < vcnt; i++) {
+        BlkDev *vdev = blk_virtio_create(i);
+        if (!vdev) continue;
+
+        if (!g_sys_vol) {
+            BlkDev *part = blk_mbr_find_btron_partition_idx(vdev, 0, 1024);
+            if (part) {
+                g_sys_vol = vol_mount(part);
+                if (g_sys_vol) {
+                    uart_puts_raw("[HFDS] Mounted /SYS on VirtIO-Block device\r\n");
+                }
+            }
+        }
+        if (!g_anders_vol) {
+            BlkDev *part = blk_mbr_find_btron_partition_idx(vdev, 1, 1024);
+            if (part) {
+                g_anders_vol = vol_mount(part);
+                if (g_anders_vol) {
+                    uart_puts_raw("[HFDS] Mounted /ANDERS on VirtIO-Block device\r\n");
+                }
+            }
+        }
+    }
+#endif
+}
+
+volatile int g_reboot_requested = 0;
 static int s_selected = 0;
+static int s_scroll_offset = 0;
 static int s_boot_triggered = 0;
+
+void btron_core_reboot(void) {
+    uart_puts_raw("\r\n[SYSTEM] Reboot requested. Returning to Ski Bootloader...\r\n");
+    g_reboot_requested = 1;
+}
+
+static void ski_init_targets(void) {
+    s_target_count = 0;
+
+#if !defined(BTRON_PC98_TARGET)
+    if (virtio_blk_get_device_count() == 0) {
+        virtio_blk_pci_probe_all();
+    }
+    int vcnt = virtio_blk_get_device_count();
+    int found_bootable = 0;
+
+    for (int d = 0; d < vcnt && s_target_count < SKI_MAX_TARGETS; d++) {
+        uint8_t sec0[512];
+        char d_c = (char)('0' + d);
+        if (virtio_blk_read_sectors(d, 0, sec0, 1) != 0) continue;
+        if (sec0[510] != 0x55 || sec0[511] != 0xAA) {
+            /* Unpartitioned / unknown disk: still show it so the user sees every volume */
+            ski_target_t *t = &s_targets[s_target_count++];
+            safe_strcpy_boot(t->title, "[virtio0] Unpartitioned disk (not bootable)", sizeof(t->title));
+            t->title[7] = d_c;
+            safe_strcpy_boot(t->cmdline, "(no partition table)", sizeof(t->cmdline));
+            t->cores = 1; t->dev_idx = d; t->part_idx = -1;
+            t->is_bootable = 0; t->is_installer = 0; t->status = 0;
+            continue;
+        }
+
+        for (int p = 0; p < 4 && s_target_count < SKI_MAX_TARGETS; p++) {
+            const uint8_t *ent = sec0 + 446 + p * 16;
+            uint8_t  status = ent[0];
+            uint8_t  type   = ent[4];
+            uint32_t start  = (uint32_t)ent[8] | ((uint32_t)ent[9] << 8) |
+                              ((uint32_t)ent[10] << 16) | ((uint32_t)ent[11] << 24);
+            uint32_t count  = (uint32_t)ent[12] | ((uint32_t)ent[13] << 8) |
+                              ((uint32_t)ent[14] << 16) | ((uint32_t)ent[15] << 24);
+            if (count == 0) continue;
+            char p_c = (char)('1' + p);
+
+            bool is_btron = (type == 0x13);
+            uint8_t probe[512];
+            bool probe_ok = (virtio_blk_read_sectors(d, start, probe, 1) == 0);
+            if (probe_ok) {
+                uint16_t m = (uint16_t)probe[0] | ((uint16_t)probe[1] << 8);
+                bool magic = (m == 0x52FE || m == 0x42FE || m == 0xFE52 || m == 0xFE42);
+                if (!magic && count > 8) {
+                    /* Volumes formatted into a raw slice start 8 sectors in (see blk_part.c) */
+                    uint8_t probe2[512];
+                    if (virtio_blk_read_sectors(d, start + 8, probe2, 1) == 0) {
+                        uint16_t m2 = (uint16_t)probe2[0] | ((uint16_t)probe2[1] << 8);
+                        if (m2 == 0x52FE || m2 == 0x42FE || m2 == 0xFE52 || m2 == 0xFE42) {
+                            for (int k = 0; k < 512; k++) probe[k] = probe2[k];
+                            magic = true;
+                        }
+                    }
+                }
+                if (magic) is_btron = true;
+            }
+
+            ski_target_t *t = &s_targets[s_target_count++];
+            char title[64];
+            int tp = 0;
+            #define TPUT(ch) do { if (tp < 60) title[tp++] = (ch); } while (0)
+            #define TSTR(str) do { const char *q_ = (str); while (*q_) TPUT(*q_++); } while (0)
+            TSTR("[virtio"); TPUT(d_c); TPUT(':'); TPUT('p'); TPUT(p_c); TSTR("] ");
+
+            if (is_btron) {
+                char label[40]; int li = 0;
+                if (probe_ok) {
+                    const VolumeHeader *vh = (const VolumeHeader *)probe;
+                    while (li < 28 && vh->vol_name[li] >= 32 && vh->vol_name[li] <= 126) {
+                        label[li] = (char)vh->vol_name[li]; li++;
+                    }
+                }
+                label[li] = '\0';
+                TSTR(li ? label : "BTRON Volume");
+                TSTR(" (BTRON OS)");
+            } else {
+                const char *tn;
+                switch (type) {
+                    case 0x01: case 0x04: case 0x06: case 0x0E: tn = "FAT16 volume"; break;
+                    case 0x0B: case 0x0C: tn = "FAT32 volume"; break;
+                    case 0x07: tn = "NTFS/exFAT volume"; break;
+                    case 0x05: case 0x0F: tn = "Extended partition"; break;
+                    case 0x82: tn = "Linux swap"; break;
+                    case 0x83: tn = "Linux volume"; break;
+                    case 0xEF: tn = "EFI System Partition"; break;
+                    case 0xAF: tn = "HFS/APFS volume"; break;
+                    default:   tn = "Unknown volume"; break;
+                }
+                TSTR(tn);
+                static const char hx[] = "0123456789ABCDEF";
+                TSTR(" (type 0x"); TPUT(hx[type >> 4]); TPUT(hx[type & 15]); TPUT(')');
+            }
+            title[tp] = '\0';
+            safe_strcpy_boot(t->title, title, sizeof(t->title));
+            #undef TPUT
+            #undef TSTR
+
+            if (is_btron) {
+                safe_strcpy_boot(t->cmdline, "btron3 root=virtio0:p1 smp=4 acpi=6.5", sizeof(t->cmdline));
+                t->cmdline[18] = d_c;
+                t->cmdline[21] = p_c;
+            } else {
+                safe_strcpy_boot(t->cmdline, "(not a B-System volume - cannot boot)", sizeof(t->cmdline));
+            }
+            t->cores = 4;
+            t->dev_idx = d;
+            t->part_idx = p;
+            t->is_bootable = is_btron ? 1 : 0;
+            t->is_installer = 0;
+            t->status = status;
+            if (is_btron) found_bootable++;
+
+            uart_puts_raw("[SKI] Volume: ");
+            uart_puts_raw(t->title);
+            uart_puts_raw("\r\n");
+        }
+    }
+    if (found_bootable > 0) {
+        s_selected = 0;
+        s_scroll_offset = 0;
+        for (int i = 0; i < s_target_count; i++) {
+            if (s_targets[i].is_bootable && s_targets[i].status == 0x80) { s_selected = i; break; }
+        }
+        if (!s_targets[s_selected].is_bootable) {
+            for (int i = 0; i < s_target_count; i++) if (s_targets[i].is_bootable) { s_selected = i; break; }
+        }
+    }
+
+    if (found_bootable == 0 && s_target_count < SKI_MAX_TARGETS) {
+        ski_target_t *t = &s_targets[s_target_count++];
+        safe_strcpy_boot(t->title, "B-System BTRON3 Workstation (x86_64 UEFI SMP)", sizeof(t->title));
+        safe_strcpy_boot(t->cmdline, "btron3 root=virtio0 smp=4 acpi=6.5", sizeof(t->cmdline));
+        t->cores = 4;
+        t->dev_idx = 0;
+        t->part_idx = -1;
+        t->is_bootable = 0;
+        t->is_installer = 0;
+    }
+#else
+    ski_target_t *t0 = &s_targets[s_target_count++];
+    safe_strcpy_boot(t0->title, "B-System BTRON3 Workstation (PC-98 µITRON SMP)", sizeof(t0->title));
+    safe_strcpy_boot(t0->cmdline, "btron3 root=pc98 smp=1", sizeof(t0->cmdline));
+    t0->cores = 1;
+    t0->dev_idx = -1;
+    t0->part_idx = -1;
+    t0->is_bootable = 0;
+    t0->is_installer = 0;
+#endif
+
+    if (s_target_count < SKI_MAX_TARGETS) {
+        ski_target_t *t = &s_targets[s_target_count++];
+        safe_strcpy_boot(t->title, "B-System BTRON3 Workstation Installer (Live)", sizeof(t->title));
+        safe_strcpy_boot(t->cmdline, "btron3 bootmode=installer smp=4", sizeof(t->cmdline));
+        t->cores = 4;
+        t->dev_idx = -1;
+        t->part_idx = -1;
+        t->is_bootable = 0;
+        t->is_installer = 1;
+    }
+
+#if defined(BTRON_PC98_TARGET)
+    if (s_target_count < SKI_MAX_TARGETS) {
+        ski_target_t *t = &s_targets[s_target_count++];
+        safe_strcpy_boot(t->title, "NEC PC-9801 / PC-9821 VM (Awe Morris Kernel)", sizeof(t->title));
+        safe_strcpy_boot(t->cmdline, "btron3 pc98 gdc=0xa0000", sizeof(t->cmdline));
+        t->cores = 1;
+        t->dev_idx = -1;
+        t->part_idx = -1;
+        t->is_bootable = 0;
+        t->is_installer = 0;
+    }
+#endif
+}
+
+#define SKI_VISIBLE_ITEMS 6
+
+static void ski_update_scroll(void) {
+    if (s_selected < s_scroll_offset) {
+        s_scroll_offset = s_selected;
+    } else if (s_selected >= s_scroll_offset + SKI_VISIBLE_ITEMS) {
+        s_scroll_offset = s_selected - SKI_VISIBLE_ITEMS + 1;
+    }
+    int max_scroll = (s_target_count > SKI_VISIBLE_ITEMS) ? s_target_count - SKI_VISIBLE_ITEMS : 0;
+    if (s_scroll_offset > max_scroll) s_scroll_offset = max_scroll;
+    if (s_scroll_offset < 0) s_scroll_offset = 0;
+}
 
 static void render_ski_menu(void) {
     vga_clear(0x1F);
 
     vga_print_at(0, 0, "================================================================================", 0x1E);
     vga_print_at(2, 1, "  B-System (BTRON3 3.20 HMI) Ski Bootloader", 0x1F);
-    vga_print_at(2, 2, "  Plarforms: [AAarch32] [AArch64] [EM64T] [PC-98]", 0x1B);
+    vga_print_at(2, 2, "  Platforms: [AArch32] [AArch64] [EM64T] [PC-98]", 0x1B);
     vga_print_at(2, 3, "----------------------------------------------------------------------------", 0x17);
 
-     vga_print_at(2, 5, " Copyright (c) 2026 Synrc Research Center", 0x1A);
-     vga_print_at(2, 6, " Kyiv Ukraine", 0x1A);
+    vga_print_at(2, 4, " Copyright (c) 2026 Synrc Research Center · Kyiv Ukraine", 0x1A);
+    vga_print_at(2, 5, "----------------------------------------------------------------------------", 0x17);
 
-    vga_print_at(2, 8, "Select Operating System Target to Boot:", 0x1E);
-    vga_print_at(2, 9, "----------------------------------------------------------------------------", 0x17);
+    char hdr[80];
+    for (int k = 0; k < 76; k++) hdr[k] = ' ';
+    hdr[76] = '\0';
+    const char *h1 = "Select Operating System Target to Boot:";
+    int hp = 0;
+    while (*h1 && hp < 40) hdr[hp++] = *h1++;
 
-    for (int i = 0; i < 3; i++) {
-        uint8_t attr = (i == s_selected) ? 0x70 : 0x1F;
-        char row[80];
-        for (int k = 0; k < 76; k++) row[k] = ' ';
-        row[76] = '\0';
+    hdr[48] = '[';
+    hdr[49] = 'T'; hdr[50] = 'a'; hdr[51] = 'r'; hdr[52] = 'g'; hdr[53] = 'e'; hdr[54] = 't'; hdr[55] = ' ';
+    hdr[56] = (char)('0' + (s_selected + 1) / 10);
+    hdr[57] = (char)('0' + (s_selected + 1) % 10);
+    hdr[58] = '/';
+    hdr[59] = (char)('0' + s_target_count / 10);
+    hdr[60] = (char)('0' + s_target_count % 10);
+    hdr[61] = ']';
+    if (s_target_count > SKI_VISIBLE_ITEMS) {
+        hdr[63] = '['; hdr[64] = '^'; hdr[65] = 'v'; hdr[66] = ' ';
+        hdr[67] = 'S'; hdr[68] = 'c'; hdr[69] = 'r'; hdr[70] = 'o'; hdr[71] = 'l'; hdr[72] = 'l'; hdr[73] = ']';
+    }
+    vga_print_at(2, 6, hdr, 0x1E);
+    vga_print_at(2, 7, "----------------------------------------------------------------------------", 0x17);
 
-        row[0] = (i == s_selected) ? '>' : ' ';
-        row[1] = ' ';
-        row[2] = '[';
-        row[3] = (char)('1' + i);
-        row[4] = ']';
-        row[5] = ' ';
+    for (int r = 0; r < SKI_VISIBLE_ITEMS; r++) {
+        int i = s_scroll_offset + r;
+        int row_y = 8 + r;
+        if (i < s_target_count) {
+            uint8_t attr = (i == s_selected) ? 0x70 : 0x1F;
+            char row[80];
+            for (int k = 0; k < 73; k++) row[k] = ' ';
+            row[73] = '\0';
 
-        const char *t = s_targets[i].title;
-        int p = 6;
-        while (*t && p < 56) row[p++] = *t++;
+            row[0] = (i == s_selected) ? '>' : ' ';
+            row[1] = ' ';
+            row[2] = '[';
+            row[3] = (i + 1 >= 10) ? (char)('0' + (i + 1) / 10) : ' ';
+            row[4] = (char)('0' + (i + 1) % 10);
+            row[5] = ']';
+            row[6] = ' ';
 
-        row[58] = '(';
-        row[59] = (char)('0' + s_targets[i].cores);
-        row[60] = ' ';
-        row[61] = 'C';
-        row[62] = 'P';
-        row[63] = 'U';
-        row[64] = 's';
-        row[65] = ')';
+            const char *t = s_targets[i].title;
+            int p = 7;
+            while (*t && p < 56) row[p++] = *t++;
 
-        vga_print_at(2, 11 + i * 2, row, attr);
+            row[57] = '(';
+            row[58] = (char)('0' + s_targets[i].cores);
+            row[59] = ' ';
+            row[60] = 'C';
+            row[61] = 'P';
+            row[62] = 'U';
+            row[63] = 's';
+            row[64] = ')';
+
+            vga_print_at(2, row_y, row, attr);
+        } else {
+            char blank[80];
+            for (int k = 0; k < 73; k++) blank[k] = ' ';
+            blank[73] = '\0';
+            vga_print_at(2, row_y, blank, 0x1F);
+        }
+
+        /* Render vertical scrollbar elevator on right side (column 76) */
+        char sb_char = '|';
+        uint8_t sb_attr = 0x17;
+        if (s_target_count > SKI_VISIBLE_ITEMS) {
+            if (r == 0) {
+                sb_char = (s_scroll_offset > 0) ? '^' : '-';
+                sb_attr = (s_scroll_offset > 0) ? 0x1E : 0x17;
+            } else if (r == SKI_VISIBLE_ITEMS - 1) {
+                sb_char = (s_scroll_offset + SKI_VISIBLE_ITEMS < s_target_count) ? 'v' : '-';
+                sb_attr = (s_scroll_offset + SKI_VISIBLE_ITEMS < s_target_count) ? 0x1E : 0x17;
+            } else {
+                int track_len = SKI_VISIBLE_ITEMS - 2;
+                int max_s = s_target_count - SKI_VISIBLE_ITEMS;
+                int thumb_pos = (max_s > 0) ? (s_scroll_offset * (track_len - 1)) / max_s : 0;
+                if (r - 1 == thumb_pos) {
+                    sb_char = '#';
+                    sb_attr = 0x1F;
+                } else {
+                    sb_char = ':';
+                    sb_attr = 0x13;
+                }
+            }
+        }
+        char sb_str[2] = { sb_char, '\0' };
+        vga_print_at(76, row_y, sb_str, sb_attr);
     }
 
-    vga_print_at(2, 18, "----------------------------------------------------------------------------", 0x17);
-    vga_print_at(2, 19, "Active Command Line:", 0x1B);
-    vga_print_at(4, 20, s_targets[s_selected].cmdline, 0x1E);
+    vga_print_at(2, 15, "----------------------------------------------------------------------------", 0x17);
+    vga_print_at(2, 16, "Active Command Line:", 0x1B);
+    vga_print_at(4, 17, s_targets[s_selected].cmdline, 0x1E);
 
-    vga_print_at(2, 22, "Keys: [Up/Down, W/S] Select Target   [+/-] Adjust Cores   [Enter] Boot OS", 0x1B);
-    vga_print_at(0, 24, "================================================================================", 0x1E);
+    vga_print_at(2, 19, "----------------------------------------------------------------------------", 0x17);
+    vga_print_at(2, 20, "Keys: [Up/Down, W/S] Select/Scroll   [+/-] Adjust Cores   [Enter] Boot OS", 0x1B);
+    vga_print_at(2, 21, "      [PgUp/PgDn] Page Scroll        [Home/End] First/Last Target", 0x17);
+    vga_print_at(0, 23, "================================================================================", 0x1E);
 
     vga_cursor_x = 0;
-    vga_cursor_y = 23;
+    vga_cursor_y = 22;
     vga_update_cursor();
 }
 
@@ -335,13 +647,75 @@ static void uart_send_menu_update(void) {
     uart_putc(' ');
     const char *t = s_targets[s_selected].title;
     while (*t) uart_putc(*t++);
-    uart_putc('\r');
-    uart_putc('\n');
+    uart_puts_raw(" [Target ");
+    uart_putc((char)('1' + s_selected));
+    uart_putc('/');
+    uart_putc((char)('0' + s_target_count));
+    uart_puts_raw("]\r\n");
 }
 
 /* ═══════════════════════════════════════════════════════════════════
  * BTRON3 Terminal Shell & Graphical Desktop ('startx' / 'desktop')
  * ═══════════════════════════════════════════════════════════════════ */
+
+/* Multiboot info captured from bootloader */
+uint32_t g_multiboot_magic = 0;
+void    *g_multiboot_info = NULL;
+int      g_bootmode_installer = 0;
+
+static const char* strstr_k(const char *haystack, const char *needle) {
+    if (!haystack || !needle) return NULL;
+    if (!*needle) return haystack;
+    for (; *haystack; haystack++) {
+        const char *h = haystack;
+        const char *n = needle;
+        while (*h && *n && (*h == *n)) {
+            h++;
+            n++;
+        }
+        if (!*n) return haystack;
+    }
+    return NULL;
+}
+
+static uint32_t ps2_scancode_to_btron_key(uint8_t sc, int is_ext, int shift) {
+    if (is_ext) {
+        switch (sc) {
+            case 0x48: return BTRON_KEY_UP;
+            case 0x50: return BTRON_KEY_DOWN;
+            case 0x4B: return BTRON_KEY_LEFT;
+            case 0x4D: return BTRON_KEY_RIGHT;
+            case 0x49: return BTRON_KEY_PAGE_UP;
+            case 0x51: return BTRON_KEY_PAGE_DOWN;
+            case 0x47: return BTRON_KEY_HOME;
+            case 0x4F: return BTRON_KEY_END;
+            case 0x53: return BTRON_KEY_DELETE;
+            case 0x1C: return BTRON_KEY_KP_ENTER;
+            default: return 0;
+        }
+    }
+    switch (sc) {
+        case 0x01: return BTRON_KEY_ESCAPE;
+        case 0x1C: return BTRON_KEY_RETURN;
+        case 0x0E: return BTRON_KEY_BACKSPACE;
+        case 0x0F: return BTRON_KEY_TAB;
+        case 0x39: return BTRON_KEY_SPACE;
+        case 0x3B: return BTRON_KEY_F1;
+        case 0x3C: return BTRON_KEY_F2;
+        case 0x3D: return BTRON_KEY_F3;
+        case 0x3E: return BTRON_KEY_F4;
+        case 0x3F: return BTRON_KEY_F5;
+        case 0x40: return BTRON_KEY_F6;
+        case 0x41: return BTRON_KEY_F7;
+        case 0x42: return BTRON_KEY_F8;
+        case 0x43: return BTRON_KEY_F9;
+        case 0x44: return BTRON_KEY_F10;
+        default: {
+            char c = ps2_scancode_to_ascii(sc, shift);
+            return (uint32_t)(uint8_t)c;
+        }
+    }
+}
 
 static int strcmp_k(const char *a, const char *b) {
     while (*a && (*a == *b)) { a++; b++; }
@@ -409,7 +783,9 @@ static void launch_vesa_desktop_session(int active_cores) {
     /* Initialize authentic BTRON desktop with off-screen backbuffer for tear-free rendering */
     init_desktop_vram(1024, 768, s_desktop_backbuffer);
     BTRON_DESKTOP *dt = get_btron_desktop();
-    if (!dt || !dt->screen) return;
+    if (!dt || !dt->screen) {
+        return;
+    }
 
     tip_init();
     init_evt_sys();
@@ -422,12 +798,20 @@ static void launch_vesa_desktop_session(int active_cores) {
     workbench_init(1024);
 
     /* Open authentic B-System windows */
-    open_vobj_manager_window();
-    open_t_editor_window();
-    open_gterm_window();
+    if ((s_selected >= 0 && s_selected < s_target_count && s_targets[s_selected].is_installer) || g_bootmode_installer) {
+        desktop_set_icons_visible(FALSE);
+        if (open_installer_window) {
+            open_installer_window();
+        }
+    } else {
+        desktop_set_icons_visible(TRUE);
+        open_vobj_manager_window();
+        open_t_editor_window();
+        open_gterm_window();
 #if defined(BTRON_UEFI_TARGET)
-    open_glgears_window();
+        open_glgears_window();
 #endif
+    }
 
     /* Initial paint of authentic B-System desktop to backbuffer */
     workbench_render(dt->screen, 1024, 768);
@@ -449,7 +833,7 @@ static void launch_vesa_desktop_session(int active_cores) {
     uart_puts_raw("   * Icons    : Real Body Cabinet, Editor, GTerm, Audio, Chat\n");
     uart_puts_raw("   * Panel    : [BTRON] System Menu & Japanese JIS Fonts\n");
     uart_puts_raw("   * Windows  : HFDS Cabinet Explorer, Editor, GTerm Shell\n");
-    uart_puts_raw(" Controls: Mouse click, type in active window, [Esc]/[Q] to return.\n");
+    uart_puts_raw(" Controls: Mouse click, type in active window, arrow keys navigate.\n");
     uart_puts_raw("==========================================================\n\n");
 
     /* Drain any pending keypresses */
@@ -457,9 +841,13 @@ static void launch_vesa_desktop_session(int active_cores) {
     while (uart_has_char()) (void)uart_getc();
 
     int shift = 0;
+    int s_ps2_extended = 0;
     EVT ev;
 
     for (;;) {
+        if (g_reboot_requested) {
+            break;
+        }
         int need_redraw = 0;
 
 #if defined(BTRON_PC98_TARGET)
@@ -473,19 +861,24 @@ static void launch_vesa_desktop_session(int active_cores) {
 
         if (btron_kbd_has_key()) {
             uint8_t sc = btron_kbd_get_scancode();
-            if (sc == 0x00 || sc == 0x01 || sc == 0x10) { /* Esc or Q */
-                break;
+            if (sc == 0xE0) {
+                s_ps2_extended = 1;
             } else if (sc == 0x2A || sc == 0x36 || sc == 0x70) {
                 shift = 1;
             } else if (sc == 0xAA || sc == 0xB6 || sc == 0xF0) {
                 shift = 0;
-            } else if (!(sc & 0x80)) {
-                char c = btron_kbd_scancode_to_ascii(sc, shift);
-                if (c) {
-                    ev.type = EV_KEY_DOWN;
-                    ev.key = (UW)c;
+            } else {
+                int is_release = (sc & 0x80) ? 1 : 0;
+                uint8_t clean_sc = sc & 0x7F;
+                uint32_t b_key = ps2_scancode_to_btron_key(clean_sc, s_ps2_extended, shift);
+                s_ps2_extended = 0;
+
+                if (b_key != 0) {
+                    ev.type = is_release ? EV_KEY_UP : EV_KEY_DOWN;
+                    ev.key = b_key;
                     ev.pos.x = mouse_x;
                     ev.pos.y = mouse_y;
+                    ev.data = shift ? (VW)(uintptr_t)1 : (VW)0;
                     snd_evt(&ev);
                     need_redraw = 1;
                 }
@@ -494,15 +887,35 @@ static void launch_vesa_desktop_session(int active_cores) {
 
         if (uart_has_char()) {
             char uc = uart_getc();
-            if (uc == 0x1B || uc == 'q' || uc == 'Q' || uc == 0x03) {
-                break;
-            }
-            if (uc == '\r') uc = '\n';
-            if (uc) {
+            if (uc == 0x1B) {
+                /* ANSI escape sequence check (e.g. \x1B [ A for Up arrow) */
+                uint32_t uart_k = BTRON_KEY_ESCAPE;
+                if (uart_has_char()) {
+                    char c2 = uart_getc();
+                    if (c2 == '[') {
+                        if (uart_has_char()) {
+                            char c3 = uart_getc();
+                            if (c3 == 'A') uart_k = BTRON_KEY_UP;
+                            else if (c3 == 'B') uart_k = BTRON_KEY_DOWN;
+                            else if (c3 == 'C') uart_k = BTRON_KEY_RIGHT;
+                            else if (c3 == 'D') uart_k = BTRON_KEY_LEFT;
+                        }
+                    }
+                }
                 ev.type = EV_KEY_DOWN;
-                ev.key = (UW)uc;
+                ev.key = uart_k;
                 ev.pos.x = mouse_x;
                 ev.pos.y = mouse_y;
+                ev.data = (VW)0;
+                snd_evt(&ev);
+                need_redraw = 1;
+            } else if (uc) {
+                if (uc == '\r') uc = '\n';
+                ev.type = EV_KEY_DOWN;
+                ev.key = (uc == '\n') ? BTRON_KEY_RETURN : (UW)(uint8_t)uc;
+                ev.pos.x = mouse_x;
+                ev.pos.y = mouse_y;
+                ev.data = (VW)0;
                 snd_evt(&ev);
                 need_redraw = 1;
             }
@@ -550,7 +963,24 @@ static void launch_vesa_desktop_session(int active_cores) {
         }
     }
 
+#if !defined(BTRON_PC98_TARGET)
+    if (g_virtio_gpu.is_active) {
+        virtio_gpu_pci_disable();
+    }
+#endif
     vesa_restore_text();
+    extern int g_cursor_in_backbuffer;
+    g_cursor_in_backbuffer = 0;
+
+#if !defined(BTRON_PC98_TARGET)
+    /* Disable PS/2 mouse interface and drain controller buffers to return cleanly to text mode */
+    outb(0x64, 0xA7);
+    for (int d = 0; d < 32; d++) {
+        if (inb(0x64) & 0x01) {
+            (void)inb(0x60);
+        }
+    }
+#endif
     render_btron_text_desktop(active_cores);
     kprint("\n[B-SYSTEM] Returned from VESA Desktop to Console Shell.\n\n", 0x0A);
 }
@@ -602,6 +1032,9 @@ static void run_btron_shell(int active_cores) {
     int  shift = 0;
 
     for (;;) {
+        if (g_reboot_requested) {
+            break;
+        }
         char ch = 0;
 
         if (ps2_has_key()) {
@@ -629,8 +1062,14 @@ static void run_btron_shell(int active_cores) {
                     render_btron_text_desktop(active_cores);
                 } else if (strcmp_k(cmd_buf, "desktop") == 0 || strcmp_k(cmd_buf, "startx") == 0 || strcmp_k(cmd_buf, "gui") == 0) {
                     launch_vesa_desktop_session(active_cores);
+                } else if (strcmp_k(cmd_buf, "reboot") == 0 || strcmp_k(cmd_buf, "restart") == 0) {
+                    btron_core_reboot();
                 } else {
                     shell_execute_cmd(cmd_buf, boot_shell_out, NULL, NULL);
+                }
+
+                if (g_reboot_requested) {
+                    break;
                 }
 
                 cmd_len = 0;
@@ -671,6 +1110,7 @@ void kernel_main(void) {
     /* Storage / HFDS — core_smp.c (UEFI) or core_pc98.c (PC-98) */
     uart_puts_raw("\r\n");
     btron_core_hfds_log();
+    btron_storage_probe_and_mount();
 
     /* Graphics — VirtIO-GPU & VESA (real PCI BAR0 scan) */
     uart_puts_raw("\r\n");
@@ -681,81 +1121,198 @@ void kernel_main(void) {
 
 
 
-    /* ── Phase 7: Ski Bootloader Menu ───────────────────────────────── */
-    render_ski_menu();
-
-    uart_puts_raw("==========================================================\r\n");
-    uart_puts_raw(" Ski Bootloader Active — Multi-OS Boot Manager\r\n");
-    uart_puts_raw(" Controls: [W/S] or [Up/Down] Navigate, [+/-] Cores, [Enter] Boot\r\n");
-    uart_puts_raw("==========================================================\r\n");
-    uart_send_menu_update();
-
-    uint8_t prev_scancode = 0;
-
-    while (!s_boot_triggered) {
-        int state_changed = 0;
-
-        if (btron_kbd_has_key()) {
-            uint8_t sc = btron_kbd_get_scancode();
-            if (sc != prev_scancode) {
-                prev_scancode = sc;
-                if (sc == 0x11 || sc == 0x48 || sc == 0x3A) {
-                    s_selected = (s_selected + 2) % 3;
-                    state_changed = 1;
-                } else if (sc == 0x1F || sc == 0x50 || sc == 0x3D) {
-                    s_selected = (s_selected + 1) % 3;
-                    state_changed = 1;
-                } else if (sc == 0x4E || sc == 0x0D || sc == 0x0B) {
-                    if (s_targets[s_selected].cores < 16) s_targets[s_selected].cores++;
-                    state_changed = 1;
-                } else if (sc == 0x4A || sc == 0x0C) {
-                    if (s_targets[s_selected].cores > 1) s_targets[s_selected].cores--;
-                    state_changed = 1;
-                } else if (sc == 0x1C || sc == 0x39 || sc == 0x34) {
-                    s_boot_triggered = 1;
+    /* ── Phase 6.5: Multiboot Cmdline & Installer Detection ────────── */
+    if (g_multiboot_magic == 0x2BADB002 && g_multiboot_info) {
+        uint32_t *mbi = (uint32_t *)g_multiboot_info;
+        uint32_t flags = mbi[0];
+        if (flags & (1 << 2)) {
+            const char *cmd = (const char *)(uintptr_t)mbi[4];
+            if (cmd) {
+                uart_puts_raw("[BOOT] Multiboot cmdline: ");
+                uart_puts_raw(cmd);
+                uart_puts_raw("\r\n");
+                if (strstr_k(cmd, "bootmode=installer") || strstr_k(cmd, "installer")) {
+                    uart_puts_raw("[BOOT] Installer mode detected via cmdline. Bypassing console shell.\r\n");
+                    g_bootmode_installer = 1;
                 }
             }
-        } else {
-            prev_scancode = 0;
-        }
-
-        if (uart_has_char()) {
-            char uc = uart_getc();
-            if (uc == 'w' || uc == 'W' || uc == 'k') {
-                s_selected = (s_selected + 2) % 3;
-                state_changed = 1;
-            } else if (uc == 's' || uc == 'S' || uc == 'j') {
-                s_selected = (s_selected + 1) % 3;
-                state_changed = 1;
-            } else if (uc == '+' || uc == '=') {
-                if (s_targets[s_selected].cores < 16) s_targets[s_selected].cores++;
-                state_changed = 1;
-            } else if (uc == '-' || uc == '_') {
-                if (s_targets[s_selected].cores > 1) s_targets[s_selected].cores--;
-                state_changed = 1;
-            } else if (uc == '\r' || uc == '\n' || uc == ' ') {
-                s_boot_triggered = 1;
-            } else if (uc == 0x1B) {
-                char c2 = uart_getc();
-                if (c2 == '[') {
-                    char c3 = uart_getc();
-                    if (c3 == 'A') { s_selected = (s_selected + 2) % 3; state_changed = 1; }
-                    else if (c3 == 'B') { s_selected = (s_selected + 1) % 3; state_changed = 1; }
-                }
-            }
-        }
-
-        if (state_changed) {
-            render_ski_menu();
-            uart_send_menu_update();
-        }
-
-        for (volatile int d = 0; d < 10000; d++) {
-            __asm__ volatile("pause");
         }
     }
 
-    run_btron_shell(s_targets[s_selected].cores);
+    for (;;) {
+        g_reboot_requested = 0;
+        s_boot_triggered = 0;
+
+        ski_init_targets();
+
+        if (g_bootmode_installer) {
+            for (int t = 0; t < s_target_count; t++) {
+                if (s_targets[t].is_installer) {
+                    s_selected = t;
+                    break;
+                }
+            }
+            s_boot_triggered = 1;
+            g_bootmode_installer = 0;
+        }
+
+        /* ── Phase 7: Ski Bootloader Menu ───────────────────────────────── */
+        if (!s_boot_triggered) {
+            render_ski_menu();
+
+            uart_puts_raw("==========================================================\r\n");
+            uart_puts_raw(" Ski Bootloader Active — Multi-OS Boot Manager\r\n");
+            uart_puts_raw(" Controls: [W/S] or [Up/Down] Navigate, [+/-] Cores, [Enter] Boot\r\n");
+            uart_puts_raw("==========================================================\r\n");
+            uart_send_menu_update();
+
+            uint8_t prev_scancode = 0;
+
+            while (!s_boot_triggered) {
+                int state_changed = 0;
+
+                if (btron_kbd_has_key()) {
+                    uint8_t sc = btron_kbd_get_scancode();
+                    if (sc != prev_scancode) {
+                        prev_scancode = sc;
+                        if (sc == 0x11 || sc == 0x48 || sc == 0x3A) {
+                            s_selected = (s_selected + s_target_count - 1) % s_target_count;
+                            ski_update_scroll();
+                            state_changed = 1;
+                        } else if (sc == 0x1F || sc == 0x50 || sc == 0x3D) {
+                            s_selected = (s_selected + 1) % s_target_count;
+                            ski_update_scroll();
+                            state_changed = 1;
+                        } else if (sc == 0x49) { /* Page Up */
+                            s_selected = (s_selected >= SKI_VISIBLE_ITEMS) ? s_selected - SKI_VISIBLE_ITEMS : 0;
+                            ski_update_scroll();
+                            state_changed = 1;
+                        } else if (sc == 0x51) { /* Page Down */
+                            s_selected = (s_selected + SKI_VISIBLE_ITEMS < s_target_count) ? s_selected + SKI_VISIBLE_ITEMS : s_target_count - 1;
+                            ski_update_scroll();
+                            state_changed = 1;
+                        } else if (sc == 0x47) { /* Home */
+                            s_selected = 0;
+                            ski_update_scroll();
+                            state_changed = 1;
+                        } else if (sc == 0x4F) { /* End */
+                            s_selected = s_target_count - 1;
+                            ski_update_scroll();
+                            state_changed = 1;
+                        } else if (sc >= 0x02 && sc < 0x02 + s_target_count) {
+                            s_selected = sc - 0x02;
+                            ski_update_scroll();
+                            state_changed = 1;
+                        } else if (sc == 0x4E || sc == 0x0D || sc == 0x0B) {
+                            if (s_targets[s_selected].cores < 16) s_targets[s_selected].cores++;
+                            state_changed = 1;
+                        } else if (sc == 0x4A || sc == 0x0C) {
+                            if (s_targets[s_selected].cores > 1) s_targets[s_selected].cores--;
+                            state_changed = 1;
+                        } else if (sc == 0x1C || sc == 0x39 || sc == 0x34) {
+                            s_boot_triggered = 1;
+                        }
+                    }
+                } else {
+                    prev_scancode = 0;
+                }
+
+                if (uart_has_char()) {
+                    char uc = uart_getc();
+                    if (uc == 'w' || uc == 'W' || uc == 'k') {
+                        s_selected = (s_selected + s_target_count - 1) % s_target_count;
+                        ski_update_scroll();
+                        state_changed = 1;
+                    } else if (uc == 's' || uc == 'S' || uc == 'j') {
+                        s_selected = (s_selected + 1) % s_target_count;
+                        ski_update_scroll();
+                        state_changed = 1;
+                    } else if (uc >= '1' && uc < '1' + s_target_count) {
+                        s_selected = uc - '1';
+                        ski_update_scroll();
+                        state_changed = 1;
+                    } else if (uc == '+' || uc == '=') {
+                        if (s_targets[s_selected].cores < 16) s_targets[s_selected].cores++;
+                        state_changed = 1;
+                    } else if (uc == '-' || uc == '_') {
+                        if (s_targets[s_selected].cores > 1) s_targets[s_selected].cores--;
+                        state_changed = 1;
+                    } else if (uc == '\r' || uc == '\n' || uc == ' ') {
+                        s_boot_triggered = 1;
+                    } else if (uc == 0x1B) {
+                        char c2 = uart_getc();
+                        if (c2 == '[') {
+                            char c3 = uart_getc();
+                            if (c3 == 'A') {
+                                s_selected = (s_selected + s_target_count - 1) % s_target_count;
+                                ski_update_scroll();
+                                state_changed = 1;
+                            } else if (c3 == 'B') {
+                                s_selected = (s_selected + 1) % s_target_count;
+                                ski_update_scroll();
+                                state_changed = 1;
+                            } else if (c3 == '5') {
+                                s_selected = (s_selected >= SKI_VISIBLE_ITEMS) ? s_selected - SKI_VISIBLE_ITEMS : 0;
+                                ski_update_scroll();
+                                state_changed = 1;
+                            } else if (c3 == '6') {
+                                s_selected = (s_selected + SKI_VISIBLE_ITEMS < s_target_count) ? s_selected + SKI_VISIBLE_ITEMS : s_target_count - 1;
+                                ski_update_scroll();
+                                state_changed = 1;
+                            } else if (c3 == 'H') {
+                                s_selected = 0;
+                                ski_update_scroll();
+                                state_changed = 1;
+                            } else if (c3 == 'F') {
+                                s_selected = s_target_count - 1;
+                                ski_update_scroll();
+                                state_changed = 1;
+                            }
+                        }
+                    }
+                }
+
+                if (state_changed) {
+                    render_ski_menu();
+                    uart_send_menu_update();
+                }
+
+                for (volatile int d = 0; d < 10000; d++) {
+                    __asm__ volatile("pause");
+                }
+            }
+        }
+
+        if (!s_targets[s_selected].is_installer && s_targets[s_selected].dev_idx >= 0 && !s_targets[s_selected].is_bootable) {
+            uart_puts_raw("[BOOT] Selected volume is not a B-System volume; returning to Ski menu.\r\n");
+            continue;
+        }
+
+        if (s_targets[s_selected].is_installer) {
+            uart_puts_raw("[BOOT] Installer mode selected. Launching VESA desktop directly.\r\n");
+            launch_vesa_desktop_session(s_targets[s_selected].cores);
+        } else {
+            if (s_targets[s_selected].dev_idx >= 0 && s_targets[s_selected].part_idx >= 0) {
+                BlkDev *vdev = blk_virtio_create(s_targets[s_selected].dev_idx);
+                if (vdev) {
+                    BlkDev *part = blk_mbr_find_partition_by_slot(vdev, s_targets[s_selected].part_idx, 1024);
+                    if (!part) {
+                        part = blk_mbr_find_btron_partition_idx(vdev, s_targets[s_selected].part_idx, 1024);
+                    }
+                    if (part) {
+                        Volume *vol = vol_mount(part);
+                        if (vol) {
+                            g_sys_vol = vol;
+                            uart_puts_raw("[BOOT] Freshly installed root /SYS mounted from bootable partition on VirtIO disk ");
+                            uart_putc((char)('0' + s_targets[s_selected].dev_idx));
+                            uart_puts_raw("\r\n");
+                        }
+                    }
+                }
+            }
+            run_btron_shell(s_targets[s_selected].cores);
+        }
+    }
 }
 
 __attribute__((naked, weak)) void _start(void) {
@@ -778,6 +1335,8 @@ __attribute__((naked, weak)) void _start(void) {
     );
 #elif defined(__i386__)
     __asm__ volatile(
+        "movl %%eax, g_multiboot_magic\n"
+        "movl %%ebx, g_multiboot_info\n"
         "movl %0, %%esp\n"
         "xorl %%ebp, %%ebp\n"
         "movl %%cr0, %%eax\n"
@@ -792,6 +1351,7 @@ __attribute__((naked, weak)) void _start(void) {
         "jmp 1b\n"
         :
         : "r"(s_boot_stack + sizeof(s_boot_stack))
+        : "memory"
     );
 #else
     kernel_main();

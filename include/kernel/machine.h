@@ -31,10 +31,13 @@
  * ALLOCA_NOSPT		1 if alloca() is not supported
  */
 
+#if (defined(__arm__) || defined(__aarch64__)) && !defined(BTRON_UEFI_TARGET) && !defined(BTRON_PC98_TARGET) && !defined(__i386__) && !defined(__x86_64__)
 #ifndef _RPI_BCM283x_
 #define _RPI_BCM283x_		1
 #endif
+#endif
 
+#if defined(_RPI_BCM283x_)
 #if (TYPE_RPI == 1)				/*** BCM2835 ***/
 #define CPU_ARM1176			1
 #define CPU_ARMv6			1
@@ -51,6 +54,7 @@
 
 #define CPU_ARM				1
 #define RPI_BCM283x			1
+#endif
 #define ALLOW_MISALIGN		0
 #define BIGENDIAN			0
 #define VIRTUAL_ADDRESS		1

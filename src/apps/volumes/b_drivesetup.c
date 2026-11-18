@@ -21,6 +21,8 @@
 #include <btron/troncode.h>
 #include <btron/app_menu.h>
 #include <btron/event.h>
+#include <btron/libc_shim.h>
+#include <drivers/virtio/virtio_blk.h>
 #include <fs/block.h>
 #include <fs/vol_api.h>
 #include <fs/volume.h>
@@ -104,13 +106,14 @@ void drivesetup_calc_layout(int w, int h, int dev_count, int part_count, DS_Layo
     int btn_h = 32;
     int btn_y = lo->sb_stat.top - 8 - btn_h;
     int avail_btn_w = (w - 20);
-    int spacing = (w >= 680) ? 8 : 4;
-    int b_w = (avail_btn_w - 3 * spacing) / 4;
+    int spacing = (w >= 680) ? 6 : 4;
+    int b_w = (avail_btn_w - 4 * spacing) / 5;
 
     lo->btn1 = (RECT){ 10, btn_y, 10 + b_w, btn_y + btn_h };
     lo->btn2 = (RECT){ 10 + b_w + spacing, btn_y, 10 + 2 * b_w + spacing, btn_y + btn_h };
     lo->btn3 = (RECT){ 10 + 2 * (b_w + spacing), btn_y, 10 + 3 * b_w + 2 * spacing, btn_y + btn_h };
-    lo->btn4 = (RECT){ 10 + 3 * (b_w + spacing), btn_y, w - 10, btn_y + btn_h };
+    lo->btn4 = (RECT){ 10 + 3 * (b_w + spacing), btn_y, 10 + 4 * b_w + 3 * spacing, btn_y + btn_h };
+    lo->btn5 = (RECT){ 10 + 4 * (b_w + spacing), btn_y, w - 10, btn_y + btn_h };
 
     /* 5. Partitions Table (fixed 4 items height = 106px: 2px border + 22px header + 80px items + 2px border) */
     lo->tbl_r.left = 10;
@@ -382,10 +385,22 @@ void b_drivesetup_scroll_partitions(DriveSetupState *st, int delta) {
     if (st->part_scroll_offset > max_scroll) st->part_scroll_offset = max_scroll;
 }
 
-/* Production POSIX Storage Volume Scanner */
+/* Production POSIX / VirtIO Storage Volume Scanner */
+/* Integer-only size formatter (no FPU/SSE needed in freestanding kernels) */
+static void ds_size_str(char *out, size_t n, uint64_t bytes) {
+    uint64_t unit; const char *suf;
+    if (bytes >= (1ULL << 30)) { unit = 1ULL << 30; suf = "GiB"; }
+    else if (bytes >= (1ULL << 20)) { unit = 1ULL << 20; suf = "MiB"; }
+    else { unit = 1ULL << 10; suf = "KiB"; }
+    uint64_t whole = bytes / unit;
+    uint64_t tenth = ((bytes % unit) * 10) / unit;
+    snprintf(out, n, "%llu.%llu %s", (unsigned long long)whole, (unsigned long long)tenth, suf);
+}
+
 void b_drivesetup_scan_devices(DriveSetupState *st) {
     if (!st) return;
 
+#if BTRON_HOSTED
     /* 1. Mount /SYS volume (btron_sys.vol) if backing file exists */
     if (!g_sys_vol) {
         BlkDev *sys_blk = blk_file_create("btron_sys.vol", 0, 0);
@@ -424,6 +439,7 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
             }
         }
     }
+#endif
 
     int prev_count = st->device_count;
     DriveSetupDevice prev_devs[DRIVESETUP_MAX_DEVICES];
@@ -451,6 +467,7 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
             d->partition_count = 1; \
             DriveSetupPartition *p = &d->partitions[0]; \
             memset(p, 0, sizeof(*p)); \
+            p->vol_handle = vol; \
             safe_strcpy(p->dev_path, (filepath), sizeof(p->dev_path)); \
             safe_strcpy(p->label, vol_name(vol), sizeof(p->label)); \
             bool is_v1 = (strcmp((filepath), "btron_sys.vol") == 0 || \
@@ -482,9 +499,9 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
                 if (vol_fid_refcount(vol, fi) > 0) act_cnt++; \
             } \
             p->active_fids = act_cnt; \
-            if (strcmp((filepath), "btron_sys.vol") == 0) safe_strcpy(p->mount_point, "/SYS", sizeof(p->mount_point)); \
-            else if (strcmp((filepath), "btron_anders.vol") == 0) safe_strcpy(p->mount_point, "/ANDERS", sizeof(p->mount_point)); \
-            else if (strcmp((filepath), "hda.qcow2") == 0) safe_strcpy(p->mount_point, "/CHOKANJI", sizeof(p->mount_point)); \
+            if (vol == g_sys_vol || strcmp((filepath), "btron_sys.vol") == 0) safe_strcpy(p->mount_point, "/SYS", sizeof(p->mount_point)); \
+            else if (vol == g_anders_vol || strcmp((filepath), "btron_anders.vol") == 0) safe_strcpy(p->mount_point, "/ANDERS", sizeof(p->mount_point)); \
+            else if (vol == g_chokanji_vol || strcmp((filepath), "hda.qcow2") == 0) safe_strcpy(p->mount_point, "/CHOKANJI", sizeof(p->mount_point)); \
             else safe_strcpy(p->mount_point, "/VOL", sizeof(p->mount_point)); \
             if (st->device_count == 0) { \
                 st->selected_dev_idx = 0; \
@@ -499,6 +516,7 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
     ADD_MOUNTED_VOL(g_chokanji_vol, "hda.qcow2",        "B-right/V 4.02 /CHOKANJI (Chokanji)");
     #undef ADD_MOUNTED_VOL
 
+#if BTRON_HOSTED
     /* Detect unmounted image files if present */
     if (!g_anders_vol && st->device_count < DRIVESETUP_MAX_DEVICES) {
         FILE *fp = fopen("btron_anders.vol", "rb");
@@ -568,6 +586,84 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
             }
         }
     }
+#endif
+
+    /* Detect VirtIO storage devices (freestanding / UEFI or hosted mock storage) */
+    int vdev_cnt = virtio_blk_get_device_count();
+    for (int v_idx = 0; v_idx < vdev_cnt && st->device_count < DRIVESETUP_MAX_DEVICES; v_idx++) {
+        uint64_t cap_sec = virtio_blk_get_capacity(v_idx);
+        if (cap_sec == 0) continue;
+
+        DriveSetupDevice *d = &st->devices[st->device_count++];
+        memset(d, 0, sizeof(*d));
+        snprintf(d->raw_path, sizeof(d->raw_path), "/dev/virtio%d", v_idx);
+        snprintf(d->model, sizeof(d->model), "VirtIO Disk %d", v_idx);
+        d->sector_size = 512;
+        d->total_bytes = cap_sec * 512ULL;
+        d->scheme = PART_SCHEME_MBR;
+
+        uint8_t sec0[512];
+        int read_ok = virtio_blk_read_sectors(v_idx, 0, sec0, 1);
+        bool has_mbr = (read_ok == 0 && sec0[510] == 0x55 && sec0[511] == 0xAA);
+        if (has_mbr) {
+            int pcount = 0;
+            for (int p = 0; p < 4; p++) {
+                const uint8_t *ent = sec0 + 446 + p * 16;
+                uint8_t  type = ent[4];
+                uint32_t start_lba = (uint32_t)ent[8]  | ((uint32_t)ent[9] << 8) |
+                                     ((uint32_t)ent[10] << 16) | ((uint32_t)ent[11] << 24);
+                uint32_t count_sec = (uint32_t)ent[12] | ((uint32_t)ent[13] << 8) |
+                                     ((uint32_t)ent[14] << 16) | ((uint32_t)ent[15] << 24);
+                if (count_sec > 0) {
+                    DriveSetupPartition *part = &d->partitions[pcount++];
+                    memset(part, 0, sizeof(*part));
+                    snprintf(part->dev_path, sizeof(part->dev_path), "/dev/virtio%dp%d", v_idx, p + 1);
+                    safe_strcpy(part->label, (type == 0x13) ? "BTRON Partition" : "FAT/Raw Partition", sizeof(part->label));
+                    part->fs_type = (type == 0x13) ? FS_BFS_V2 : FS_UNKNOWN;
+                    part->type_code = type;
+                    part->start_lba = start_lba;
+                    part->block_count = count_sec;
+                    part->block_size = 512;
+                    part->free_blocks = count_sec > 64 ? count_sec - 64 : 0;
+                    part->mounted = false;
+                    part->bootable = (ent[0] == 0x80);
+
+                    /* Retain mounted state from previous scan if persistent */
+                    for (int pi = 0; pi < prev_count; pi++) {
+                        if (strcmp(prev_devs[pi].raw_path, d->raw_path) == 0) {
+                            for (int pj = 0; pj < prev_devs[pi].partition_count; pj++) {
+                                if (strcmp(prev_devs[pi].partitions[pj].dev_path, part->dev_path) == 0 &&
+                                    prev_devs[pi].partitions[pj].mounted) {
+                                    part->mounted = true;
+                                    part->vol_handle = prev_devs[pi].partitions[pj].vol_handle;
+                                    safe_strcpy(part->mount_point, prev_devs[pi].partitions[pj].mount_point, sizeof(part->mount_point));
+                                    if (prev_devs[pi].partitions[pj].label[0]) {
+                                        safe_strcpy(part->label, prev_devs[pi].partitions[pj].label, sizeof(part->label));
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    /* Check if mapped to a system-wide mounted volume */
+                    int mv_cnt = vol_mounted_count();
+                    for (int mi = 0; mi < mv_cnt; mi++) {
+                        Volume *mv = vol_get_mounted(mi);
+                        if (!mv) continue;
+                        const char *vn = vol_name(mv);
+                        if (vn && vn[0] && strcmp(part->label, vn) == 0) {
+                            part->mounted = true;
+                            part->vol_handle = mv;
+                            snprintf(part->mount_point, sizeof(part->mount_point), "/%s", vn);
+                        }
+                    }
+                }
+            }
+            d->partition_count = pcount;
+        } else {
+            d->partition_count = 0;
+        }
+    }
 
     if (st->device_count > 0) {
         snprintf(st->status_msg, sizeof(st->status_msg),
@@ -618,6 +714,115 @@ bool b_drivesetup_init_disk(DriveSetupState *st, int dev_idx, PartitionScheme sc
     st->selected_part_idx = -1;
     snprintf(st->status_msg, sizeof(st->status_msg), "Initialized %s with %s table",
              dev->raw_path, scheme == PART_SCHEME_GPT ? "GPT" : "MBR");
+    return true;
+}
+
+bool b_drivesetup_make_bootable(DriveSetupState *st, int dev_idx, int part_idx) {
+    if (!st || dev_idx < 0 || dev_idx >= st->device_count) return false;
+    DriveSetupDevice *d = &st->devices[dev_idx];
+    if (part_idx < 0 || part_idx >= d->partition_count) return false;
+    DriveSetupPartition *p = &d->partitions[part_idx];
+
+#if BTRON_HOSTED
+    FILE *fp = fopen(d->raw_path, "r+b");
+    if (!fp) {
+        char alt_path[64];
+        snprintf(alt_path, sizeof(alt_path), ".build/%s", d->raw_path);
+        fp = fopen(alt_path, "r+b");
+    }
+    if (fp) {
+        uint8_t sec0[512];
+        if (fread(sec0, 1, 512, fp) == 512) {
+            sec0[510] = 0x55;
+            sec0[511] = 0xAA;
+            bool has_esp = false;
+            int free_slot = -1;
+            for (int i = 0; i < 4; i++) {
+                uint8_t *ent = sec0 + 446 + i * 16;
+                uint32_t cnt = (uint32_t)ent[12] | ((uint32_t)ent[13] << 8) |
+                               ((uint32_t)ent[14] << 16) | ((uint32_t)ent[15] << 24);
+                if (cnt > 0 && ent[4] == 0xEF) has_esp = true;
+                if (cnt == 0 && free_slot < 0 && i != part_idx) free_slot = i;
+            }
+            if (!has_esp && free_slot >= 0) {
+                uint8_t *esp = sec0 + 446 + free_slot * 16;
+                esp[0] = 0x00;
+                esp[4] = 0xEF;
+                esp[8] = 0x00; esp[9] = 0x08; esp[10] = 0x00; esp[11] = 0x00; /* LBA 2048 */
+                esp[12] = 0x00; esp[13] = 0x80; esp[14] = 0x00; esp[15] = 0x00; /* 32768 */
+            }
+            for (int i = 0; i < 4; i++) {
+                sec0[446 + i * 16] = (i == part_idx) ? 0x80 : 0x00;
+            }
+            if (sec0[446 + part_idx * 16 + 4] == 0) {
+                sec0[446 + part_idx * 16 + 4] = 0x13; /* BTRON type */
+            }
+            fseek(fp, 0, SEEK_SET);
+            fwrite(sec0, 1, 512, fp);
+        }
+        fclose(fp);
+    }
+#else
+    uint8_t sec0[512];
+    if (virtio_blk_read_sectors(dev_idx, 0, sec0, 1) == 0) {
+        sec0[510] = 0x55;
+        sec0[511] = 0xAA;
+        b_drivesetup_ensure_esp(sec0, virtio_blk_get_capacity(dev_idx), part_idx);
+        for (int i = 0; i < 4; i++) {
+            sec0[446 + i * 16] = (i == part_idx) ? 0x80 : 0x00;
+        }
+        if (sec0[446 + part_idx * 16 + 4] == 0) {
+            sec0[446 + part_idx * 16 + 4] = 0x13; /* BTRON */
+        }
+        virtio_blk_write_sectors(dev_idx, 0, sec0, 1);
+    }
+#endif
+
+    for (int i = 0; i < d->partition_count; i++) {
+        d->partitions[i].bootable = (i == part_idx);
+    }
+
+    snprintf(st->status_msg, sizeof(st->status_msg),
+             "Partition %s marked Bootable (Active MBR 0x80)", p->dev_path);
+    return true;
+}
+
+bool b_drivesetup_make_disk_bootable(DriveSetupState *st, int dev_idx) {
+    if (!st || dev_idx < 0 || dev_idx >= st->device_count) return false;
+    DriveSetupDevice *d = &st->devices[dev_idx];
+    d->scheme = PART_SCHEME_MBR;
+
+    if (d->partition_count > 0) {
+        return b_drivesetup_make_bootable(st, dev_idx, 0);
+    }
+
+#if BTRON_HOSTED
+    FILE *fp = fopen(d->raw_path, "r+b");
+    if (!fp) {
+        char alt_path[64];
+        snprintf(alt_path, sizeof(alt_path), ".build/%s", d->raw_path);
+        fp = fopen(alt_path, "r+b");
+    }
+    if (fp) {
+        uint8_t sec0[512];
+        memset(sec0, 0, sizeof(sec0));
+        sec0[0] = 0xEB; sec0[1] = 0xFE;
+        sec0[510] = 0x55; sec0[511] = 0xAA;
+        fseek(fp, 0, SEEK_SET);
+        fwrite(sec0, 1, 512, fp);
+        fclose(fp);
+    }
+#else
+    uint8_t sec0[512];
+    memset(sec0, 0, sizeof(sec0));
+    sec0[0] = 0xEB; sec0[1] = 0xFE;
+    sec0[510] = 0x55; sec0[511] = 0xAA;
+    virtio_blk_write_sectors(dev_idx, 0, sec0, 1);
+#endif
+
+    d->scheme = PART_SCHEME_MBR;
+    snprintf(st->status_msg, sizeof(st->status_msg),
+             "Disk %s initialized with Bootable MBR (0x55AA)", d->model);
     return true;
 }
 
@@ -709,12 +914,14 @@ bool b_drivesetup_create_disk_image_typed(DriveSetupState *st, const char *path,
     char vlabel[32];
     derive_label_from_path(path, vlabel, sizeof(vlabel));
 
+#if BTRON_HOSTED
     /* Attempt to create and initialize the backing file on POSIX host filesystem */
     BlkDev *blk = blk_file_create(path, 1 /*create_new*/, (UW)(size_bytes / 1024));
     if (blk) {
         vol_format(blk, 256, (UW)(size_bytes / 1024), vlabel);
         blk_destroy(blk);
     }
+#endif
 
     DriveSetupDevice *d = &st->devices[st->device_count];
     memset(d, 0, sizeof(*d));
@@ -762,8 +969,9 @@ bool b_drivesetup_create_disk_image_typed(DriveSetupState *st, const char *path,
     st->selected_part_idx = 0;
     st->device_count++;
 
-    snprintf(st->status_msg, sizeof(st->status_msg), "Created disk image %s as %s (%.1f MiB)",
-             path, (fs_type == FS_BFS_V1) ? "B-FS V1" : "B-FS V2", (double)size_bytes / (1024.0 * 1024.0));
+    char sz_s[32]; ds_size_str(sz_s, sizeof(sz_s), size_bytes);
+    snprintf(st->status_msg, sizeof(st->status_msg), "Created disk image %s as %s (%s)",
+             path, (fs_type == FS_BFS_V1) ? "B-FS V1" : "B-FS V2", sz_s);
     return true;
 }
 
@@ -792,6 +1000,7 @@ bool b_drivesetup_format_v1(DriveSetupState *st, int dev_idx, int part_idx,
     p->mounted = false;
     p->dirty = false;
 
+#if BTRON_HOSTED
     /* Write real volume structure to backing file if it exists on disk */
     BlkDev *blk = blk_file_create(dev->raw_path, 0, 0);
     if (!blk) blk = blk_file_create(p->dev_path, 0, 0);
@@ -811,6 +1020,23 @@ bool b_drivesetup_format_v1(DriveSetupState *st, int dev_idx, int part_idx,
         }
         blk_destroy(blk);
     }
+#else
+    if (strncmp(dev->raw_path, "/dev/virtio", 11) == 0) {
+        int vidx = dev->raw_path[11] - '0';
+        BlkDev *blk = blk_virtio_create(vidx);
+        if (blk) {
+            BlkDev *target_dev = blk;
+            if (p->start_lba > 0) {
+                target_dev = blk_partition_create(blk, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
+            }
+            if (target_dev) {
+                vol_format(target_dev, 256, (UW)p->block_count, p->label);
+                if (target_dev != blk) blk_destroy(target_dev);
+            }
+            blk_destroy(blk);
+        }
+    }
+#endif
 
     snprintf(st->status_msg, sizeof(st->status_msg), "Formatted %s as B-FS V1 (%s)",
              p->dev_path, p->label);
@@ -839,6 +1065,7 @@ bool b_drivesetup_format_bfs(DriveSetupState *st, int dev_idx, int part_idx,
     p->mounted = false;
     p->dirty = false;
 
+#if BTRON_HOSTED
     /* Write real volume structure to backing file if it exists on disk */
     BlkDev *blk = blk_file_create(dev->raw_path, 0, 0);
     if (!blk) blk = blk_file_create(p->dev_path, 0, 0);
@@ -858,6 +1085,23 @@ bool b_drivesetup_format_bfs(DriveSetupState *st, int dev_idx, int part_idx,
         }
         blk_destroy(blk);
     }
+#else
+    if (strncmp(dev->raw_path, "/dev/virtio", 11) == 0) {
+        int vidx = dev->raw_path[11] - '0';
+        BlkDev *blk = blk_virtio_create(vidx);
+        if (blk) {
+            BlkDev *target_dev = blk;
+            if (p->start_lba > 0) {
+                target_dev = blk_partition_create(blk, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
+            }
+            if (target_dev) {
+                vol_format(target_dev, 256, (UW)p->block_count, p->label);
+                if (target_dev != blk) blk_destroy(target_dev);
+            }
+            blk_destroy(blk);
+        }
+    }
+#endif
 
     snprintf(st->status_msg, sizeof(st->status_msg), "Formatted %s as B-FS V2 (%s)",
              p->dev_path, p->label);
@@ -874,6 +1118,7 @@ bool b_drivesetup_mount(DriveSetupState *st, int dev_idx, int part_idx) {
 
     Volume *v = (Volume *)p->vol_handle;
     if (!v) {
+#if BTRON_HOSTED
         BlkDev *b = NULL;
         if (strstr(dev->raw_path, ".qcow2") != NULL) {
             const char *qcow2_paths[] = { dev->raw_path, "hda.qcow2", "../hda.qcow2", "PMC/chokanji_4_qemu/hda.qcow2", "../PMC/chokanji_4_qemu/hda.qcow2", NULL };
@@ -914,6 +1159,21 @@ bool b_drivesetup_mount(DriveSetupState *st, int dev_idx, int part_idx) {
                 }
             }
         }
+#else
+        if (strncmp(dev->raw_path, "/dev/virtio", 11) == 0) {
+            int vidx = dev->raw_path[11] - '0';
+            BlkDev *b = blk_virtio_create(vidx);
+            if (b) {
+                BlkDev *target_dev = b;
+                if (p->start_lba > 0) {
+                    target_dev = blk_partition_create(b, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
+                }
+                if (target_dev) {
+                    v = vol_mount(target_dev);
+                }
+            }
+        }
+#endif
     }
 
     if (v) {
@@ -944,6 +1204,17 @@ bool b_drivesetup_mount(DriveSetupState *st, int dev_idx, int part_idx) {
         snprintf(st->status_msg, sizeof(st->status_msg), "Mounted %s to real system (Clean)", p->dev_path);
     }
     p->mounted = true;
+
+    /* Sync to global g_drivesetup_state if called on a local copy */
+    if (st != &g_drivesetup_state && dev_idx < g_drivesetup_state.device_count) {
+        if (part_idx < g_drivesetup_state.devices[dev_idx].partition_count) {
+            DriveSetupPartition *gp = &g_drivesetup_state.devices[dev_idx].partitions[part_idx];
+            gp->mounted = true;
+            gp->vol_handle = p->vol_handle;
+            safe_strcpy(gp->label, p->label, sizeof(gp->label));
+            safe_strcpy(gp->mount_point, p->mount_point, sizeof(gp->mount_point));
+        }
+    }
     return true;
 }
 
@@ -973,6 +1244,16 @@ bool b_drivesetup_unmount(DriveSetupState *st, int dev_idx, int part_idx) {
 
     p->mounted = false;
     safe_strcpy(p->mount_point, "Unmounted", sizeof(p->mount_point));
+
+    /* Sync to global g_drivesetup_state if called on a local copy */
+    if (st != &g_drivesetup_state && dev_idx < g_drivesetup_state.device_count) {
+        if (part_idx < g_drivesetup_state.devices[dev_idx].partition_count) {
+            DriveSetupPartition *gp = &g_drivesetup_state.devices[dev_idx].partitions[part_idx];
+            gp->mounted = false;
+            gp->vol_handle = NULL;
+            safe_strcpy(gp->mount_point, "Unmounted", sizeof(gp->mount_point));
+        }
+    }
     snprintf(st->status_msg, sizeof(st->status_msg), "Unmounted %s from real system", p->dev_path);
     return true;
 }
@@ -1423,6 +1704,9 @@ static void drivesetup_init_menu_bar(DriveSetupState *st) {
     app_menu_add_item(&st->menu_bar, h1,
         "B-FS フォーマット (Format)...",
         "Ctrl+F", DSCMD_PART_FMT_BFS, TRUE);
+    app_menu_add_item(&st->menu_bar, h1,
+        "ブート可能に設定 (Make Bootable)",
+        "Ctrl+B", DSCMD_PART_MAKE_BOOTABLE, TRUE);
 
     /* 3. マウント(M) */
     int h2 = app_menu_add_header(&st->menu_bar, "マウント(M)", 96);
@@ -1495,6 +1779,16 @@ static void drivesetup_dispatch_cmd(WND *wnd, DriveSetupState *st, int cmd) {
         case DSCMD_PART_FMT_BFS:
             b_drivesetup_open_dialog(st, DIALOG_FORMAT_BFS);
             break;
+        case DSCMD_PART_MAKE_BOOTABLE:
+            if (st->selected_dev_idx >= 0 && st->selected_part_idx >= 0 &&
+                st->selected_dev_idx < st->device_count) {
+                b_drivesetup_make_bootable(st, st->selected_dev_idx, st->selected_part_idx);
+            } else if (st->selected_dev_idx >= 0 && st->selected_dev_idx < st->device_count) {
+                b_drivesetup_make_disk_bootable(st, st->selected_dev_idx);
+            } else {
+                safe_strcpy(st->status_msg, "Select a partition or disk to make bootable", sizeof(st->status_msg));
+            }
+            break;
         case DSCMD_MOUNT_VOLUME:
             if (st->selected_dev_idx >= 0 && st->selected_part_idx >= 0) {
                 DriveSetupPartition *p = &st->devices[st->selected_dev_idx].partitions[st->selected_part_idx];
@@ -1517,6 +1811,7 @@ static void drivesetup_dispatch_cmd(WND *wnd, DriveSetupState *st, int cmd) {
                 safe_strcpy(st->status_msg, "Select a partition to unmount", sizeof(st->status_msg));
             }
             break;
+#if BTRON_HOSTED
         case DSCMD_MOUNT_SYS: {
             if (!g_sys_vol) {
                 BlkDev *sys_blk = blk_file_create("btron_sys.vol", 0, 0);
@@ -1565,6 +1860,13 @@ static void drivesetup_dispatch_cmd(WND *wnd, DriveSetupState *st, int cmd) {
             safe_strcpy(st->status_msg, g_chokanji_vol ? "Mounted hda.qcow2 as /CHOKANJI" : "Failed to mount hda.qcow2", sizeof(st->status_msg));
             break;
         }
+#else
+        case DSCMD_MOUNT_SYS:
+        case DSCMD_MOUNT_ANDERS:
+        case DSCMD_MOUNT_QCOW2:
+            safe_strcpy(st->status_msg, "File image mounting not available on freestanding target", sizeof(st->status_msg));
+            break;
+#endif
         case DSCMD_VIEW_REFRESH:
             b_drivesetup_scan_devices(st);
             safe_strcpy(st->status_msg, "Refreshed storage devices", sizeof(st->status_msg));
@@ -1651,14 +1953,14 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
         drw_tc_string(dev, lo.dev_box.left + 44, y + 2, d->raw_path, fg, bg);
 
         /* Model & Capacity (Truncated gracefully to prevent overflow into scheme badge) */
-        double gib = (double)d->total_bytes / (1024.0 * 1024.0 * 1024.0);
+        char gib[32]; ds_size_str(gib, sizeof(gib), d->total_bytes);
         char dev_info[128];
         int avail_info_w = (lo.sb_x - 68) - (lo.dev_box.left + 180);
         if (avail_info_w > 120) {
-            snprintf(dev_info, sizeof(dev_info), "%-20s (%.1f GiB)", d->model, gib);
+            snprintf(dev_info, sizeof(dev_info), "%-20s (%s)", d->model, gib);
             drw_tc_string(dev, lo.dev_box.left + 180, y + 2, dev_info, fg, bg);
         } else if (avail_info_w > 50) {
-            snprintf(dev_info, sizeof(dev_info), "(%.1f GiB)", gib);
+            snprintf(dev_info, sizeof(dev_info), "(%s)", gib);
             drw_tc_string(dev, lo.dev_box.left + 180, y + 2, dev_info, fg, bg);
         }
 
@@ -1702,11 +2004,11 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
                 drw_rec(dev, &s);
             }
 
-            double sz_gib = (double)((uint64_t)part->block_count * part->block_size) / (1024.0 * 1024.0 * 1024.0);
-            char s_hdr[48];
+            char sz_gib[32]; ds_size_str(sz_gib, sizeof(sz_gib), (uint64_t)part->block_count * part->block_size);
+            char s_hdr[64];
             char s_sub[48];
             if (slice_w >= 100) {
-                snprintf(s_hdr, sizeof(s_hdr), "[%d] %s (%.1fG)", p + 1, part->label, sz_gib);
+                snprintf(s_hdr, sizeof(s_hdr), "[%d] %s (%s)", p + 1, part->label, sz_gib);
                 drw_tc_string(dev, s.left + 6, s.top + 3, s_hdr, COLOR_WHITE, scol);
                 if (part->fs_type == FS_BFS_V1) {
                     snprintf(s_sub, sizeof(s_sub), "B-FS V1 Standard");
@@ -1719,7 +2021,7 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
                 }
                 drw_tc_string(dev, s.left + 6, s.top + 19, s_sub, COLOR_CYAN, scol);
             } else {
-                snprintf(s_hdr, sizeof(s_hdr), "[%d] %.1fG", p + 1, sz_gib);
+                snprintf(s_hdr, sizeof(s_hdr), "[%d] %s", p + 1, sz_gib);
                 drw_tc_string(dev, s.left + 4, s.top + 3, s_hdr, COLOR_WHITE, scol);
                 drw_tc_string(dev, s.left + 4, s.top + 19, (part->fs_type == FS_BFS_V1) ? "V1" : ((part->fs_type == FS_RAW) ? "RAW" : "V2"), COLOR_CYAN, scol);
             }
@@ -1733,10 +2035,10 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
             fill_rec(dev, &s_free, DS_COL_SLICE_FREE);
             paint_beveled_box(dev, &s_free, false);
 
-            double free_gib = (total_sec > alloc_sec) ?
-                (double)((total_sec - alloc_sec) * sec_sz) / (1024.0 * 1024.0 * 1024.0) : 0.0;
-            char f_str[48];
-            snprintf(f_str, sizeof(f_str), "[Free] (%.1fG)", free_gib);
+            char free_gib[32];
+            ds_size_str(free_gib, sizeof(free_gib), (total_sec > alloc_sec) ? (total_sec - alloc_sec) * sec_sz : 0);
+            char f_str[64];
+            snprintf(f_str, sizeof(f_str), "[Free] (%s)", free_gib);
             drw_tc_string(dev, s_free.left + 6, s_free.top + 3, f_str, COLOR_BLACK, DS_COL_SLICE_FREE);
             drw_tc_string(dev, s_free.left + 6, s_free.top + 19, "Unallocated", COLOR_DKGRAY, DS_COL_SLICE_FREE);
         }
@@ -1813,18 +2115,21 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
             drw_tc_string(dev, lo.col_type + 6, y + 2, fs_cell, fg, bg);
 
             /* Size cell */
-            double sz_gib = (double)(part->block_count * part->block_size) / (1024.0 * 1024.0 * 1024.0);
             char sz_str[32];
-            snprintf(sz_str, sizeof(sz_str), "%.1f GiB", sz_gib);
+            ds_size_str(sz_str, sizeof(sz_str), (uint64_t)part->block_count * part->block_size);
             drw_tc_string(dev, lo.col_fs + 6, y + 2, sz_str, fg, bg);
 
             /* Status cell with green badge pip */
+            const char *boot_suffix = part->bootable ? " [Boot]" : "";
+            char stat_text[32];
             if (part->mounted) {
                 RECT pip = { lo.col_size + 6, y + 5, lo.col_size + 14, y + 13 };
                 fill_rec(dev, &pip, is_sel ? COLOR_WHITE : DS_COL_STATUS_OK);
-                drw_tc_string(dev, lo.col_size + 18, y + 2, "Mounted", is_sel ? COLOR_WHITE : DS_COL_STATUS_OK, bg);
+                snprintf(stat_text, sizeof(stat_text), "Mounted%s", boot_suffix);
+                drw_tc_string(dev, lo.col_size + 18, y + 2, stat_text, is_sel ? COLOR_WHITE : DS_COL_STATUS_OK, bg);
             } else {
-                drw_tc_string(dev, lo.col_size + 6, y + 2, "Unmounted", is_sel ? COLOR_WHITE : COLOR_DKGRAY, bg);
+                snprintf(stat_text, sizeof(stat_text), "Unmounted%s", boot_suffix);
+                drw_tc_string(dev, lo.col_size + 6, y + 2, stat_text, is_sel ? COLOR_WHITE : (part->bootable ? DS_COL_STATUS_WARN : COLOR_DKGRAY), bg);
             }
 
             /* Features cell */
@@ -1863,16 +2168,11 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
         char l1[64], l2[64], l3[64], l4[64];
         snprintf(l1, sizeof(l1), "Label / Mount:  \"%s\" (%s)", sel->label, sel->mount_point[0] ? sel->mount_point : (sel->mounted ? "Mounted" : "Unmounted"));
 
-        uint64_t total_bytes = sel->block_count * sel->block_size;
-        if (total_bytes >= 1024ULL * 1024ULL * 1024ULL) {
-            snprintf(l2, sizeof(l2), "Capacity:       %.2f GiB (%llu blks)",
-                     (double)total_bytes / (1024.0 * 1024.0 * 1024.0),
-                     (unsigned long long)sel->block_count);
-        } else {
-            snprintf(l2, sizeof(l2), "Capacity:       %.1f MiB (%llu blks)",
-                     (double)total_bytes / (1024.0 * 1024.0),
-                     (unsigned long long)sel->block_count);
-        }
+        uint64_t total_bytes = (uint64_t)sel->block_count * sel->block_size;
+        char cap_s[32];
+        ds_size_str(cap_s, sizeof(cap_s), total_bytes);
+        snprintf(l2, sizeof(l2), "Capacity:       %s (%llu blks)", cap_s,
+                 (unsigned long long)sel->block_count);
 
         if (sel->mounted && sel->fs_type != FS_RAW) {
             snprintf(l3, sizeof(l3), "Space Usage:    %llu used / %llu free",
@@ -1907,7 +2207,7 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
                               ((sel->fs_type == FS_BFS_V2) ? "B-FS V2" :
                               ((sel->fs_type == FS_CHOKANJI) ? "Chokanji" :
                               ((sel->fs_type == FS_RAW) ? "RAW" : "FAT32")));
-        snprintf(r1, sizeof(r1), "Format / Type:  %s (0x%02X)", fs_name, sel->type_code);
+        snprintf(r1, sizeof(r1), "Format / Type:  %s (0x%02X)%s", fs_name, sel->type_code, sel->bootable ? " [Boot]" : "");
         snprintf(r2, sizeof(r2), "Block / Sector: %u B / %u B", sel->block_size, cur_d->sector_size ? cur_d->sector_size : 512);
 
         if (sel->fs_type == FS_BFS_V1) {
@@ -1936,15 +2236,17 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
 
     /* 6. Action Pushbuttons Bar (Evenly Distributed) */
     int bw = lo.btn1.right - lo.btn1.left;
-    const char *lbl1 = (bw >= 120) ? "\xe3\x83\x87\xe3\x82\xa3\xe3\x82\xb9\xe3\x82\xaf\xe5\x88\x9d\xe6\x9c\x9f\xe5\x8c\x96..." : "\xe5\x88\x9d\xe6\x9c\x9f\xe5\x8c\x96...";
-    const char *lbl2 = (bw >= 120) ? "\xe5\x8c\xba\xe7\x94\xbb\xe4\xbd\x9c\xe6\x88\x90..." : "\xe4\xbd\x9c\xe6\x88\x90...";
-    const char *lbl3 = (bw >= 120) ? "B-FS \xe3\x83\x95\xe3\x82\xa9\xe3\x83\xbc\xe3\x83\x9e\xe3\x83\x83\xe3\x83\x88..." : "\xe6\x9b\xb8\xe5\xbc\x8f\xe5\x8c\x96...";
-    const char *lbl4 = (bw >= 120) ? "\xe3\x83\x9e\xe3\x82\xa6\xe3\x83\xb3\xe3\x83\x88\xe5\x88\x87\xe6\x9b\xbf" : "\xe6\x8e\xa5\xe7\xb6\x9a\xe5\x88\x87\xe6\x9b\xbf";
+    const char *lbl1 = (bw >= 90) ? "\xe3\x83\x87\xe3\x82\xa3\xe3\x82\xb9\xe3\x82\xaf\xe5\x88\x9d\xe6\x9c\x9f\xe5\x8c\x96..." : "\xe5\x88\x9d\xe6\x9c\x9f\xe5\x8c\x96...";
+    const char *lbl2 = (bw >= 90) ? "\xe5\x8c\xba\xe7\x94\xbb\xe4\xbd\x9c\xe6\x88\x90..." : "\xe4\xbd\x9c\xe6\x88\x90...";
+    const char *lbl3 = (bw >= 90) ? "B-FS \xe3\x83\x95\xe3\x82\xa9\xe3\x83\xbc\xe3\x83\x9e\xe3\x83\x83\xe3\x83\x88..." : "\xe6\x9b\xb8\xe5\xbc\x8f\xe5\x8c\x96...";
+    const char *lbl4 = (bw >= 90) ? "\xe3\x83\x96\xe3\x83\xbc\xe3\x83\x88\xe8\xa8\xad\xe5\xae\x9a" : "\xe3\x83\x96\xe3\x83\xbc\xe3\x83\x88";
+    const char *lbl5 = (bw >= 90) ? "\xe3\x83\x9e\xe3\x82\xa6\xe3\x83\xb3\xe3\x83\x88\xe5\x88\x87\xe6\x9b\xbf" : "\xe6\x8e\xa5\xe7\xb6\x9a";
 
     paint_ui_button(dev, &lo.btn1, lbl1, false, false);
     paint_ui_button(dev, &lo.btn2, lbl2, false, false);
     paint_ui_button(dev, &lo.btn3, lbl3, false, false);
     paint_ui_button(dev, &lo.btn4, lbl4, false, false);
+    paint_ui_button(dev, &lo.btn5, lbl5, false, false);
 
     /* 7. Status Bar at window bottom */
     fill_rec(dev, &lo.sb_stat, DS_COL_BG);
@@ -2572,6 +2874,15 @@ void drivesetup_event_handler(WND *wnd, const EVT *evt) {
                 inval_wnd(wnd);
                 return;
             } else if (rel_x >= lo.btn4.left && rel_x <= lo.btn4.right) {
+                if (st->selected_dev_idx >= 0 && st->selected_part_idx >= 0 &&
+                    st->selected_dev_idx < st->device_count) {
+                    b_drivesetup_make_bootable(st, st->selected_dev_idx, st->selected_part_idx);
+                } else if (st->selected_dev_idx >= 0 && st->selected_dev_idx < st->device_count) {
+                    b_drivesetup_make_disk_bootable(st, st->selected_dev_idx);
+                }
+                inval_wnd(wnd);
+                return;
+            } else if (rel_x >= lo.btn5.left && rel_x <= lo.btn5.right) {
                 if (st->selected_dev_idx >= 0 && st->selected_part_idx >= 0) {
                     DriveSetupPartition *part = &st->devices[st->selected_dev_idx].partitions[st->selected_part_idx];
                     if (part->mounted) {
@@ -2631,4 +2942,54 @@ WND* open_drivesetup_window(void) {
     g_drivesetup_wnd->menu_open = drivesetup_menu_open;
 
     return g_drivesetup_wnd;
+}
+
+/* Ensure the MBR carries an ESP (0xEF) marker entry, placed in free LBA space so it
+ * never overlaps user slices. Ski only lists partitions on disks that have an ESP.
+ * Returns true if an ESP exists on return. */
+bool b_drivesetup_ensure_esp(uint8_t *mbr, uint64_t capacity_sectors, int exclude_slot) {
+    if (!mbr) return false;
+    int free_slot = -1;
+    uint32_t st_[4], ct_[4];
+    for (int i = 0; i < 4; i++) {
+        const uint8_t *ent = mbr + 446 + i * 16;
+        st_[i] = (uint32_t)ent[8] | ((uint32_t)ent[9] << 8) | ((uint32_t)ent[10] << 16) | ((uint32_t)ent[11] << 24);
+        ct_[i] = (uint32_t)ent[12] | ((uint32_t)ent[13] << 8) | ((uint32_t)ent[14] << 16) | ((uint32_t)ent[15] << 24);
+        if (ct_[i] > 0 && ent[4] == 0xEF) return true;
+        if (ct_[i] == 0 && free_slot < 0 && i != exclude_slot) free_slot = i;
+    }
+    if (free_slot < 0) return false;
+
+    /* Candidate gaps: [1, first start), between partitions, after last end. Pick largest. */
+    uint64_t best_start = 0, best_len = 0;
+    uint64_t cursor = 1;
+    for (int round = 0; round < 5; round++) {
+        /* next partition start >= cursor */
+        uint64_t next_start = capacity_sectors ? capacity_sectors : 0xFFFFFFFFull;
+        uint64_t next_end = 0;
+        bool found = false;
+        for (int i = 0; i < 4; i++) {
+            if (ct_[i] == 0) continue;
+            if (st_[i] >= cursor && st_[i] < next_start) {
+                next_start = st_[i]; next_end = (uint64_t)st_[i] + ct_[i]; found = true;
+            }
+        }
+        if (next_start > cursor && next_start - cursor > best_len) {
+            best_start = cursor; best_len = next_start - cursor;
+        }
+        if (!found) break;
+        cursor = next_end;
+    }
+    if (best_len < 64) return false;
+    if (best_start < 64 && best_len > 64 + 64) { best_len -= (64 - best_start); best_start = 64; }
+    if (best_len > 32768) best_len = 32768;
+
+    uint8_t *esp = mbr + 446 + free_slot * 16;
+    esp[0] = 0x00;
+    esp[4] = 0xEF;
+    esp[8]  = (uint8_t)best_start; esp[9]  = (uint8_t)(best_start >> 8);
+    esp[10] = (uint8_t)(best_start >> 16); esp[11] = (uint8_t)(best_start >> 24);
+    esp[12] = (uint8_t)best_len; esp[13] = (uint8_t)(best_len >> 8);
+    esp[14] = (uint8_t)(best_len >> 16); esp[15] = (uint8_t)(best_len >> 24);
+    return true;
 }

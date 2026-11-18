@@ -29,6 +29,8 @@ void render_desktop_background(GDEV *dev);
 void render_desktop_background_rect(GDEV *dev, const RECT *damage);
 void render_system_panel(GDEV *dev);
 BOOL desktop_handle_click(H x, H y);
+void desktop_set_icons_visible(BOOL visible);
+BOOL desktop_get_icons_visible(void);
 BTRON_DESKTOP* get_btron_desktop(void);
 GDEV* init_baremetal_desktop(uint32_t *fb, uint32_t w, uint32_t h);
 /* Record the size init_baremetal_desktop() was given, so apps that ask

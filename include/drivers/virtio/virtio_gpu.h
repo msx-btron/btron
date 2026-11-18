@@ -221,6 +221,7 @@ int  virtio_gpu_pci_probe(void);
 int  virtio_gpu_pci_init(uint16_t width, uint16_t height, void *fb_mem);
 void virtio_gpu_pci_flush(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void virtio_gpu_pci_flush_all(void);
+void virtio_gpu_pci_disable(void);
 
 #ifdef __cplusplus
 }

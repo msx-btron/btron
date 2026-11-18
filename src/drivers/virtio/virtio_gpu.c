@@ -416,3 +416,14 @@ void virtio_gpu_pci_flush_all(void) {
     if (!g_virtio_gpu.is_active) return;
     virtio_gpu_pci_flush(0, 0, g_virtio_gpu.width, g_virtio_gpu.height);
 }
+
+void virtio_gpu_pci_disable(void) {
+    /* A VirtIO device reset clears the scanout, which hands the display back to
+     * legacy VGA text mode (virtio-vga). Setting scanout to resource 0 alone
+     * leaves the screen blank, so reset the device instead. */
+    if (!g_virtio_gpu.is_active || !g_virtio_gpu.common_cfg) return;
+    g_virtio_gpu.common_cfg->device_status = 0;
+    for (volatile int d = 0; d < 100000; d++) __asm__ volatile("pause");
+    g_virtio_gpu.is_active = false;
+    g_virtio_gpu.desc = 0; g_virtio_gpu.avail = 0; g_virtio_gpu.used = 0;
+}

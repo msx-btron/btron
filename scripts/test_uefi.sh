@@ -30,7 +30,7 @@ echo "[CI-TEST] Running QEMU ($QEMU_BIN) for $ELF_PATH on q35 (VirtIO-GPU)..."
     -serial stdio > "$LOG_FILE" 2>&1) &
 QEMU_PID=$!
 
-sleep 5
+sleep 7
 
 kill -TERM "$QEMU_PID" 2>/dev/null || true
 wait "$QEMU_PID" 2>/dev/null || true

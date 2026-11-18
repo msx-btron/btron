@@ -2297,18 +2297,23 @@ WND* open_clarity_window(void)
     }
     g_wnd = NULL;
 
-    /* Make Osal Book opened by default in Clarity if available */
+    /* Dynamically probe for Osal Book across hosted and freestanding filesystems */
     BOOL has_osal = FALSE;
     const char *osal_dir = "./assets/osal";
-#if BTRON_HOSTED
     struct stat st_osal;
-    if (stat(osal_dir, &st_osal) == 0 && S_ISDIR(st_osal.st_mode)) {
+    if (stat("./assets/osal/dkar.chag.txt", &st_osal) == 0 || (stat("./assets/osal", &st_osal) == 0 && S_ISDIR(st_osal.st_mode))) {
+        osal_dir = "./assets/osal";
         has_osal = TRUE;
-    } else if (stat("assets/osal", &st_osal) == 0 && S_ISDIR(st_osal.st_mode)) {
+    } else if (stat("assets/osal/dkar.chag.txt", &st_osal) == 0 || (stat("assets/osal", &st_osal) == 0 && S_ISDIR(st_osal.st_mode))) {
         osal_dir = "assets/osal";
         has_osal = TRUE;
+    } else if (stat("/SYS/dkar.chag.txt", &st_osal) == 0) {
+        osal_dir = "/SYS";
+        has_osal = TRUE;
+    } else if (stat("dkar.chag.txt", &st_osal) == 0) {
+        osal_dir = "/SYS";
+        has_osal = TRUE;
     }
-#endif
 
     int clr_x = has_osal ? 330 : 40;
     int clr_y = has_osal ? 44  : 36;

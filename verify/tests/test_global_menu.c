@@ -39,6 +39,7 @@ WND* open_audio_player_window(void)         { return NULL; }
 WND* open_orchestra_window(void)            { return NULL; }
 WND* open_display_settings_window(void)     { return NULL; }
 WND* open_drivesetup_window(void)           { return NULL; }
+WND* open_installer_window(void)            { return NULL; }
 WND* launch_beos_chat(void)                 { return NULL; }
 WND* open_clarity_window(void)              { return NULL; }
 WND* open_review_window(void)               { return NULL; }

@@ -41,6 +41,8 @@ __WEAK_APP WND* open_paint_window(void);
 __WEAK_APP WND* open_paint_window_with_file(const char *filepath);
 __WEAK_APP WND* open_paint_about_window(void);
 __WEAK_APP WND* open_drivesetup_window(void);
+__WEAK_APP WND* open_installer_window(void);
+__WEAK_APP WND* open_clarity_window(void);
 __WEAK_APP WND* launch_beos_chat(void);
 __WEAK_APP WND* open_quake_window(int x, int y, int width, int height);
 __WEAK_APP WND* open_mars_window(void);

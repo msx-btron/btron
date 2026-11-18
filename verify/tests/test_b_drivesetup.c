@@ -31,6 +31,8 @@
 #include <fs/vol_api.h>
 #include "../../src/apps/volumes/b_drivesetup.h"
 
+void uart_puts_raw(const char *str) { (void)str; }
+
 /* clu.c's launcher table takes the address of every app the shell can open.  An
  * opener that is not linked reads NULL there on ELF, which is what lets one table
  * name apps a target does not build; the Mach-O linker these host tests use rejects
@@ -61,6 +63,9 @@ ER drw_lin(GDEV *dev, H x1, H y1, H x2, H y2) {
 ER drw_rec(GDEV *dev, const RECT *r) {
     (void)dev; (void)r;
     return 0;
+}
+void set_col(GDEV *dev, COLOR fg, COLOR bg) {
+    (void)dev; (void)fg; (void)bg;
 }
 int tc_calc_string_width(const char *s) {
     return s ? (int)strlen(s) * 8 : 0;
@@ -528,7 +533,7 @@ static void test_window_resize_responsiveness(void) {
         assert(lo.dev_box.left == 10);
         assert(lo.dev_box.right == w - 10);
         assert(lo.btn1.left == 10);
-        assert(lo.btn4.right == w - 10);
+        assert(lo.btn5.right == w - 10);
         assert(lo.sb_stat.left == 10);
         assert(lo.sb_stat.right == w - 10);
         assert(lo.sb_stat.bottom == h - 6);
@@ -549,6 +554,7 @@ static void test_window_resize_responsiveness(void) {
         assert(lo.btn2.right > lo.btn2.left);
         assert(lo.btn3.right > lo.btn3.left);
         assert(lo.btn4.right > lo.btn4.left);
+        assert(lo.btn5.right > lo.btn5.left);
     }
 
     printf("  PASS: Layout calculations adapt seamlessly across all resolutions.\n");
@@ -1056,6 +1062,44 @@ static void test_e2e_full_lifecycle_and_clu_browsing(void) {
     printf("  PASS: Arbitrary device ('%s') and volume ('%s') lifecycle and CLU browsability verified.\n", custom_img, custom_vol);
 }
 
+static void test_make_bootable(void) {
+    printf("[14/14] Testing Make Bootable (Partition and Disk)...\n");
+    DriveSetupState st;
+    b_drivesetup_init(&st);
+
+    /* Create a test disk */
+    const char *test_disk = "boot_test.vol";
+    remove(test_disk);
+    assert(b_drivesetup_create_disk_image(&st, test_disk, 8 * 1024 * 1024));
+    assert(st.device_count > 0);
+    int dev_idx = st.device_count - 1;
+
+    /* Created image has 1 initial partition */
+    assert(st.devices[dev_idx].partition_count >= 1);
+    assert(!st.devices[dev_idx].partitions[0].bootable);
+
+    /* Make partition bootable */
+    assert(b_drivesetup_make_bootable(&st, dev_idx, 0));
+    assert(st.devices[dev_idx].partitions[0].bootable);
+    assert(strstr(st.status_msg, "Bootable") != NULL);
+
+    /* Verify MBR sector on disk */
+    FILE *fp = fopen(test_disk, "rb");
+    assert(fp != NULL);
+    uint8_t sec0[512];
+    assert(fread(sec0, 1, 512, fp) == 512);
+    fclose(fp);
+    assert(sec0[510] == 0x55 && sec0[511] == 0xAA);
+    assert(sec0[446] == 0x80); /* Active boot flag */
+
+    /* Test make disk bootable */
+    assert(b_drivesetup_make_disk_bootable(&st, dev_idx));
+    assert(st.devices[dev_idx].scheme == PART_SCHEME_MBR);
+
+    remove(test_disk);
+    printf("  PASS: Partition and Disk bootable state transitions and MBR signature verified.\n");
+}
+
 int main(void) {
     printf("==========================================================\n");
     printf(" B-System Production DriveSetup (b_drivesetup) Test Suite\n");
@@ -1075,9 +1119,10 @@ int main(void) {
     test_pure_gui_and_menus();
     test_warning_dialog_and_write_safety();
     test_e2e_full_lifecycle_and_clu_browsing();
+    test_make_bootable();
 
     printf("\n==========================================================\n");
-    printf(" ALL 13 DRIVESETUP TEST SUITES PASSED SUCCESSFULLY (100.0%%)\n");
+    printf(" ALL 14 DRIVESETUP TEST SUITES PASSED SUCCESSFULLY (100.0%%)\n");
     printf("==========================================================\n");
     return 0;
 }

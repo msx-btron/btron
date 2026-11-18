@@ -34,6 +34,49 @@ FILE "PUBLISH.md"         MD    doc/md/PUBLISH.md
 FILE "README.md"          MD    doc/md/README.md
 FILE "SMP.md"             MD    doc/md/SMP.md
 FILE "TAD.md"             MD    doc/md/TAD.md
+FILE "OSAL.md"            MD    doc/md/OSAL.md
+
+# Longchen Osal Tibetan Texts (for Clarity DTP & in-OS TAD construction)
+FILE "dkar.chag.txt"          TXT   assets/osal/dkar.chag.txt
+FILE "'od.gsal.txt"            TXT   "assets/osal/'od.gsal.txt"
+FILE "bar.do.txt"             TXT   assets/osal/bar.do.txt
+FILE "bka'.brgyad.txt"        TXT   "assets/osal/bka'.brgyad.txt"
+FILE "bla.ma.rnal.'byor.txt"  TXT   "assets/osal/bla.ma.rnal.'byor.txt"
+FILE "chod.txt"               TXT   assets/osal/chod.txt
+FILE "dbang.txt"              TXT   assets/osal/dbang.txt
+FILE "dbu.ma.txt"             TXT   assets/osal/dbu.ma.txt
+FILE "dge.bsngo.txt"          TXT   assets/osal/dge.bsngo.txt
+FILE "dgon.mdzod.txt"         TXT   assets/osal/dgon.mdzod.txt
+FILE "dkyil.'khor.txt"        TXT   "assets/osal/dkyil.'khor.txt"
+FILE "gtum.mo.txt"            TXT   assets/osal/gtum.mo.txt
+FILE "index.txt"              TXT   assets/osal/index.txt
+FILE "khregs.chod.txt"        TXT   assets/osal/khregs.chod.txt
+FILE "khrus.txt"              TXT   assets/osal/khrus.txt
+FILE "lam.rim.txt"            TXT   assets/osal/lam.rim.txt
+FILE "lha.srung.txt"          TXT   assets/osal/lha.srung.txt
+FILE "lha.txt"                TXT   assets/osal/lha.txt
+FILE "lo.rgyud.txt"           TXT   assets/osal/lo.rgyud.txt
+FILE "mchod.pa.txt"           TXT   assets/osal/mchod.pa.txt
+FILE "mkha'.'gro.txt"         TXT   "assets/osal/mkha'.'gro.txt"
+FILE "nang.gsang.rnal.'byor.txt" TXT "assets/osal/nang.gsang.rnal.'byor.txt"
+FILE "rgyud.txt"              TXT   assets/osal/rgyud.txt
+FILE "rnal.'byor.spyod.pa.txt" TXT  "assets/osal/rnal.'byor.spyod.pa.txt"
+FILE "rnam.thar.txt"          TXT   assets/osal/rnam.thar.txt
+FILE "rtsa.rlung.thig.txt"    TXT   assets/osal/rtsa.rlung.thig.txt
+FILE "sems.sde.txt"           TXT   assets/osal/sems.sde.txt
+FILE "sgrub.thabs.txt"        TXT   assets/osal/sgrub.thabs.txt
+FILE "skong.bshags.txt"       TXT   assets/osal/skong.bshags.txt
+FILE "smon.lam.txt"           TXT   assets/osal/smon.lam.txt
+FILE "sngags.txt"             TXT   assets/osal/sngags.txt
+FILE "sngon.'gro.txt"         TXT   "assets/osal/sngon.'gro.txt"
+FILE "test.txt"               TXT   assets/osal/test.txt
+FILE "thod.rgal.txt"          TXT   assets/osal/thod.rgal.txt
+FILE "tshe.sgrub.txt"         TXT   assets/osal/tshe.sgrub.txt
+FILE "tshogs.txt"             TXT   assets/osal/tshogs.txt
+FILE "yang.ti.txt"            TXT   assets/osal/yang.ti.txt
+FILE "yon.tan.mdzod.txt"      TXT   assets/osal/yon.tan.mdzod.txt
+FILE "zhi.gnas.txt"           TXT   assets/osal/zhi.gnas.txt
+FILE "zhi.khro.txt"           TXT   assets/osal/zhi.khro.txt
 
 # assets/texts — Classic texts
 FILE "BTRON3_Report.txt"         TXT   assets/texts/BTRON3_Report.txt

@@ -53,6 +53,7 @@ __attribute__((weak, weak_import)) WND* open_paint_window(void);
 __attribute__((weak, weak_import)) WND* open_paint_about_window(void);
 __attribute__((weak, weak_import)) WND* open_chat_main_window(void *client);
 __attribute__((weak, weak_import)) WND* open_drivesetup_window(void);
+__attribute__((weak, weak_import)) WND* open_installer_window(void);
 __attribute__((weak, weak_import)) WND* open_quake_window(int x, int y, int width, int height);
 __attribute__((weak, weak_import)) WND* open_msx_window(void);
 __attribute__((weak, weak_import)) WND* open_lilcu64_demo_window(void);
@@ -87,6 +88,7 @@ extern WND* open_paint_about_window(void);
 extern WND* open_mars_window(void);
 extern WND* open_chat_main_window(void *client);
 extern WND* open_drivesetup_window(void);
+extern WND* open_installer_window(void);
 extern WND* open_chokanji_cabinet_window(void);
 extern WND* open_chokanji_doc_window(void);
 extern WND* open_chokanji_microscript_window(void);
@@ -168,7 +170,7 @@ static GMenuHeader g_headers[GMENU_HEADER_COUNT] = {
     {
         .title = "アプリ(A)",
         .rect = { 216, 2, 320, 23 },
-        .item_count = 25,
+        .item_count = 26,
         .items = {
             /* General B-System apps */
             { "Editor (文書編集...)",                "Ctrl+E", GMENU_CMD_APP_TEDITOR,    FALSE, FALSE, TRUE },
@@ -177,6 +179,7 @@ static GMenuHeader g_headers[GMENU_HEADER_COUNT] = {
             { "管弦楽 (Orchestra DAW...)",            "",       GMENU_CMD_APP_ORCHESTRA,  FALSE, FALSE, TRUE },
             { "Mail & Chat (対話通信...)",            "",       GMENU_CMD_APP_CHAT,       FALSE, FALSE, TRUE },
             { "DriveSetup (ディスク管理...)",         "",       GMENU_CMD_APP_DRIVESETUP, FALSE, FALSE, TRUE },
+            { "Installer (OS導入・複製...)",          "",       GMENU_CMD_APP_INSTALLER,  FALSE, FALSE, TRUE },
             { "電子帳票 (Clarity DTP...)",            "",       GMENU_CMD_APP_CLARITY,    FALSE, FALSE, TRUE },
             { "校正・閲覧 (Review PDF Reader...)",    "Ctrl+R", GMENU_CMD_APP_REVIEW,     FALSE, FALSE, TRUE },
             { "ペイント (Paint Image Viewer...)",     "",       GMENU_CMD_APP_PAINT,      FALSE, FALSE, TRUE },
@@ -535,6 +538,9 @@ static void global_menu_execute_cmd(int cmd) {
             break;
         case GMENU_CMD_APP_DRIVESETUP:
             if (open_drivesetup_window) open_drivesetup_window();
+            break;
+        case GMENU_CMD_APP_INSTALLER:
+            if (open_installer_window) open_installer_window();
             break;
         case GMENU_CMD_APP_CLARITY:
             if (open_clarity_window) open_clarity_window();

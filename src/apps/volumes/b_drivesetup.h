@@ -40,6 +40,7 @@ typedef enum {
     DSCMD_PART_CREATE       = 22,
     DSCMD_PART_DELETE       = 23,
     DSCMD_PART_FMT_BFS      = 24,
+    DSCMD_PART_MAKE_BOOTABLE= 25,
     DSCMD_MOUNT_VOLUME      = 30,
     DSCMD_UNMOUNT_VOLUME    = 31,
     DSCMD_MOUNT_SYS         = 32,
@@ -96,6 +97,7 @@ typedef struct {
     uint32_t        btree_node_size;                 /* 1024, 2048, 4096, 8192 */
     bool            mounted;
     bool            dirty;
+    bool            bootable;                        /* True if MBR status is 0x80 (Active / Bootable) */
     uint32_t        features;                        /* FEAT_* flags */
     uint32_t        journal_blocks;
     uint32_t        vector_dim;
@@ -193,6 +195,9 @@ void b_drivesetup_handle_cmd(DriveSetupState *st, int cmd);
 
 /* Actions */
 bool b_drivesetup_init_disk(DriveSetupState *st, int dev_idx, PartitionScheme scheme);
+bool b_drivesetup_make_bootable(DriveSetupState *st, int dev_idx, int part_idx);
+bool b_drivesetup_ensure_esp(uint8_t *mbr, uint64_t capacity_sectors, int exclude_slot);
+bool b_drivesetup_make_disk_bootable(DriveSetupState *st, int dev_idx);
 bool b_drivesetup_delete_partition(DriveSetupState *st, int dev_idx, int part_idx);
 bool b_drivesetup_create_slice(DriveSetupState *st, int dev_idx, const char *label, uint64_t size_bytes);
 bool b_drivesetup_create_disk_image(DriveSetupState *st, const char *path, uint64_t size_bytes);
@@ -245,7 +250,7 @@ typedef struct {
     RECT insp_r;
 
     /* 5. Action Buttons (evenly distributed horizontally across width) */
-    RECT btn1, btn2, btn3, btn4;
+    RECT btn1, btn2, btn3, btn4, btn5;
 
     /* 6. Status Bar */
     RECT sb_stat;

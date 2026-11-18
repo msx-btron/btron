@@ -262,16 +262,23 @@ ER cls_wnd(WND *wnd) {
     if (!wnd_mgr_contains(wnd)) return E_PAR;
 
     wnd_mgr_window_destroyed(wnd);
+
+    /* Unlink from z-stack immediately so re-entrant calls or walks cannot find it */
+    if (wnd->prev) wnd->prev->next = wnd->next;
+    if (wnd->next) wnd->next->prev = wnd->prev;
+    if (g_wnd_head == wnd) g_wnd_head = wnd->next;
+    wnd->prev = NULL;
+    wnd->next = NULL;
+
     if (wnd->destroy) {
         wnd->destroy(wnd);
     }
 
-    if (wnd->prev) wnd->prev->next = wnd->next;
-    if (wnd->next) wnd->next->prev = wnd->prev;
-    if (g_wnd_head == wnd) g_wnd_head = wnd->next;
-
     if (s_gl_rr_last == wnd) s_gl_rr_last = NULL;
     if (s_gl_pick == wnd) s_gl_pick = NULL;
+    if (s_gl_scope_owner == wnd) s_gl_scope_owner = NULL;
+    if (s_gl_rect_last_wnd == wnd) s_gl_rect_last_wnd = NULL;
+    if (s_gdev_oom_wnd == wnd) s_gdev_oom_wnd = NULL;
 
     if (g_wnd_head) {
         g_wnd_head->focused = TRUE;
@@ -284,21 +291,15 @@ ER cls_wnd(WND *wnd) {
     /* The vacated rect is desktop (and possibly lower windows) from now on. */
     wnd_inval_rect(&wnd->bounds);
 
-    /* Closing the layer window ends the layer: the next composite draws desktop into that rect,
-     * and a present path that still believed a stream was pending would draw it over desktop. */
-    if (wnd->gl_layer) {
-        s_gl_pending = FALSE;
-        s_gl_layer_recorded = 0;
-        s_gl_cover_n = 0;
-        s_gl_cover_dropped = 0;
-        s_gl_cover_merged = 0;
-        /* The rect cache is keyed by window, and this window is about to be freed -- a later layer
-         * allocated at the same address must not inherit the dead one's rect. */
-        if (s_gl_rect_last_wnd == wnd) s_gl_rect_last_wnd = NULL;
-    }
+    /* Closing any layer window ends the layer unconditionally */
+    s_gl_pending = FALSE;
+    s_gl_layer_recorded = 0;
+    s_gl_cover_n = 0;
+    s_gl_cover_dropped = 0;
+    s_gl_cover_merged = 0;
 
-    if (s_gdev_oom_wnd == wnd) s_gdev_oom_wnd = NULL;
     if (wnd->dev) cls_dev(wnd->dev);
+    wnd->dev = NULL;
     free(wnd);
     return E_OK;
 }
@@ -1021,7 +1022,7 @@ static void draw_retro_window_frame(GDEV *dev, WND *wnd, BOOL layer_records) {
         RECT tab_r;
         wget_tab_rect(wnd, &tab_r);
 
-        /* BeOS / CWM Minimalist Bold Palette: Iconic Gold when focused, Clean Silver when unfocused */
+        /* Canonical BTRON: Tab label background matches window body (COLOR_LTGRAY) */
         COLOR tab_bg = wnd->focused ? COLOR_GOLD : COLOR_LTGRAY;
         COLOR title_col = wnd->focused ? COLOR_BLACK : COLOR_DKGRAY;
 

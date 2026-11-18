@@ -32,6 +32,7 @@ WND* open_gterm_window(void)        { s_term_opened++; return NULL; }
 WND* open_audio_player_window(void) { s_audio_opened++; return NULL; }
 WND* open_orchestra_window(void)    { return NULL; }
 WND* open_drivesetup_window(void)   { s_drivesetup_opened++; return NULL; }
+WND* open_installer_window(void)    { return NULL; }
 WND* launch_beos_chat(void)         { s_chat_opened++; return NULL; }
 WND* open_clarity_window(void)      { s_clarity_opened++; return NULL; }
 WND* open_xmb_window(void)          { s_xmb_opened++; return NULL; }

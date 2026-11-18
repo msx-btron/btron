@@ -116,6 +116,17 @@ void clu_sync_cmd(const char *args, ShellOutputFn out, void *ud)
     clu_cmd_sync(args, out, ud);
 }
 
+__attribute__((weak)) void btron_core_reboot(void)
+{
+}
+
+void clu_reboot(const char *args, ShellOutputFn out, void *ud)
+{
+    (void)args;
+    if (out) out("Rebooting B-System (returning to Ski Bootloader)...", COLOR_YELLOW, ud);
+    btron_core_reboot();
+}
+
 void clu_forth(const char *args, ShellOutputFn out, void *ud)
 {
     clu_cmd_forth(args, out, ud);
@@ -153,6 +164,8 @@ __attribute__((weak)) WND *open_audio_player_window(void) { return NULL; }
 __attribute__((weak)) WND *launch_beos_chat(void) { return NULL; }
 __attribute__((weak)) WND *open_control_panel_window(void) { return NULL; }
 __attribute__((weak)) WND *open_drivesetup_window(void) { return NULL; }
+__attribute__((weak)) WND *open_installer_window(void) { return NULL; }
+__attribute__((weak)) WND *open_clarity_window(void) { return NULL; }
 __attribute__((weak)) WND *open_paint_window(void) { return NULL; }
 __attribute__((weak)) void clu_cmd_mars(const char *args, ShellOutputFn out, void *ud)
 {
@@ -246,7 +259,13 @@ static const CluApp s_clu_apps[] = {
     { "player",     "Audio Player / Cassette Deck",             open_audio_player_window },
     { "chat",       "Interactive Dialogue / Blabber Chat",      launch_beos_chat },
     { "settings",   "Control Panel & System Settings",          open_control_panel_window },
-    { "volumes",    "Disk & Volume Partition Setup",            open_drivesetup_window },
+    { "volumes",    "Disk & Volume Partition Setup (DriveSetup)",open_drivesetup_window },
+    { "drivesetup", "Disk & Volume Partition Setup (DriveSetup)",open_drivesetup_window },
+    { "installer",  "B-System Workstation Disk Installer",       open_installer_window },
+    { "install",    "B-System Workstation Disk Installer",       open_installer_window },
+    { "inst",       "B-System Workstation Disk Installer",       open_installer_window },
+    { "clarity",    "Clarity Desktop Publishing (DTP)",          open_clarity_window },
+    { "dtp",        "Clarity Desktop Publishing (DTP)",          open_clarity_window },
     { "paint",      "Paint Drawing Tool",                       open_paint_window },
 };
 
@@ -276,6 +295,11 @@ BOOL clu_launch_app(const char *verb, ShellOutputFn out, void *ud)
     if (strncmp(v, "bin/", 4) == 0) v += 4;
     if (strncmp(v, "/SYS/", 5) == 0) v += 5;
     if (strncmp(v, "SYS/", 4) == 0) v += 4;
+
+    if (strcmp(v, "reboot") == 0 || strcmp(v, "restart") == 0) {
+        clu_reboot("", out, ud);
+        return TRUE;
+    }
 
     for (unsigned i = 0; i < sizeof(s_clu_apps) / sizeof(s_clu_apps[0]); i++) {
         const CluApp *a = &s_clu_apps[i];

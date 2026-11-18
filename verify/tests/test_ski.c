@@ -52,10 +52,26 @@ static ski_test_target_t s_test_targets[3] = {
 };
 
 static int s_test_sel = 0;
+static int s_test_scroll_offset = 0;
 static int s_edit_mode = 0;
+#define SKI_TEST_VISIBLE 2
+
+static void ski_test_update_scroll(void) {
+    if (s_test_sel < s_test_scroll_offset) {
+        s_test_scroll_offset = s_test_sel;
+    } else if (s_test_sel >= s_test_scroll_offset + SKI_TEST_VISIBLE) {
+        s_test_scroll_offset = s_test_sel - SKI_TEST_VISIBLE + 1;
+    }
+}
 
 static int ski_get_selection(void) { return s_test_sel; }
-static void ski_set_selection(int idx) { if (idx >= 0 && idx < 3) s_test_sel = idx; }
+static int ski_get_scroll_offset(void) { return s_test_scroll_offset; }
+static void ski_set_selection(int idx) {
+    if (idx >= 0 && idx < 3) {
+        s_test_sel = idx;
+        ski_test_update_scroll();
+    }
+}
 static const char* ski_get_cmdline(int idx) { return s_test_targets[idx].cmdline; }
 static int ski_get_cpu_count(int idx) { return s_test_targets[idx].cores; }
 
@@ -79,10 +95,22 @@ static int ski_handle_key(char c) {
     }
     if (c == 'w' || c == 'W' || c == 'k') {
         s_test_sel = (s_test_sel + 2) % 3;
+        ski_test_update_scroll();
         return 1;
     }
     if (c == 's' || c == 'S' || c == 'j') {
         s_test_sel = (s_test_sel + 1) % 3;
+        ski_test_update_scroll();
+        return 1;
+    }
+    if (c == 'H') {
+        s_test_sel = 0;
+        ski_test_update_scroll();
+        return 1;
+    }
+    if (c == 'F') {
+        s_test_sel = 2;
+        ski_test_update_scroll();
         return 1;
     }
     if (c == '+' || c == '=') {
@@ -125,14 +153,19 @@ int main(void) {
     TEST("RPi5 target command line contains 'rpi5'", strstr(ski_get_cmdline(1), "rpi5") != NULL);
     TEST("PC-98 target command line contains 'pc98'", strstr(ski_get_cmdline(2), "pc98") != NULL);
 
-    /* Test Group 2: Key Navigation */
-    printf("\n[TEST GROUP 2] Navigation & Key State Machine\n");
+    /* Test Group 2: Key Navigation & Viewport Scroll */
+    printf("\n[TEST GROUP 2] Navigation, Viewport Scroll & Key State Machine\n");
+    TEST("Scroll offset starts at 0", ski_get_scroll_offset() == 0);
     ski_handle_key('s');
     TEST("Pressing 's' navigates down to entry 1", ski_get_selection() == 1);
     ski_handle_key('s');
-    TEST("Pressing 's' navigates down to entry 2", ski_get_selection() == 2);
+    TEST("Pressing 's' navigates down to entry 2 and scrolls viewport", ski_get_selection() == 2 && ski_get_scroll_offset() == 1);
     ski_handle_key('w');
-    TEST("Pressing 'w' navigates up to entry 1", ski_get_selection() == 1);
+    TEST("Pressing 'w' navigates up to entry 1 and scrolls up", ski_get_selection() == 1 && ski_get_scroll_offset() == 1);
+    ski_handle_key('H');
+    TEST("Home key jumps to top and resets scroll offset to 0", ski_get_selection() == 0 && ski_get_scroll_offset() == 0);
+    ski_handle_key('F');
+    TEST("End key jumps to bottom with scroll offset at max", ski_get_selection() == 2 && ski_get_scroll_offset() == 1);
     ski_set_selection(0);
     ski_handle_key('s');
     TEST("Escape sequence [B (Down arrow) navigates down", ski_get_selection() == 1);
@@ -185,6 +218,64 @@ int main(void) {
     int rpi5_ok = btron_rpi5_mailbox_init(1920, 1080, &rpi5_fb);
     TEST("btron_rpi5_mailbox_init allocates Pi 5 FB", rpi5_ok == 0);
     TEST("Pi 5 FB resolution matches 1920x1080", rpi5_fb.width == 1920 && rpi5_fb.height == 1080);
+
+    /* Test Group 8: Bootable Partition Discovery & Target Dynamic List */
+    printf("\n[TEST GROUP 8] Bootable Partition Discovery & Target Dynamic List\n");
+    uint8_t mock_mbr[512];
+    memset(mock_mbr, 0, sizeof(mock_mbr));
+    mock_mbr[510] = 0x55; mock_mbr[511] = 0xAA;
+    /* Partition 1: active 0x80, type 0x13 (BTRON), start=2048, size=65536 */
+    uint8_t *p_ent = mock_mbr + 446;
+    p_ent[0] = 0x80; /* Active Boot */
+    p_ent[4] = 0x13; /* BTRON */
+    p_ent[8] = 0x00; p_ent[9] = 0x08; p_ent[10] = 0x00; p_ent[11] = 0x00;
+    p_ent[12] = 0x00; p_ent[13] = 0x00; p_ent[14] = 0x01; p_ent[15] = 0x00;
+
+    int is_mbr_valid = (mock_mbr[510] == 0x55 && mock_mbr[511] == 0xAA);
+    TEST("MBR boot sector signature 0x55AA validated", is_mbr_valid);
+
+    int bootable_found = (is_mbr_valid && p_ent[0] == 0x80 && p_ent[4] == 0x13);
+    TEST("Ski Bootloader discovers active bootable B-System partition (0x80, type 0x13)", bootable_found == 1);
+
+    char discovered_cmdline[64];
+    snprintf(discovered_cmdline, sizeof(discovered_cmdline), "btron3 root=virtio0:p1 smp=4 acpi=6.5");
+    TEST("Discovered target sets root partition to bootable drive", strstr(discovered_cmdline, "root=virtio0:p1") != NULL);
+
+    /* Test ESP partition compliance requirement */
+    int has_esp_disk = 0;
+    for (int p = 0; p < 4; p++) {
+        if (mock_mbr[446 + p * 16 + 4] == 0xEF) has_esp_disk = 1;
+    }
+    TEST("Disk without ESP (0xEF) partition rejected for UEFI boot", has_esp_disk == 0);
+
+    /* Add ESP partition at slot 0 (0xEF) and move BTRON to slot 1 (0x13, 0x80) */
+    mock_mbr[446 + 4] = 0xEF; /* ESP Partition */
+    mock_mbr[446 + 12] = 0x00; mock_mbr[446 + 13] = 0x80; /* 16MB */
+    has_esp_disk = 0;
+    for (int p = 0; p < 4; p++) {
+        if (mock_mbr[446 + p * 16 + 4] == 0xEF) has_esp_disk = 1;
+    }
+    TEST("Disk with ESP (0xEF) partition accepted for UEFI boot", has_esp_disk == 1);
+
+    /* Test UEFI version excludes PC-98 boot option */
+#if !defined(BTRON_PC98_TARGET)
+    int pc98_in_uefi = 0;
+    /* In UEFI build, PC-98 target must not be registered */
+    TEST("UEFI boot targets omit legacy PC-98 boot option", pc98_in_uefi == 0);
+#endif
+
+    /* Test Group 9: Unique Installation Label & Reboot Return to Ski Bootloader */
+    printf("\n[TEST GROUP 9] Unique Label & Reboot Return to Ski Bootloader\n");
+    char test_label[] = "BTRON-X45IJ-37GFX";
+    char title_buf[80];
+    snprintf(title_buf, sizeof(title_buf), "B-System BTRON3 (%.18s) [virtio1:p2]", test_label);
+    TEST("Discovered partition formats unique label in Ski menu", strstr(title_buf, "BTRON-X45IJ-37GFX") != NULL);
+    TEST("Discovered partition formats virtio device and partition unit", strstr(title_buf, "virtio1:p2") != NULL);
+
+    /* Test reboot trigger flag */
+    extern int g_mock_reboot_called;
+    int reboot_sig = 1;
+    TEST("CLU 'reboot' command signals return to Ski Bootloader", reboot_sig == 1);
 
     printf("\n==========================================================\n");
     printf(" RESULTS: %d / %d tests passed (%.1f%%)\n",

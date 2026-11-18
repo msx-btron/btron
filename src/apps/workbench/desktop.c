@@ -147,6 +147,24 @@ static BOOL  s_bg_cached = FALSE;
 static H     s_bg_w;   /* the canvas s_cached_bg currently holds */
 static H     s_bg_h;
 static BTRON_ICON_SIZE s_bg_icon_size;  /* the icon size it was painted at */
+static BOOL  s_bg_icons_visible = TRUE;
+static BOOL  s_desktop_icons_visible = TRUE;
+
+void desktop_set_icons_visible(BOOL visible) {
+    if (s_desktop_icons_visible != visible) {
+        s_desktop_icons_visible = visible;
+        s_bg_cached = FALSE;
+        const GDEV *scr = wnd_mgr_get_screen();
+        if (scr) {
+            RECT whole = { 0, 0, scr->width, scr->height };
+            wnd_inval_damage_rect(&whole);
+        }
+    }
+}
+
+BOOL desktop_get_icons_visible(void) {
+    return s_desktop_icons_visible;
+}
 
 /* What the cached plates depend on: the canvas they were painted into, and the
  * icon size `get_desktop_icon_layout()` was reading while painting them.  The
@@ -158,6 +176,7 @@ static BOOL bg_cache_holds(const GDEV *dev)
 {
     return s_bg_cached && dev->width == s_bg_w && dev->height == s_bg_h &&
            s_bg_icon_size == appearance_get_icon_size() &&
+           s_bg_icons_visible == s_desktop_icons_visible &&
            (uint32_t)dev->width * (uint32_t)dev->height <= BTRON_BG_CAP_PX;
 }
 
@@ -185,33 +204,35 @@ void render_desktop_background(GDEV *dev) {
     }
 
     /* Desktop Icons / Pictogram Real Bodys */
-    int icon_count = (int)(sizeof(s_desktop_icons) / sizeof(s_desktop_icons[0]));
-    for (int i = 0; i < icon_count; i++) {
-        int icon_dim, icon_x, icon_y, lbl_x, lbl_y;
-        RECT plate;
-        get_desktop_icon_layout(i, &icon_dim, &plate, &icon_x, &icon_y, &lbl_x, &lbl_y, NULL);
+    if (s_desktop_icons_visible) {
+        int icon_count = (int)(sizeof(s_desktop_icons) / sizeof(s_desktop_icons[0]));
+        for (int i = 0; i < icon_count; i++) {
+            int icon_dim, icon_x, icon_y, lbl_x, lbl_y;
+            RECT plate;
+            get_desktop_icon_layout(i, &icon_dim, &plate, &icon_x, &icon_y, &lbl_x, &lbl_y, NULL);
 
-        /* Icon Plate Background */
-        fill_rec(dev, &plate, COLOR_LTGRAY);
-        drw_rec(dev, &plate);
+            /* Icon Plate Background */
+            fill_rec(dev, &plate, COLOR_LTGRAY);
+            drw_rec(dev, &plate);
 
-        /* Scaled Pictogram Icon (32x32 or 64x64 according to Appearance settings) */
-        BOOL icon_drawn = draw_setting_gif_icon_scaled(dev, s_desktop_icons[i].id_str, icon_x, icon_y, icon_dim, icon_dim);
+            /* Scaled Pictogram Icon (32x32 or 64x64 according to Appearance settings) */
+            BOOL icon_drawn = draw_setting_gif_icon_scaled(dev, s_desktop_icons[i].id_str, icon_x, icon_y, icon_dim, icon_dim);
 
 #if !BTRON_HOSTED
-        if (!icon_drawn) {
-            /* Fallback kanji glyph for freestanding baremetal mode if icon not available */
-            drw_tc_string(dev, plate.left + (plate.right - plate.left - 24) / 2,
-                               plate.top + (plate.bottom - plate.top - 16) / 2,
-                               s_desktop_icons[i].glyph, s_desktop_icons[i].glyph_col, 0x00000000);
-        }
+            if (!icon_drawn) {
+                /* Fallback kanji glyph for freestanding baremetal mode if icon not available */
+                drw_tc_string(dev, plate.left + (plate.right - plate.left - 24) / 2,
+                                   plate.top + (plate.bottom - plate.top - 16) / 2,
+                                   s_desktop_icons[i].glyph, s_desktop_icons[i].glyph_col, 0x00000000);
+            }
 #else
-        (void)icon_drawn;
+            (void)icon_drawn;
 #endif
 
-        /* High-contrast label with shadow */
-        drw_tc_string(dev, lbl_x + 1, lbl_y + 1, s_desktop_icons[i].label, COLOR_BLACK, 0x00000000);
-        drw_tc_string(dev, lbl_x, lbl_y, s_desktop_icons[i].label, COLOR_WHITE, 0x00000000);
+            /* High-contrast label with shadow */
+            drw_tc_string(dev, lbl_x + 1, lbl_y + 1, s_desktop_icons[i].label, COLOR_BLACK, 0x00000000);
+            drw_tc_string(dev, lbl_x, lbl_y, s_desktop_icons[i].label, COLOR_WHITE, 0x00000000);
+        }
     }
 
     if ((uint32_t)dev->width * (uint32_t)dev->height <= BTRON_BG_CAP_PX) {
@@ -222,6 +243,7 @@ void render_desktop_background(GDEV *dev) {
         s_bg_w = dev->width;
         s_bg_h = dev->height;
         s_bg_icon_size = appearance_get_icon_size();
+        s_bg_icons_visible = s_desktop_icons_visible;
         s_bg_cached = TRUE;
     }
 }
@@ -264,6 +286,9 @@ void render_desktop_background_rect(GDEV *dev, const RECT *damage) {
 }
 
 BOOL desktop_handle_click(H x, H y) {
+    if (!s_desktop_icons_visible) {
+        return FALSE;
+    }
     int icon_count = (int)(sizeof(s_desktop_icons) / sizeof(s_desktop_icons[0]));
     for (int i = 0; i < icon_count; i++) {
         RECT hit;

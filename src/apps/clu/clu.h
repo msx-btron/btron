@@ -67,6 +67,7 @@ void clu_list_apps(ShellOutputFn out, void *ud);
 void clu_sc       (const char *args, ShellOutputFn out, void *ud);
 void clu_tv       (const char *args, ShellOutputFn out, void *ud);
 void clu_be       (const char *args, ShellOutputFn out, void *ud);
+void clu_reboot   (const char *args, ShellOutputFn out, void *ud);
 
 /* ── Document Processing System (DPS) ────────────────────────────── */
 void clu_sps      (const char *args, ShellOutputFn out, void *ud);

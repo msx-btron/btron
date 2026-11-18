@@ -378,7 +378,7 @@ void ext_tsk(void) {
         s_smp_tasks[idx].sleeping = FALSE;
     }
     s_current_task_idx = -1;
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(__i386__)
     if (s_scheduler_sp) {
         void *dummy = NULL;
         btron_ctx_switch(&dummy, s_scheduler_sp);
@@ -415,7 +415,7 @@ ER slp_tsk(void) {
         s_smp_tasks[idx].sleeping = TRUE;
         s_smp_tasks[idx].runnable = FALSE;
         s_current_task_idx = -1;
-#if defined(__x86_64__)
+#if defined(__x86_64__) || defined(__i386__)
         if (s_scheduler_sp) {
             btron_ctx_switch(&s_smp_tasks[idx].sp, s_scheduler_sp);
         }

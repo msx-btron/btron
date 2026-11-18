@@ -376,4 +376,21 @@ long ftell(FILE *stream)
     return (long)f->pos;
 }
 
+char *fgets(char *s, int size, FILE *stream)
+{
+    if (!s || size <= 1 || !stream) return NULL;
+    int idx = 0;
+    while (idx < size - 1) {
+        char ch;
+        if (fread(&ch, 1, 1, stream) != 1) {
+            if (idx == 0) return NULL;
+            break;
+        }
+        s[idx++] = ch;
+        if (ch == '\n') break;
+    }
+    s[idx] = '\0';
+    return s;
+}
+
 #endif /* !BTRON_HOSTED */

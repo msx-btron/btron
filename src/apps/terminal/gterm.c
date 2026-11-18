@@ -689,6 +689,8 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
         out_fn("  chat                - Launch BeOS Chat instance", COLOR_LTGRAY, user_data);
         out_fn("  audio               - Launch Audio Player instance", COLOR_LTGRAY, user_data);
         out_fn("  cabinet             - Launch Cabinet Explorer instance", COLOR_LTGRAY, user_data);
+        out_fn("  volumes, drivesetup - Launch DriveSetup Partition Manager", COLOR_LTGRAY, user_data);
+        out_fn("  installer, inst     - Launch B-System Workstation Installer", COLOR_LTGRAY, user_data);
         out_fn("  term, gterm         - Launch new Terminal instance", COLOR_LTGRAY, user_data);
         out_fn("  date                - Current system time & date", COLOR_LTGRAY, user_data);
         out_fn("  clear, cls          - Clear terminal screen", COLOR_LTGRAY, user_data);
@@ -841,8 +843,8 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
             out_fn("  SMP Engine : Live & Scheduled", COLOR_YELLOW, user_data);
         }
         return;
-    } else if (strcmp(cmd, "reboot") == 0 || strcmp(cmd, "halt") == 0) {
-        out_fn("B-System kernel halting processor...", COLOR_YELLOW, user_data);
+    } else if (strcmp(cmd, "reboot") == 0 || strcmp(cmd, "restart") == 0 || strcmp(cmd, "halt") == 0) {
+        out_fn("B-System restarting (returning to Ski Bootloader)...", COLOR_YELLOW, user_data);
         btron_core_reboot();
         return;
     } else if (strcmp(cmd, "ps") == 0) {

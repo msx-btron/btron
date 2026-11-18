@@ -116,7 +116,6 @@ int clarity_check_file_integrity(const char *path, ClarityFileIntegrity *out_inf
         return -1;
     }
 
-#if BTRON_HOSTED
     struct stat st;
     if (stat(path, &st) != 0) {
         if (out_info) strncpy(out_info->err_msg, "File not found", 63);
@@ -171,12 +170,6 @@ int clarity_check_file_integrity(const char *path, ClarityFileIntegrity *out_inf
         out_info->err_msg[0] = '\0';
     }
     return 0;
-#else
-    if (out_info) {
-        out_info->is_valid = TRUE;
-    }
-    return 0;
-#endif
 }
 
 /* ── Wylie Transliteration Helpers ───────────────────────────────── */
@@ -707,7 +700,6 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
 
     init_default_classes(book);
 
-#if BTRON_HOSTED
     /* Support opening a single .txt file directly as Chapter 0 */
     struct stat st_single;
     if (stat(dir_path, &st_single) == 0 && !S_ISDIR(st_single.st_mode)) {
@@ -762,7 +754,6 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
         s_active_book = *book;
         return 0;
     }
-#endif
 
     /* Enumerate canonical chapters in order */
     for (int i = 0; s_canonical_chapters[i] != NULL && book->chapter_count < CLARITY_MAX_CHAPTERS; i++) {
@@ -770,12 +761,17 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
         char fullpath[512];
         snprintf(fullpath, sizeof(fullpath), "%s/%s", dir_path, cname);
 
-#if BTRON_HOSTED
         struct stat st;
         if (stat(fullpath, &st) != 0) {
-            /* Try relative to cwd or assets/osal */
+            /* Try relative to cwd, assets/osal, or /SYS */
             snprintf(fullpath, sizeof(fullpath), "./%s/%s", dir_path, cname);
-            if (stat(fullpath, &st) != 0) continue;
+            if (stat(fullpath, &st) != 0) {
+                snprintf(fullpath, sizeof(fullpath), "/SYS/%s", cname);
+                if (stat(fullpath, &st) != 0) {
+                    snprintf(fullpath, sizeof(fullpath), "%s", cname);
+                    if (stat(fullpath, &st) != 0) continue;
+                }
+            }
         }
 
         ClarityBookChapter *ch = &book->chapters[book->chapter_count];
@@ -837,7 +833,6 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
         }
 
         book->chapter_count++;
-#endif
     }
 
     if (book->chapter_count > 0) {
@@ -952,7 +947,6 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     doc->frame_count = 0;
     doc->selected_frame = -1;
 
-#if BTRON_HOSTED
     FILE *fp = fopen(ch->file_path, "r");
     if (!fp) return -1;
 
@@ -1155,9 +1149,6 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     book->active_chapter_idx = chapter_idx;
     s_active_book = *book;
     return doc->is_complete ? 0 : 1;
-#else
-    return -1;
-#endif
 }
 
 /* ── Chapter & Document Consistency & Completeness Verification ───── */

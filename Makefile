@@ -312,6 +312,7 @@ COMMON_SRCS = src/desktop/graphics/dp_core.c   \
               src/apps/review/review.c         \
               src/media/cassette/audio_player.c  \
               src/apps/volumes/b_drivesetup.c  \
+              src/apps/volumes/b_installer.c   \
               src/media/orchestra/orchestra.c     \
               src/media/orchestra/orchestra_stage.c \
               src/media/orchestra/orchestra_arrange.c \
@@ -352,6 +353,7 @@ COMMON_SRCS = src/desktop/graphics/dp_core.c   \
               src/fs/blk_file.c        \
               src/fs/blk_qcow2.c       \
               src/fs/blk_part.c        \
+              src/drivers/virtio/virtio_blk.c \
               src/fs/vol.c             \
               src/fs/file.c            \
               src/apps/clu/lang.c           \
@@ -623,6 +625,15 @@ COMMON_NO_SDL_SRCS = \
     src/apps/terminal/gterm.c       \
     src/apps/editor/t_editor.c    \
     src/media/cassette/audio_player.c \
+    src/apps/volumes/b_installer.c  \
+    src/apps/volumes/b_drivesetup.c  \
+    src/apps/clarity/clarity.c      \
+    src/apps/clarity/clarity_layout.c \
+    src/apps/clarity/clarity_render.c \
+    src/apps/clarity/clarity_export.c \
+    src/apps/clarity/clarity_book.c \
+    src/desktop/graphics/image_decode.c \
+    src/desktop/font/font_mgr.c     \
     src/media/orchestra/orchestra.c   \
     src/media/orchestra/orchestra_stage.c \
     src/media/orchestra/orchestra_arrange.c \
@@ -651,6 +662,8 @@ COMMON_NO_SDL_SRCS = \
     src/desktop/settings/terminal.c \
     $(IME_SRCS)            \
     src/fs/blk_mem.c       \
+    src/fs/blk_part.c      \
+    src/drivers/virtio/virtio_blk.c \
     src/fs/vol.c           \
     src/fs/file.c          \
     src/fs/fs_stdio.c      \
@@ -682,10 +695,8 @@ ARM64_APPS_SRCS = \
     src/apps/clarity/clarity_book.c    \
     src/apps/browser/pdf_reader.c      \
     src/apps/review/review.c          \
-    src/apps/volumes/b_drivesetup.c    \
     src/fs/blk_file.c          \
     src/fs/blk_qcow2.c         \
-    src/fs/blk_part.c          \
     src/desktop/graphics/image_decode.c \
     src/media/sdk/mars.c       \
     src/desktop/industrial/hmi/hmi_core.c         \
@@ -868,7 +879,7 @@ album_encode: tools/album_encode.c src/media/sdk/lilcu64_score.c \
 # and it stopped at the first space (so `Dynamite Go! Go! - Demo (2021) (Rutubo Gameworks).ROM` was never a file make
 # knew about).  One reader of a manifest is the tool that builds from it.
 btron_sys.vol: mkbtronfs tools/manifest.txt
-	./mkbtronfs tools/manifest.txt -o btron_sys.vol --deps btron_sys.vol.d
+	./mkbtronfs tools/manifest.txt -o btron_sys.vol -n 512 -b 16384 --deps btron_sys.vol.d
 	@echo "[FS] btron_sys.vol written."
 	@xxd btron_sys.vol | head -2
 
@@ -1032,7 +1043,7 @@ test-termios: $(TEST_TERMIOS_BIN) btron_sys.vol btron_anders.vol
 
 # ── Clarity DTP Frame & Control tests ────────────────────────────────
 TEST_CLARITY_BIN = ./.build/test_clarity_frames
-$(TEST_CLARITY_BIN): verify/tests/test_clarity_frames.c src/apps/clarity/clarity_book.posix.o src/kernel/libstr.posix.o src/desktop/window/pmc.posix.o src/media/orchestra/lukhash_score.posix.o src/apps/review/review.posix.o src/apps/chokanji/launchers.posix.o src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/desktop/graphics/image_decode.posix.o src/desktop/window/dnd.posix.o src/apps/clarity/clarity.posix.o src/apps/clarity/clarity_layout.posix.o src/apps/clarity/clarity_render.posix.o src/apps/clarity/clarity_export.posix.o src/desktop/window/wnd.posix.o src/desktop/window/app_menu.posix.o src/desktop/window/event.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/graphics/icons_bundle.posix.o src/desktop/font/troncode.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/font_mgr.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/apps/cabinet/vobj.posix.o src/apps/workbench/desktop.posix.o src/apps/workbench/workbench.posix.o src/apps/workbench/tracker.posix.o src/apps/workbench/about.posix.o src/apps/workbench/global_menu.posix.o src/apps/cabinet/vobj_manager.posix.o src/apps/browser/tad_browser.posix.o src/apps/terminal/gterm.posix.o src/apps/editor/t_editor.posix.o src/media/cassette/audio_player.posix.o src/apps/volumes/b_drivesetup.posix.o src/media/orchestra/orchestra.posix.o src/media/orchestra/orchestra_stage.posix.o src/media/orchestra/orchestra_arrange.posix.o src/media/orchestra/orchestra_piano.posix.o src/media/orchestra/orchestra_score.posix.o src/media/orchestra/orchestra_mix.posix.o src/media/orchestra/orchestra_insert.posix.o src/media/orchestra/orchestra_about.posix.o src/media/orchestra/orchestra_session.posix.o src/media/orchestra/orchestra_smf.posix.o src/media/sdk/gst_rt.posix.o src/media/sdk/lilcu64_wa.posix.o src/media/sdk/lilcu64_score.posix.o src/media/sdk/lilcu64_synth.posix.o src/media/sdk/lilcu64_insert.posix.o src/apps/chat/chat.posix.o src/apps/chat/chat_xml.posix.o src/desktop/settings/language.posix.o src/desktop/settings/control_panel.posix.o src/desktop/settings/appearance.posix.o src/desktop/settings/desktop.posix.o src/desktop/settings/display.posix.o src/desktop/settings/input.posix.o src/desktop/settings/sound.posix.o src/desktop/settings/network.posix.o src/desktop/settings/media.posix.o src/desktop/settings/security.posix.o src/desktop/settings/system.posix.o src/desktop/settings/terminal.posix.o src/desktop/industrial/hmi/hmi_core.posix.o src/desktop/industrial/hmi/hmi_switch.posix.o src/desktop/industrial/hmi/hmi_selector.posix.o src/desktop/industrial/hmi/hmi_volume.posix.o src/desktop/industrial/hmi/hmi_meter.posix.o src/desktop/industrial/hmi/hmi_controller.posix.o src/desktop/industrial/hmi/hmi_panel.posix.o src/desktop/tip/japanese/mozc_kkc.posix.o src/desktop/tip/tip_ife.posix.o src/desktop/tip/tip_task.posix.o src/desktop/tip/tip_vobj.posix.o src/desktop/tip/tibetan/wylie.posix.o src/desktop/tip/tibetan/tibetan_dict.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o src/fs/vol.posix.o src/fs/file.posix.o $(CLU_APPS_POSIX_OBJS) src/apps/clu/clu.posix.o
+$(TEST_CLARITY_BIN): verify/tests/test_clarity_frames.c src/apps/clarity/clarity_book.posix.o src/kernel/libstr.posix.o src/desktop/window/pmc.posix.o src/media/orchestra/lukhash_score.posix.o src/apps/review/review.posix.o src/apps/chokanji/launchers.posix.o src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/desktop/graphics/image_decode.posix.o src/desktop/window/dnd.posix.o src/apps/clarity/clarity.posix.o src/apps/clarity/clarity_layout.posix.o src/apps/clarity/clarity_render.posix.o src/apps/clarity/clarity_export.posix.o src/desktop/window/wnd.posix.o src/desktop/window/app_menu.posix.o src/desktop/window/event.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/graphics/icons_bundle.posix.o src/desktop/font/troncode.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/font_mgr.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/drivers/virtio/virtio_blk.posix.o src/apps/cabinet/vobj.posix.o src/apps/workbench/desktop.posix.o src/apps/workbench/workbench.posix.o src/apps/workbench/tracker.posix.o src/apps/workbench/about.posix.o src/apps/workbench/global_menu.posix.o src/apps/cabinet/vobj_manager.posix.o src/apps/browser/tad_browser.posix.o src/apps/terminal/gterm.posix.o src/apps/editor/t_editor.posix.o src/media/cassette/audio_player.posix.o src/apps/volumes/b_drivesetup.posix.o src/media/orchestra/orchestra.posix.o src/media/orchestra/orchestra_stage.posix.o src/media/orchestra/orchestra_arrange.posix.o src/media/orchestra/orchestra_piano.posix.o src/media/orchestra/orchestra_score.posix.o src/media/orchestra/orchestra_mix.posix.o src/media/orchestra/orchestra_insert.posix.o src/media/orchestra/orchestra_about.posix.o src/media/orchestra/orchestra_session.posix.o src/media/orchestra/orchestra_smf.posix.o src/media/sdk/gst_rt.posix.o src/media/sdk/lilcu64_wa.posix.o src/media/sdk/lilcu64_score.posix.o src/media/sdk/lilcu64_synth.posix.o src/media/sdk/lilcu64_insert.posix.o src/apps/chat/chat.posix.o src/apps/chat/chat_xml.posix.o src/desktop/settings/language.posix.o src/desktop/settings/control_panel.posix.o src/desktop/settings/appearance.posix.o src/desktop/settings/desktop.posix.o src/desktop/settings/display.posix.o src/desktop/settings/input.posix.o src/desktop/settings/sound.posix.o src/desktop/settings/network.posix.o src/desktop/settings/media.posix.o src/desktop/settings/security.posix.o src/desktop/settings/system.posix.o src/desktop/settings/terminal.posix.o src/desktop/industrial/hmi/hmi_core.posix.o src/desktop/industrial/hmi/hmi_switch.posix.o src/desktop/industrial/hmi/hmi_selector.posix.o src/desktop/industrial/hmi/hmi_volume.posix.o src/desktop/industrial/hmi/hmi_meter.posix.o src/desktop/industrial/hmi/hmi_controller.posix.o src/desktop/industrial/hmi/hmi_panel.posix.o src/desktop/tip/japanese/mozc_kkc.posix.o src/desktop/tip/tip_ife.posix.o src/desktop/tip/tip_task.posix.o src/desktop/tip/tip_vobj.posix.o src/desktop/tip/tibetan/wylie.posix.o src/desktop/tip/tibetan/tibetan_dict.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o src/fs/vol.posix.o src/fs/file.posix.o $(CLU_APPS_POSIX_OBJS) src/apps/clu/clu.posix.o
 	$(CC) $(CFLAGS) -Iinclude -Isrc $^ -o $@ $(LDFLAGS) $(SDL_LIBS)
 
 test-clarity: $(TEST_CLARITY_BIN)
@@ -1041,7 +1052,7 @@ test-clarity: $(TEST_CLARITY_BIN)
 
 # ── Clarity Hypermedia & DND tests ──────────────────────────────────
 TEST_CLARITY_HYPERMEDIA_BIN = ./.build/test_clarity_hypermedia
-$(TEST_CLARITY_HYPERMEDIA_BIN): verify/tests/test_clarity_hypermedia.c src/apps/clarity/clarity_book.posix.o src/kernel/libstr.posix.o src/desktop/window/pmc.posix.o src/media/orchestra/lukhash_score.posix.o src/apps/review/review.posix.o src/apps/chokanji/launchers.posix.o src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/desktop/graphics/image_decode.posix.o src/desktop/window/dnd.posix.o src/apps/clarity/clarity.posix.o src/apps/clarity/clarity_layout.posix.o src/apps/clarity/clarity_render.posix.o src/apps/clarity/clarity_export.posix.o src/desktop/window/wnd.posix.o src/desktop/window/app_menu.posix.o src/desktop/window/event.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/graphics/icons_bundle.posix.o src/desktop/font/troncode.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/font_mgr.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/apps/cabinet/vobj.posix.o src/apps/workbench/desktop.posix.o src/apps/workbench/workbench.posix.o src/apps/workbench/tracker.posix.o src/apps/workbench/about.posix.o src/apps/workbench/global_menu.posix.o src/apps/cabinet/vobj_manager.posix.o src/apps/browser/tad_browser.posix.o src/apps/terminal/gterm.posix.o src/apps/editor/t_editor.posix.o src/media/cassette/audio_player.posix.o src/apps/volumes/b_drivesetup.posix.o src/media/orchestra/orchestra.posix.o src/media/orchestra/orchestra_stage.posix.o src/media/orchestra/orchestra_arrange.posix.o src/media/orchestra/orchestra_piano.posix.o src/media/orchestra/orchestra_score.posix.o src/media/orchestra/orchestra_mix.posix.o src/media/orchestra/orchestra_insert.posix.o src/media/orchestra/orchestra_about.posix.o src/media/orchestra/orchestra_session.posix.o src/media/orchestra/orchestra_smf.posix.o src/media/sdk/gst_rt.posix.o src/media/sdk/lilcu64_wa.posix.o src/media/sdk/lilcu64_score.posix.o src/media/sdk/lilcu64_synth.posix.o src/media/sdk/lilcu64_insert.posix.o src/apps/chat/chat.posix.o src/apps/chat/chat_xml.posix.o src/desktop/settings/language.posix.o src/desktop/settings/control_panel.posix.o src/desktop/settings/appearance.posix.o src/desktop/settings/desktop.posix.o src/desktop/settings/display.posix.o src/desktop/settings/input.posix.o src/desktop/settings/sound.posix.o src/desktop/settings/network.posix.o src/desktop/settings/media.posix.o src/desktop/settings/security.posix.o src/desktop/settings/system.posix.o src/desktop/settings/terminal.posix.o src/desktop/industrial/hmi/hmi_core.posix.o src/desktop/industrial/hmi/hmi_switch.posix.o src/desktop/industrial/hmi/hmi_selector.posix.o src/desktop/industrial/hmi/hmi_volume.posix.o src/desktop/industrial/hmi/hmi_meter.posix.o src/desktop/industrial/hmi/hmi_controller.posix.o src/desktop/industrial/hmi/hmi_panel.posix.o src/desktop/tip/japanese/mozc_kkc.posix.o src/desktop/tip/tip_ife.posix.o src/desktop/tip/tip_task.posix.o src/desktop/tip/tip_vobj.posix.o src/desktop/tip/tibetan/wylie.posix.o src/desktop/tip/tibetan/tibetan_dict.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o src/fs/vol.posix.o src/fs/file.posix.o $(CLU_APPS_POSIX_OBJS) src/apps/clu/clu.posix.o
+$(TEST_CLARITY_HYPERMEDIA_BIN): verify/tests/test_clarity_hypermedia.c src/apps/clarity/clarity_book.posix.o src/kernel/libstr.posix.o src/desktop/window/pmc.posix.o src/media/orchestra/lukhash_score.posix.o src/apps/review/review.posix.o src/apps/chokanji/launchers.posix.o src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/desktop/graphics/image_decode.posix.o src/desktop/window/dnd.posix.o src/apps/clarity/clarity.posix.o src/apps/clarity/clarity_layout.posix.o src/apps/clarity/clarity_render.posix.o src/apps/clarity/clarity_export.posix.o src/desktop/window/wnd.posix.o src/desktop/window/app_menu.posix.o src/desktop/window/event.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/graphics/icons_bundle.posix.o src/desktop/font/troncode.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/font_mgr.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/drivers/virtio/virtio_blk.posix.o src/apps/cabinet/vobj.posix.o src/apps/workbench/desktop.posix.o src/apps/workbench/workbench.posix.o src/apps/workbench/tracker.posix.o src/apps/workbench/about.posix.o src/apps/workbench/global_menu.posix.o src/apps/cabinet/vobj_manager.posix.o src/apps/browser/tad_browser.posix.o src/apps/terminal/gterm.posix.o src/apps/editor/t_editor.posix.o src/media/cassette/audio_player.posix.o src/apps/volumes/b_drivesetup.posix.o src/media/orchestra/orchestra.posix.o src/media/orchestra/orchestra_stage.posix.o src/media/orchestra/orchestra_arrange.posix.o src/media/orchestra/orchestra_piano.posix.o src/media/orchestra/orchestra_score.posix.o src/media/orchestra/orchestra_mix.posix.o src/media/orchestra/orchestra_insert.posix.o src/media/orchestra/orchestra_about.posix.o src/media/orchestra/orchestra_session.posix.o src/media/orchestra/orchestra_smf.posix.o src/media/sdk/gst_rt.posix.o src/media/sdk/lilcu64_wa.posix.o src/media/sdk/lilcu64_score.posix.o src/media/sdk/lilcu64_synth.posix.o src/media/sdk/lilcu64_insert.posix.o src/apps/chat/chat.posix.o src/apps/chat/chat_xml.posix.o src/desktop/settings/language.posix.o src/desktop/settings/control_panel.posix.o src/desktop/settings/appearance.posix.o src/desktop/settings/desktop.posix.o src/desktop/settings/display.posix.o src/desktop/settings/input.posix.o src/desktop/settings/sound.posix.o src/desktop/settings/network.posix.o src/desktop/settings/media.posix.o src/desktop/settings/security.posix.o src/desktop/settings/system.posix.o src/desktop/settings/terminal.posix.o src/desktop/industrial/hmi/hmi_core.posix.o src/desktop/industrial/hmi/hmi_switch.posix.o src/desktop/industrial/hmi/hmi_selector.posix.o src/desktop/industrial/hmi/hmi_volume.posix.o src/desktop/industrial/hmi/hmi_meter.posix.o src/desktop/industrial/hmi/hmi_controller.posix.o src/desktop/industrial/hmi/hmi_panel.posix.o src/desktop/tip/japanese/mozc_kkc.posix.o src/desktop/tip/tip_ife.posix.o src/desktop/tip/tip_task.posix.o src/desktop/tip/tip_vobj.posix.o src/desktop/tip/tibetan/wylie.posix.o src/desktop/tip/tibetan/tibetan_dict.posix.o src/fs/blk_mem.posix.o src/fs/blk_file.posix.o src/fs/blk_qcow2.posix.o src/fs/blk_part.posix.o src/fs/vol.posix.o src/fs/file.posix.o $(CLU_APPS_POSIX_OBJS) src/apps/clu/clu.posix.o
 	$(CC) $(CFLAGS) -Iinclude -Isrc $^ -o $@ $(LDFLAGS) $(SDL_LIBS)
 
 test-clarity-hypermedia: $(TEST_CLARITY_HYPERMEDIA_BIN)
@@ -1050,7 +1061,7 @@ test-clarity-hypermedia: $(TEST_CLARITY_HYPERMEDIA_BIN)
 
 # ── Clarity Tibetan Osal Book & Legal TAD tests ─────────────────────
 TEST_CLARITY_BOOK_BIN = ./.build/test_clarity_osal_book
-$(TEST_CLARITY_BOOK_BIN): verify/tests/test_clarity_osal_book.c src/apps/clarity/clarity_book.posix.o src/apps/clarity/clarity.posix.o src/apps/clarity/clarity_layout.posix.o src/apps/clarity/clarity_render.posix.o src/apps/clarity/clarity_export.posix.o src/apps/browser/tad_browser.posix.o src/desktop/tip/tibetan/wylie.posix.o src/desktop/font/troncode.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/window/wnd.posix.o src/desktop/window/app_menu.posix.o src/desktop/window/event.posix.o src/kernel/libstr.posix.o src/fs/file.posix.o src/fs/vol.posix.o src/fs/blk_file.posix.o src/fs/blk_mem.posix.o src/fs/blk_part.posix.o src/fs/blk_qcow2.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/apps/cabinet/vobj.posix.o src/apps/cabinet/vobj_manager.posix.o src/apps/workbench/desktop.posix.o src/apps/workbench/workbench.posix.o src/apps/workbench/tracker.posix.o src/apps/workbench/about.posix.o src/apps/workbench/global_menu.posix.o src/desktop/graphics/icons_bundle.posix.o src/desktop/graphics/image_decode.posix.o src/desktop/window/dnd.posix.o src/desktop/window/pmc.posix.o src/media/orchestra/lukhash_score.posix.o src/apps/review/review.posix.o src/apps/chokanji/launchers.posix.o src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/desktop/font/font_mgr.posix.o src/apps/terminal/gterm.posix.o src/apps/editor/t_editor.posix.o src/media/cassette/audio_player.posix.o src/apps/volumes/b_drivesetup.posix.o src/media/orchestra/orchestra.posix.o src/media/orchestra/orchestra_stage.posix.o src/media/orchestra/orchestra_arrange.posix.o src/media/orchestra/orchestra_piano.posix.o src/media/orchestra/orchestra_score.posix.o src/media/orchestra/orchestra_mix.posix.o src/media/orchestra/orchestra_insert.posix.o src/media/orchestra/orchestra_about.posix.o src/media/orchestra/orchestra_session.posix.o src/media/orchestra/orchestra_smf.posix.o src/media/sdk/gst_rt.posix.o src/media/sdk/lilcu64_wa.posix.o src/media/sdk/lilcu64_score.posix.o src/media/sdk/lilcu64_synth.posix.o src/media/sdk/lilcu64_insert.posix.o src/apps/chat/chat.posix.o src/apps/chat/chat_xml.posix.o src/desktop/settings/language.posix.o src/desktop/settings/control_panel.posix.o src/desktop/settings/appearance.posix.o src/desktop/settings/desktop.posix.o src/desktop/settings/display.posix.o src/desktop/settings/input.posix.o src/desktop/settings/sound.posix.o src/desktop/settings/network.posix.o src/desktop/settings/media.posix.o src/desktop/settings/security.posix.o src/desktop/settings/system.posix.o src/desktop/settings/terminal.posix.o src/desktop/industrial/hmi/hmi_core.posix.o src/desktop/industrial/hmi/hmi_switch.posix.o src/desktop/industrial/hmi/hmi_selector.posix.o src/desktop/industrial/hmi/hmi_volume.posix.o src/desktop/industrial/hmi/hmi_meter.posix.o src/desktop/industrial/hmi/hmi_controller.posix.o src/desktop/industrial/hmi/hmi_panel.posix.o src/desktop/tip/japanese/mozc_kkc.posix.o src/desktop/tip/tip_ife.posix.o src/desktop/tip/tip_task.posix.o src/desktop/tip/tip_vobj.posix.o src/desktop/tip/tibetan/tibetan_dict.posix.o $(CLU_APPS_POSIX_OBJS) src/apps/clu/clu.posix.o
+$(TEST_CLARITY_BOOK_BIN): verify/tests/test_clarity_osal_book.c src/apps/clarity/clarity_book.posix.o src/apps/clarity/clarity.posix.o src/apps/clarity/clarity_layout.posix.o src/apps/clarity/clarity_render.posix.o src/apps/clarity/clarity_export.posix.o src/apps/browser/tad_browser.posix.o src/desktop/tip/tibetan/wylie.posix.o src/desktop/font/troncode.posix.o src/desktop/font/tibetan_fonts.posix.o src/desktop/font/jis_fonts.posix.o src/desktop/graphics/dp_core.posix.o src/desktop/window/wnd.posix.o src/desktop/window/app_menu.posix.o src/desktop/window/event.posix.o src/kernel/libstr.posix.o src/fs/file.posix.o src/fs/vol.posix.o src/fs/blk_file.posix.o src/fs/blk_mem.posix.o src/fs/blk_part.posix.o src/fs/blk_qcow2.posix.o src/cores/core_posix.posix.o src/cores/core_init.posix.o src/drivers/virtio/virtio.posix.o src/drivers/virtio/virtio_blk.posix.o src/apps/cabinet/vobj.posix.o src/apps/cabinet/vobj_manager.posix.o src/apps/workbench/desktop.posix.o src/apps/workbench/workbench.posix.o src/apps/workbench/tracker.posix.o src/apps/workbench/about.posix.o src/apps/workbench/global_menu.posix.o src/desktop/graphics/icons_bundle.posix.o src/desktop/graphics/image_decode.posix.o src/desktop/window/dnd.posix.o src/desktop/window/pmc.posix.o src/media/orchestra/lukhash_score.posix.o src/apps/review/review.posix.o src/apps/chokanji/launchers.posix.o src/apps/chokanji/pmc.posix.o src/apps/chokanji/cab.posix.o src/apps/chokanji/clock.posix.o src/languages/microscript/microscript.posix.o src/apps/chokanji/kconv.posix.o src/apps/chokanji/xfconv.posix.o src/apps/chokanji/bpk_core.posix.o src/apps/chokanji/unpack.posix.o src/apps/browser/pdf_reader.posix.o src/desktop/font/font_mgr.posix.o src/apps/terminal/gterm.posix.o src/apps/editor/t_editor.posix.o src/media/cassette/audio_player.posix.o src/apps/volumes/b_drivesetup.posix.o src/media/orchestra/orchestra.posix.o src/media/orchestra/orchestra_stage.posix.o src/media/orchestra/orchestra_arrange.posix.o src/media/orchestra/orchestra_piano.posix.o src/media/orchestra/orchestra_score.posix.o src/media/orchestra/orchestra_mix.posix.o src/media/orchestra/orchestra_insert.posix.o src/media/orchestra/orchestra_about.posix.o src/media/orchestra/orchestra_session.posix.o src/media/orchestra/orchestra_smf.posix.o src/media/sdk/gst_rt.posix.o src/media/sdk/lilcu64_wa.posix.o src/media/sdk/lilcu64_score.posix.o src/media/sdk/lilcu64_synth.posix.o src/media/sdk/lilcu64_insert.posix.o src/apps/chat/chat.posix.o src/apps/chat/chat_xml.posix.o src/desktop/settings/language.posix.o src/desktop/settings/control_panel.posix.o src/desktop/settings/appearance.posix.o src/desktop/settings/desktop.posix.o src/desktop/settings/display.posix.o src/desktop/settings/input.posix.o src/desktop/settings/sound.posix.o src/desktop/settings/network.posix.o src/desktop/settings/media.posix.o src/desktop/settings/security.posix.o src/desktop/settings/system.posix.o src/desktop/settings/terminal.posix.o src/desktop/industrial/hmi/hmi_core.posix.o src/desktop/industrial/hmi/hmi_switch.posix.o src/desktop/industrial/hmi/hmi_selector.posix.o src/desktop/industrial/hmi/hmi_volume.posix.o src/desktop/industrial/hmi/hmi_meter.posix.o src/desktop/industrial/hmi/hmi_controller.posix.o src/desktop/industrial/hmi/hmi_panel.posix.o src/desktop/tip/japanese/mozc_kkc.posix.o src/desktop/tip/tip_ife.posix.o src/desktop/tip/tip_task.posix.o src/desktop/tip/tip_vobj.posix.o src/desktop/tip/tibetan/tibetan_dict.posix.o $(CLU_APPS_POSIX_OBJS) src/apps/clu/clu.posix.o
 	$(CC) $(CFLAGS) -Iinclude -Isrc $^ -o $@ $(LDFLAGS) $(SDL_LIBS)
 
 test-clarity-book: $(TEST_CLARITY_BOOK_BIN)
@@ -1194,21 +1205,86 @@ $(UEFI_TARGET): $(UEFI_OBJS) $(UEFI_LD)
 	@echo "[UEFI-ELF] Built: $@"
 	@file $@
 
-run-uefi: $(UEFI_TARGET)
+USB_IMG         = .build/btron-uefi-usb.img
+HDD_IMG         = .build/btron-uefi-hdd.img
+CD_ISO          = .build/btron-uefi-cd.iso
+TARGET_HDD1_IMG = .build/target_hdd1.img
+TARGET_HDD2_IMG = .build/target_hdd2.img
+TARGET_HDD_IMG  = .build/target_hdd.img
+
+storage-images: $(USB_IMG) $(HDD_IMG) $(CD_ISO) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG) $(TARGET_HDD_IMG)
+
+$(USB_IMG) $(HDD_IMG) $(CD_ISO) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG) $(TARGET_HDD_IMG): scripts/mk_uefi_storage.py
+	@python3 scripts/mk_uefi_storage.py all
+
+run-uefi: $(UEFI_TARGET) $(USB_IMG) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG)
 	@echo "=========================================================="
 	@echo " Launching B-System X86_64 / EMT64 UEFI SMP on QEMU"
 	@echo " Honoring : Kota Uchida (内田 公太) — MikanOS Pioneer"
 	@echo " Machine  : q35  |  CPU: qemu64 (SMP 4 Cores)  |  RAM: 1G"
 	@echo " Firmware : ACPI 6.5 MADT + LAPIC SMP Bring-up (core_smp.c)"
 	@echo " Graphics : VirtIO-GPU 2D Display & VESA VBE 1024x768 32-bpp"
+	@echo " Storage  : USB (SYS/ANDERS) + 2x VirtIO Raw Target Disks (64MB)"
 	@echo " Desktop  : desktop.c · wnd.c · gterm.c · Mozc IME"
 	@echo "=========================================================="
 	$(QEMU_X86_64) -M q35,accel=tcg -cpu qemu64 -smp cores=4,threads=1,sockets=1 -m 1G \
 	    $(QEMU_DISPLAY) \
 	    -device virtio-vga \
+	    -drive file=$(USB_IMG),if=none,id=bootusb,format=raw \
+	    -device virtio-blk-pci,drive=bootusb,bootindex=1 \
+	    -drive file=$(TARGET_HDD1_IMG),if=none,id=targethd1,format=raw \
+	    -device virtio-blk-pci,drive=targethd1 \
+	    -drive file=$(TARGET_HDD2_IMG),if=none,id=targethd2,format=raw \
+	    -device virtio-blk-pci,drive=targethd2 \
 	    -kernel $(UEFI_TARGET) -serial stdio
 
 run-eufi: run-uefi
+
+run-uefi-usb: $(UEFI_TARGET) $(USB_IMG) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG)
+	@echo "=========================================================="
+	@echo " Launching B-System UEFI SMP from Live USB Media"
+	@echo " Live USB   : $(USB_IMG) (ESP + BTRON /SYS + /ANDERS)"
+	@echo " Target HDDs: 2x VirtIO Block Disks (64MB each for Installer)"
+	@echo " Machine    : q35  |  CPU: qemu64 (SMP 4 Cores)  |  RAM: 1G"
+	@echo "=========================================================="
+	$(QEMU_X86_64) -M q35,accel=tcg -cpu qemu64 -smp cores=4,threads=1,sockets=1 -m 1G \
+	    $(QEMU_DISPLAY) \
+	    -device virtio-vga \
+	    -drive file=$(USB_IMG),if=none,id=bootusb,format=raw \
+	    -device virtio-blk-pci,drive=bootusb,bootindex=1 \
+	    -drive file=$(TARGET_HDD1_IMG),if=none,id=targethd1,format=raw \
+	    -device virtio-blk-pci,drive=targethd1 \
+	    -drive file=$(TARGET_HDD2_IMG),if=none,id=targethd2,format=raw \
+	    -device virtio-blk-pci,drive=targethd2 \
+	    -kernel $(UEFI_TARGET) -serial stdio
+
+run-uefi-cd: $(UEFI_TARGET) $(CD_ISO) $(TARGET_HDD_IMG)
+	@echo "=========================================================="
+	@echo " Launching B-System UEFI SMP from El Torito Bootable CD"
+	@echo " Boot CD    : $(CD_ISO) (ISO9660 + El Torito + BTRON)"
+	@echo " Target HDD : $(TARGET_HDD_IMG) (VirtIO Block for Installer)"
+	@echo " Machine    : q35  |  CPU: qemu64 (SMP 4 Cores)  |  RAM: 1G"
+	@echo "=========================================================="
+	$(QEMU_X86_64) -M q35,accel=tcg -cpu qemu64 -smp cores=4,threads=1,sockets=1 -m 1G \
+	    $(QEMU_DISPLAY) \
+	    -device virtio-vga \
+	    -cdrom $(CD_ISO) -boot d \
+	    -drive file=$(TARGET_HDD_IMG),if=none,id=targethd,format=raw \
+	    -device virtio-blk-pci,drive=targethd \
+	    -kernel $(UEFI_TARGET) -serial stdio
+
+run-uefi-hdd: $(UEFI_TARGET) $(HDD_IMG)
+	@echo "=========================================================="
+	@echo " Launching B-System UEFI SMP from Installed VirtIO Hard Drive"
+	@echo " Hard Drive : $(HDD_IMG) (Partition 2 active /SYS)"
+	@echo " Machine    : q35  |  CPU: qemu64 (SMP 4 Cores)  |  RAM: 1G"
+	@echo "=========================================================="
+	$(QEMU_X86_64) -M q35,accel=tcg -cpu qemu64 -smp cores=4,threads=1,sockets=1 -m 1G \
+	    $(QEMU_DISPLAY) \
+	    -device virtio-vga \
+	    -drive file=$(HDD_IMG),if=none,id=systemhd,format=raw \
+	    -device virtio-blk-pci,drive=systemhd,bootindex=1 \
+	    -kernel $(UEFI_TARGET) -serial stdio
 
 test-uefi: $(UEFI_TARGET)
 	@echo "=========================================================="
@@ -1217,6 +1293,13 @@ test-uefi: $(UEFI_TARGET)
 	@echo " Graphics: VirtIO-GPU 2D  |  Mode: headless, serial validation"
 	@echo "=========================================================="
 	@bash scripts/test_uefi.sh
+
+test-uefi-storage: $(UEFI_TARGET) storage-images
+	@echo "=========================================================="
+	@echo " Testing B-System VirtIO Storage & Media Boot on QEMU (Headless CI)"
+	@echo " Media: Live USB, Installed HDD, Bootable CD-ROM"
+	@echo "=========================================================="
+	@bash scripts/test_uefi_storage.sh
 # ═══════════════════════════════════════════════════════════════════
 # NEC PC-98 Kernel Desktop (Honoring Awe Morris — zedBSD Pioneer)
 # ═══════════════════════════════════════════════════════════════════
@@ -3294,6 +3377,7 @@ $(TEST_MOUSE_BIN): $(TEST_MOUSE_OBJS)
 # ═══════════════════════════════════════════════════════════════════
 TEST_DRIVESETUP_SRCS = verify/tests/test_b_drivesetup.c \
                        src/desktop/window/app_menu.c \
+                       src/drivers/virtio/virtio_blk.c \
                        src/apps/volumes/b_drivesetup.c
 TEST_DRIVESETUP_OBJS = $(TEST_DRIVESETUP_SRCS:.c=.test.o)
 TEST_DRIVESETUP_BIN  = ./.build/test_b_drivesetup
@@ -3306,6 +3390,36 @@ test-drivesetup: $(TEST_DRIVESETUP_BIN)
 
 $(TEST_DRIVESETUP_BIN): $(TEST_DRIVESETUP_OBJS) $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS)
 	$(CC) $(TEST_DRIVESETUP_OBJS) $(FS_OBJS) src/apps/clu/clu.host.o $(CLU_APPS_HOST_OBJS) -o $@ $(LDFLAGS) -lm
+
+TEST_VIRTIO_BLK_BIN = ./.build/test_virtio_blk
+test-virtio-blk: $(TEST_VIRTIO_BLK_BIN)
+	@echo "=========================================================="
+	@echo " Running VirtIO-Block Driver Unit Tests..."
+	@echo "=========================================================="
+	@./$(TEST_VIRTIO_BLK_BIN)
+
+$(TEST_VIRTIO_BLK_BIN): verify/tests/test_virtio_blk.c src/drivers/virtio/virtio_blk.c src/fs/blk_part.c src/fs/vol.c src/kernel/libstr.c
+	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) -lm
+
+TEST_INSTALLER_BIN = ./.build/test_b_installer
+test-installer: $(TEST_INSTALLER_BIN)
+	@echo "=========================================================="
+	@echo " Running B-System Installer (b_installer) Tests..."
+	@echo "=========================================================="
+	@./$(TEST_INSTALLER_BIN)
+
+$(TEST_INSTALLER_BIN): verify/tests/test_b_installer.c src/apps/volumes/b_installer.c src/apps/volumes/b_drivesetup.c src/desktop/window/app_menu.c src/drivers/virtio/virtio_blk.c src/fs/blk_part.c src/fs/blk_mem.c src/fs/blk_file.c src/fs/blk_qcow2.c src/fs/vol.c src/kernel/libstr.c
+	$(CC) $(CFLAGS) -Isrc/apps/volumes $^ -o $@ $(LDFLAGS) -lm
+
+TEST_STORAGE_IMAGES_BIN = ./.build/test_storage_images
+test-storage-images: $(TEST_STORAGE_IMAGES_BIN) storage-images
+	@echo "=========================================================="
+	@echo " Running Storage Images Integrity Verification..."
+	@echo "=========================================================="
+	@./$(TEST_STORAGE_IMAGES_BIN)
+
+$(TEST_STORAGE_IMAGES_BIN): verify/tests/test_storage_images.c src/fs/blk_file.c src/fs/blk_part.c src/fs/vol.c src/kernel/libstr.c
+	$(CC) $(CFLAGS) -Isrc/apps/volumes $^ -o $@ $(LDFLAGS) -lm
 
 # ═══════════════════════════════════════════════════════════════════
 # HD64180 — Hitachi HD64180 CPU exerciser (Hitachi HC-90/95)
@@ -3590,7 +3704,7 @@ test-tbios: $(TEST_TBIOS_DIFF_BIN) $(TEST_TBIOS_CORE_BIN) $(TEST_TBIOS_VIDEO_BIN
 	@./$(TEST_TBIOS_DISK_BIN)
 	@./$(TEST_BMSX_CFG_BIN)
 
-test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop
+test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-virtio-blk test-installer test-storage-images test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop
 	@echo "=========================================================="
 	@echo " ALL B-SYSTEM TEST SUITES PASSED (100% SUCCESS)!"
 	@echo "=========================================================="
