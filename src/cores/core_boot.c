@@ -9,6 +9,7 @@
 #include <btron/core.h>
 #include <btron/desktop.h>
 #include <btron/wnd.h>
+#include <btron/troncode.h>
 #include <btron/event.h>
 #include <btron/tip.h>
 #include <btron/smp.h>
@@ -187,9 +188,17 @@ static char ps2_scancode_to_ascii(uint8_t sc, int shift) {
 #define VGA_COLS 80
 #define VGA_ROWS 25
 
+static uint16_t s_vga_shadow[VGA_COLS * VGA_ROWS];
 static uint16_t vga_cursor_x = 0;
 static uint16_t vga_cursor_y = 0;
 static uint8_t  vga_attr = 0x07;
+
+static inline void vga_write_cell(int idx, uint16_t val) {
+    if (idx >= 0 && idx < VGA_COLS * VGA_ROWS) {
+        s_vga_shadow[idx] = val;
+        VGA_VRAM[idx] = val;
+    }
+}
 
 static void vga_update_cursor(void) {
     uint16_t pos = vga_cursor_y * VGA_COLS + vga_cursor_x;
@@ -201,8 +210,9 @@ static void vga_update_cursor(void) {
 
 static void vga_clear(uint8_t attr) {
     vga_attr = attr;
+    uint16_t fill = (uint16_t)(' ') | ((uint16_t)attr << 8);
     for (int i = 0; i < VGA_COLS * VGA_ROWS; i++) {
-        VGA_VRAM[i] = (uint16_t)(' ') | ((uint16_t)attr << 8);
+        vga_write_cell(i, fill);
     }
     vga_cursor_x = 0;
     vga_cursor_y = 0;
@@ -213,11 +223,12 @@ static void vga_scroll(void) {
     if (vga_cursor_y >= VGA_ROWS) {
         for (int y = 0; y < VGA_ROWS - 1; y++) {
             for (int x = 0; x < VGA_COLS; x++) {
-                VGA_VRAM[y * VGA_COLS + x] = VGA_VRAM[(y + 1) * VGA_COLS + x];
+                vga_write_cell(y * VGA_COLS + x, s_vga_shadow[(y + 1) * VGA_COLS + x]);
             }
         }
+        uint16_t fill = (uint16_t)(' ') | ((uint16_t)vga_attr << 8);
         for (int x = 0; x < VGA_COLS; x++) {
-            VGA_VRAM[(VGA_ROWS - 1) * VGA_COLS + x] = (uint16_t)(' ') | ((uint16_t)vga_attr << 8);
+            vga_write_cell((VGA_ROWS - 1) * VGA_COLS + x, fill);
         }
         vga_cursor_y = VGA_ROWS - 1;
     }
@@ -233,10 +244,10 @@ static void vga_putc(char c) {
     } else if (c == '\b') {
         if (vga_cursor_x > 0) {
             vga_cursor_x--;
-            VGA_VRAM[vga_cursor_y * VGA_COLS + vga_cursor_x] = (uint16_t)(' ') | ((uint16_t)vga_attr << 8);
+            vga_write_cell(vga_cursor_y * VGA_COLS + vga_cursor_x, (uint16_t)(' ') | ((uint16_t)vga_attr << 8));
         }
     } else {
-        VGA_VRAM[vga_cursor_y * VGA_COLS + vga_cursor_x] = (uint16_t)(uint8_t)c | ((uint16_t)vga_attr << 8);
+        vga_write_cell(vga_cursor_y * VGA_COLS + vga_cursor_x, (uint16_t)(uint8_t)c | ((uint16_t)vga_attr << 8));
         vga_cursor_x++;
         if (vga_cursor_x >= VGA_COLS) {
             vga_cursor_x = 0;
@@ -247,21 +258,25 @@ static void vga_putc(char c) {
     vga_update_cursor();
 }
 
+static void vga_sync_to_virtio_gpu(void);
+
 static void kprint(const char *str, uint8_t attr) {
     vga_attr = attr;
+    int saw_nl = 0;
     while (*str) {
         char c = *str++;
-        if (c == '\n') uart_putc('\r');
+        if (c == '\n') { uart_putc('\r'); saw_nl = 1; }
         uart_putc(c);
         vga_putc(c);
     }
+    if (saw_nl) vga_sync_to_virtio_gpu();
 }
 
 static void vga_print_at(int x, int y, const char *str, uint8_t attr) {
     int idx = y * VGA_COLS + x;
     while (*str && idx < VGA_COLS * VGA_ROWS) {
         char c = *str++;
-        VGA_VRAM[idx++] = (uint16_t)(uint8_t)c | ((uint16_t)attr << 8);
+        vga_write_cell(idx++, (uint16_t)(uint8_t)c | ((uint16_t)attr << 8));
     }
 }
 
@@ -378,7 +393,7 @@ static void ski_init_targets(void) {
             if (count == 0) continue;
             char p_c = (char)('1' + p);
 
-            bool is_btron = (type == 0x13);
+            bool is_btron = false;
             uint8_t probe[512];
             bool probe_ok = (virtio_blk_read_sectors(d, start, probe, 1) == 0);
             if (probe_ok) {
@@ -397,6 +412,7 @@ static void ski_init_targets(void) {
                 }
                 if (magic) is_btron = true;
             }
+            if (!probe_ok && type == 0x13) is_btron = true;
 
             ski_target_t *t = &s_targets[s_target_count++];
             char title[64];
@@ -423,6 +439,8 @@ static void ski_init_targets(void) {
                     case 0x0B: case 0x0C: tn = "FAT32 volume"; break;
                     case 0x07: tn = "NTFS/exFAT volume"; break;
                     case 0x05: case 0x0F: tn = "Extended partition"; break;
+                    case 0x13: case 0x61: case 0x62: tn = "Unformatted B-FS slice"; break;
+                    case 0x27: tn = "RAW data slice"; break;
                     case 0x82: tn = "Linux swap"; break;
                     case 0x83: tn = "Linux volume"; break;
                     case 0xEF: tn = "EFI System Partition"; break;
@@ -638,6 +656,7 @@ static void render_ski_menu(void) {
     vga_cursor_x = 0;
     vga_cursor_y = 22;
     vga_update_cursor();
+    vga_sync_to_virtio_gpu();
 }
 
 static void uart_send_menu_update(void) {
@@ -726,7 +745,7 @@ static void render_btron_text_desktop(int active_cores) {
     vga_clear(0x07);
 
     for (int x = 0; x < VGA_COLS; x++) {
-        VGA_VRAM[x] = (uint16_t)(' ') | ((uint16_t)0x70 << 8);
+        vga_write_cell(x, (uint16_t)(' ') | ((uint16_t)0x70 << 8));
     }
     vga_print_at(1, 0, "BTRON3 3.20  [実身・仮身]  [編集]  [表示]  [設定]  [端末]", 0x70);
     char core_str[32];
@@ -736,13 +755,14 @@ static void render_btron_text_desktop(int active_cores) {
     vga_print_at(64, 0, core_str, 0x70);
 
     for (int x = 0; x < VGA_COLS; x++) {
-        VGA_VRAM[(VGA_ROWS - 1) * VGA_COLS + x] = (uint16_t)(' ') | ((uint16_t)0x70 << 8);
+        vga_write_cell((VGA_ROWS - 1) * VGA_COLS + x, (uint16_t)(' ') | ((uint16_t)0x70 << 8));
     }
     vga_print_at(1, VGA_ROWS - 1, "[GTerm Console]  [Mozc IME: かな]  [HFDS Storage: 0x10001000]  12:00", 0x70);
 
     vga_cursor_x = 0;
     vga_cursor_y = 2;
     vga_update_cursor();
+    vga_sync_to_virtio_gpu();
 }
 
 extern void render_desktop_background(GDEV *dev);
@@ -759,6 +779,62 @@ extern void btron_scheduler_dispatch(void);
 #endif
 
 static COLOR s_desktop_backbuffer[1024 * 768] __attribute__((aligned(16)));
+
+static const COLOR s_vga_palette[16] = {
+    0xFF000000, /* 0: Black */
+    0xFF0000AA, /* 1: Blue */
+    0xFF00AA00, /* 2: Green */
+    0xFF00AAAA, /* 3: Cyan */
+    0xFFAA0000, /* 4: Red */
+    0xFFAA00AA, /* 5: Magenta */
+    0xFFAA5500, /* 6: Brown */
+    0xFFAAAAAA, /* 7: Light Gray */
+    0xFF555555, /* 8: Dark Gray */
+    0xFF5555FF, /* 9: Light Blue */
+    0xFF55FF55, /* A: Light Green */
+    0xFF55FFFF, /* B: Light Cyan */
+    0xFFFF5555, /* C: Light Red */
+    0xFFFF55FF, /* D: Light Magenta */
+    0xFFFFFF55, /* E: Yellow */
+    0xFFFFFFFF  /* F: White */
+};
+
+static void vga_sync_to_virtio_gpu(void) {
+#if !defined(BTRON_PC98_TARGET)
+    if (!g_virtio_gpu.is_active) return;
+    if (g_virtio_gpu.width != 640 || g_virtio_gpu.height != 400) {
+        virtio_gpu_pci_init(640, 400, s_desktop_backbuffer);
+        init_desktop_vram(640, 400, s_desktop_backbuffer);
+    }
+    BTRON_DESKTOP *dt = get_btron_desktop();
+    if (!dt || !dt->screen) return;
+    GDEV *dev = dt->screen;
+    uint8_t def_bg = (uint8_t)((s_vga_shadow[0] >> 12) & 0x0F);
+    RECT full_r = { 0, 0, 640, 400 };
+    fill_rec(dev, &full_r, s_vga_palette[def_bg]);
+    int cw = 8;
+    int ch_h = 16;
+    for (int y = 0; y < VGA_ROWS; y++) {
+        for (int x = 0; x < VGA_COLS; x++) {
+            uint16_t cell = s_vga_shadow[y * VGA_COLS + x];
+            uint8_t ch = (uint8_t)(cell & 0xFF);
+            uint8_t attr = (uint8_t)(cell >> 8);
+            COLOR fg = s_vga_palette[attr & 0x0F];
+            COLOR bg = s_vga_palette[(attr >> 4) & 0x0F];
+            RECT cr = { (H)(x * cw), (H)(y * ch_h),
+                        (H)((x + 1) * cw), (H)((y + 1) * ch_h) };
+            if (bg != s_vga_palette[def_bg]) {
+                fill_rec(dev, &cr, bg);
+            }
+            if (ch > 0x20 && ch < 0x7F) {
+                char ch_s[2] = { (char)ch, '\0' };
+                drw_tc_string(dev, (H)(x * cw), (H)(y * ch_h), ch_s, fg, bg);
+            }
+        }
+    }
+    virtio_gpu_pci_flush_all();
+#endif
+}
 
 static void launch_vesa_desktop_session(int active_cores) {
     (void)active_cores;
@@ -963,11 +1039,10 @@ static void launch_vesa_desktop_session(int active_cores) {
         }
     }
 
-#if !defined(BTRON_PC98_TARGET)
-    if (g_virtio_gpu.is_active) {
-        virtio_gpu_pci_disable();
+    while (get_wnd_list()) {
+        cls_wnd(get_wnd_list());
     }
-#endif
+
     vesa_restore_text();
     extern int g_cursor_in_backbuffer;
     g_cursor_in_backbuffer = 0;

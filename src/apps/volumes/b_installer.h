@@ -27,7 +27,7 @@
 extern "C" {
 #endif
 
-#define INSTALLER_MAX_TARGETS       8
+#define INSTALLER_MAX_TARGETS       16
 #define INSTALLER_MAX_SOURCES       4
 #define INSTALLER_MAX_PATH_LEN      64
 
@@ -59,6 +59,7 @@ typedef struct {
 typedef struct {
     char        dev_path[INSTALLER_MAX_PATH_LEN];   /* e.g. "VirtIO Disk 1 (Raw Disk, 64 MB)" */
     char        label[32];                          /* e.g. "Raw Disk" */
+    uint64_t    start_lba;
     uint64_t    size_bytes;
     int         dev_idx;                            /* VirtIO unit index */
     int         part_idx;                           /* Partition index (0..3, -1 for raw) */

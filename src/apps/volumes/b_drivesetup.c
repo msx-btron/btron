@@ -397,6 +397,91 @@ static void ds_size_str(char *out, size_t n, uint64_t bytes) {
     snprintf(out, n, "%llu.%llu %s", (unsigned long long)whole, (unsigned long long)tenth, suf);
 }
 
+static int ds_virtio_unit(const DriveSetupDevice *d) {
+    if (!d) return -1;
+    if (strncmp(d->raw_path, "/dev/virtio", 11) == 0 &&
+        d->raw_path[11] >= '0' && d->raw_path[11] <= '9') {
+        return d->raw_path[11] - '0';
+    }
+    return -1;
+}
+
+/* Synchronize in-memory DriveSetupDevice partitions to the VirtIO disk's MBR (LBA 0) */
+static void ds_sync_virtio_mbr(DriveSetupDevice *d) {
+    int vidx = ds_virtio_unit(d);
+    if (vidx < 0) return;
+
+    uint8_t sec0[512];
+    if (virtio_blk_read_sectors(vidx, 0, sec0, 1) != 0) {
+        memset(sec0, 0, sizeof(sec0));
+    }
+    if (sec0[0] == 0 && sec0[1] == 0) {
+        sec0[0] = 0xEB;
+        sec0[1] = 0xFE;
+    }
+    sec0[510] = 0x55;
+    sec0[511] = 0xAA;
+
+    /* Preserve any existing ESP (0xEF) entry not already represented in d->partitions */
+    uint8_t saved_esp[16];
+    bool has_saved_esp = false;
+    for (int s = 0; s < 4; s++) {
+        const uint8_t *ent = sec0 + 446 + s * 16;
+        uint32_t cnt = (uint32_t)ent[12] | ((uint32_t)ent[13] << 8) |
+                       ((uint32_t)ent[14] << 16) | ((uint32_t)ent[15] << 24);
+        if (cnt > 0 && ent[4] == 0xEF) {
+            bool in_parts = false;
+            for (int p = 0; p < d->partition_count; p++) {
+                if (d->partitions[p].type_code == 0xEF) { in_parts = true; break; }
+            }
+            if (!in_parts && d->partition_count < 4) {
+                memcpy(saved_esp, ent, 16);
+                has_saved_esp = true;
+            }
+            break;
+        }
+    }
+
+    memset(sec0 + 446, 0, 64);
+
+    int slot = 0;
+    for (int p = 0; p < d->partition_count && slot < 4; p++) {
+        DriveSetupPartition *part = &d->partitions[p];
+        uint64_t bsz = part->block_size ? part->block_size : 512;
+        uint64_t byte_sz = (uint64_t)part->block_count * bsz;
+        uint32_t start_lba = (uint32_t)(part->start_lba ? part->start_lba : 2048);
+        uint32_t count_sec = (uint32_t)(byte_sz / 512ULL);
+        if (count_sec == 0) continue;
+
+        uint8_t *ent = sec0 + 446 + slot * 16;
+        ent[0] = part->bootable ? 0x80 : 0x00;
+        ent[1] = 0x00; ent[2] = 0x02; ent[3] = 0x00;
+        uint8_t mtype = part->type_code;
+        if (mtype == 0) {
+            mtype = (part->fs_type == FS_RAW) ? BTRON_PART_TYPE_RAW : 0x13;
+        }
+        ent[4] = mtype;
+        ent[5] = 0xFF; ent[6] = 0xFF; ent[7] = 0xFF;
+        ent[8]  = (uint8_t)(start_lba & 0xFF);
+        ent[9]  = (uint8_t)((start_lba >> 8) & 0xFF);
+        ent[10] = (uint8_t)((start_lba >> 16) & 0xFF);
+        ent[11] = (uint8_t)((start_lba >> 24) & 0xFF);
+        ent[12] = (uint8_t)(count_sec & 0xFF);
+        ent[13] = (uint8_t)((count_sec >> 8) & 0xFF);
+        ent[14] = (uint8_t)((count_sec >> 16) & 0xFF);
+        ent[15] = (uint8_t)((count_sec >> 24) & 0xFF);
+
+        snprintf(part->dev_path, sizeof(part->dev_path), "/dev/virtio%dp%d", vidx, slot + 1);
+        slot++;
+    }
+
+    if (has_saved_esp && slot < 4) {
+        memcpy(sec0 + 446 + slot * 16, saved_esp, 16);
+    }
+
+    virtio_blk_write_sectors(vidx, 0, sec0, 1);
+}
+
 void b_drivesetup_scan_devices(DriveSetupState *st) {
     if (!st) return;
 
@@ -586,6 +671,19 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
             }
         }
     }
+#else
+    /* Retain any user-created disk images from previous scan on freestanding target */
+    for (int i = 0; i < prev_count; i++) {
+        if (strcmp(prev_devs[i].raw_path, "btron_sys.vol") != 0 &&
+            strcmp(prev_devs[i].raw_path, "btron_anders.vol") != 0 &&
+            strcmp(prev_devs[i].raw_path, "hda.qcow2") != 0 &&
+            strncmp(prev_devs[i].raw_path, "/dev/virtio", 11) != 0) {
+            if (st->device_count < DRIVESETUP_MAX_DEVICES) {
+                st->devices[st->device_count] = prev_devs[i];
+                st->device_count++;
+            }
+        }
+    }
 #endif
 
     /* Detect VirtIO storage devices (freestanding / UEFI or hosted mock storage) */
@@ -618,8 +716,13 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
                     DriveSetupPartition *part = &d->partitions[pcount++];
                     memset(part, 0, sizeof(*part));
                     snprintf(part->dev_path, sizeof(part->dev_path), "/dev/virtio%dp%d", v_idx, p + 1);
-                    safe_strcpy(part->label, (type == 0x13) ? "BTRON Partition" : "FAT/Raw Partition", sizeof(part->label));
-                    part->fs_type = (type == 0x13) ? FS_BFS_V2 : FS_UNKNOWN;
+                    bool is_btron_type = (type == 0x13 || type == BTRON_PART_TYPE_BFS_V1 || type == BTRON_PART_TYPE_BFS_V2);
+                    safe_strcpy(part->label, is_btron_type ? "BTRON Partition" :
+                                (type == 0xEF ? "EFI System Partition" : "Raw Partition"), sizeof(part->label));
+                    if (type == BTRON_PART_TYPE_BFS_V1) part->fs_type = FS_BFS_V1;
+                    else if (type == 0x13 || type == BTRON_PART_TYPE_BFS_V2) part->fs_type = FS_BFS_V2;
+                    else if (type == BTRON_PART_TYPE_RAW) part->fs_type = FS_RAW;
+                    else part->fs_type = FS_UNKNOWN;
                     part->type_code = type;
                     part->start_lba = start_lba;
                     part->block_count = count_sec;
@@ -627,20 +730,53 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
                     part->free_blocks = count_sec > 64 ? count_sec - 64 : 0;
                     part->mounted = false;
                     part->bootable = (ent[0] == 0x80);
+                    safe_strcpy(part->mount_point, "Unmounted", sizeof(part->mount_point));
 
-                    /* Retain mounted state from previous scan if persistent */
+                    /* Retain slice label, format properties, and mounted state from previous scan */
                     for (int pi = 0; pi < prev_count; pi++) {
                         if (strcmp(prev_devs[pi].raw_path, d->raw_path) == 0) {
                             for (int pj = 0; pj < prev_devs[pi].partition_count; pj++) {
-                                if (strcmp(prev_devs[pi].partitions[pj].dev_path, part->dev_path) == 0 &&
-                                    prev_devs[pi].partitions[pj].mounted) {
-                                    part->mounted = true;
-                                    part->vol_handle = prev_devs[pi].partitions[pj].vol_handle;
-                                    safe_strcpy(part->mount_point, prev_devs[pi].partitions[pj].mount_point, sizeof(part->mount_point));
-                                    if (prev_devs[pi].partitions[pj].label[0]) {
-                                        safe_strcpy(part->label, prev_devs[pi].partitions[pj].label, sizeof(part->label));
+                                const DriveSetupPartition *pp = &prev_devs[pi].partitions[pj];
+                                if (strcmp(pp->dev_path, part->dev_path) == 0 ||
+                                    (pp->start_lba > 0 && pp->start_lba == part->start_lba)) {
+                                    if (pp->label[0]) {
+                                        safe_strcpy(part->label, pp->label, sizeof(part->label));
+                                    }
+                                    if (pp->fs_type != FS_UNKNOWN) part->fs_type = pp->fs_type;
+                                    if (pp->features) part->features = pp->features;
+                                    if (pp->btree_node_size) part->btree_node_size = pp->btree_node_size;
+                                    if (pp->journal_blocks) part->journal_blocks = pp->journal_blocks;
+                                    if (pp->total_fids) part->total_fids = pp->total_fids;
+                                    if (pp->mounted) {
+                                        part->mounted = true;
+                                        part->vol_handle = pp->vol_handle;
+                                        safe_strcpy(part->mount_point, pp->mount_point, sizeof(part->mount_point));
                                     }
                                 }
+                            }
+                        }
+                    }
+
+                    /* Probe on-disk VolumeHeader at start_lba (or start_lba + 8) for formatted label */
+                    uint8_t probe[512];
+                    if (virtio_blk_read_sectors(v_idx, start_lba, probe, 1) == 0) {
+                        uint16_t m = (uint16_t)probe[0] | ((uint16_t)probe[1] << 8);
+                        bool magic = (m == 0x52FE || m == 0x42FE || m == 0xFE52 || m == 0xFE42);
+                        if (!magic && count_sec > 8 && virtio_blk_read_sectors(v_idx, start_lba + 8, probe, 1) == 0) {
+                            m = (uint16_t)probe[0] | ((uint16_t)probe[1] << 8);
+                            magic = (m == 0x52FE || m == 0x42FE || m == 0xFE52 || m == 0xFE42);
+                        }
+                        if (magic) {
+                            const VolumeHeader *vh = (const VolumeHeader *)probe;
+                            char vlbl[32];
+                            int li = 0;
+                            while (li < 28 && vh->vol_name[li] >= 32 && vh->vol_name[li] <= 126) {
+                                vlbl[li] = (char)vh->vol_name[li];
+                                li++;
+                            }
+                            vlbl[li] = '\0';
+                            if (li > 0) {
+                                safe_strcpy(part->label, vlbl, sizeof(part->label));
                             }
                         }
                     }
@@ -663,6 +799,11 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
         } else {
             d->partition_count = 0;
         }
+    }
+
+    if (st->device_count > 0 && st->selected_dev_idx < 0) {
+        st->selected_dev_idx = 0;
+        st->selected_part_idx = (st->devices[0].partition_count > 0) ? 0 : -1;
     }
 
     if (st->device_count > 0) {
@@ -712,6 +853,14 @@ bool b_drivesetup_init_disk(DriveSetupState *st, int dev_idx, PartitionScheme sc
     dev->scheme = scheme;
     dev->partition_count = 0;
     st->selected_part_idx = -1;
+    int vidx = ds_virtio_unit(dev);
+    if (vidx >= 0) {
+        uint8_t sec0[512];
+        memset(sec0, 0, sizeof(sec0));
+        sec0[0] = 0xEB; sec0[1] = 0xFE;
+        sec0[510] = 0x55; sec0[511] = 0xAA;
+        virtio_blk_write_sectors(vidx, 0, sec0, 1);
+    }
     snprintf(st->status_msg, sizeof(st->status_msg), "Initialized %s with %s table",
              dev->raw_path, scheme == PART_SCHEME_GPT ? "GPT" : "MBR");
     return true;
@@ -723,63 +872,67 @@ bool b_drivesetup_make_bootable(DriveSetupState *st, int dev_idx, int part_idx) 
     if (part_idx < 0 || part_idx >= d->partition_count) return false;
     DriveSetupPartition *p = &d->partitions[part_idx];
 
-#if BTRON_HOSTED
-    FILE *fp = fopen(d->raw_path, "r+b");
-    if (!fp) {
-        char alt_path[64];
-        snprintf(alt_path, sizeof(alt_path), ".build/%s", d->raw_path);
-        fp = fopen(alt_path, "r+b");
+    for (int i = 0; i < d->partition_count; i++) {
+        d->partitions[i].bootable = (i == part_idx);
     }
-    if (fp) {
+
+    int vidx = ds_virtio_unit(d);
+    if (vidx >= 0) {
+        ds_sync_virtio_mbr(d);
         uint8_t sec0[512];
-        if (fread(sec0, 1, 512, fp) == 512) {
+        if (virtio_blk_read_sectors(vidx, 0, sec0, 1) == 0) {
             sec0[510] = 0x55;
             sec0[511] = 0xAA;
-            bool has_esp = false;
-            int free_slot = -1;
-            for (int i = 0; i < 4; i++) {
-                uint8_t *ent = sec0 + 446 + i * 16;
-                uint32_t cnt = (uint32_t)ent[12] | ((uint32_t)ent[13] << 8) |
-                               ((uint32_t)ent[14] << 16) | ((uint32_t)ent[15] << 24);
-                if (cnt > 0 && ent[4] == 0xEF) has_esp = true;
-                if (cnt == 0 && free_slot < 0 && i != part_idx) free_slot = i;
-            }
-            if (!has_esp && free_slot >= 0) {
-                uint8_t *esp = sec0 + 446 + free_slot * 16;
-                esp[0] = 0x00;
-                esp[4] = 0xEF;
-                esp[8] = 0x00; esp[9] = 0x08; esp[10] = 0x00; esp[11] = 0x00; /* LBA 2048 */
-                esp[12] = 0x00; esp[13] = 0x80; esp[14] = 0x00; esp[15] = 0x00; /* 32768 */
-            }
+            b_drivesetup_ensure_esp(sec0, virtio_blk_get_capacity(vidx), part_idx);
             for (int i = 0; i < 4; i++) {
                 sec0[446 + i * 16] = (i == part_idx) ? 0x80 : 0x00;
             }
             if (sec0[446 + part_idx * 16 + 4] == 0) {
-                sec0[446 + part_idx * 16 + 4] = 0x13; /* BTRON type */
+                sec0[446 + part_idx * 16 + 4] = 0x13;
             }
-            fseek(fp, 0, SEEK_SET);
-            fwrite(sec0, 1, 512, fp);
+            virtio_blk_write_sectors(vidx, 0, sec0, 1);
         }
-        fclose(fp);
-    }
-#else
-    uint8_t sec0[512];
-    if (virtio_blk_read_sectors(dev_idx, 0, sec0, 1) == 0) {
-        sec0[510] = 0x55;
-        sec0[511] = 0xAA;
-        b_drivesetup_ensure_esp(sec0, virtio_blk_get_capacity(dev_idx), part_idx);
-        for (int i = 0; i < 4; i++) {
-            sec0[446 + i * 16] = (i == part_idx) ? 0x80 : 0x00;
+    } else {
+#if BTRON_HOSTED
+        FILE *fp = fopen(d->raw_path, "r+b");
+        if (!fp) {
+            char alt_path[64];
+            snprintf(alt_path, sizeof(alt_path), ".build/%s", d->raw_path);
+            fp = fopen(alt_path, "r+b");
         }
-        if (sec0[446 + part_idx * 16 + 4] == 0) {
-            sec0[446 + part_idx * 16 + 4] = 0x13; /* BTRON */
+        if (fp) {
+            uint8_t sec0[512];
+            if (fread(sec0, 1, 512, fp) == 512) {
+                sec0[510] = 0x55;
+                sec0[511] = 0xAA;
+                bool has_esp = false;
+                int free_slot = -1;
+                for (int i = 0; i < 4; i++) {
+                    uint8_t *ent = sec0 + 446 + i * 16;
+                    uint32_t cnt = (uint32_t)ent[12] | ((uint32_t)ent[13] << 8) |
+                                   ((uint32_t)ent[14] << 16) | ((uint32_t)ent[15] << 24);
+                    if (cnt > 0 && ent[4] == 0xEF) has_esp = true;
+                    if (cnt == 0 && free_slot < 0 && i != part_idx) free_slot = i;
+                }
+                if (!has_esp && free_slot >= 0) {
+                    uint8_t *esp = sec0 + 446 + free_slot * 16;
+                    esp[0] = 0x00;
+                    esp[4] = 0xEF;
+                    esp[8] = 0x00; esp[9] = 0x08; esp[10] = 0x00; esp[11] = 0x00; /* LBA 2048 */
+                    esp[12] = 0x00; esp[13] = 0x80; esp[14] = 0x00; esp[15] = 0x00; /* 32768 */
+                }
+                for (int i = 0; i < 4; i++) {
+                    sec0[446 + i * 16] = (i == part_idx) ? 0x80 : 0x00;
+                }
+                if (sec0[446 + part_idx * 16 + 4] == 0) {
+                    sec0[446 + part_idx * 16 + 4] = 0x13; /* BTRON type */
+                }
+                fseek(fp, 0, SEEK_SET);
+                fwrite(sec0, 1, 512, fp);
+            }
+            fclose(fp);
         }
-        virtio_blk_write_sectors(dev_idx, 0, sec0, 1);
-    }
 #endif
-
-    for (int i = 0; i < d->partition_count; i++) {
-        d->partitions[i].bootable = (i == part_idx);
     }
 
     snprintf(st->status_msg, sizeof(st->status_msg),
@@ -796,29 +949,28 @@ bool b_drivesetup_make_disk_bootable(DriveSetupState *st, int dev_idx) {
         return b_drivesetup_make_bootable(st, dev_idx, 0);
     }
 
+    int vidx = ds_virtio_unit(d);
+    if (vidx >= 0) {
+        ds_sync_virtio_mbr(d);
+    } else {
 #if BTRON_HOSTED
-    FILE *fp = fopen(d->raw_path, "r+b");
-    if (!fp) {
-        char alt_path[64];
-        snprintf(alt_path, sizeof(alt_path), ".build/%s", d->raw_path);
-        fp = fopen(alt_path, "r+b");
-    }
-    if (fp) {
-        uint8_t sec0[512];
-        memset(sec0, 0, sizeof(sec0));
-        sec0[0] = 0xEB; sec0[1] = 0xFE;
-        sec0[510] = 0x55; sec0[511] = 0xAA;
-        fseek(fp, 0, SEEK_SET);
-        fwrite(sec0, 1, 512, fp);
-        fclose(fp);
-    }
-#else
-    uint8_t sec0[512];
-    memset(sec0, 0, sizeof(sec0));
-    sec0[0] = 0xEB; sec0[1] = 0xFE;
-    sec0[510] = 0x55; sec0[511] = 0xAA;
-    virtio_blk_write_sectors(dev_idx, 0, sec0, 1);
+        FILE *fp = fopen(d->raw_path, "r+b");
+        if (!fp) {
+            char alt_path[64];
+            snprintf(alt_path, sizeof(alt_path), ".build/%s", d->raw_path);
+            fp = fopen(alt_path, "r+b");
+        }
+        if (fp) {
+            uint8_t sec0[512];
+            memset(sec0, 0, sizeof(sec0));
+            sec0[0] = 0xEB; sec0[1] = 0xFE;
+            sec0[510] = 0x55; sec0[511] = 0xAA;
+            fseek(fp, 0, SEEK_SET);
+            fwrite(sec0, 1, 512, fp);
+            fclose(fp);
+        }
 #endif
+    }
 
     d->scheme = PART_SCHEME_MBR;
     snprintf(st->status_msg, sizeof(st->status_msg),
@@ -837,6 +989,7 @@ bool b_drivesetup_delete_partition(DriveSetupState *st, int dev_idx, int part_id
     dev->partition_count--;
     if (st->selected_part_idx >= dev->partition_count)
         st->selected_part_idx = dev->partition_count - 1;
+    ds_sync_virtio_mbr(dev);
     snprintf(st->status_msg, sizeof(st->status_msg), "Deleted partition slice");
     return true;
 }
@@ -853,24 +1006,49 @@ void b_drivesetup_open_warn_dialog(DriveSetupState *st, WriteOperationType op, c
 bool b_drivesetup_create_slice(DriveSetupState *st, int dev_idx, const char *label, uint64_t size_bytes) {
     if (!st || dev_idx < 0 || dev_idx >= st->device_count) return false;
     DriveSetupDevice *dev = &st->devices[dev_idx];
-    if (dev->partition_count >= DRIVESETUP_MAX_PARTITIONS) return false;
+    int vidx = ds_virtio_unit(dev);
+    int max_parts = (vidx >= 0) ? 4 : DRIVESETUP_MAX_PARTITIONS;
+    if (dev->partition_count >= max_parts) {
+        safe_strcpy(st->status_msg, "Create Slice: maximum partition count reached", sizeof(st->status_msg));
+        return false;
+    }
 
+    uint64_t sec_sz = dev->sector_size ? dev->sector_size : 512;
+    uint64_t next_lba = 2048;
     int p_idx = dev->partition_count;
+    for (int i = 0; i < p_idx; i++) {
+        uint64_t p_bsz = dev->partitions[i].block_size ? dev->partitions[i].block_size : 512;
+        uint64_t p_secs = ((uint64_t)dev->partitions[i].block_count * p_bsz) / sec_sz;
+        uint64_t p_end  = dev->partitions[i].start_lba + p_secs;
+        if (p_end > next_lba) next_lba = p_end;
+    }
+
+    if (dev->total_bytes > 0) {
+        uint64_t total_sec = dev->total_bytes / sec_sz;
+        if (next_lba >= total_sec || (total_sec - next_lba) * sec_sz < 512 * 1024ULL) {
+            safe_strcpy(st->status_msg, "Create Slice: no free space remaining on disk", sizeof(st->status_msg));
+            return false;
+        }
+        uint64_t avail_bytes = (total_sec - next_lba) * sec_sz;
+        if (size_bytes == 0 || size_bytes > avail_bytes) {
+            size_bytes = avail_bytes;
+        }
+    }
+
     DriveSetupPartition *p = &dev->partitions[p_idx];
     memset(p, 0, sizeof(*p));
 
-    snprintf(p->dev_path, sizeof(p->dev_path), "%s:s%d", dev->raw_path, p_idx);
+    if (vidx >= 0) {
+        snprintf(p->dev_path, sizeof(p->dev_path), "/dev/virtio%dp%d", vidx, p_idx + 1);
+    } else {
+        snprintf(p->dev_path, sizeof(p->dev_path), "%s:s%d", dev->raw_path, p_idx);
+    }
     safe_strcpy(p->label, label && label[0] ? label : "New Slice", sizeof(p->label));
     p->type_code = BTRON_PART_TYPE_BFS_V1;
     p->fs_type = FS_BFS_V1;
     p->block_size = 1024;
     p->btree_node_size = 0;
-
-    uint64_t alloc_blocks = 0;
-    for (int i = 0; i < p_idx; i++) {
-        alloc_blocks += dev->partitions[i].block_count;
-    }
-    p->start_lba = 2048 + (alloc_blocks * 4096) / (dev->sector_size ? dev->sector_size : 512);
+    p->start_lba = next_lba;
     p->block_count = size_bytes / p->block_size;
     if (p->block_count == 0) p->block_count = 262144; /* 1 GiB default */
     p->features = 0;
@@ -884,6 +1062,7 @@ bool b_drivesetup_create_slice(DriveSetupState *st, int dev_idx, const char *lab
 
     dev->partition_count++;
     st->selected_part_idx = p_idx;
+    ds_sync_virtio_mbr(dev);
     snprintf(st->status_msg, sizeof(st->status_msg), "Created slice %s (%s)", p->dev_path, p->label);
     return true;
 }
@@ -986,57 +1165,65 @@ bool b_drivesetup_format_v1(DriveSetupState *st, int dev_idx, int part_idx,
     if (part_idx < 0 || part_idx >= dev->partition_count) return false;
 
     DriveSetupPartition *p = &dev->partitions[part_idx];
+    uint64_t total_bytes = (uint64_t)p->block_count * (p->block_size ? p->block_size : 1024);
     safe_strcpy(p->label, name ? name : "Untitled", sizeof(p->label));
     p->fs_type = FS_BFS_V1;
     p->type_code = BTRON_PART_TYPE_BFS_V1;
     p->block_size = block_sz ? block_sz : 1024;
+    if (total_bytes >= p->block_size) {
+        p->block_count = total_bytes / p->block_size;
+    }
     p->btree_node_size = 0;
     p->features = 0;
     p->journal_blocks = 0;
     p->vector_dim = 0;
     p->active_fids = 1;
     p->total_fids = 256;
-    p->free_blocks = p->block_count - 16;
+    p->free_blocks = p->block_count > 16 ? p->block_count - 16 : 0;
     p->mounted = false;
     p->dirty = false;
 
-#if BTRON_HOSTED
-    /* Write real volume structure to backing file if it exists on disk */
-    BlkDev *blk = blk_file_create(dev->raw_path, 0, 0);
-    if (!blk) blk = blk_file_create(p->dev_path, 0, 0);
-    if (!blk) {
-        char alt[64];
-        snprintf(alt, sizeof(alt), "../%s", dev->raw_path);
-        blk = blk_file_create(alt, 0, 0);
-    }
-    if (blk) {
-        BlkDev *target_dev = blk;
-        if (p->start_lba > 0) {
-            target_dev = blk_partition_create(blk, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
-        }
-        if (target_dev) {
-            vol_format(target_dev, 256, (UW)p->block_count, p->label);
-            if (target_dev != blk) blk_destroy(target_dev);
-        }
-        blk_destroy(blk);
-    }
-#else
-    if (strncmp(dev->raw_path, "/dev/virtio", 11) == 0) {
-        int vidx = dev->raw_path[11] - '0';
+    int vidx = ds_virtio_unit(dev);
+    if (vidx >= 0) {
         BlkDev *blk = blk_virtio_create(vidx);
         if (blk) {
+            UW fmt_blocks = (UW)(total_bytes ? (total_bytes / 1024ULL) : p->block_count);
+            if (fmt_blocks < 16) fmt_blocks = 256;
             BlkDev *target_dev = blk;
             if (p->start_lba > 0) {
-                target_dev = blk_partition_create(blk, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
+                target_dev = blk_partition_create(blk, (UW)p->start_lba, fmt_blocks, 1024);
             }
             if (target_dev) {
-                vol_format(target_dev, 256, (UW)p->block_count, p->label);
-                if (target_dev != blk) blk_destroy(target_dev);
+                vol_format(target_dev, 256, fmt_blocks, p->label);
+                if (target_dev != blk) blk_partition_release(target_dev);
+            }
+        }
+        ds_sync_virtio_mbr(dev);
+    } else {
+#if BTRON_HOSTED
+        /* Write real volume structure to backing file if it exists on disk */
+        BlkDev *blk = blk_file_create(dev->raw_path, 0, 0);
+        if (!blk) blk = blk_file_create(p->dev_path, 0, 0);
+        if (!blk) {
+            char alt[64];
+            snprintf(alt, sizeof(alt), "../%s", dev->raw_path);
+            blk = blk_file_create(alt, 0, 0);
+        }
+        if (blk) {
+            UW fmt_blocks = (UW)(total_bytes ? (total_bytes / 1024ULL) : p->block_count);
+            if (fmt_blocks < 16) fmt_blocks = 256;
+            BlkDev *target_dev = blk;
+            if (p->start_lba > 0) {
+                target_dev = blk_partition_create(blk, (UW)p->start_lba, fmt_blocks, 1024);
+            }
+            if (target_dev) {
+                vol_format(target_dev, 256, fmt_blocks, p->label);
+                if (target_dev != blk) blk_partition_release(target_dev);
             }
             blk_destroy(blk);
         }
-    }
 #endif
+    }
 
     snprintf(st->status_msg, sizeof(st->status_msg), "Formatted %s as B-FS V1 (%s)",
              p->dev_path, p->label);
@@ -1051,57 +1238,65 @@ bool b_drivesetup_format_bfs(DriveSetupState *st, int dev_idx, int part_idx,
     if (part_idx < 0 || part_idx >= dev->partition_count) return false;
 
     DriveSetupPartition *p = &dev->partitions[part_idx];
+    uint64_t total_bytes = (uint64_t)p->block_count * (p->block_size ? p->block_size : 4096);
     safe_strcpy(p->label, name ? name : "Untitled", sizeof(p->label));
     p->fs_type = FS_BFS_V2;
     p->type_code = BTRON_PART_TYPE_BFS_V2;
     p->block_size = block_sz ? block_sz : 4096;
+    if (total_bytes >= p->block_size) {
+        p->block_count = total_bytes / p->block_size;
+    }
     p->btree_node_size = btree_sz ? btree_sz : 4096;
     p->features = features | FEAT_JOURNAL;
     p->journal_blocks = (journal_mb * 1024 * 1024) / p->block_size;
     p->vector_dim = vec_dim;
     p->active_fids = 1;
     p->total_fids = 65536;
-    p->free_blocks = p->block_count - 64;
+    p->free_blocks = p->block_count > 64 ? p->block_count - 64 : 0;
     p->mounted = false;
     p->dirty = false;
 
-#if BTRON_HOSTED
-    /* Write real volume structure to backing file if it exists on disk */
-    BlkDev *blk = blk_file_create(dev->raw_path, 0, 0);
-    if (!blk) blk = blk_file_create(p->dev_path, 0, 0);
-    if (!blk) {
-        char alt[64];
-        snprintf(alt, sizeof(alt), "../%s", dev->raw_path);
-        blk = blk_file_create(alt, 0, 0);
-    }
-    if (blk) {
-        BlkDev *target_dev = blk;
-        if (p->start_lba > 0) {
-            target_dev = blk_partition_create(blk, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
-        }
-        if (target_dev) {
-            vol_format(target_dev, 256, (UW)p->block_count, p->label);
-            if (target_dev != blk) blk_destroy(target_dev);
-        }
-        blk_destroy(blk);
-    }
-#else
-    if (strncmp(dev->raw_path, "/dev/virtio", 11) == 0) {
-        int vidx = dev->raw_path[11] - '0';
+    int vidx = ds_virtio_unit(dev);
+    if (vidx >= 0) {
         BlkDev *blk = blk_virtio_create(vidx);
         if (blk) {
+            UW fmt_blocks = (UW)(total_bytes ? (total_bytes / 1024ULL) : p->block_count);
+            if (fmt_blocks < 16) fmt_blocks = 256;
             BlkDev *target_dev = blk;
             if (p->start_lba > 0) {
-                target_dev = blk_partition_create(blk, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
+                target_dev = blk_partition_create(blk, (UW)p->start_lba, fmt_blocks, 1024);
             }
             if (target_dev) {
-                vol_format(target_dev, 256, (UW)p->block_count, p->label);
-                if (target_dev != blk) blk_destroy(target_dev);
+                vol_format(target_dev, 256, fmt_blocks, p->label);
+                if (target_dev != blk) blk_partition_release(target_dev);
+            }
+        }
+        ds_sync_virtio_mbr(dev);
+    } else {
+#if BTRON_HOSTED
+        /* Write real volume structure to backing file if it exists on disk */
+        BlkDev *blk = blk_file_create(dev->raw_path, 0, 0);
+        if (!blk) blk = blk_file_create(p->dev_path, 0, 0);
+        if (!blk) {
+            char alt[64];
+            snprintf(alt, sizeof(alt), "../%s", dev->raw_path);
+            blk = blk_file_create(alt, 0, 0);
+        }
+        if (blk) {
+            UW fmt_blocks = (UW)(total_bytes ? (total_bytes / 1024ULL) : p->block_count);
+            if (fmt_blocks < 16) fmt_blocks = 256;
+            BlkDev *target_dev = blk;
+            if (p->start_lba > 0) {
+                target_dev = blk_partition_create(blk, (UW)p->start_lba, fmt_blocks, 1024);
+            }
+            if (target_dev) {
+                vol_format(target_dev, 256, fmt_blocks, p->label);
+                if (target_dev != blk) blk_partition_release(target_dev);
             }
             blk_destroy(blk);
         }
-    }
 #endif
+    }
 
     snprintf(st->status_msg, sizeof(st->status_msg), "Formatted %s as B-FS V2 (%s)",
              p->dev_path, p->label);
@@ -1118,62 +1313,67 @@ bool b_drivesetup_mount(DriveSetupState *st, int dev_idx, int part_idx) {
 
     Volume *v = (Volume *)p->vol_handle;
     if (!v) {
-#if BTRON_HOSTED
-        BlkDev *b = NULL;
-        if (strstr(dev->raw_path, ".qcow2") != NULL) {
-            const char *qcow2_paths[] = { dev->raw_path, "hda.qcow2", "../hda.qcow2", "PMC/chokanji_4_qemu/hda.qcow2", "../PMC/chokanji_4_qemu/hda.qcow2", NULL };
-            for (int q = 0; qcow2_paths[q]; q++) {
-                b = blk_qcow2_create(qcow2_paths[q], 0);
-                if (b) break;
-            }
+        int vidx = ds_virtio_unit(dev);
+        if (vidx >= 0) {
+            BlkDev *b = blk_virtio_create(vidx);
             if (b) {
-                BlkDev *part = blk_mbr_find_btron_partition(b, 8192);
-                if (part) {
-                    v = vol_mount(part);
-                    if (!v) blk_destroy(part);
-                } else {
-                    blk_destroy(b);
+                uint64_t total_bytes = (uint64_t)p->block_count * (p->block_size ? p->block_size : 1024);
+                UW mnt_blocks = (UW)(total_bytes ? (total_bytes / 1024ULL) : p->block_count);
+                BlkDev *target_dev = b;
+                if (p->start_lba > 0) {
+                    target_dev = blk_partition_create(b, (UW)p->start_lba, mnt_blocks, 1024);
+                }
+                if (target_dev) {
+                    v = vol_mount(target_dev);
+                    if (!v && target_dev != b) blk_partition_release(target_dev);
                 }
             }
         } else {
-            b = blk_file_create(dev->raw_path, 0, 0);
-            if (!b) b = blk_file_create(p->dev_path, 0, 0);
-            if (!b) {
-                char alt[64];
-                snprintf(alt, sizeof(alt), "../%s", dev->raw_path);
-                b = blk_file_create(alt, 0, 0);
-            }
-            if (b) {
-                BlkDev *target_dev = b;
-                if (p->start_lba > 0) {
-                    target_dev = blk_partition_create(b, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
+#if BTRON_HOSTED
+            BlkDev *b = NULL;
+            if (strstr(dev->raw_path, ".qcow2") != NULL) {
+                const char *qcow2_paths[] = { dev->raw_path, "hda.qcow2", "../hda.qcow2", "PMC/chokanji_4_qemu/hda.qcow2", "../PMC/chokanji_4_qemu/hda.qcow2", NULL };
+                for (int q = 0; qcow2_paths[q]; q++) {
+                    b = blk_qcow2_create(qcow2_paths[q], 0);
+                    if (b) break;
                 }
-                if (target_dev) {
-                    v = vol_mount(target_dev);
-                    if (!v) {
-                        if (target_dev != b) blk_destroy(target_dev);
+                if (b) {
+                    BlkDev *part = blk_mbr_find_btron_partition(b, 8192);
+                    if (part) {
+                        v = vol_mount(part);
+                        if (!v) blk_destroy(part);
+                    } else {
                         blk_destroy(b);
                     }
-                } else {
-                    blk_destroy(b);
+                }
+            } else {
+                b = blk_file_create(dev->raw_path, 0, 0);
+                if (!b) b = blk_file_create(p->dev_path, 0, 0);
+                if (!b) {
+                    char alt[64];
+                    snprintf(alt, sizeof(alt), "../%s", dev->raw_path);
+                    b = blk_file_create(alt, 0, 0);
+                }
+                if (b) {
+                    uint64_t total_bytes = (uint64_t)p->block_count * (p->block_size ? p->block_size : 1024);
+                    UW mnt_blocks = (UW)(total_bytes ? (total_bytes / 1024ULL) : p->block_count);
+                    BlkDev *target_dev = b;
+                    if (p->start_lba > 0) {
+                        target_dev = blk_partition_create(b, (UW)p->start_lba, mnt_blocks, 1024);
+                    }
+                    if (target_dev) {
+                        v = vol_mount(target_dev);
+                        if (!v) {
+                            if (target_dev != b) blk_partition_release(target_dev);
+                            blk_destroy(b);
+                        }
+                    } else {
+                        blk_destroy(b);
+                    }
                 }
             }
-        }
-#else
-        if (strncmp(dev->raw_path, "/dev/virtio", 11) == 0) {
-            int vidx = dev->raw_path[11] - '0';
-            BlkDev *b = blk_virtio_create(vidx);
-            if (b) {
-                BlkDev *target_dev = b;
-                if (p->start_lba > 0) {
-                    target_dev = blk_partition_create(b, (UW)p->start_lba, (UW)p->block_count, p->block_size ? p->block_size : 1024);
-                }
-                if (target_dev) {
-                    v = vol_mount(target_dev);
-                }
-            }
-        }
 #endif
+        }
     }
 
     if (v) {
@@ -1328,47 +1528,57 @@ bool b_drivesetup_commit_dialog(DriveSetupState *st) {
                 b_drivesetup_close_dialog(st);
                 return false;
             }
-            uint64_t sz = 2ULL * 1024ULL * 1024ULL * 1024ULL;
-            if (st->dlg_radio_sel1 == 0) sz = 1ULL * 1024ULL * 1024ULL * 1024ULL;
-            else if (st->dlg_radio_sel1 == 2) sz = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+            DriveSetupDevice *d = &st->devices[st->selected_dev_idx];
+            bool small_disk = (d->total_bytes > 0 && d->total_bytes < 512ULL * 1024ULL * 1024ULL);
+            uint64_t sz;
+            if (small_disk) {
+                if (st->dlg_radio_sel1 == 0) sz = 16ULL * 1024ULL * 1024ULL;
+                else if (st->dlg_radio_sel1 == 1) sz = 24ULL * 1024ULL * 1024ULL;
+                else sz = 0; /* Max: all remaining space on disk */
+            } else {
+                sz = 2ULL * 1024ULL * 1024ULL * 1024ULL;
+                if (st->dlg_radio_sel1 == 0) sz = 1ULL * 1024ULL * 1024ULL * 1024ULL;
+                else if (st->dlg_radio_sel1 == 2) sz = 4ULL * 1024ULL * 1024ULL * 1024ULL;
+            }
             const char *lbl = st->dlg_text_buf[0] ? st->dlg_text_buf : "Data-Slice";
-            b_drivesetup_create_slice(st, st->selected_dev_idx, lbl, sz);
-            if (st->selected_dev_idx >= 0 && st->selected_dev_idx < st->device_count) {
-                DriveSetupDevice *d = &st->devices[st->selected_dev_idx];
-                if (d->partition_count > 0) {
-                    DriveSetupPartition *p = &d->partitions[d->partition_count - 1];
-                    if (st->dlg_radio_sel2 == 0) {
-                        p->fs_type = FS_BFS_V1;
-                        p->type_code = BTRON_PART_TYPE_BFS_V1;
-                        p->btree_node_size = 0;
-                        p->block_size = 1024;
-                        p->features = 0;
-                        p->journal_blocks = 0;
-                        p->total_fids = 256;
-                        p->free_blocks = p->block_count - 16;
-                        safe_strcpy(p->mount_point, "Unmounted", sizeof(p->mount_point));
-                    } else if (st->dlg_radio_sel2 == 1) {
-                        p->fs_type = FS_BFS_V2;
-                        p->type_code = BTRON_PART_TYPE_BFS_V2;
-                        p->btree_node_size = 4096;
-                        p->block_size = 4096;
-                        p->features = FEAT_JOURNAL | FEAT_LARGE_FID;
-                        p->journal_blocks = 4096;
-                        p->total_fids = 65536;
-                        p->free_blocks = p->block_count - 64;
-                        safe_strcpy(p->mount_point, "Unmounted", sizeof(p->mount_point));
-                    } else {
-                        p->fs_type = FS_RAW;
-                        p->type_code = BTRON_PART_TYPE_RAW;
-                        p->btree_node_size = 0;
-                        p->block_size = 512;
-                        p->features = 0;
-                        p->journal_blocks = 0;
-                        p->total_fids = 0;
-                        p->free_blocks = p->block_count;
-                        safe_strcpy(p->mount_point, "Unmounted", sizeof(p->mount_point));
-                    }
+            if (b_drivesetup_create_slice(st, st->selected_dev_idx, lbl, sz) && d->partition_count > 0) {
+                DriveSetupPartition *p = &d->partitions[d->partition_count - 1];
+                uint64_t slice_bytes = (uint64_t)p->block_count * (p->block_size ? p->block_size : 1024);
+                if (st->dlg_radio_sel2 == 0) {
+                    p->fs_type = FS_BFS_V1;
+                    p->type_code = BTRON_PART_TYPE_BFS_V1;
+                    p->btree_node_size = 0;
+                    p->block_size = 1024;
+                    p->block_count = slice_bytes / p->block_size;
+                    p->features = 0;
+                    p->journal_blocks = 0;
+                    p->total_fids = 256;
+                    p->free_blocks = p->block_count > 16 ? p->block_count - 16 : 0;
+                    safe_strcpy(p->mount_point, "Unmounted", sizeof(p->mount_point));
+                } else if (st->dlg_radio_sel2 == 1) {
+                    p->fs_type = FS_BFS_V2;
+                    p->type_code = BTRON_PART_TYPE_BFS_V2;
+                    p->btree_node_size = 4096;
+                    p->block_size = 4096;
+                    p->block_count = slice_bytes / p->block_size;
+                    p->features = FEAT_JOURNAL | FEAT_LARGE_FID;
+                    p->journal_blocks = 4096;
+                    p->total_fids = 65536;
+                    p->free_blocks = p->block_count > 64 ? p->block_count - 64 : 0;
+                    safe_strcpy(p->mount_point, "Unmounted", sizeof(p->mount_point));
+                } else {
+                    p->fs_type = FS_RAW;
+                    p->type_code = BTRON_PART_TYPE_RAW;
+                    p->btree_node_size = 0;
+                    p->block_size = 512;
+                    p->block_count = slice_bytes / p->block_size;
+                    p->features = 0;
+                    p->journal_blocks = 0;
+                    p->total_fids = 0;
+                    p->free_blocks = p->block_count;
+                    safe_strcpy(p->mount_point, "Unmounted", sizeof(p->mount_point));
                 }
+                ds_sync_virtio_mbr(d);
             }
             b_drivesetup_close_dialog(st);
             return true;
@@ -2290,9 +2500,12 @@ void drivesetup_paint(WND *wnd, GDEV *dev) {
         RECT name_box = { dlg_r.left + 160, dlg_r.top + 38, dlg_r.right - 30, dlg_r.top + 58 };
         paint_ui_textbox(dev, &name_box, st->dlg_text_buf, st->dlg_focus_idx == 0);
 
+        bool small_disk = (st->selected_dev_idx >= 0 && st->selected_dev_idx < st->device_count &&
+                           st->devices[st->selected_dev_idx].total_bytes > 0 &&
+                           st->devices[st->selected_dev_idx].total_bytes < 512ULL * 1024ULL * 1024ULL);
         drw_tc_string(dev, dlg_r.left + 20, dlg_r.top + 70, "サイズ (Size):", COLOR_BLACK, DS_COL_BG);
-        paint_ui_radio(dev, dlg_r.left + 160, dlg_r.top + 70, "1.0 GiB", st->dlg_radio_sel1 == 0, st->dlg_focus_idx == 1);
-        paint_ui_radio(dev, dlg_r.left + 260, dlg_r.top + 70, "2.0 GiB", st->dlg_radio_sel1 == 1, st->dlg_focus_idx == 2);
+        paint_ui_radio(dev, dlg_r.left + 160, dlg_r.top + 70, small_disk ? "16 MiB" : "1.0 GiB", st->dlg_radio_sel1 == 0, st->dlg_focus_idx == 1);
+        paint_ui_radio(dev, dlg_r.left + 260, dlg_r.top + 70, small_disk ? "24 MiB" : "2.0 GiB", st->dlg_radio_sel1 == 1, st->dlg_focus_idx == 2);
         paint_ui_radio(dev, dlg_r.left + 360, dlg_r.top + 70, "最大 (Max)", st->dlg_radio_sel1 == 2, st->dlg_focus_idx == 3);
 
         drw_tc_string(dev, dlg_r.left + 20, dlg_r.top + 104, "種別 (Type):", COLOR_BLACK, DS_COL_BG);
@@ -2923,7 +3136,9 @@ WND* open_drivesetup_window(void) {
     }
     g_drivesetup_wnd = NULL;
 
-    b_drivesetup_init(&g_drivesetup_state);
+    if (g_drivesetup_state.menu_bar.header_count == 0) {
+        b_drivesetup_init(&g_drivesetup_state);
+    }
     b_drivesetup_scan_devices(&g_drivesetup_state);
 
     H win_w = DRIVESETUP_DEF_W;

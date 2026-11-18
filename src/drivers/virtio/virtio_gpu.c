@@ -230,68 +230,83 @@ int virtio_gpu_pci_probe(void) {
 /* ── Driver Initialization & 2D Surface Setup ────────────────────────── */
 
 int virtio_gpu_pci_init(uint16_t width, uint16_t height, void *fb_mem) {
-    if (!g_virtio_gpu.is_detected) {
-        if (virtio_gpu_pci_probe() != 0) {
-            return -1;
+    if (g_virtio_gpu.is_active &&
+        g_virtio_gpu.width == width &&
+        g_virtio_gpu.height == height &&
+        g_virtio_gpu.framebuffer == (uint32_t *)fb_mem) {
+        virtio_gpu_pci_flush_all();
+        return 0;
+    }
+
+    if (!g_virtio_gpu.is_active) {
+        if (!g_virtio_gpu.is_detected) {
+            if (virtio_gpu_pci_probe() != 0) {
+                return -1;
+            }
         }
+
+        volatile struct virtio_pci_common_cfg *cfg = g_virtio_gpu.common_cfg;
+        if (!cfg) {
+            uart_puts_raw("[VIRTIO-GPU] Missing VirtIO common config MMIO!\r\n");
+            return -2;
+        }
+
+        /* 1. Device Reset */
+        cfg->device_status = 0;
+        for (volatile int d = 0; d < 1000; d++) __asm__ volatile("pause");
+        s_avail_ring.flags = 0;
+        s_avail_ring.idx   = 0;
+        s_used_ring.flags  = 0;
+        s_used_ring.idx    = 0;
+
+        /* 2. Acknowledge & Driver Status */
+        cfg->device_status = VIRTIO_STAT_ACKNOWLEDGE | VIRTIO_STAT_DRIVER;
+
+        /* 3. Negotiate Features (Accept VirtIO 1.0 VERSION_1) */
+        cfg->driver_feature_select = 1;
+        cfg->driver_feature = (uint32_t)(VIRTIO_F_VERSION_1 >> 32);
+        cfg->device_status |= VIRTIO_STAT_FEATURES_OK;
+
+        if (!(cfg->device_status & VIRTIO_STAT_FEATURES_OK)) {
+            uart_puts_raw("[VIRTIO-GPU] Features negotiation failed!\r\n");
+            return -3;
+        }
+
+        /* 4. Configure Virtqueue 0 (controlq) */
+        cfg->queue_select = 0;
+        uint16_t q_size = cfg->queue_size;
+        if (q_size > VIRTIO_GPU_QUEUE_SIZE) q_size = VIRTIO_GPU_QUEUE_SIZE;
+        cfg->queue_size = q_size;
+        g_virtio_gpu.queue_size = q_size;
+
+        /* Program split ring physical addresses */
+        cfg->queue_desc   = (uint64_t)(uintptr_t)s_desc_ring;
+        cfg->queue_driver = (uint64_t)(uintptr_t)&s_avail_ring;
+        cfg->queue_device = (uint64_t)(uintptr_t)&s_used_ring;
+        cfg->queue_enable = 1;
+
+        /* Compute doorbell address */
+        uint16_t notify_off = cfg->queue_notify_off;
+        g_virtio_gpu.notify_addr = (volatile uint16_t *)(g_virtio_gpu.notify_bar_base +
+                                                         g_virtio_gpu.notify_offset +
+                                                         notify_off * g_virtio_gpu.notify_off_mult);
+
+        /* 5. Driver OK */
+        cfg->device_status |= VIRTIO_STAT_DRIVER_OK;
+        g_virtio_gpu.desc  = s_desc_ring;
+        g_virtio_gpu.avail = (struct vring_avail *)&s_avail_ring;
+        g_virtio_gpu.used  = (struct vring_used *)&s_used_ring;
+        g_virtio_gpu.last_used_idx = 0;
+        g_virtio_gpu.resource_id = 0;
+
+        uart_puts_raw("[VIRTIO-GPU] Control Virtqueue 0 active (Ring size=");
+        vgpu_uart_dec(q_size); uart_puts_raw(")\r\n");
     }
-
-    volatile struct virtio_pci_common_cfg *cfg = g_virtio_gpu.common_cfg;
-    if (!cfg) {
-        uart_puts_raw("[VIRTIO-GPU] Missing VirtIO common config MMIO!\r\n");
-        return -2;
-    }
-
-    /* 1. Device Reset */
-    cfg->device_status = 0;
-    for (volatile int d = 0; d < 1000; d++) __asm__ volatile("pause");
-
-    /* 2. Acknowledge & Driver Status */
-    cfg->device_status = VIRTIO_STAT_ACKNOWLEDGE | VIRTIO_STAT_DRIVER;
-
-    /* 3. Negotiate Features (Accept VirtIO 1.0 VERSION_1) */
-    cfg->driver_feature_select = 1;
-    cfg->driver_feature = (uint32_t)(VIRTIO_F_VERSION_1 >> 32);
-    cfg->device_status |= VIRTIO_STAT_FEATURES_OK;
-
-    if (!(cfg->device_status & VIRTIO_STAT_FEATURES_OK)) {
-        uart_puts_raw("[VIRTIO-GPU] Features negotiation failed!\r\n");
-        return -3;
-    }
-
-    /* 4. Configure Virtqueue 0 (controlq) */
-    cfg->queue_select = 0;
-    uint16_t q_size = cfg->queue_size;
-    if (q_size > VIRTIO_GPU_QUEUE_SIZE) q_size = VIRTIO_GPU_QUEUE_SIZE;
-    cfg->queue_size = q_size;
-    g_virtio_gpu.queue_size = q_size;
-
-    /* Program split ring physical addresses */
-    cfg->queue_desc   = (uint64_t)(uintptr_t)s_desc_ring;
-    cfg->queue_driver = (uint64_t)(uintptr_t)&s_avail_ring;
-    cfg->queue_device = (uint64_t)(uintptr_t)&s_used_ring;
-    cfg->queue_enable = 1;
-
-    /* Compute doorbell address */
-    uint16_t notify_off = cfg->queue_notify_off;
-    g_virtio_gpu.notify_addr = (volatile uint16_t *)(g_virtio_gpu.notify_bar_base +
-                                                     g_virtio_gpu.notify_offset +
-                                                     notify_off * g_virtio_gpu.notify_off_mult);
-
-    /* 5. Driver OK */
-    cfg->device_status |= VIRTIO_STAT_DRIVER_OK;
-    g_virtio_gpu.desc  = s_desc_ring;
-    g_virtio_gpu.avail = (struct vring_avail *)&s_avail_ring;
-    g_virtio_gpu.used  = (struct vring_used *)&s_used_ring;
-    g_virtio_gpu.last_used_idx = 0;
-
-    uart_puts_raw("[VIRTIO-GPU] Control Virtqueue 0 active (Ring size=");
-    vgpu_uart_dec(q_size); uart_puts_raw(")\r\n");
 
     /* 6. Create 2D Resource */
     g_virtio_gpu.width            = width;
     g_virtio_gpu.height           = height;
-    g_virtio_gpu.resource_id      = 1;
+    g_virtio_gpu.resource_id      = g_virtio_gpu.resource_id + 1;
     g_virtio_gpu.framebuffer      = (uint32_t *)fb_mem;
     g_virtio_gpu.framebuffer_phys = (uint64_t)(uintptr_t)fb_mem;
     g_virtio_gpu.framebuffer_size = (size_t)width * height * 4;

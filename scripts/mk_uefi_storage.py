@@ -144,8 +144,11 @@ def build_raw_disk(output_path, is_installed=False):
     print(f"[STORAGE] Created {output_path} successfully ({os.path.getsize(output_path)} bytes).")
 
 
-def build_blank_target_disk(output_path):
-    """Build a zeroed 64MB disk for installation targets."""
+def build_blank_target_disk(output_path, force=False):
+    """Build a zeroed 64MB disk for installation targets if not already present."""
+    if not force and os.path.exists(output_path) and os.path.getsize(output_path) == 64 * 1024 * 1024:
+        print(f"[STORAGE] Preserving existing VirtIO target disk: {output_path} (64 MiB).")
+        return
     print(f"[STORAGE] Creating blank VirtIO target disk: {output_path} (64 MiB)...")
     with open(output_path, "wb") as f:
         f.seek((64 * 1024 * 1024) - 1)
@@ -285,10 +288,14 @@ def main():
         build_raw_disk(".build/btron-uefi-hdd.img", is_installed=True)
     if cmd in ("all", "cd"):
         build_cd_iso(".build/btron-uefi-cd.iso")
-    if cmd in ("all", "target"):
-        build_blank_target_disk(".build/target_hdd1.img")
-        build_blank_target_disk(".build/target_hdd2.img")
-        build_blank_target_disk(".build/target_hdd.img")
+    if cmd == "all":
+        build_blank_target_disk(".build/target_hdd1.img", force=False)
+        build_blank_target_disk(".build/target_hdd2.img", force=False)
+        build_blank_target_disk(".build/target_hdd.img", force=False)
+    elif cmd in ("target", "clean-target"):
+        build_blank_target_disk(".build/target_hdd1.img", force=True)
+        build_blank_target_disk(".build/target_hdd2.img", force=True)
+        build_blank_target_disk(".build/target_hdd.img", force=True)
 
     print("[STORAGE] Complete.")
 

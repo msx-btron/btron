@@ -43,17 +43,17 @@ static WND *g_installer_wnd = NULL;
 /* ── Color Palette: Japanese Card Aesthetic meets BeOS/Haiku Cleanliness ── */
 #define INST_COL_BG           0xFFE8E5DC   /* Warm card desktop face */
 #define INST_COL_MENUBAR_BG   0xFFDFDAD2   /* Clean menu bar */
-#define INST_COL_CARD_WHITE   COLOR_WHITE  /* Pure white inner card */
-#define INST_COL_CARD_BORDER  0xFFD0CCC4   /* 1px hairline card border */
+#define INST_COL_CARD_WHITE   0xFFD0CCC4   /* Pure white inner card */
+#define INST_COL_CARD_BORDER  0xFFD0CCC4  /* 1px hairline card border */
 #define INST_COL_TEXT_BLACK   0xFF141923   /* Deep Charcoal for high legibility */
 #define INST_COL_TEXT_MUTED   0xFF5C6573   /* Slate Gray for secondary text */
 #define INST_COL_TEXT_FAINT   0xFF8C93A0   /* Soft Gray for tertiary info */
 #define INST_COL_BLUE_ACCENT  0xFF2B608A   /* BTRON / Haiku Steel Blue */
 #define INST_COL_BLUE_LIGHT   0xFFEBF3FC   /* Light Blue Card Tint */
 #define INST_COL_SEL_BG       0xFF1D5C96   /* System Navy Selection */
-#define INST_COL_HIGHLIGHT    COLOR_WHITE  /* 3D Bevel Top-Left Light */
+#define INST_COL_HIGHLIGHT    0xFFD0CCC4   /* 3D Bevel Top-Left Light */
 #define INST_COL_SHADOW       0xFF8A857A   /* 3D Bevel Bottom-Right Shadow */
-#define INST_COL_SHADOW_DARK  0xFF504C44   /* Deep Inset Shadow */
+#define INST_COL_SHADOW_DARK  0xFF504C44  /* Deep Inset Shadow */
 #define INST_COL_GREEN        0xFF167C3B   /* Success Forest Green */
 #define INST_COL_GREEN_BG     0xFFEBF7EE   /* Success Card Tint */
 #define INST_COL_RED_SEAL     0xFFCC2222   /* Japanese Vermilion Lacquer Seal */
@@ -149,7 +149,7 @@ static void draw_haiku_combobox(GDEV *dev, const RECT *r, const char *text, bool
     draw_down_triangle(dev, mid_x, mid_y, 4, COLOR_BLACK);
 
     if (text) {
-        drw_tc_string(dev, r->left + 8, r->top + 6, text, COLOR_BLACK, COLOR_WHITE);
+        drw_tc_string(dev, r->left + 8, r->top + 6, text, COLOR_BLACK, INST_COL_CARD_BORDER);
     }
 }
 
@@ -166,7 +166,7 @@ static void installer_calc_layout(InstallerState *st, int w, int h) {
     st->tools_menu_rect.bottom = 20;
 
     /* Form rows: Install from & Onto */
-    int combo_l = 124;
+    int combo_l = 204;
     int combo_r = w - 16;
 
     st->source_combobox_rect.left   = (H)combo_l;
@@ -291,7 +291,7 @@ void b_installer_init(InstallerState *st) {
     safe_strcpy(st->status_msg, "Ready to configure installation.", sizeof(st->status_msg));
 
     b_installer_scan_targets(st);
-    installer_calc_layout(st, 544, 340);
+    installer_calc_layout(st, 640, 480);
 }
 
 static uint32_t s_installer_label_seed = 0x19840420;
@@ -299,13 +299,44 @@ static uint32_t s_installer_label_seed = 0x19840420;
 void b_installer_generate_unique_label(char *out, size_t out_sz) {
     if (!out || out_sz < 18) return;
 
-    uint32_t seed = s_installer_label_seed++;
+    s_installer_label_seed = s_installer_label_seed * 1664525u + 1013904223u;
+    uint32_t seed = s_installer_label_seed;
 #if defined(__x86_64__) || defined(_M_X64) || defined(__i386__)
     uint32_t lo = 0, hi = 0;
     __asm__ volatile ("rdtsc" : "=a"(lo), "=d"(hi));
     seed ^= (lo ^ (hi << 16));
+#if !defined(__STDC_HOSTED__) || __STDC_HOSTED__ == 0 || defined(BTRON_UEFI_TARGET)
+    /* Mix CMOS RTC wall-clock registers so separate QEMU runs never collide */
+    for (uint8_t reg = 0; reg <= 9; reg += 2) {
+        __asm__ volatile("outb %0, $0x70" : : "a"(reg));
+        uint8_t v = 0;
+        __asm__ volatile("inb $0x71, %0" : "=a"(v));
+        seed = (seed * 131u) ^ v;
+    }
+#endif
 #endif
     seed ^= (uint32_t)btron_fs_now_stamp();
+
+    /* Mix existing on-disk MBR/VolumeHeader bytes across all VirtIO disks */
+    int vcnt = virtio_blk_get_device_count();
+    for (int d = 0; d < vcnt; d++) {
+        uint8_t sec[512];
+        if (virtio_blk_read_sectors(d, 0, sec, 1) == 0) {
+            for (int i = 446; i < 512; i++) {
+                seed = (seed * 33u) ^ sec[i];
+            }
+            for (int p = 0; p < 4; p++) {
+                const uint8_t *ent = sec + 446 + p * 16;
+                uint32_t st_lba = (uint32_t)ent[8] | ((uint32_t)ent[9] << 8) |
+                                  ((uint32_t)ent[10] << 16) | ((uint32_t)ent[11] << 24);
+                if (st_lba > 0 && virtio_blk_read_sectors(d, st_lba, sec, 1) == 0) {
+                    for (int k = 28; k < 68; k++) {
+                        seed = (seed * 33u) ^ sec[k];
+                    }
+                }
+            }
+        }
+    }
 
     /* Alphanumeric charset containing digits (0-9) and letters (A-Z) */
     static const char charset[] = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -330,14 +361,12 @@ void b_installer_scan_targets(InstallerState *st) {
     st->target_count = 0;
     st->selected_target_idx = -1;
 
-    /* Ensure DriveSetup has performed initial device scan if not yet done */
-    if (g_drivesetup_state.device_count == 0) {
-        b_drivesetup_scan_devices(&g_drivesetup_state);
-    }
+    /* Always synchronize DriveSetup devices with on-disk MBR & slices */
+    b_drivesetup_scan_devices(&g_drivesetup_state);
 
     /* Scan DriveSetup devices and partitions:
-     * - Partitions mounted by DriveSetup (excluding running /SYS)
-     * - Empty (raw) partitions prepared in DriveSetup (FS_RAW, FS_UNKNOWN, or unformatted slices)
+     * - Partitions mounted by DriveSetup (excluding running /SYS and /ANDERS)
+     * - Empty (raw) or formatted slices prepared in DriveSetup
      */
     for (int d = 0; d < g_drivesetup_state.device_count && st->target_count < INSTALLER_MAX_TARGETS; d++) {
         DriveSetupDevice *dev = &g_drivesetup_state.devices[d];
@@ -352,6 +381,7 @@ void b_installer_scan_targets(InstallerState *st) {
             memset(t, 0, sizeof(*t));
             t->dev_idx = v_unit;
             t->part_idx = -1;
+            t->start_lba = 0;
             t->size_bytes = dev->total_bytes ? dev->total_bytes : (64ULL * 1024 * 1024);
             t->is_btron_formatted = false;
             t->is_mounted = false;
@@ -365,6 +395,9 @@ void b_installer_scan_targets(InstallerState *st) {
 
         for (int p = 0; p < dev->partition_count && st->target_count < INSTALLER_MAX_TARGETS; p++) {
             DriveSetupPartition *part = &dev->partitions[p];
+
+            /* Skip EFI System Partitions (0xEF) */
+            if (part->type_code == 0xEF) continue;
 
             /* Filter out installer source media (/SYS, /ANDERS, or any source volume) */
             bool is_src = false;
@@ -393,6 +426,7 @@ void b_installer_scan_targets(InstallerState *st) {
                     if (dl > 0 && part->dev_path[dl-1] >= '1' && part->dev_path[dl-1] <= '4' && dl > 2 && part->dev_path[dl-2] == 'p')
                         t->part_idx = part->dev_path[dl-1] - '1';
                 }
+                t->start_lba = part->start_lba;
                 t->size_bytes = part->block_count * (part->block_size ? part->block_size : 512);
                 t->is_btron_formatted = part->mounted && (part->fs_type == FS_BFS_V1 || part->fs_type == FS_BFS_V2 || part->type_code == 0x13);
                 t->is_mounted = part->mounted;
@@ -402,11 +436,14 @@ void b_installer_scan_targets(InstallerState *st) {
                 if (mb == 0) mb = 1;
 
                 if (is_empty_raw && !part->mounted) {
-                    snprintf(t->dev_path, sizeof(t->dev_path), "%s - %u MB (Empty Raw Slice)",
-                             part->dev_path[0] ? part->dev_path : "Raw Partition", mb);
+                    const char *slice_desc = (part->label[0] && strcmp(part->label, "BTRON Partition") != 0 &&
+                                              strcmp(part->label, "Raw Partition") != 0)
+                                             ? part->label : "Empty Raw Slice";
+                    snprintf(t->dev_path, sizeof(t->dev_path), "%s - %u MB (%s)",
+                             part->dev_path[0] ? part->dev_path : "Raw Partition", mb, slice_desc);
                 } else {
                     snprintf(t->dev_path, sizeof(t->dev_path), "%s - %u MB (%s)",
-                             part->mount_point[0] ? part->mount_point : part->dev_path,
+                             part->dev_path[0] ? part->dev_path : part->mount_point,
                              mb, part->label[0] ? part->label : "Mounted");
                 }
             }
@@ -453,6 +490,8 @@ bool b_installer_start_install(InstallerState *st) {
     if (!has_mbr || t->part_idx < 0) {
         /* Auto-initialize blank / unpartitioned VirtIO disk */
         memset(mbr, 0, sizeof(mbr));
+        mbr[0] = 0xEB;
+        mbr[1] = 0xFE;
         mbr[510] = 0x55;
         mbr[511] = 0xAA;
 
@@ -485,22 +524,39 @@ bool b_installer_start_install(InstallerState *st) {
         }
 
         t->part_idx = 1; /* Partition 2 */
+        t->start_lba = 34816;
+        t->size_bytes = (uint64_t)sys_sec * 512ULL;
         t->is_btron_formatted = true;
-        safe_strcpy(t->dev_path, "VirtIO Disk (Partition 2 Prepared)", sizeof(t->dev_path));
+        snprintf(t->dev_path, sizeof(t->dev_path), "/dev/virtio%dp2 - %u MB (%s)",
+                 t->dev_idx, (unsigned)(t->size_bytes >> 20), st->unique_disk_label);
     } else {
         /* Existing MBR partition table present on disk */
-        /* Ski lists only disks with an ESP: add one in free LBA space (never over user slices) */
-        if (!b_drivesetup_ensure_esp(mbr, virtio_blk_get_capacity(t->dev_idx), t->part_idx)) {
-            uart_puts_raw("[INSTALL] Warning: no free MBR slot/space for ESP marker; Ski may not list this install\r\n");
-        }
         if (t->part_idx >= 0 && t->part_idx < 4) {
-            /* Keep earlier installs' flags: only mark this partition active */
-            mbr[446 + t->part_idx * 16] = 0x80;
-            mbr[446 + t->part_idx * 16 + 4] = 0x13;
-            mbr[510] = 0x55;
-            mbr[511] = 0xAA;
-            virtio_blk_write_sectors(t->dev_idx, 0, mbr, 1);
+            uint8_t *ent = mbr + 446 + t->part_idx * 16;
+            uint32_t cnt = (uint32_t)ent[12] | ((uint32_t)ent[13] << 8) |
+                           ((uint32_t)ent[14] << 16) | ((uint32_t)ent[15] << 24);
+            if (cnt == 0 && t->size_bytes > 0) {
+                uint32_t st_lba = (uint32_t)(t->start_lba ? t->start_lba : 2048);
+                uint32_t sc_cnt = (uint32_t)(t->size_bytes / 512ULL);
+                ent[8]  = (uint8_t)(st_lba & 0xFF);
+                ent[9]  = (uint8_t)((st_lba >> 8) & 0xFF);
+                ent[10] = (uint8_t)((st_lba >> 16) & 0xFF);
+                ent[11] = (uint8_t)((st_lba >> 24) & 0xFF);
+                ent[12] = (uint8_t)(sc_cnt & 0xFF);
+                ent[13] = (uint8_t)((sc_cnt >> 8) & 0xFF);
+                ent[14] = (uint8_t)((sc_cnt >> 16) & 0xFF);
+                ent[15] = (uint8_t)((sc_cnt >> 24) & 0xFF);
+            }
+            /* Keep earlier installs' flags: mark this partition active BTRON (0x13) */
+            ent[0] = 0x80;
+            ent[4] = 0x13;
         }
+        if (!b_drivesetup_ensure_esp(mbr, virtio_blk_get_capacity(t->dev_idx), t->part_idx)) {
+            uart_puts_raw("[INSTALL] Note: all 4 MBR slots occupied by user slices (no separate ESP slot needed for Ski)\r\n");
+        }
+        mbr[510] = 0x55;
+        mbr[511] = 0xAA;
+        virtio_blk_write_sectors(t->dev_idx, 0, mbr, 1);
     }
 
     st->mode = INSTALLER_STATE_COPYING;
@@ -599,13 +655,30 @@ bool b_installer_step_copy(InstallerState *st) {
             safe_strcpy(t->label, st->unique_disk_label, sizeof(t->label));
             t->is_btron_formatted = true;
             t->is_mounted = true;
-            if (t->dev_idx >= 0 && t->dev_idx < g_drivesetup_state.device_count) {
-                if (t->part_idx >= 0 && t->part_idx < g_drivesetup_state.devices[t->dev_idx].partition_count) {
-                    DriveSetupPartition *dsp = &g_drivesetup_state.devices[t->dev_idx].partitions[t->part_idx];
-                    safe_strcpy(dsp->label, st->unique_disk_label, sizeof(dsp->label));
-                    dsp->mounted = true;
-                    dsp->fs_type = FS_BFS_V2;
-                    snprintf(dsp->mount_point, sizeof(dsp->mount_point), "/%s", st->unique_disk_label);
+            uint32_t mb = (uint32_t)(t->size_bytes / (1024 * 1024));
+            if (mb == 0) mb = 1;
+            snprintf(t->dev_path, sizeof(t->dev_path), "/dev/virtio%dp%d - %u MB (%s)",
+                     t->dev_idx, (t->part_idx >= 0 ? t->part_idx + 1 : 2), mb, st->unique_disk_label);
+
+            char want_raw[32];
+            snprintf(want_raw, sizeof(want_raw), "/dev/virtio%d", t->dev_idx);
+            for (int di = 0; di < g_drivesetup_state.device_count; di++) {
+                DriveSetupDevice *dsd = &g_drivesetup_state.devices[di];
+                if (strcmp(dsd->raw_path, want_raw) == 0) {
+                    for (int pi = 0; pi < dsd->partition_count; pi++) {
+                        DriveSetupPartition *dsp = &dsd->partitions[pi];
+                        size_t dl = strlen(dsp->dev_path);
+                        int slot = pi;
+                        if (dl > 2 && dsp->dev_path[dl - 2] == 'p' && dsp->dev_path[dl - 1] >= '1' && dsp->dev_path[dl - 1] <= '4') {
+                            slot = dsp->dev_path[dl - 1] - '1';
+                        }
+                        if (slot == t->part_idx) {
+                            safe_strcpy(dsp->label, st->unique_disk_label, sizeof(dsp->label));
+                            dsp->type_code = 0x13;
+                            dsp->fs_type = FS_BFS_V2;
+                            dsp->bootable = true;
+                        }
+                    }
                 }
             }
         }
@@ -639,13 +712,13 @@ void installer_paint(WND *wnd, GDEV *dev) {
     app_menu_paint_bar(&st->menu_bar, dev);
 
     /* ── 2. Top Header Card (Japanese Card Brand + Haiku Instruction) ── */
-    RECT banner_r = { 12, 24, (H)(w - 12), 118 };
+    RECT banner_r = { 12, 32, (H)(w - 12), 122 };
     fill_rec(dev, &banner_r, INST_COL_CARD_WHITE);
 
     /* Refined Japanese hairline border */
     set_col(dev, INST_COL_CARD_BORDER, INST_COL_CARD_WHITE);
     drw_rec(dev, &banner_r);
-    draw_3d_frame(dev, &banner_r, false);
+    draw_3d_frame(dev, &banner_r, true);
 
     /* Left: Japanese Vermilion Lacquer Seal Mark (角印: 40x40) */
     RECT seal_r = { 24, 38, 64, 78 };
@@ -655,19 +728,20 @@ void installer_paint(WND *wnd, GDEV *dev) {
     drw_tc_string(dev, 38, 48, "ヨ", COLOR_WHITE, INST_COL_RED_SEAL);
 
     /* Left: B·SYSTEM Brand Typography */
-    drw_tc_string(dev, 76, 42, "B · S Y S T E M", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
-    drw_tc_string(dev, 76, 62, "BTRON 3.20 Workstation", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, 76, 44, "B-System", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, 76, 60, "BTRON 3.20 Workstation", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
 
     /* Right: poetic copy */
     int instr_x = (w >= 540) ? (w / 2 + 10) : 230;
     drw_tc_string(dev, instr_x, 40, "空白の器に、世界を。", INST_COL_RED_SEAL, INST_COL_CARD_WHITE);
-    drw_tc_string(dev, instr_x, 60, "Give an empty disk a world.", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
-    drw_tc_string(dev, instr_x, 80, "Choose where it will live. Press Begin.", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, instr_x, 65, "Give an empty disk a world.", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, instr_x, 80, "Choose where it will live.", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, instr_x, 95, "Press Begin.", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
 
     /* ── 3. Main Form Section (Install from / Onto) ── */
     if (st->mode == INSTALLER_STATE_SETUP || st->mode == INSTALLER_STATE_WELCOME) {
         /* Row 1: "Install from:" */
-        drw_tc_string(dev, 18, 138, "Install from:", INST_COL_TEXT_BLACK, INST_COL_BG);
+        drw_tc_string(dev, 18, 138, "Install from source:", INST_COL_TEXT_BLACK, INST_COL_BG);
 
         const char *src_label = "(No source)";
         if (st->selected_source_idx >= 0 && st->selected_source_idx < st->source_count) {
@@ -676,7 +750,7 @@ void installer_paint(WND *wnd, GDEV *dev) {
         draw_haiku_combobox(dev, &st->source_combobox_rect, src_label, st->source_dropdown_open);
 
         /* Row 2: "        Onto:" */
-        drw_tc_string(dev, 76, 176, "Onto:", INST_COL_TEXT_BLACK, INST_COL_BG);
+        drw_tc_string(dev, 82, 176, "Onto target:", INST_COL_TEXT_BLACK, INST_COL_BG);
 
         const char *tgt_label = "Please choose target";
         if (st->selected_target_idx >= 0 && st->selected_target_idx < st->target_count) {
@@ -697,16 +771,16 @@ void installer_paint(WND *wnd, GDEV *dev) {
             drw_rec(dev, &st->optional_box_rect);
 
             drw_tc_string(dev, st->optional_box_rect.left + 12, st->optional_box_rect.top + 8,
-                          "[X] Base System Kernel & HFDS (/SYS)", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
+                          "[X] Base System (Editor, Browser, Cabinet)", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
             drw_tc_string(dev, st->optional_box_rect.left + 12, st->optional_box_rect.top + 24,
-                          "[X] Japanese Mozc IME & BTRON Fonts", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
+                          "[X] SDK (Lil Cu 64, MSX, Quake)", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
             drw_tc_string(dev, st->optional_box_rect.left + 12, st->optional_box_rect.top + 40,
-                          "[X] Clarity DTP & Tibetan Books", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
+                          "[X] TAD Books", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
         }
 
         /* Bottom Action Buttons */
-        draw_bevel_btn(dev, &st->btn_setup_partitions, "Set up partitions...", false, true, false);
-        draw_bevel_btn(dev, &st->btn_begin, "Begin", false, (st->target_count > 0), true);
+        draw_bevel_btn(dev, &st->btn_setup_partitions, "Set up targets...", false, true, false);
+        draw_bevel_btn(dev, &st->btn_begin, "Begin", false, (st->target_count > 0), false);
 
     } else if (st->mode == INSTALLER_STATE_COPYING) {
         /* Copying / Progress Screen */
@@ -733,21 +807,33 @@ void installer_paint(WND *wnd, GDEV *dev) {
 
     } else if (st->mode == INSTALLER_STATE_COMPLETE) {
         /* Complete Screen: Japanese Card Congratulatory Panel */
-        RECT comp_box = { 16, 130, (H)(w - 16), (H)(h - 60) };
+        RECT comp_box = { 16, 130, (H)(w - 16), (H)(h - 54) };
         fill_rec(dev, &comp_box, INST_COL_CARD_WHITE);
         set_col(dev, INST_COL_CARD_BORDER, INST_COL_CARD_WHITE);
         drw_rec(dev, &comp_box);
-        draw_3d_frame(dev, &comp_box, false);
+        draw_3d_frame(dev, &comp_box, true);
 
-        drw_tc_string(dev, 32, 148, "夜明け。 It lives.", INST_COL_GREEN, INST_COL_CARD_WHITE);
-        drw_tc_string(dev, 32, 172, "Your disk now carries a world of its own.",
+        drw_tc_string(dev, 32, 140, "夜明け。 It lives.", INST_COL_GREEN, INST_COL_CARD_WHITE);
+        drw_tc_string(dev, 32, 160, "Your disk now carries a world of its own.",
                       INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
-        drw_tc_string(dev, 32, 194, "Restart, and choose it from Ski.",
+
+        /* Prominent Unique Disk Label Badge for Ski Bootloader identification */
+        RECT lbl_box = { 32, 182, (H)(w - 32), 232 };
+        fill_rec(dev, &lbl_box, INST_COL_GREEN_BG);
+        set_col(dev, INST_COL_GREEN, INST_COL_GREEN_BG);
+        drw_rec(dev, &lbl_box);
+        drw_tc_string(dev, 44, 189, "Disk Label to remember for Ski Bootloader:",
+                      INST_COL_TEXT_MUTED, INST_COL_GREEN_BG);
+        drw_tc_string(dev, 44, 209,
+                      st->unique_disk_label[0] ? st->unique_disk_label : "BTRON-SYSTEM",
+                      INST_COL_RED_SEAL, INST_COL_GREEN_BG);
+
+        drw_tc_string(dev, 32, 240, "Restart, and choose this label from Ski.",
                       INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
 
         /* Action Buttons */
         draw_bevel_btn(dev, &st->btn_close, "Continue Testing", false, true, false);
-        draw_bevel_btn(dev, &st->btn_restart, "Restart Computer", false, true, true);
+        draw_bevel_btn(dev, &st->btn_restart, "Restart Computer", false, true, false);
     }
 
     /* ── Dropdown Overlays (Rendered last so they sit on top of everything) ── */
@@ -785,18 +871,24 @@ void installer_paint(WND *wnd, GDEV *dev) {
 
     /* 3. Target Combobox Dropdown */
     if (st->target_dropdown_open && st->target_count > 0) {
-        int row_h = 26;
+        int row_h = (st->target_count > 5) ? 20 : 26;
         int drop_h = st->target_count * row_h + 6;
+        int d_top = st->target_combobox_rect.bottom;
+        if (d_top + drop_h > h - 4) {
+            d_top = (h - 4) - drop_h;
+            if (d_top < 22) d_top = 22;
+        }
         st->target_dropdown_rect.left   = st->target_combobox_rect.left;
-        st->target_dropdown_rect.top    = st->target_combobox_rect.bottom;
+        st->target_dropdown_rect.top    = (H)d_top;
         st->target_dropdown_rect.right  = st->target_combobox_rect.right;
-        st->target_dropdown_rect.bottom = (H)(st->target_combobox_rect.bottom + drop_h);
+        st->target_dropdown_rect.bottom = (H)(d_top + drop_h);
 
         RECT drop_sh = { (H)(st->target_dropdown_rect.left + 2), (H)(st->target_dropdown_rect.top + 2),
                          (H)(st->target_dropdown_rect.right + 2), (H)(st->target_dropdown_rect.bottom + 2) };
         fill_rec(dev, &drop_sh, 0xFFB0ACA2);
         draw_3d_bevel_box_custom(dev, &st->target_dropdown_rect, INST_COL_CARD_WHITE);
 
+        int ty_off = (row_h >= 24) ? 6 : 3;
         for (int i = 0; i < st->target_count; i++) {
             RECT row_r = { (H)(st->target_dropdown_rect.left + 3),
                            (H)(st->target_dropdown_rect.top + 3 + i * row_h),
@@ -808,9 +900,9 @@ void installer_paint(WND *wnd, GDEV *dev) {
             fill_rec(dev, &row_r, r_bg);
 
             if (i == st->selected_target_idx) {
-                drw_tc_string(dev, row_r.left + 6, row_r.top + 6, "*", r_fg, r_bg);
+                drw_tc_string(dev, row_r.left + 6, row_r.top + ty_off, "*", r_fg, r_bg);
             }
-            drw_tc_string(dev, row_r.left + 22, row_r.top + 6, st->targets[i].dev_path, r_fg, r_bg);
+            drw_tc_string(dev, row_r.left + 22, row_r.top + ty_off, st->targets[i].dev_path, r_fg, r_bg);
         }
     }
 
@@ -854,7 +946,7 @@ void installer_event_handler(WND *wnd, const EVT *evt) {
             }
         } else if (st->target_dropdown_open) {
             if (pt_in_rect(mx, my, &st->target_dropdown_rect)) {
-                int row_h = 26;
+                int row_h = (st->target_count > 5) ? 20 : 26;
                 int item = (my - (st->target_dropdown_rect.top + 3)) / row_h;
                 if (item >= 0 && item < st->target_count && item != st->target_dropdown_hover) {
                     st->target_dropdown_hover = item;
@@ -866,16 +958,16 @@ void installer_event_handler(WND *wnd, const EVT *evt) {
         int cmd = 0;
         if (app_menu_handle_key(&st->menu_bar, (UW)evt->key, 0, &cmd)) {
             if (cmd == INST_CMD_ABOUT) {
-                app_menu_create_about_dialog("B-System Installer", "B-System インストーラ",
-                                            "Clean-Room Authentic Haiku-Style BTRON Workstation Installer.\n"
-                                            "Built with native B-System APP_MENU_BAR and controls.",
-                                            "Google DeepMind & B-System Project",
-                                            wnd->client.left + 50, wnd->client.top + 50);
+                    app_menu_create_about_dialog("B-System Installer", "B-System インストーラ",
+                                                 "BTRON Workstation Installer.",
+                                                 "Brought to you by 5HT",
+                                                wnd->client.left + 50, wnd->client.top + 50);
             } else if (cmd == INST_CMD_DRIVESETUP) {
                 if (&open_drivesetup_window && open_drivesetup_window) open_drivesetup_window();
             } else if (cmd == INST_CMD_TERMINAL) {
                 if (&open_gterm_window && open_gterm_window) open_gterm_window();
             } else if (cmd == INST_CMD_RESCAN) {
+                if (st->mode == INSTALLER_STATE_COMPLETE) st->mode = INSTALLER_STATE_SETUP;
                 b_installer_scan_targets(st);
             } else if (cmd == INST_CMD_QUIT) {
                 cls_wnd(wnd);
@@ -916,6 +1008,7 @@ void installer_event_handler(WND *wnd, const EVT *evt) {
                         open_gterm_window();
                     }
                 } else if (cmd == INST_CMD_RESCAN) {
+                    if (st->mode == INSTALLER_STATE_COMPLETE) st->mode = INSTALLER_STATE_SETUP;
                     b_installer_scan_targets(st);
                 } else if (cmd == INST_CMD_QUIT) {
                     cls_wnd(wnd);
@@ -954,7 +1047,7 @@ void installer_event_handler(WND *wnd, const EVT *evt) {
         /* If Target Dropdown is open, handle selection */
         if (st->target_dropdown_open) {
             if (pt_in_rect(mx, my, &st->target_dropdown_rect)) {
-                int row_h = 26;
+                int row_h = (st->target_count > 5) ? 20 : 26;
                 int item = (my - (st->target_dropdown_rect.top + 3)) / row_h;
                 if (item >= 0 && item < st->target_count) {
                     st->selected_target_idx = item;
@@ -1067,9 +1160,8 @@ WND* open_installer_window(void) {
     b_installer_init(&g_installer_state);
     g_installer_state.mode = INSTALLER_STATE_SETUP;
 
-    /* Japanese Card Ratio (91x55 ~ 1.60): 544 x 340 */
-    int win_w = 544;
-    int win_h = 340;
+    int win_w = 640;
+    int win_h = 480;
     int win_x = (1024 - win_w) / 2;
     int win_y = (768 - win_h) / 2;
 

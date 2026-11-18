@@ -1217,6 +1217,9 @@ storage-images: $(USB_IMG) $(HDD_IMG) $(CD_ISO) $(TARGET_HDD1_IMG) $(TARGET_HDD2
 $(USB_IMG) $(HDD_IMG) $(CD_ISO) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG) $(TARGET_HDD_IMG): scripts/mk_uefi_storage.py
 	@python3 scripts/mk_uefi_storage.py all
 
+clean-disks:
+	@python3 scripts/mk_uefi_storage.py clean-target
+
 run-uefi: $(UEFI_TARGET) $(USB_IMG) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG)
 	@echo "=========================================================="
 	@echo " Launching B-System X86_64 / EMT64 UEFI SMP on QEMU"

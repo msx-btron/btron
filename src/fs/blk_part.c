@@ -178,9 +178,12 @@ BlkDev *blk_mbr_find_partition_by_slot(BlkDev *dev, int slot_idx, UW fs_block_si
     if (dev->read(dev, start_lba, probe_sec, 1) == 0) {
         uint16_t m = (uint16_t)probe_sec[0] | ((uint16_t)probe_sec[1] << 8);
         if (m != 0x52FE && m != 0x42FE && m != 0xFE52 && m != 0xFE42) {
-            if (total_sec > 8) {
-                fs_start_lba = start_lba + 8;
-                fs_sectors   = total_sec - 8;
+            if (total_sec > 8 && dev->read(dev, start_lba + 8, probe_sec, 1) == 0) {
+                uint16_t m2 = (uint16_t)probe_sec[0] | ((uint16_t)probe_sec[1] << 8);
+                if (m2 == 0x52FE || m2 == 0x42FE || m2 == 0xFE52 || m2 == 0xFE42) {
+                    fs_start_lba = start_lba + 8;
+                    fs_sectors   = total_sec - 8;
+                }
             }
         }
     }

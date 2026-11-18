@@ -317,6 +317,73 @@ int main(void) {
     assert(desktop_get_icons_visible() == TRUE);
     printf("  [PASS] Quit Installer successfully restored desktop icons.\n");
 
+    /* 14. Test DriveSetup multi-slice creation -> Installer Rescan -> multi-slice install & label rotation */
+    size_t ds_disk_sz = 64 * 1024 * 1024;
+    uint8_t *ds_disk_mem = (uint8_t *)calloc(1, ds_disk_sz);
+    virtio_blk_set_mock_storage(1, ds_disk_mem, ds_disk_sz);
+    b_drivesetup_scan_devices(&g_drivesetup_state);
+
+    int v1_ds_idx = -1;
+    for (int i = 0; i < g_drivesetup_state.device_count; i++) {
+        if (strcmp(g_drivesetup_state.devices[i].raw_path, "/dev/virtio1") == 0) {
+            v1_ds_idx = i;
+            break;
+        }
+    }
+    assert(v1_ds_idx >= 0);
+    assert(b_drivesetup_init_disk(&g_drivesetup_state, v1_ds_idx, PART_SCHEME_MBR));
+    assert(b_drivesetup_create_slice(&g_drivesetup_state, v1_ds_idx, "SliceA", 24ULL * 1024 * 1024));
+    assert(b_drivesetup_create_slice(&g_drivesetup_state, v1_ds_idx, "SliceB", 24ULL * 1024 * 1024));
+
+    /* Rescan targets in Installer — both slices must survive MBR re-read and appear */
+    b_installer_scan_targets(gst);
+    int sA_t = -1, sB_t = -1;
+    for (int i = 0; i < gst->target_count; i++) {
+        if (gst->targets[i].dev_idx == 1 && gst->targets[i].part_idx == 0) sA_t = i;
+        if (gst->targets[i].dev_idx == 1 && gst->targets[i].part_idx == 1) sB_t = i;
+    }
+    assert(sA_t >= 0 && sB_t >= 0);
+
+    /* Install onto SliceA */
+    assert(b_installer_select_target(gst, sA_t));
+    assert(b_installer_start_install(gst));
+    while (gst->mode == INSTALLER_STATE_COPYING) b_installer_step_copy(gst);
+    char label_a1[32];
+    strcpy(label_a1, gst->unique_disk_label);
+
+    /* Install onto SliceB */
+    assert(b_installer_select_target(gst, sB_t));
+    assert(b_installer_start_install(gst));
+    while (gst->mode == INSTALLER_STATE_COPYING) b_installer_step_copy(gst);
+    char label_b1[32];
+    strcpy(label_b1, gst->unique_disk_label);
+    assert(strcmp(label_a1, label_b1) != 0);
+
+    /* Re-install onto SliceA and verify label always changes */
+    assert(b_installer_select_target(gst, sA_t));
+    assert(b_installer_start_install(gst));
+    while (gst->mode == INSTALLER_STATE_COPYING) b_installer_step_copy(gst);
+    char label_a2[32];
+    strcpy(label_a2, gst->unique_disk_label);
+    assert(strcmp(label_a2, label_a1) != 0);
+    assert(strcmp(label_a2, label_b1) != 0);
+
+    /* Verify both slices' VolumeHeaders on disk match their latest unique labels */
+    BlkDev *vd1 = blk_virtio_create(1);
+    BlkDev *pa = blk_mbr_find_partition_by_slot(vd1, 0, 1024);
+    BlkDev *pb = blk_mbr_find_partition_by_slot(vd1, 1, 1024);
+    assert(pa != NULL && pb != NULL);
+    uint8_t b0_a[1024], b0_b[1024];
+    assert(pa->read(pa, 0, b0_a, 1) == 0);
+    assert(pb->read(pb, 0, b0_b, 1) == 0);
+    assert(strcmp((char *)((VolumeHeader *)b0_a)->vol_name, label_a2) == 0);
+    assert(strcmp((char *)((VolumeHeader *)b0_b)->vol_name, label_b1) == 0);
+    blk_partition_release(pa);
+    blk_partition_release(pb);
+    free(ds_disk_mem);
+    printf("  [PASS] DriveSetup slices visible after Rescan; labels rotated (%s -> %s, SliceB=%s).\n",
+           label_a1, label_a2, label_b1);
+
     vol_umount(g_sys_vol);
     free(src_mem);
     free(dst_mem);
