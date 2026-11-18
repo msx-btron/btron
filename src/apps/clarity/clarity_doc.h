@@ -107,7 +107,7 @@ typedef struct {
 
 typedef struct {
     ClarityPageFmt fmt;
-    int            pecha_size;      /* 0: Kangyur, 1: Rinchen, 2: Derge, 3: Pocket */
+    int            pecha_size;      /* 0: Kangyur, 1: Rinchen, 2: Derge, 3: Pocket, 4: Derge Wide */
     int            page_w_mm;       /* derived from fmt on init        */
     int            page_h_mm;
     int            page_count;      /* number of pages in document     */

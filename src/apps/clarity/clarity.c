@@ -124,6 +124,7 @@ enum {
     CMD_FMT_PECHA_RINCHEN,
     CMD_FMT_PECHA_DERGE,
     CMD_FMT_PECHA_POCKET,
+    CMD_FMT_PECHA_DERGE_WIDE,
     CMD_PAGE_ADD,
     CMD_PAGE_REMOVE,
 
@@ -149,12 +150,12 @@ typedef struct {
     ClarityDialogType type;
     char path[256];
     int  path_len;
-    int  pecha_size;      /* 0: Kangyur, 1: Rinchen, 2: Derge, 3: Pocket */
+    int  pecha_size;      /* 0: Kangyur, 1: Rinchen, 2: Derge, 3: Pocket, 4: Derge Wide */
     BOOL auto_tibetan;
     int  focus_field;     /* 0: path, 1: pecha radios, 2: check, 3: OK, 4: Cancel */
     RECT box;
     RECT path_box;
-    RECT radio_boxes[4];
+    RECT radio_boxes[5];
     RECT check_box;
     RECT btn_ok;
     RECT btn_cancel;
@@ -424,6 +425,28 @@ static void clarity_fit_window(void)
     int fit_h_pct = (avail_h * 100) / base_ph;
     int fit_pct = (fit_w_pct < fit_h_pct) ? fit_w_pct : fit_h_pct;
 
+    if (g_doc.fmt == FMT_PECHA) {
+        /* In Tibetan Pecha mode, folios have a calibrated number of visible rows (e.g. 12-13 rows).
+         * Since bitmap glyphs are fixed 16px (19px line height) and do not scale down below 16px,
+         * the desk zoom must ensure the frame height on screen is tall enough to display all
+         * required rows without clipping. */
+        int rows = 13;
+        if (g_doc.pecha_size == PECHA_SIZE_KANGYUR) rows = 8;
+        else if (g_doc.pecha_size == PECHA_SIZE_RINCHEN) rows = 10;
+        else if (g_doc.pecha_size == PECHA_SIZE_DERGE) rows = 13;
+        else if (g_doc.pecha_size == PECHA_SIZE_POCKET) rows = 6;
+        else if (g_doc.pecha_size == PECHA_SIZE_DERGE_WIDE) rows = 25;
+
+        int req_frame_h = rows * 19 + 8;
+        int unz_frame_h = base_ph - 40;
+        if (unz_frame_h > 0) {
+            int min_pecha_zoom = (req_frame_h * 100 + unz_frame_h - 1) / unz_frame_h;
+            if (fit_pct < min_pecha_zoom) {
+                fit_pct = min_pecha_zoom;
+            }
+        }
+    }
+
     if (fit_pct < 25) fit_pct = 25;
     if (fit_pct > 150) fit_pct = 150;
 
@@ -440,7 +463,7 @@ static void paint_clarity_dialog(GDEV *dev, int win_w, int win_h)
 {
     if (g_dlg.type == CLARITY_DLG_NONE) return;
 
-    int dlg_w = 540, dlg_h = 310;
+    int dlg_w = 560, dlg_h = 330;
     int dlg_x = (win_w - dlg_w) / 2;
     int dlg_y = (win_h - dlg_h) / 2;
     if (dlg_y < APP_MENU_BAR_HEIGHT + 10) dlg_y = APP_MENU_BAR_HEIGHT + 10;
@@ -483,20 +506,21 @@ static void paint_clarity_dialog(GDEV *dev, int win_w, int win_h)
     }
 
     /* 4. Field 2: Pecha Format Radios */
-    drw_tc_string(dev, dlg_x + 20, dlg_y + 90, "Pecha 判型寸法 (Tibetan Pecha Format):", COLOR_BLACK, COLOR_LTGRAY);
+    drw_tc_string(dev, dlg_x + 20, dlg_y + 88, "Pecha 判型寸法 (Tibetan Pecha Format & Proportions):", COLOR_BLACK, COLOR_LTGRAY);
     const char *pecha_opts[] = {
-        "Kangyur Pecha (560 × 110 mm)",
-        "Rinchen Terdzö (650 × 140 mm)",
-        "Derge Woodblock (700 × 180 mm)",
-        "Pocket Dharma (320 × 85 mm)"
+        "Kangyur Pecha (560 × 110 mm · 8行)",
+        "Rinchen Terdzö (650 × 140 mm · 10行)",
+        "Derge Woodblock (700 × 180 mm · 13行)",
+        "Pocket Dharma (320 × 85 mm · 6行)",
+        "Derge Wide (720 × 200 mm · 25行)"
     };
-    int r_xs[] = { dlg_x + 24, dlg_x + 280, dlg_x + 24, dlg_x + 280 };
-    int r_ys[] = { dlg_y + 112, dlg_y + 112, dlg_y + 134, dlg_y + 134 };
+    int r_xs[] = { dlg_x + 24, dlg_x + 290, dlg_x + 24, dlg_x + 290, dlg_x + 24 };
+    int r_ys[] = { dlg_y + 110, dlg_y + 110, dlg_y + 132, dlg_y + 132, dlg_y + 154 };
 
-    for (int i = 0; i < 4; i++) {
+    for (int i = 0; i < 5; i++) {
         g_dlg.radio_boxes[i].left = (H)r_xs[i];
         g_dlg.radio_boxes[i].top = (H)r_ys[i];
-        g_dlg.radio_boxes[i].right = (H)(r_xs[i] + 240);
+        g_dlg.radio_boxes[i].right = (H)(r_xs[i] + 250);
         g_dlg.radio_boxes[i].bottom = (H)(r_ys[i] + 18);
 
         char opt_buf[64];
@@ -507,18 +531,18 @@ static void paint_clarity_dialog(GDEV *dev, int win_w, int win_h)
 
     /* 5. Field 3: Auto-Transliteration Checkbox */
     g_dlg.check_box.left = (H)(dlg_x + 20);
-    g_dlg.check_box.top = (H)(dlg_y + 164);
+    g_dlg.check_box.top = (H)(dlg_y + 180);
     g_dlg.check_box.right = (H)(dlg_x + dlg_w - 20);
-    g_dlg.check_box.bottom = (H)(dlg_y + 188);
+    g_dlg.check_box.bottom = (H)(dlg_y + 204);
 
     char chk_buf[128];
     snprintf(chk_buf, sizeof(chk_buf), "[%s] Wylie 自動チベット文字変換 (Convert Wylie to Tibetan script)",
              g_dlg.auto_tibetan ? "✓" : " ");
-    drw_tc_string(dev, dlg_x + 20, dlg_y + 168, chk_buf, COLOR_NAVY, COLOR_LTGRAY);
+    drw_tc_string(dev, dlg_x + 20, dlg_y + 184, chk_buf, COLOR_NAVY, COLOR_LTGRAY);
 
     /* 6. Info line */
-    drw_tc_string(dev, dlg_x + 20, dlg_y + 204,
-                  "※ Osal形式（5クラス分類・Wylie翻字・TAD書籍出力対応）", COLOR_DKGRAY, COLOR_LTGRAY);
+    drw_tc_string(dev, dlg_x + 20, dlg_y + 214,
+                  "※ Osal形式（可視領域比例裁断・12-13行木版再現・TAD出力対応）", COLOR_DKGRAY, COLOR_LTGRAY);
 
     /* 7. Action Buttons */
     int btn_w = 120, btn_h = 28;
@@ -997,18 +1021,62 @@ static void handle_cmd(int cmd)
         case CMD_FMT_PECHA:
         case CMD_FMT_PECHA_KANGYUR:
             clarity_set_pecha_mode(&g_doc, PECHA_SIZE_KANGYUR);
+            clarity_fit_window();
+            {
+                ClarityBook *bk = clarity_get_book();
+                if (bk && bk->is_loaded && bk->chapter_count > 0) {
+                    bk->pecha_size = PECHA_SIZE_KANGYUR;
+                    clarity_book_load_chapter_into_doc(bk, bk->active_chapter_idx, &g_doc);
+                }
+            }
             g_doc.dirty = TRUE;
             break;
         case CMD_FMT_PECHA_RINCHEN:
             clarity_set_pecha_mode(&g_doc, PECHA_SIZE_RINCHEN);
+            clarity_fit_window();
+            {
+                ClarityBook *bk = clarity_get_book();
+                if (bk && bk->is_loaded && bk->chapter_count > 0) {
+                    bk->pecha_size = PECHA_SIZE_RINCHEN;
+                    clarity_book_load_chapter_into_doc(bk, bk->active_chapter_idx, &g_doc);
+                }
+            }
             g_doc.dirty = TRUE;
             break;
         case CMD_FMT_PECHA_DERGE:
             clarity_set_pecha_mode(&g_doc, PECHA_SIZE_DERGE);
+            clarity_fit_window();
+            {
+                ClarityBook *bk = clarity_get_book();
+                if (bk && bk->is_loaded && bk->chapter_count > 0) {
+                    bk->pecha_size = PECHA_SIZE_DERGE;
+                    clarity_book_load_chapter_into_doc(bk, bk->active_chapter_idx, &g_doc);
+                }
+            }
             g_doc.dirty = TRUE;
             break;
         case CMD_FMT_PECHA_POCKET:
             clarity_set_pecha_mode(&g_doc, PECHA_SIZE_POCKET);
+            clarity_fit_window();
+            {
+                ClarityBook *bk = clarity_get_book();
+                if (bk && bk->is_loaded && bk->chapter_count > 0) {
+                    bk->pecha_size = PECHA_SIZE_POCKET;
+                    clarity_book_load_chapter_into_doc(bk, bk->active_chapter_idx, &g_doc);
+                }
+            }
+            g_doc.dirty = TRUE;
+            break;
+        case CMD_FMT_PECHA_DERGE_WIDE:
+            clarity_set_pecha_mode(&g_doc, PECHA_SIZE_DERGE_WIDE);
+            clarity_fit_window();
+            {
+                ClarityBook *bk = clarity_get_book();
+                if (bk && bk->is_loaded && bk->chapter_count > 0) {
+                    bk->pecha_size = PECHA_SIZE_DERGE_WIDE;
+                    clarity_book_load_chapter_into_doc(bk, bk->active_chapter_idx, &g_doc);
+                }
+            }
             g_doc.dirty = TRUE;
             break;
 
@@ -1246,8 +1314,11 @@ static void clarity_event(WND *wnd, const EVT *evt)
                     ClarityBook *bk = clarity_get_book();
                     clarity_book_open_dir(bk, tgt_path,
                                           (ClarityPechaSize)g_dlg.pecha_size, g_dlg.auto_tibetan);
-                    clarity_book_load_chapter_into_doc(bk, 0, &g_doc);
+                    clarity_set_pecha_mode(&g_doc, g_dlg.pecha_size);
+                    clarity_fit_window(); /* Recalculate Desk */
+                    clarity_book_load_chapter_into_doc(bk, 0, &g_doc); /* Refill Pages on Open */
                     g_dlg.type = CLARITY_DLG_NONE;
+                    g_scroll_x = 0;
                     g_scroll_y = 0;
                     open_clarity_toc_window();
                     inval_wnd(wnd);
@@ -1266,7 +1337,7 @@ static void clarity_event(WND *wnd, const EVT *evt)
                 inval_wnd(wnd);
                 return;
             }
-            for (int r = 0; r < 4; r++) {
+            for (int r = 0; r < 5; r++) {
                 if (rel_x >= g_dlg.radio_boxes[r].left && rel_x <= g_dlg.radio_boxes[r].right &&
                     rel_y >= g_dlg.radio_boxes[r].top && rel_y <= g_dlg.radio_boxes[r].bottom) {
                     g_dlg.pecha_size = r;
@@ -1527,8 +1598,11 @@ static void clarity_event(WND *wnd, const EVT *evt)
                     ClarityBook *bk = clarity_get_book();
                     clarity_book_open_dir(bk, tgt_path,
                                           (ClarityPechaSize)g_dlg.pecha_size, g_dlg.auto_tibetan);
-                    clarity_book_load_chapter_into_doc(bk, 0, &g_doc);
+                    clarity_set_pecha_mode(&g_doc, g_dlg.pecha_size);
+                    clarity_fit_window(); /* Recalculate Desk */
+                    clarity_book_load_chapter_into_doc(bk, 0, &g_doc); /* Refill Pages on Open */
                     g_dlg.type = CLARITY_DLG_NONE;
+                    g_scroll_x = 0;
                     g_scroll_y = 0;
                     open_clarity_toc_window();
                     inval_wnd(wnd);
@@ -1541,12 +1615,24 @@ static void clarity_event(WND *wnd, const EVT *evt)
                 return;
             }
             if (key == BTRON_KEY_UP) {
-                if (g_dlg.pecha_size > 0) g_dlg.pecha_size--;
+                if (g_dlg.pecha_size >= 2) g_dlg.pecha_size -= 2;
+                else if (g_dlg.pecha_size > 0) g_dlg.pecha_size--;
                 inval_wnd(wnd);
                 return;
             }
             if (key == BTRON_KEY_DOWN) {
-                if (g_dlg.pecha_size < 3) g_dlg.pecha_size++;
+                if (g_dlg.pecha_size + 2 <= 4) g_dlg.pecha_size += 2;
+                else if (g_dlg.pecha_size < 4) g_dlg.pecha_size++;
+                inval_wnd(wnd);
+                return;
+            }
+            if (key == BTRON_KEY_LEFT) {
+                if (g_dlg.pecha_size % 2 == 1) g_dlg.pecha_size--;
+                inval_wnd(wnd);
+                return;
+            }
+            if (key == BTRON_KEY_RIGHT) {
+                if (g_dlg.pecha_size % 2 == 0 && g_dlg.pecha_size + 1 <= 4) g_dlg.pecha_size++;
                 inval_wnd(wnd);
                 return;
             }
@@ -1779,6 +1865,7 @@ static void build_menu(void)
     app_menu_add_item(&g_menu, fmti, "Pecha 大蔵経・宝庫判 (650×140 mm)", "", CMD_FMT_PECHA_RINCHEN, TRUE);
     app_menu_add_item(&g_menu, fmti, "Pecha デルゲ木版大判 (700×180 mm)", "", CMD_FMT_PECHA_DERGE, TRUE);
     app_menu_add_item(&g_menu, fmti, "Pecha 行者暗誦判 (320×85 mm)", "", CMD_FMT_PECHA_POCKET, TRUE);
+    app_menu_add_item(&g_menu, fmti, "Pecha デルゲ広幅木版 (720×200 mm・25行)", "", CMD_FMT_PECHA_DERGE_WIDE, TRUE);
     app_menu_add_separator(&g_menu, fmti);
     app_menu_add_item(&g_menu, fmti, "ページ追加 (Add Page)", "+", CMD_PAGE_ADD, TRUE);
     app_menu_add_item(&g_menu, fmti, "ページ削除 (Remove Page)", "-", CMD_PAGE_REMOVE, TRUE);
@@ -1852,26 +1939,6 @@ WND* open_clarity_window(void)
     }
 #endif
 
-    if (has_osal) {
-        ClarityBook *bk = clarity_get_book();
-        clarity_book_open_dir(bk, osal_dir, PECHA_SIZE_DERGE, TRUE);
-        if (bk->is_loaded && bk->chapter_count > 0) {
-            clarity_book_load_chapter_into_doc(bk, 0, &g_doc);
-        } else {
-            doc_new(FMT_A4);
-            clarity_init_sample_page(&g_doc);
-        }
-    } else {
-        doc_new(FMT_A4);
-        /* Try loading saved sample file from /SYS/Clarity-Sample.TAD */
-        if (clarity_export_load_file(&g_doc, CLARITY_SAMPLE_PATH) == E_OK && g_doc.frame_count > 0) {
-            g_doc.selected_frame = 0;
-        } else {
-            clarity_init_sample_page(&g_doc);
-            clarity_export_save_file(&g_doc, CLARITY_SAMPLE_PATH);
-        }
-    }
-
     int clr_x = has_osal ? 196 : 40;
     int clr_y = 36;
     int clr_w = has_osal ? 820 : 900;
@@ -1889,7 +1956,30 @@ WND* open_clarity_window(void)
     g_wnd->menu_open     = clarity_menu_open;
 
     build_menu();
-    clarity_fit_window();
+
+    if (has_osal) {
+        ClarityBook *bk = clarity_get_book();
+        clarity_book_open_dir(bk, osal_dir, PECHA_SIZE_DERGE, TRUE);
+        clarity_set_pecha_mode(&g_doc, PECHA_SIZE_DERGE);
+        clarity_fit_window(); /* Recalculate Desk */
+        if (bk->is_loaded && bk->chapter_count > 0) {
+            clarity_book_load_chapter_into_doc(bk, 0, &g_doc); /* Refill Pages on Open */
+        } else {
+            doc_new(FMT_A4);
+            clarity_init_sample_page(&g_doc);
+            clarity_fit_window();
+        }
+    } else {
+        doc_new(FMT_A4);
+        /* Try loading saved sample file from /SYS/Clarity-Sample.TAD */
+        if (clarity_export_load_file(&g_doc, CLARITY_SAMPLE_PATH) == E_OK && g_doc.frame_count > 0) {
+            g_doc.selected_frame = 0;
+        } else {
+            clarity_init_sample_page(&g_doc);
+            clarity_export_save_file(&g_doc, CLARITY_SAMPLE_PATH);
+        }
+        clarity_fit_window(); /* Recalculate Desk */
+    }
 
     top_wnd(g_wnd);
     inval_wnd(g_wnd);

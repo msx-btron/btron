@@ -71,8 +71,8 @@ static const char *s_canonical_chapters[] = {
 
 void clarity_get_pecha_dimensions(ClarityPechaSize size, int *w_mm, int *h_mm, const char **name_out)
 {
-    int w = 560, h = 110;
-    const char *name = "Kangyur Pecha (560x110 mm)";
+    int w = 700, h = 180;
+    const char *name = "Derge Woodblock (700x180 mm)";
 
     switch (size) {
         case PECHA_SIZE_KANGYUR:
@@ -84,13 +84,16 @@ void clarity_get_pecha_dimensions(ClarityPechaSize size, int *w_mm, int *h_mm, c
             name = "Rinchen Terdzo (650x140 mm)";
             break;
         case PECHA_SIZE_DERGE:
-        case PECHA_SIZE_DERGE_WIDE:
-            w = 720; h = 200;
-            name = "Derge Wide Woodblock (720x200 mm)";
+            w = 700; h = 180;
+            name = "Derge Woodblock (700x180 mm)";
             break;
         case PECHA_SIZE_POCKET:
             w = 320; h = 85;
             name = "Pocket Dharma (320x85 mm)";
+            break;
+        case PECHA_SIZE_DERGE_WIDE:
+            w = 720; h = 200;
+            name = "Derge Wide Woodblock (720x200 mm)";
             break;
         default:
             break;
@@ -863,6 +866,65 @@ static int estimate_visual_lines(const char *ln, int inner_w)
     return vlines > 0 ? vlines : 1;
 }
 
+static int find_cut_point(const char *ln, int inner_w, int target_lines)
+{
+    if (!ln || target_lines <= 0) return 0;
+    if (inner_w < 32) inner_w = 32;
+
+    int cur_line = 1;
+    int cur_px = 0;
+    int last_break = -1;
+    size_t i = 0;
+    size_t len = strlen(ln);
+
+    while (i < len) {
+        if (ln[i] == '\n') {
+            cur_line++;
+            cur_px = 0;
+            last_break = (int)i + 1;
+            if (cur_line > target_lines) {
+                return (int)i + 1;
+            }
+            i++;
+            continue;
+        }
+
+        int adv = 8;
+        size_t char_bytes = 1;
+        if ((unsigned char)ln[i] >= 0x80) {
+            adv = 16;
+            while (i + char_bytes < len && ((unsigned char)ln[i + char_bytes] & 0xC0) == 0x80) {
+                char_bytes++;
+            }
+        }
+
+        if (cur_px + adv > inner_w && cur_px > 0) {
+            cur_line++;
+            cur_px = 0;
+            if (cur_line > target_lines) {
+                return (last_break > 0) ? last_break : (int)i;
+            }
+        }
+
+        /* Natural break points */
+        if (ln[i] == ' ' || ln[i] == '\t') {
+            last_break = (int)i + 1;
+        } else if (char_bytes == 3 &&
+                   (unsigned char)ln[i] == 0xE0 && (unsigned char)ln[i + 1] == 0xBD &&
+                   ((unsigned char)ln[i + 2] == 0x8C || (unsigned char)ln[i + 2] == 0x8D)) {
+            /* Tibetan tsheg (་) or shad (།) */
+            last_break = (int)(i + 3);
+        } else if (ln[i] == ',' || ln[i] == '.' || ln[i] == ';' || ln[i] == ')' || ln[i] == ']') {
+            last_break = (int)i + 1;
+        }
+
+        cur_px += adv;
+        i += char_bytes;
+    }
+
+    return (int)len;
+}
+
 int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, ClarityDoc *doc)
 {
     if (!book || !doc || chapter_idx < 0 || chapter_idx >= book->chapter_count) return -1;
@@ -870,6 +932,7 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
 
     /* Set up Pecha document layout */
     doc->fmt = FMT_PECHA;
+    doc->pecha_size = (int)book->pecha_size;
     clarity_get_pecha_dimensions(book->pecha_size, &doc->page_w_mm, &doc->page_h_mm, NULL);
     doc->page_count  = 0;
     doc->active_page = 0;
@@ -884,22 +947,27 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     int px_w = (doc->page_w_mm * CLARITY_DPI * 10) / 254;
     int px_h = (doc->page_h_mm * CLARITY_DPI * 10) / 254;
     int margin_x = 40, margin_y = 20;
-    int inner_h  = px_h - margin_y * 2;
-    int glyph_lh = 19;  /* GLYPH_H(16) + 3 line spacing */
+    int inner_w  = px_w - margin_x * 2;
 
-    /* How many lines of body text fit on one Pecha folio */
+    /* How many lines of body text fit on one Pecha folio:
+     * Derge Woodblock (180 mm) has 12-13 visible rows (13 max).
+     * Derge Wide (200 mm) has 25 rows.
+     * Other formats scale strictly proportionally to visible height/area.
+     */
     int lines_per_page = 13;
-    if (book->pecha_size == PECHA_SIZE_DERGE || (int)book->pecha_size == PECHA_SIZE_DERGE_WIDE) {
-        lines_per_page = 25;
+    if (book->pecha_size == PECHA_SIZE_DERGE) {
+        lines_per_page = 13; /* Classical Derge Woodblock: 12-13 visible rows */
+    } else if (book->pecha_size == PECHA_SIZE_DERGE_WIDE) {
+        lines_per_page = 25; /* Derge Wide Woodblock: 25 rows */
     } else if (book->pecha_size == PECHA_SIZE_RINCHEN) {
-        lines_per_page = 17;
+        lines_per_page = 10; /* Rinchen Terdzö: 10 rows (proportional: 13 * 140 / 180) */
+    } else if (book->pecha_size == PECHA_SIZE_KANGYUR) {
+        lines_per_page = 8;  /* Kangyur Pecha: 8 rows (proportional: 13 * 110 / 180) */
     } else if (book->pecha_size == PECHA_SIZE_POCKET) {
-        lines_per_page = 8;
+        lines_per_page = 6;  /* Pocket Dharma: 6 rows (proportional: 13 * 85 / 180) */
     } else {
-        lines_per_page = 13; /* Kangyur / Standard Pecha: 12-13 rows */
-    }
-    if (inner_h / glyph_lh < lines_per_page && inner_h / glyph_lh > 3) {
-        lines_per_page = inner_h / glyph_lh;
+        lines_per_page = (13 * doc->page_h_mm) / 180;
+        if (lines_per_page < 5) lines_per_page = 5;
     }
 
     /* Accumulate all file lines into heap buffer */
@@ -947,16 +1015,54 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
 
         while (line_cursor < raw_count) {
             const char *ln = raw_lines[line_cursor];
-            int vlines_here = estimate_visual_lines(ln, px_w - margin_x * 2);
-            if (lines_on_page > 0 && lines_on_page + vlines_here > lines_per_page) {
-                break; /* Exceeds folio capacity, wrap cleanly to next folio */
-            }
-            if (strlen(page_buf) + strlen(ln) < sizeof(page_buf) - 2) {
-                strcat(page_buf, ln);
-                lines_on_page += vlines_here;
-                line_cursor++;
+            int vlines_here = estimate_visual_lines(ln, inner_w);
+            int rem_lines = lines_per_page - lines_on_page;
+            if (rem_lines <= 0) break;
+
+            if (vlines_here <= rem_lines) {
+                if (strlen(page_buf) + strlen(ln) < sizeof(page_buf) - 2) {
+                    strcat(page_buf, ln);
+                    lines_on_page += vlines_here;
+                    line_cursor++;
+                } else {
+                    break; /* page_buf full — flush */
+                }
             } else {
-                break; /* page_buf full — flush */
+                /* Exceeds remaining lines on this page */
+                int wrap_thresh = lines_per_page - 1; /* one line before capacity: wrap cleanly */
+                if (lines_on_page >= wrap_thresh) {
+                    break;
+                }
+
+                /* Cut portion proportional to visible area of the format */
+                int cut_pos = find_cut_point(ln, inner_w, rem_lines);
+                if (cut_pos > 0 && cut_pos < (int)strlen(ln)) {
+                    char head_buf[4096];
+                    int hlen = cut_pos;
+                    if (hlen > (int)sizeof(head_buf) - 4) hlen = sizeof(head_buf) - 4;
+                    memcpy(head_buf, ln, hlen);
+                    head_buf[hlen] = '\0';
+                    if (head_buf[hlen - 1] != '\n') {
+                        strcat(head_buf, "\n");
+                    }
+                    if (strlen(page_buf) + strlen(head_buf) < sizeof(page_buf) - 2) {
+                        strcat(page_buf, head_buf);
+                        lines_on_page += rem_lines;
+                    }
+
+                    char *tail = strdup(ln + cut_pos);
+                    free(raw_lines[line_cursor]);
+                    raw_lines[line_cursor] = tail;
+                } else if (lines_on_page > 0) {
+                    break;
+                } else {
+                    if (strlen(page_buf) + strlen(ln) < sizeof(page_buf) - 2) {
+                        strcat(page_buf, ln);
+                        lines_on_page += vlines_here;
+                        line_cursor++;
+                    }
+                }
+                break;
             }
         }
 

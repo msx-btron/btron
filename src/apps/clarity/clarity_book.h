@@ -16,11 +16,11 @@ extern "C" {
 
 /* Canonical Tibetan Pecha Sizes */
 typedef enum {
-    PECHA_SIZE_KANGYUR     = 0,  /* Kangyur / Tengyur:    560 × 110 mm (12-13 rows) */
-    PECHA_SIZE_RINCHEN     = 1,  /* Rinchen Terdzö:      650 × 140 mm */
-    PECHA_SIZE_DERGE       = 2,  /* Derge Wide Woodblock: 720 × 200 mm (25 rows)    */
-    PECHA_SIZE_POCKET      = 3,  /* Pocket Dharma:       320 × 85 mm  */
-    PECHA_SIZE_DERGE_WIDE  = 4   /* Derge Wide Woodblock: 720 × 200 mm (25 rows)    */
+    PECHA_SIZE_KANGYUR     = 0,  /* Kangyur / Tengyur:    560 × 110 mm (8 rows)  */
+    PECHA_SIZE_RINCHEN     = 1,  /* Rinchen Terdzö:      650 × 140 mm (10 rows) */
+    PECHA_SIZE_DERGE       = 2,  /* Derge Woodblock:     700 × 180 mm (13 rows) */
+    PECHA_SIZE_POCKET      = 3,  /* Pocket Dharma:       320 × 85 mm  (6 rows)  */
+    PECHA_SIZE_DERGE_WIDE  = 4   /* Derge Wide Woodblock: 720 × 200 mm (25 rows) */
 } ClarityPechaSize;
 
 typedef struct {

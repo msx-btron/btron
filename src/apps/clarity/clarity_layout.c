@@ -135,7 +135,38 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
             } else {
                 snprintf(page_lbl, sizeof(page_lbl), "A4 [ Page 1 of %d ]", pages);
             }
-            drw_tc_string(dev, page_ox + 4, page_oy - 18, page_lbl, COLOR_DKGRAY, 0);
+
+            int tw = tc_calc_string_width(page_lbl, (int)strlen(page_lbl));
+            int sep_w = pw > 200 ? pw : 200;
+            int bx = page_ox + (sep_w - tw) / 2;
+            if (bx < page_ox + 10) bx = page_ox + 10;
+            int sep_y = page_oy - 12;
+
+            /* Precision etched hairline rules on left and right of badge */
+            if (bx > page_ox + 14) {
+                set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+                drw_lin(dev, (H)(page_ox - 10), (H)(sep_y - 1), (H)(bx - 8), (H)(sep_y - 1));
+                set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+                drw_lin(dev, (H)(page_ox - 10), (H)sep_y, (H)(bx - 8), (H)sep_y);
+
+                set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+                drw_lin(dev, (H)(bx + tw + 8), (H)(sep_y - 1), (H)(page_ox + sep_w + 10), (H)(sep_y - 1));
+                set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+                drw_lin(dev, (H)(bx + tw + 8), (H)sep_y, (H)(page_ox + sep_w + 10), (H)sep_y);
+            }
+
+            /* Professional 3D beveled plate */
+            RECT badge_r = { (H)(bx - 8), (H)(sep_y - 9), (H)(bx + tw + 8), (H)(sep_y + 10) };
+            fill_rec(dev, &badge_r, COLOR_LTGRAY);
+            set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+            drw_rec(dev, &badge_r);
+
+            /* Bevel top/left light highlight */
+            set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+            drw_lin(dev, (H)(bx - 7), (H)(sep_y - 8), (H)(bx + tw + 7), (H)(sep_y - 8));
+            drw_lin(dev, (H)(bx - 7), (H)(sep_y - 8), (H)(bx - 7), (H)(sep_y + 9));
+
+            drw_tc_string(dev, bx, sep_y - 6, page_lbl, COLOR_NAVY, COLOR_LTGRAY);
         }
 
         /* 4. DTP Printable Margin Guides (15 mm inset) */

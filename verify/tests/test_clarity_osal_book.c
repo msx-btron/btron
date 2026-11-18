@@ -119,6 +119,7 @@ int main(void)
         TEST_ASSERT(l_rc == 0, "Loaded Chapter 0 (dkar.chag) into ClarityDoc");
         TEST_ASSERT(doc.fmt == FMT_PECHA, "Document format switched to FMT_PECHA");
         TEST_ASSERT(doc.page_w_mm == 560 && doc.page_h_mm == 110, "Page dimensions set to Kangyur Pecha (560x110 mm)");
+        /* Note: test_book is PECHA_SIZE_KANGYUR (560x110 mm); PECHA_SIZE_DERGE is now 700x180 mm */
         TEST_ASSERT(doc.frame_count >= 1, "Clarity Text Frame created for Pecha loose-leaf");
 
         ClarityFrame *f0 = &doc.frames[0];
@@ -245,8 +246,55 @@ int main(void)
         TEST_ASSERT(tb.span_count > 50, "Scroll volume loaded comprehensive book spans (> 50)");
     }
 
+    /* ── Test Group 6: Pecha Size Enum & Proportional Dimensions ───── */
+    printf("\n==> Test Group 6: Pecha Size Enum & Proportional Dimensions\n");
+    {
+        int w, h;
+        const char *name;
+
+        /* Kangyur */
+        clarity_get_pecha_dimensions(PECHA_SIZE_KANGYUR, &w, &h, &name);
+        TEST_ASSERT(w == 560 && h == 110, "Kangyur Pecha: 560 x 110 mm");
+        TEST_ASSERT(strstr(name, "Kangyur") != NULL, "Kangyur name label correct");
+
+        /* Rinchen Terdzo */
+        clarity_get_pecha_dimensions(PECHA_SIZE_RINCHEN, &w, &h, &name);
+        TEST_ASSERT(w == 650 && h == 140, "Rinchen Terdzo: 650 x 140 mm");
+
+        /* Derge Woodblock (classic 700x180 mm, 13 rows) */
+        clarity_get_pecha_dimensions(PECHA_SIZE_DERGE, &w, &h, &name);
+        TEST_ASSERT(w == 700 && h == 180, "Derge Woodblock: 700 x 180 mm");
+        TEST_ASSERT(strstr(name, "700") != NULL && strstr(name, "180") != NULL,
+                    "Derge Woodblock name contains 700 and 180");
+
+        /* Pocket Dharma */
+        clarity_get_pecha_dimensions(PECHA_SIZE_POCKET, &w, &h, &name);
+        TEST_ASSERT(w == 320 && h == 85, "Pocket Dharma: 320 x 85 mm");
+
+        /* Derge Wide (720x200 mm, 25 rows) */
+        clarity_get_pecha_dimensions(PECHA_SIZE_DERGE_WIDE, &w, &h, &name);
+        TEST_ASSERT(w == 720 && h == 200, "Derge Wide: 720 x 200 mm");
+        TEST_ASSERT(strstr(name, "Wide") != NULL, "Derge Wide name label correct");
+
+        /* Proportional row counts verification via load chapter */
+        ClarityBook derge_book;
+        clarity_book_init(&derge_book);
+        int d_rc = clarity_book_open_dir(&derge_book, "./assets/osal", PECHA_SIZE_DERGE, TRUE);
+        TEST_ASSERT(d_rc == 0, "Opened osal dir with PECHA_SIZE_DERGE (700x180 mm)");
+
+        ClarityDoc d_doc;
+        memset(&d_doc, 0, sizeof(ClarityDoc));
+        int d_load = clarity_book_load_chapter_into_doc(&derge_book, 0, &d_doc);
+        TEST_ASSERT(d_load == 0, "Loaded chapter 0 as Derge Woodblock");
+        TEST_ASSERT(d_doc.page_w_mm == 700 && d_doc.page_h_mm == 180,
+                    "Derge Woodblock doc page dimensions: 700 x 180 mm");
+        TEST_ASSERT(d_doc.frame_count >= 2, "Derge Woodblock import paginated into >= 2 pages");
+        /* Each page should hold at most 13 visual rows — text must not be a single giant block */
+        TEST_ASSERT(d_doc.frame_count >= 10, "dkar.chag.txt (959 lines) produces >= 10 Derge pages");
+    }
+
     printf("\n=================================================================\n");
-    printf(" ALL 28 CLARITY OSAL TIBETAN BOOK & TAD TESTS PASSED (100%%)\n");
+    printf(" ALL 34 CLARITY OSAL TIBETAN BOOK & TAD TESTS PASSED (100%%)\n");
     printf("=================================================================\n");
     return 0;
 }
