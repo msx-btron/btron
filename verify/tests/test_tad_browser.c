@@ -1295,6 +1295,34 @@ static void test_font_glyphs_and_sanskrit(void) {
     /* Na (16) + Ma (16) + Sa (16) + Virama (0) + Ta (16) + E (0) = 64px */
     H namaste_w = tc_calc_string_width("नमस्ते", 32);
     TEST_ASSERT(namaste_w == 64, "Sanskrit 'नमस्ते' string width calculated correctly with combining marks (64px)");
+
+    /* 6. Modality, Music and Mathematical Logic Glyphs (flat.anders.txt, sharp.anders.txt, stt.anders.txt) */
+    const char *modal_music_chars = "♭♯♮♪♫∀∈⊆−";
+    p = modal_music_chars;
+    while (*p) {
+        int consumed = 0;
+        TC code = utf8_to_tc(p, &consumed);
+        TEST_ASSERT(consumed >= 3, "Modal/Music UTF-8 sequence valid");
+        H adv = tc_get_char_advance(code, 0);
+        TEST_ASSERT(adv == 8, "Modal/Music glyph advance is strictly 8px");
+
+        H gw = 0, gh = 0;
+        const UB *bmp = get_glyph_bitmap(code, &gw, &gh);
+        TEST_ASSERT(bmp != NULL, "Modal/Music glyph bitmap resolved");
+
+        /* Confirm it is NOT the dummy rectangle box {0x00,0x00,0x7F,0xF8...} */
+        BOOL is_dummy_box = (bmp[2] == 0x7F && bmp[3] == 0xF8 && bmp[4] == 0x60 && bmp[5] == 0x08);
+        TEST_ASSERT(!is_dummy_box, "Modal/Music glyph is real outline (not dummy box)");
+
+        /* Confirm byte 1 is 0 (8px glyph boundary) */
+        BOOL spill = FALSE;
+        for (int r = 0; r < 16; r++) {
+            if (bmp[r * 2 + 1] != 0) spill = TRUE;
+        }
+        TEST_ASSERT(!spill, "Modal/Music glyph strictly bounded to 8px box");
+
+        p += consumed;
+    }
 }
 
 int main(void) {

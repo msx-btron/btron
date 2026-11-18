@@ -1250,7 +1250,8 @@ H tc_get_char_advance(TC code, TC prev_code) {
     } else if (code < 256 || ((code >> 8) == 0x20 && (code & 0xFF) >= 0x80) ||
                (code >> 8) == 0x27 || (code >> 8) == 0x23 || code == 0x2116 ||
                (code >> 8) == 0x28 || (code >> 8) == 0x2E ||
-               (code >> 8) == 0x2B ||
+               (code >> 8) == 0x2B || (code >> 8) == 0x2C ||
+               ((code >> 8) == 0x29 && (code & 0xFF) >= 0x60 && (code & 0xFF) <= 0x6F) ||
                (code >= 0x8BCE && code <= 0x8BE1)) {
         return 8;
     } else {
