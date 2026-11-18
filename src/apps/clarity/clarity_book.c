@@ -742,6 +742,8 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
                         strncpy(ch->transl_title, tr, sizeof(ch->transl_title) - 1);
                         char *nl = strchr(ch->transl_title, '\n');
                         if (nl) *nl = '\0';
+                        for (char *c = ch->transl_title + strlen(ch->transl_title) - 1;
+                             c >= ch->transl_title && (*c == ' ' || *c == '\r' || *c == '\n'); c--) *c = '\0';
                     }
                 }
             }
@@ -810,6 +812,8 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
                         strncpy(ch->transl_title, tr, sizeof(ch->transl_title) - 1);
                         char *nl = strchr(ch->transl_title, '\n');
                         if (nl) *nl = '\0';
+                        for (char *c = ch->transl_title + strlen(ch->transl_title) - 1;
+                             c >= ch->transl_title && (*c == ' ' || *c == '\r' || *c == '\n'); c--) *c = '\0';
                     }
                 }
                 if (l_cnt <= 4 && strlen(ch->text_preview) + strlen(line_buf) < sizeof(ch->text_preview) - 1) {

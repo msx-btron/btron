@@ -616,7 +616,13 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
     char hdr_buf[64];
     snprintf(hdr_buf, sizeof(hdr_buf), "目録 (%d 章)", bk->chapter_count);
     drw_tc_string(dev, 6, 4,  hdr_buf,          COLOR_WHITE, COLOR_NAVY);
-    drw_tc_string(dev, 6, 20, bk->tibetan_title, COLOR_LTGRAY, COLOR_NAVY);
+    char hdr_sub[256];
+    if (bk->title[0] != '\0') {
+        snprintf(hdr_sub, sizeof(hdr_sub), "%s — %s", bk->tibetan_title, bk->title);
+    } else {
+        snprintf(hdr_sub, sizeof(hdr_sub), "%s", bk->tibetan_title);
+    }
+    drw_tc_string(dev, 6, 20, hdr_sub, COLOR_LTGRAY, COLOR_NAVY);
 
     /* Chapter rows */
     int y = TOC_HEADER_H - g_toc_scroll;
@@ -631,9 +637,13 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
             fill_rec(dev, &cr, 0xFFD8E4F0);
             set_col(dev, COLOR_DKGRAY, 0xFFD8E4F0);
             drw_lin(dev, 0, (H)(y + TOC_ENTRY_H - 1), (H)ww, (H)(y + TOC_ENTRY_H - 1));
-            char cl_buf[128];
+            char cl_buf[256];
             const char *cl_title = (cls->tibetan[0] != '\0') ? cls->tibetan : cls->wylie;
-            snprintf(cl_buf, sizeof(cl_buf), "%s. %s", cls->roman, cl_title);
+            if (cls->title[0] != '\0') {
+                snprintf(cl_buf, sizeof(cl_buf), "%s. %s — %s", cls->roman, cl_title, cls->title);
+            } else {
+                snprintf(cl_buf, sizeof(cl_buf), "%s. %s", cls->roman, cl_title);
+            }
             drw_tc_string(dev, TOC_INDENT_CL, y + 3, cl_buf, COLOR_NAVY, 0xFFD8E4F0);
         }
         y += TOC_ENTRY_H;
@@ -663,9 +673,15 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
                 snprintf(num_buf, sizeof(num_buf), "%02d", chidx + 1);
                 drw_tc_string(dev, TOC_INDENT_CH, y + 3, num_buf, COLOR_GRAY, bg_col);
 
-                /* Tibetan title or wylie fallback */
+                /* Tibetan title or wylie fallback, followed by alternative language title */
                 const char *lbl = ch->tibetan_title[0] ? ch->tibetan_title : ch->wylie_title;
-                drw_tc_string(dev, TOC_INDENT_CH + 24, y + 3, lbl, fg_col, bg_col);
+                char row_buf[512];
+                if (ch->transl_title[0] != '\0' && strcmp(ch->transl_title, lbl) != 0) {
+                    snprintf(row_buf, sizeof(row_buf), "%s — %s", lbl, ch->transl_title);
+                } else {
+                    snprintf(row_buf, sizeof(row_buf), "%s", lbl);
+                }
+                drw_tc_string(dev, TOC_INDENT_CH + 24, y + 3, row_buf, fg_col, bg_col);
             }
             y += TOC_ENTRY_H;
         }
@@ -771,10 +787,11 @@ static void open_clarity_toc_window(void)
     }
 
     /* Position TOC window to the left of Clarity window */
+    int toc_w = 280;
     int toc_x = 10, toc_y = 36;
     int toc_h = 620;
     if (g_wnd) {
-        toc_x = g_wnd->bounds.left - 186;
+        toc_x = g_wnd->bounds.left - (toc_w + 6);
         toc_y = g_wnd->bounds.top;
         toc_h = g_wnd->bounds.bottom - g_wnd->bounds.top;
         if (toc_x < 4) toc_x = 4;
@@ -782,7 +799,7 @@ static void open_clarity_toc_window(void)
 
     g_toc_scroll = 0;
     g_toc_wnd = opn_wnd("目録 – TOC",
-                        toc_x, toc_y, 180, toc_h,
+                        toc_x, toc_y, toc_w, toc_h,
                         WND_ATTR_TITLE | WND_ATTR_CLOSE |
                         WND_ATTR_BORDER | WND_ATTR_RESIZE);
     if (g_toc_wnd) {
@@ -1939,9 +1956,9 @@ WND* open_clarity_window(void)
     }
 #endif
 
-    int clr_x = has_osal ? 196 : 40;
+    int clr_x = has_osal ? 286 : 40;
     int clr_y = 36;
-    int clr_w = has_osal ? 820 : 900;
+    int clr_w = has_osal ? 730 : 900;
     int clr_h = 620;
 
     g_wnd = opn_wnd("電子帳票 – Clarity",

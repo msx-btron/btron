@@ -107,6 +107,8 @@ int main(void)
         const ClarityBookChapter *ch0 = &book.chapters[0];
         TEST_ASSERT(strcmp(ch0->filename, "dkar.chag.txt") == 0, "Chapter 0 is dkar.chag.txt");
         TEST_ASSERT(strstr(ch0->tibetan_title, "དཀར་ཆག") != NULL, "Chapter 0 Tibetan title is དཀར་ཆག");
+        TEST_ASSERT(strstr(ch0->transl_title, "Коментар на Зміст") != NULL, "Chapter 0 alternative language title loaded ('Коментар на Зміст')");
+        TEST_ASSERT(strstr(book.classes[0].title, "Попередні практики") != NULL, "Class 1 alternative language title loaded");
         TEST_ASSERT(ch0->class_id == 1, "dkar.chag assigned to Class 1");
 
         /* Verify Dzogchen Class V chapters */
