@@ -1147,7 +1147,7 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     }
 
     doc->page_count     = total_pages;
-    doc->selected_frame = 0;
+    doc->selected_frame = -1; /* Default focus on Deck itself (allows immediate document scrolling) */
     doc->dirty          = FALSE;
     doc->source_lines   = file_lines;
     doc->loaded_lines   = (line_cursor > 0) ? (line_cursor - 1) : 0;

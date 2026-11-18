@@ -170,6 +170,9 @@ static ClarityDialogState g_dlg;
 static WND               *g_wnd        = NULL;
 static WND               *g_toc_wnd    = NULL;   /* TOC sidebar window */
 static int                g_toc_scroll = 0;       /* TOC window scroll */
+static BOOL               g_toc_sb_drag = FALSE;  /* TOC scrollbar dragging */
+static int                g_toc_sb_start_y = 0;
+static int                g_toc_sb_orig_scroll = 0;
 static APP_MENU_BAR       g_menu;
 
 /* Scroll state (offsets in canvas space) */
@@ -589,10 +592,103 @@ static void paint_clarity_dialog(GDEV *dev, int win_w, int win_h)
 /* TOC Sidebar Window (Book Table of Contents)                         */
 /* ------------------------------------------------------------------ */
 
-#define TOC_ENTRY_H   18   /* pixels per TOC row                      */
-#define TOC_HEADER_H  36   /* title header height                     */
-#define TOC_INDENT_CL  8   /* indent per class header (px)            */
-#define TOC_INDENT_CH 20   /* indent per chapter entry (px)           */
+#define TOC_ENTRY_H      18   /* pixels per TOC row                          */
+#define TOC_HEADER_H     36   /* title header height                         */
+#define TOC_INDENT_CL     8   /* indent per class header (px)                */
+#define TOC_INDENT_CH    20   /* indent per chapter entry (px)               */
+#define TOC_SCROLLBAR_W  12   /* reduced width for mini-window (12px vs 16px)*/
+#define TOC_SB_BTN_H     12   /* square mini stepper button (12x12)          */
+
+/* Mini-window Vertical Scrollbar (Reduced Size Canonical BTRON 3D Elevator) */
+static void paint_mini_scrollbar_v(GDEV *dev, int x, int y, int w, int h,
+                                   int scroll, int max_scroll, int view_h)
+{
+    int btn_h = TOC_SB_BTN_H;
+    int mid_x = x + w / 2;
+
+    /* Background track & vertical gutter boundary */
+    RECT bg = { (H)x, (H)y, (H)(x + w), (H)(y + h) };
+    fill_rec(dev, &bg, COLOR_LTGRAY);
+    set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+    drw_lin(dev, (H)x, (H)y, (H)x, (H)(y + h));
+
+    /* 1. Up Stepper Button */
+    RECT up_btn = { (H)x, (H)y, (H)(x + w), (H)(y + btn_h) };
+    fill_rec(dev, &up_btn, COLOR_LTGRAY);
+    set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+    drw_rec(dev, &up_btn);
+    set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+    drw_lin(dev, (H)(x + 1), (H)(y + 1), (H)(x + w - 2), (H)(y + 1));
+    drw_lin(dev, (H)(x + 1), (H)(y + 1), (H)(x + 1), (H)(y + btn_h - 2));
+
+    /* Up Arrow (solid crisp mini-triangle) */
+    COLOR arrow_col = (scroll > 0) ? COLOR_BLACK : COLOR_GRAY;
+    set_col(dev, arrow_col, COLOR_LTGRAY);
+    drw_lin(dev, (H)mid_x, (H)(y + 3), (H)mid_x, (H)(y + 8));
+    drw_lin(dev, (H)(mid_x - 1), (H)(y + 4), (H)(mid_x + 1), (H)(y + 4));
+    drw_lin(dev, (H)(mid_x - 2), (H)(y + 6), (H)(mid_x + 2), (H)(y + 6));
+    drw_lin(dev, (H)(mid_x - 3), (H)(y + 8), (H)(mid_x + 3), (H)(y + 8));
+
+    /* 2. Down Stepper Button */
+    int dy_b = y + h - btn_h;
+    RECT dn_btn = { (H)x, (H)dy_b, (H)(x + w), (H)(y + h) };
+    fill_rec(dev, &dn_btn, COLOR_LTGRAY);
+    set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+    drw_rec(dev, &dn_btn);
+    set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+    drw_lin(dev, (H)(x + 1), (H)(dy_b + 1), (H)(x + w - 2), (H)(dy_b + 1));
+    drw_lin(dev, (H)(x + 1), (H)(dy_b + 1), (H)(x + 1), (H)(y + h - 2));
+
+    /* Down Arrow (solid crisp mini-triangle) */
+    COLOR dn_arrow_col = (max_scroll > 0 && scroll < max_scroll) ? COLOR_BLACK : COLOR_GRAY;
+    set_col(dev, dn_arrow_col, COLOR_LTGRAY);
+    drw_lin(dev, (H)mid_x, (H)(dy_b + 3), (H)mid_x, (H)(dy_b + 8));
+    drw_lin(dev, (H)(mid_x - 3), (H)(dy_b + 3), (H)(mid_x + 3), (H)(dy_b + 3));
+    drw_lin(dev, (H)(mid_x - 2), (H)(dy_b + 5), (H)(mid_x + 2), (H)(dy_b + 5));
+    drw_lin(dev, (H)(mid_x - 1), (H)(dy_b + 7), (H)(mid_x + 1), (H)(dy_b + 7));
+
+    /* 3. Track & Elevator Thumb */
+    int track_y = y + btn_h;
+    int track_h = h - btn_h * 2;
+    if (track_h > 12) {
+        int thumb_h = track_h;
+        if (max_scroll > 0 && view_h + max_scroll > 0) {
+            thumb_h = (track_h * view_h) / (view_h + max_scroll);
+        }
+        if (thumb_h < 12) thumb_h = 12;
+        if (thumb_h > track_h) thumb_h = track_h;
+
+        int thumb_y = track_y;
+        if (max_scroll > 0) {
+            thumb_y = track_y + (scroll * (track_h - thumb_h)) / max_scroll;
+        }
+
+        RECT thumb = { (H)(x + 1), (H)thumb_y, (H)(x + w - 1), (H)(thumb_y + thumb_h) };
+        fill_rec(dev, &thumb, COLOR_LTGRAY);
+        set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+        drw_rec(dev, &thumb);
+
+        /* 3D Bevel highlight */
+        set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+        drw_lin(dev, (H)(x + 1), (H)thumb_y, (H)(x + w - 2), (H)thumb_y);
+        drw_lin(dev, (H)(x + 1), (H)thumb_y, (H)(x + 1), (H)(thumb_y + thumb_h - 2));
+
+        set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+        drw_lin(dev, (H)(x + 1), (H)(thumb_y + thumb_h - 1), (H)(x + w - 1), (H)(thumb_y + thumb_h - 1));
+        drw_lin(dev, (H)(x + w - 1), (H)thumb_y, (H)(x + w - 1), (H)(thumb_y + thumb_h - 1));
+
+        /* Etched thumb ribs */
+        if (thumb_h >= 16) {
+            int gy = thumb_y + thumb_h / 2;
+            set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
+            drw_lin(dev, (H)(x + 3), (H)(gy - 2), (H)(x + w - 4), (H)(gy - 2));
+            drw_lin(dev, (H)(x + 3), (H)(gy + 1), (H)(x + w - 4), (H)(gy + 1));
+            set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
+            drw_lin(dev, (H)(x + 3), (H)(gy - 1), (H)(x + w - 4), (H)(gy - 1));
+            drw_lin(dev, (H)(x + 3), (H)(gy + 2), (H)(x + w - 4), (H)(gy + 2));
+        }
+    }
+}
 
 static void paint_toc_wnd(WND *wnd, GDEV *dev)
 {
@@ -610,19 +706,14 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
         return;
     }
 
-    /* Title bar */
-    RECT hdr = { 0, 0, (H)ww, (H)TOC_HEADER_H };
-    fill_rec(dev, &hdr, COLOR_NAVY);
-    char hdr_buf[64];
-    snprintf(hdr_buf, sizeof(hdr_buf), "目録 (%d 章)", bk->chapter_count);
-    drw_tc_string(dev, 6, 4,  hdr_buf,          COLOR_WHITE, COLOR_NAVY);
-    char hdr_sub[256];
-    if (bk->title[0] != '\0') {
-        snprintf(hdr_sub, sizeof(hdr_sub), "%s — %s", bk->tibetan_title, bk->title);
-    } else {
-        snprintf(hdr_sub, sizeof(hdr_sub), "%s", bk->tibetan_title);
-    }
-    drw_tc_string(dev, 6, 20, hdr_sub, COLOR_LTGRAY, COLOR_NAVY);
+    /* Content width excluding mini scrollbar */
+    int content_w = ww - TOC_SCROLLBAR_W;
+    if (content_w < 50) content_w = 50;
+
+    /* ── 1. Content Viewport (Strictly Clipped Below Header) ───────── */
+    RECT orig_clip = dev->clip;
+    RECT content_clip = { 0, (H)TOC_HEADER_H, (H)content_w, (H)wh };
+    set_clip(dev, &content_clip);
 
     /* Chapter rows */
     int y = TOC_HEADER_H - g_toc_scroll;
@@ -632,11 +723,11 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
         const ClarityBookClass *cls = &bk->classes[ci];
 
         /* Class header row */
-        if (y + TOC_ENTRY_H >= 0 && y < wh) {
-            RECT cr = { 0, (H)y, (H)ww, (H)(y + TOC_ENTRY_H) };
+        if (y + TOC_ENTRY_H > TOC_HEADER_H && y < wh) {
+            RECT cr = { 0, (H)y, (H)content_w, (H)(y + TOC_ENTRY_H) };
             fill_rec(dev, &cr, 0xFFD8E4F0);
             set_col(dev, COLOR_DKGRAY, 0xFFD8E4F0);
-            drw_lin(dev, 0, (H)(y + TOC_ENTRY_H - 1), (H)ww, (H)(y + TOC_ENTRY_H - 1));
+            drw_lin(dev, 0, (H)(y + TOC_ENTRY_H - 1), (H)content_w, (H)(y + TOC_ENTRY_H - 1));
             char cl_buf[256];
             const char *cl_title = (cls->tibetan[0] != '\0') ? cls->tibetan : cls->wylie;
             if (cls->title[0] != '\0') {
@@ -654,11 +745,11 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
             if (chidx < 0 || chidx >= bk->chapter_count) continue;
             const ClarityBookChapter *ch = &bk->chapters[chidx];
 
-            if (y + TOC_ENTRY_H >= 0 && y < wh) {
+            if (y + TOC_ENTRY_H > TOC_HEADER_H && y < wh) {
                 BOOL is_active = (chidx == active_idx);
                 COLOR bg_col = is_active ? 0xFFCCE0FF : COLOR_WHITE;
                 COLOR fg_col = is_active ? COLOR_NAVY   : COLOR_BLACK;
-                RECT rr = { 0, (H)y, (H)ww, (H)(y + TOC_ENTRY_H) };
+                RECT rr = { 0, (H)y, (H)content_w, (H)(y + TOC_ENTRY_H) };
                 fill_rec(dev, &rr, bg_col);
                 if (is_active) {
                     set_col(dev, COLOR_NAVY, bg_col);
@@ -666,7 +757,7 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
                 }
                 set_col(dev, COLOR_DKGRAY, bg_col);
                 drw_lin(dev, (H)TOC_INDENT_CH, (H)(y + TOC_ENTRY_H - 1),
-                             (H)ww, (H)(y + TOC_ENTRY_H - 1));
+                             (H)content_w, (H)(y + TOC_ENTRY_H - 1));
 
                 /* Chapter number badge */
                 char num_buf[8];
@@ -687,21 +778,31 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
         }
     }
 
-    /* Scrollbar groove on right */
-    int total_h = TOC_HEADER_H + (bk->chapter_count + bk->class_count) * TOC_ENTRY_H;
-    if (total_h > wh) {
-        int sb_x = ww - 10;
-        RECT sb_bg = { (H)sb_x, 0, (H)ww, (H)wh };
-        fill_rec(dev, &sb_bg, COLOR_LTGRAY);
-        set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
-        drw_rec(dev, &sb_bg);
-        int max_sc = total_h - wh;
-        int thumb_h = (wh * wh) / total_h;
-        if (thumb_h < 12) thumb_h = 12;
-        int thumb_y = (g_toc_scroll * (wh - thumb_h)) / max_sc;
-        RECT thumb = { (H)(sb_x + 1), (H)thumb_y, (H)(ww - 1), (H)(thumb_y + thumb_h) };
-        fill_rec(dev, &thumb, COLOR_GRAY);
+    /* Restore original clipping */
+    set_clip(dev, &orig_clip);
+
+    /* ── 2. Fixed Pinned Header Bar (Drawn On Top) ─────────────────── */
+    RECT hdr = { 0, 0, (H)ww, (H)TOC_HEADER_H };
+    fill_rec(dev, &hdr, COLOR_NAVY);
+    char hdr_buf[64];
+    snprintf(hdr_buf, sizeof(hdr_buf), "目録 (%d 章)", bk->chapter_count);
+    drw_tc_string(dev, 6, 4,  hdr_buf,          COLOR_WHITE, COLOR_NAVY);
+    char hdr_sub[256];
+    if (bk->title[0] != '\0') {
+        snprintf(hdr_sub, sizeof(hdr_sub), "%s — %s", bk->tibetan_title, bk->title);
+    } else {
+        snprintf(hdr_sub, sizeof(hdr_sub), "%s", bk->tibetan_title);
     }
+    drw_tc_string(dev, 6, 20, hdr_sub, COLOR_LTGRAY, COLOR_NAVY);
+    set_col(dev, COLOR_DKGRAY, COLOR_NAVY);
+    drw_lin(dev, 0, (H)(TOC_HEADER_H - 1), (H)ww, (H)(TOC_HEADER_H - 1));
+
+    /* ── 3. Real Vertical Scrollbar (reduced 12px width for mini-window) ─ */
+    int view_h = wh - TOC_HEADER_H;
+    int content_h = (bk->chapter_count + bk->class_count) * TOC_ENTRY_H;
+    int max_sc = (content_h > view_h) ? (content_h - view_h) : 0;
+    paint_mini_scrollbar_v(dev, ww - TOC_SCROLLBAR_W, TOC_HEADER_H, TOC_SCROLLBAR_W, view_h,
+                           g_toc_scroll, max_sc, view_h);
 }
 
 static void toc_event(WND *wnd, const EVT *evt)
@@ -710,56 +811,126 @@ static void toc_event(WND *wnd, const EVT *evt)
     ClarityBook *bk = clarity_get_book();
     if (!bk || !bk->is_loaded) return;
 
+    int ww = wnd->client.right  - wnd->client.left;
+    int wh = wnd->client.bottom - wnd->client.top;
+    int view_h = wh - TOC_HEADER_H;
+    int content_h = (bk->chapter_count + bk->class_count) * TOC_ENTRY_H;
+    int max_sc = (content_h > view_h) ? (content_h - view_h) : 0;
+
+    int sb_x = ww - TOC_SCROLLBAR_W;
+    int sb_y = TOC_HEADER_H;
+    int sb_h = view_h;
+    int track_y = sb_y + TOC_SB_BTN_H;
+    int track_h = sb_h - TOC_SB_BTN_H * 2;
+
+    H rel_x = (H)(evt->pos.x - wnd->client.left);
     H rel_y = (H)(evt->pos.y - wnd->client.top);
 
     if (evt->type == EV_BUT_DOWN) {
-        int wh = wnd->client.bottom - wnd->client.top;
-        int total_h = TOC_HEADER_H + (bk->chapter_count + bk->class_count) * TOC_ENTRY_H;
-        int max_sc = (total_h > wh) ? (total_h - wh) : 0;
+        /* Check if click was in the vertical scrollbar gutter */
+        if (rel_x >= sb_x && rel_x < ww && rel_y >= sb_y && rel_y < wh) {
+            if (rel_y < track_y) {
+                /* Stepper Up Button */
+                g_toc_scroll -= TOC_ENTRY_H * 2;
+                if (g_toc_scroll < 0) g_toc_scroll = 0;
+            } else if (rel_y >= track_y + track_h) {
+                /* Stepper Down Button */
+                g_toc_scroll += TOC_ENTRY_H * 2;
+                if (g_toc_scroll > max_sc) g_toc_scroll = max_sc;
+            } else if (track_h > 12) {
+                /* Track or Thumb */
+                int thumb_h = track_h;
+                if (max_sc > 0 && view_h + max_sc > 0) {
+                    thumb_h = (track_h * view_h) / (view_h + max_sc);
+                }
+                if (thumb_h < 12) thumb_h = 12;
+                if (thumb_h > track_h) thumb_h = track_h;
 
-        /* 1. Hit-test chapter rows first */
+                int thumb_y = track_y;
+                if (max_sc > 0) {
+                    thumb_y = track_y + (g_toc_scroll * (track_h - thumb_h)) / max_sc;
+                }
+
+                if (rel_y >= thumb_y && rel_y <= thumb_y + thumb_h) {
+                    /* Thumb drag start */
+                    g_toc_sb_drag = TRUE;
+                    g_toc_sb_start_y = evt->pos.y;
+                    g_toc_sb_orig_scroll = g_toc_scroll;
+                } else if (rel_y < thumb_y) {
+                    /* Page Up */
+                    g_toc_scroll -= view_h;
+                    if (g_toc_scroll < 0) g_toc_scroll = 0;
+                } else {
+                    /* Page Down */
+                    g_toc_scroll += view_h;
+                    if (g_toc_scroll > max_sc) g_toc_scroll = max_sc;
+                }
+            }
+            inval_wnd(wnd);
+            return;
+        }
+
+        /* Hit-test chapter rows */
         int y = TOC_HEADER_H - g_toc_scroll;
-        int hit = 0;
-        for (int ci = 0; ci < bk->class_count && !hit; ci++) {
+        for (int ci = 0; ci < bk->class_count; ci++) {
             const ClarityBookClass *cls = &bk->classes[ci];
             y += TOC_ENTRY_H; /* skip class header row */
-            for (int ci2 = 0; ci2 < cls->chapter_count && !hit; ci2++) {
+            for (int ci2 = 0; ci2 < cls->chapter_count; ci2++) {
                 int chidx = cls->chapter_indices[ci2];
                 if (chidx < 0 || chidx >= bk->chapter_count) { y += TOC_ENTRY_H; continue; }
-                if (rel_y >= (H)y && rel_y < (H)(y + TOC_ENTRY_H)) {
-                    hit = 1;
+                if (rel_y >= (H)y && rel_y < (H)(y + TOC_ENTRY_H) && rel_x < sb_x) {
                     clarity_book_load_chapter_into_doc(bk, chidx, &g_doc);
                     g_scroll_y = 0;
                     if (g_wnd) inval_wnd(g_wnd);
                     inval_wnd(wnd);
+                    return;
                 }
                 y += TOC_ENTRY_H;
             }
         }
+    }
 
-        /* 2. No chapter row hit — treat as scroll-zone click */
-        if (!hit) {
-            if (rel_y < (H)(wh / 3)) {
-                g_toc_scroll -= TOC_ENTRY_H * 3;
-            } else if (rel_y > (H)(wh * 2 / 3)) {
-                g_toc_scroll += TOC_ENTRY_H * 3;
+    if (evt->type == EV_MOUSE_MOVE) {
+        if (g_toc_sb_drag && max_sc > 0 && track_h > 12) {
+            int thumb_h = (track_h * view_h) / (view_h + max_sc);
+            if (thumb_h < 12) thumb_h = 12;
+            if (thumb_h > track_h) thumb_h = track_h;
+            int avail_track = track_h - thumb_h;
+            if (avail_track > 0) {
+                int dy = evt->pos.y - g_toc_sb_start_y;
+                g_toc_scroll = g_toc_sb_orig_scroll + (dy * max_sc) / avail_track;
+                if (g_toc_scroll < 0) g_toc_scroll = 0;
+                if (g_toc_scroll > max_sc) g_toc_scroll = max_sc;
+                inval_wnd(wnd);
             }
-            if (g_toc_scroll < 0) g_toc_scroll = 0;
-            if (g_toc_scroll > max_sc) g_toc_scroll = max_sc;
+            return;
+        }
+    }
+
+    if (evt->type == EV_BUT_UP) {
+        if (g_toc_sb_drag) {
+            g_toc_sb_drag = FALSE;
             inval_wnd(wnd);
+            return;
         }
     }
 
     if (evt->type == EV_KEY_DOWN) {
-        int wh = wnd->client.bottom - wnd->client.top;
-        int total_h = TOC_HEADER_H + (bk->chapter_count + bk->class_count) * TOC_ENTRY_H;
-        int max_sc = (total_h > wh) ? (total_h - wh) : 0;
+        BOOL is_wheel = (evt->button == EV_KEY_FROM_WHEEL);
         UW key = evt->key;
-        if (key == BTRON_KEY_DOWN || key == BTRON_KEY_PAGE_DOWN) g_toc_scroll += TOC_ENTRY_H * 3;
-        if (key == BTRON_KEY_UP   || key == BTRON_KEY_PAGE_UP)   g_toc_scroll -= TOC_ENTRY_H * 3;
-        if (g_toc_scroll < 0) g_toc_scroll = 0;
-        if (g_toc_scroll > max_sc) g_toc_scroll = max_sc;
-        inval_wnd(wnd);
+        if (is_wheel || key == BTRON_KEY_DOWN || key == BTRON_KEY_PAGE_DOWN ||
+            key == BTRON_KEY_UP || key == BTRON_KEY_PAGE_UP) {
+            int step = (key == BTRON_KEY_PAGE_DOWN || key == BTRON_KEY_PAGE_UP) ? view_h : (TOC_ENTRY_H * 3);
+            if (key == BTRON_KEY_DOWN || key == BTRON_KEY_PAGE_DOWN) {
+                g_toc_scroll += step;
+                if (g_toc_scroll > max_sc) g_toc_scroll = max_sc;
+            } else {
+                g_toc_scroll -= step;
+                if (g_toc_scroll < 0) g_toc_scroll = 0;
+            }
+            inval_wnd(wnd);
+            return;
+        }
     }
 }
 
@@ -767,6 +938,7 @@ static void destroy_toc_wnd(WND *wnd)
 {
     (void)wnd;
     g_toc_wnd = NULL;
+    g_toc_sb_drag = FALSE;
 }
 
 static void open_clarity_toc_window(void)
@@ -1990,7 +2162,7 @@ WND* open_clarity_window(void)
         doc_new(FMT_A4);
         /* Try loading saved sample file from /SYS/Clarity-Sample.TAD */
         if (clarity_export_load_file(&g_doc, CLARITY_SAMPLE_PATH) == E_OK && g_doc.frame_count > 0) {
-            g_doc.selected_frame = 0;
+            g_doc.selected_frame = -1; /* Default focus on Deck itself */
         } else {
             clarity_init_sample_page(&g_doc);
             clarity_export_save_file(&g_doc, CLARITY_SAMPLE_PATH);
