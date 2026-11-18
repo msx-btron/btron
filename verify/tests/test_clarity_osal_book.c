@@ -228,6 +228,17 @@ int main(void)
         }
         TEST_ASSERT(vobj_links >= 5, "Table of Contents contains multiple Virtual Body chapter links");
 
+        /* Verify that Virtual Body Link titles are fully displayed without 63-byte truncation */
+        if (target_link_idx >= 0) {
+            const char *lbl = tb.spans[target_link_idx].style.vobj_label;
+            const char *txt = tb.spans[target_link_idx].text;
+            TEST_ASSERT(strlen(lbl) > 63, "Virtual Body label exceeds legacy 63-byte limit");
+            TEST_ASSERT(strstr(lbl, "Коментар на Зміст") != NULL,
+                        "Virtual Body label preserves full Ukrainian title ('Коментар на Зміст')");
+            TEST_ASSERT(strstr(txt, "Коментар на Зміст") != NULL,
+                        "Virtual Body span text displays full untruncated title in TAD Browser");
+        }
+
         /* B. Simulate Clicking Chapter Link and Navigating */
         if (target_link_idx >= 0) {
             const char *target_path = tb.spans[target_link_idx].style.vobj_path;
@@ -349,7 +360,7 @@ int main(void)
     }
 
     printf("\n=================================================================\n");
-    printf(" ALL 50 CLARITY OSAL TIBETAN BOOK & TAD TESTS PASSED (100%%)\n");
+    printf(" ALL 53 CLARITY OSAL TIBETAN BOOK & TAD TESTS PASSED (100%%)\n");
     printf("=================================================================\n");
     return 0;
 }

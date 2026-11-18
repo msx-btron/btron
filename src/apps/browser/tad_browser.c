@@ -309,7 +309,29 @@ ER tad_browser_load_buffer(TAD_BROWSER *tb, const void *buf, UW len, const char 
                             }
 
                             if (label_len > 0 && next_off + label_len <= len) {
-                                int copy_len = (label_len < 63) ? (int)label_len : 63;
+                                int copy_len = (label_len < sizeof(span->style.vobj_label) - 1) ?
+                                               (int)label_len : (int)(sizeof(span->style.vobj_label) - 1);
+                                if (copy_len < (int)label_len) {
+                                    int cont = 0;
+                                    while (copy_len > 0 && (((unsigned char)p[next_off + copy_len - 1]) & 0xC0) == 0x80) {
+                                        cont++;
+                                        copy_len--;
+                                    }
+                                    if (copy_len > 0 && (((unsigned char)p[next_off + copy_len - 1]) & 0x80) != 0) {
+                                        unsigned char lead = (unsigned char)p[next_off + copy_len - 1];
+                                        int need = 0;
+                                        if ((lead & 0xE0) == 0xC0) need = 1;
+                                        else if ((lead & 0xF0) == 0xE0) need = 2;
+                                        else if ((lead & 0xF8) == 0xF0) need = 3;
+                                        if (cont < need) {
+                                            copy_len--;
+                                        } else {
+                                            copy_len += cont;
+                                        }
+                                    } else {
+                                        copy_len += cont;
+                                    }
+                                }
                                 memcpy(span->style.vobj_label, &p[next_off], copy_len);
                                 span->style.vobj_label[copy_len] = '\0';
                                 next_off += label_len;
@@ -318,7 +340,8 @@ ER tad_browser_load_buffer(TAD_BROWSER *tb, const void *buf, UW len, const char 
                             if (next_off + 2 <= len) {
                                 UW path_len = (p[next_off] << 8) | p[next_off + 1];
                                 if (path_len > 0 && next_off + 2 + path_len <= len) {
-                                    int copy_len = (path_len < 127) ? (int)path_len : 127;
+                                    int copy_len = (path_len < sizeof(span->style.vobj_path) - 1) ?
+                                                   (int)path_len : (int)(sizeof(span->style.vobj_path) - 1);
                                     memcpy(span->style.vobj_path, &p[next_off + 2], copy_len);
                                     span->style.vobj_path[copy_len] = '\0';
                                 }
@@ -326,7 +349,8 @@ ER tad_browser_load_buffer(TAD_BROWSER *tb, const void *buf, UW len, const char 
 
                             span->style.line_pitch = 22;
                             span->style.indent = 20;
-                            snprintf(span->text, sizeof(span->text), "[仮身] %s", span->style.vobj_label[0] ? span->style.vobj_label : "Link");
+                            snprintf(span->text, sizeof(span->text), "[仮身] %s",
+                                     span->style.vobj_label[0] ? span->style.vobj_label : "Link");
                         }
                         break;
                     case 0xB0: /* TS_FPRIM */
@@ -545,6 +569,7 @@ void tad_browser_layout(TAD_BROWSER *tb, int view_width) {
 
         int avail_w = tb->doc_width - indent - 24;
         if (avail_w < 80) avail_w = 80;
+        int wrap_w = (s->style.is_vobj) ? (avail_w - 8) : avail_w;
 
         int num_lines = 1;
         if (s->style.font_id == 2 || !tb->wrap_text) {
@@ -560,10 +585,10 @@ void tad_browser_layout(TAD_BROWSER *tb, int view_width) {
             }
             if (num_lines < 1) num_lines = 1;
         } else {
-            num_lines = tad_browser_wrap_text(s->text, avail_w, NULL, NULL);
+            num_lines = tad_browser_wrap_text(s->text, wrap_w, NULL, NULL);
             if (num_lines < 1) num_lines = 1;
         }
-        int span_h = num_lines * pitch;
+        int span_h = num_lines * pitch + (s->style.is_vobj ? 4 : 0);
 
         int calc_w = 0;
         if (tb->wrap_text) {
@@ -1748,7 +1773,7 @@ void tad_browser_paint(TAD_BROWSER *tb, GDEV *dev, const RECT *client_rect) {
             TAD_PAINT_WRAP_CTX ctx;
             ctx.dev = dev;
             ctx.x = vx + 4;
-            ctx.y = vy;
+            ctx.y = vy + 2;
             ctx.pitch = pitch;
             ctx.text_col = COLOR_BLUE;
             if (tb->wrap_text) {

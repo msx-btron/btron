@@ -1427,7 +1427,7 @@ int clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const 
                 snprintf(ch_tad_name, sizeof(ch_tad_name), "%s.tad", ch->wylie_title);
                 for (char *p = ch_tad_name; *p; p++) if (*p == ' ') *p = '_';
 
-                char vobj_lbl[256];
+                char vobj_lbl[512];
                 snprintf(vobj_lbl, sizeof(vobj_lbl), "%02d. ༄༅། %s — %s", ci + 1, ch->tibetan_title, ch->transl_title);
 
                 pos = append_vobj_seg(buf, pos, 2000 + ch->id, vobj_lbl, ch_tad_name);

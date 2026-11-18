@@ -69,8 +69,8 @@ typedef struct {
     char img_src[128];
     char img_caption[128];
     ID target_robj; /* Target Real Object ID if VOBJ */
-    char vobj_label[64];
-    char vobj_path[128];
+    char vobj_label[512];
+    char vobj_path[256];
 } TAD_STYLE;
 
 /* Text Line Wrapping & Layout Callback */

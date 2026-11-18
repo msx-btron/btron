@@ -69,7 +69,7 @@ typedef struct {
     UW         text_offset;     /* insertion position within text[] */
     ID         target_robj;     /* Target Real Object ID */
     VOBJ_TYPE  type;            /* VOBJ_TYPE_TEXT, VOBJ_TYPE_DRAW, etc. */
-    char       label[64];       /* Moniker label */
+    char       label[256];      /* Moniker label */
     char       path[256];       /* Backing file path */
     RECT       box;             /* Rendered hit-box bounds in window pixels */
 } ClarityVObjLink;
