@@ -53,7 +53,21 @@ static inline void settings_draw_ui_checkbox(GDEV *dev, H x, H y, const char *la
     if (!dev) return;
     RECT box = { x, y + 1, x + 15, y + 16 };
     fill_rec(dev, &box, COLOR_WHITE);
-    drw_rec(dev, &box);
+
+    /* 2px 90s Sunken 3D Bevel */
+    set_col(dev, COLOR_GRAY, COLOR_WHITE);
+    drw_lin(dev, box.left, box.top, box.right - 1, box.top);
+    drw_lin(dev, box.left, box.top, box.left, box.bottom - 1);
+    set_col(dev, COLOR_DKGRAY, COLOR_WHITE);
+    drw_lin(dev, box.left + 1, box.top + 1, box.right - 2, box.top + 1);
+    drw_lin(dev, box.left + 1, box.top + 1, box.left + 1, box.bottom - 2);
+    set_col(dev, COLOR_LTGRAY, COLOR_WHITE);
+    drw_lin(dev, box.left + 1, box.bottom - 2, box.right - 2, box.bottom - 2);
+    drw_lin(dev, box.right - 2, box.top + 1, box.right - 2, box.bottom - 2);
+    set_col(dev, COLOR_WHITE, COLOR_WHITE);
+    drw_lin(dev, box.left, box.bottom - 1, box.right - 1, box.bottom - 1);
+    drw_lin(dev, box.right - 1, box.top, box.right - 1, box.bottom - 1);
+    set_col(dev, COLOR_BLACK, COLOR_WHITE);
 
     if (checked) {
         drw_lin(dev, x + 3, y + 7, x + 6, y + 11);

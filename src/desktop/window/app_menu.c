@@ -22,13 +22,17 @@ APP_MENU_STYLE app_menu_get_global_style(void) {
 void app_menu_draw_3d_bevel_box(GDEV *dev, const RECT *r) {
     if (!dev || !r) return;
     fill_rec(dev, r, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
     drw_rec(dev, r);
     /* 3D highlight: white top and left */
+    set_col(dev, COLOR_WHITE, COLOR_LTGRAY);
     drw_lin(dev, r->left + 1, r->top + 1, r->right - 2, r->top + 1);
     drw_lin(dev, r->left + 1, r->top + 1, r->left + 1, r->bottom - 2);
     /* 3D shadow: dark gray bottom and right */
+    set_col(dev, COLOR_DKGRAY, COLOR_LTGRAY);
     drw_lin(dev, r->left + 1, r->bottom - 2, r->right - 2, r->bottom - 2);
     drw_lin(dev, r->right - 2, r->top + 1, r->right - 2, r->bottom - 2);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
 }
 #define draw_3d_bevel_box app_menu_draw_3d_bevel_box
 

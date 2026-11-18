@@ -24,6 +24,7 @@
 #include <btron/troncode.h>
 #include <btron/desktop.h>
 #include <btron/event.h>
+#include <btron/settings_dlg.h>
 #include <fs/vol_api.h>
 #include <btron/libc_shim.h>
 
@@ -42,18 +43,18 @@ static WND *g_installer_wnd = NULL;
 
 /* ── Color Palette: Japanese Card Aesthetic meets BeOS/Haiku Cleanliness ── */
 #define INST_COL_BG           0xFFE8E5DC   /* Warm card desktop face */
-#define INST_COL_MENUBAR_BG   0xFFDFDAD2   /* Clean menu bar */
-#define INST_COL_CARD_WHITE   0xFFD0CCC4   /* Pure white inner card */
-#define INST_COL_CARD_BORDER  0xFFD0CCC4  /* 1px hairline card border */
+#define INST_COL_MENUBAR_BG   0xFFDFDAD2   /* Clean 3D panel pad & menu bar */
+#define INST_COL_CARD_WHITE   0xFFFBF9F5   /* Warm Meishi ivory inner card */
+#define INST_COL_CARD_BORDER  0xFFD0CCC4   /* 1px hairline card border */
 #define INST_COL_TEXT_BLACK   0xFF141923   /* Deep Charcoal for high legibility */
 #define INST_COL_TEXT_MUTED   0xFF5C6573   /* Slate Gray for secondary text */
 #define INST_COL_TEXT_FAINT   0xFF8C93A0   /* Soft Gray for tertiary info */
 #define INST_COL_BLUE_ACCENT  0xFF2B608A   /* BTRON / Haiku Steel Blue */
 #define INST_COL_BLUE_LIGHT   0xFFEBF3FC   /* Light Blue Card Tint */
 #define INST_COL_SEL_BG       0xFF1D5C96   /* System Navy Selection */
-#define INST_COL_HIGHLIGHT    0xFFD0CCC4   /* 3D Bevel Top-Left Light */
-#define INST_COL_SHADOW       0xFF8A857A   /* 3D Bevel Bottom-Right Shadow */
-#define INST_COL_SHADOW_DARK  0xFF504C44  /* Deep Inset Shadow */
+#define INST_COL_HIGHLIGHT    0xFFF4F2EC   /* 3D Bevel Inner Top-Left Light */
+#define INST_COL_SHADOW       0xFF8A857A   /* 3D Bevel Inner Bottom-Right Shadow */
+#define INST_COL_SHADOW_DARK  0xFF504C44   /* Deep Outer / Inset Shadow */
 #define INST_COL_GREEN        0xFF167C3B   /* Success Forest Green */
 #define INST_COL_GREEN_BG     0xFFEBF7EE   /* Success Card Tint */
 #define INST_COL_RED_SEAL     0xFFCC2222   /* Japanese Vermilion Lacquer Seal */
@@ -74,24 +75,37 @@ static bool pt_in_rect(int x, int y, const RECT *r) {
     return (x >= r->left && x <= r->right && y >= r->top && y <= r->bottom);
 }
 
-/* ── 3D Bevel Rendering Engine ───────────────────────────────────────── */
+/* ── 3D Bevel Rendering Engine (Optimal set_col + drw_lin, max 2px weight) ── */
 
 static void draw_3d_frame(GDEV *dev, const RECT *r, bool inset) {
-    if (inset) {
-        set_col(dev, COLOR_DKGRAY, COLOR_WHITE);
-        drw_lin(dev, r->left, r->top, r->right, r->top);
-        drw_lin(dev, r->left, r->top, r->left, r->bottom);
-        set_col(dev, COLOR_WHITE, COLOR_WHITE);
-        drw_lin(dev, r->right, r->top, r->right, r->bottom);
-        drw_lin(dev, r->left, r->bottom, r->right, r->bottom);
-    } else {
-        app_menu_draw_3d_bevel_box(dev, r);
+    COLOR tl_outer = inset ? INST_COL_SHADOW      : COLOR_WHITE;
+    COLOR tl_inner = inset ? INST_COL_SHADOW_DARK : INST_COL_HIGHLIGHT;
+    COLOR br_inner = inset ? INST_COL_HIGHLIGHT   : INST_COL_SHADOW;
+    COLOR br_outer = inset ? COLOR_WHITE          : INST_COL_SHADOW_DARK;
+
+    /* Outer 1px bevel */
+    set_col(dev, tl_outer, COLOR_WHITE);
+    drw_lin(dev, r->left, r->top, r->right - 1, r->top);
+    drw_lin(dev, r->left, r->top, r->left, r->bottom - 1);
+    set_col(dev, br_outer, COLOR_WHITE);
+    drw_lin(dev, r->left, r->bottom - 1, r->right - 1, r->bottom - 1);
+    drw_lin(dev, r->right - 1, r->top, r->right - 1, r->bottom - 1);
+
+    /* Inner 1px bevel (2px total relief weight) */
+    if (r->right - r->left > 3 && r->bottom - r->top > 3) {
+        set_col(dev, tl_inner, COLOR_WHITE);
+        drw_lin(dev, r->left + 1, r->top + 1, r->right - 2, r->top + 1);
+        drw_lin(dev, r->left + 1, r->top + 1, r->left + 1, r->bottom - 2);
+        set_col(dev, br_inner, COLOR_WHITE);
+        drw_lin(dev, r->left + 1, r->bottom - 2, r->right - 2, r->bottom - 2);
+        drw_lin(dev, r->right - 2, r->top + 1, r->right - 2, r->bottom - 2);
     }
+    set_col(dev, COLOR_BLACK, COLOR_WHITE);
 }
 
 static void draw_3d_bevel_box_custom(GDEV *dev, const RECT *r, COLOR fill_col) {
     fill_rec(dev, r, fill_col);
-    app_menu_draw_3d_bevel_box(dev, r);
+    draw_3d_frame(dev, r, false);
 }
 
 static void draw_down_triangle(GDEV *dev, int cx, int cy, int size, COLOR col) {
@@ -100,56 +114,76 @@ static void draw_down_triangle(GDEV *dev, int cx, int cy, int size, COLOR col) {
         drw_lin(dev, cx - (size - 1 - r), cy - (size / 2) + r,
                      cx + (size - 1 - r), cy - (size / 2) + r);
     }
+    set_col(dev, COLOR_BLACK, COLOR_WHITE);
 }
 
 static void draw_bevel_btn(GDEV *dev, const RECT *r, const char *label, bool pressed, bool enabled, bool primary) {
     COLOR bg_col = pressed ? 0xFFCFCAC0 : (primary ? 0xFFDFE6F0 : COLOR_LTGRAY);
     fill_rec(dev, r, bg_col);
 
-    if (pressed) {
-        set_col(dev, COLOR_DKGRAY, bg_col);
+    if (!enabled) {
+        set_col(dev, INST_COL_SHADOW, bg_col);
+        drw_rec(dev, r);
+        set_col(dev, INST_COL_HIGHLIGHT, bg_col);
+        drw_lin(dev, r->left + 1, r->top + 1, r->right - 2, r->top + 1);
+        drw_lin(dev, r->left + 1, r->top + 1, r->left + 1, r->bottom - 2);
+    } else if (pressed) {
+        draw_3d_frame(dev, r, true);
+    } else if (primary) {
+        /* 2px Primary Button: 1px outer accent keyline + 1px inner 3D bevel */
+        set_col(dev, INST_COL_BLUE_ACCENT, bg_col);
         drw_lin(dev, r->left, r->top, r->right - 1, r->top);
         drw_lin(dev, r->left, r->top, r->left, r->bottom - 1);
+        set_col(dev, INST_COL_TEXT_BLACK, bg_col);
+        drw_lin(dev, r->left, r->bottom - 1, r->right - 1, r->bottom - 1);
+        drw_lin(dev, r->right - 1, r->top, r->right - 1, r->bottom - 1);
+
         set_col(dev, COLOR_WHITE, bg_col);
-        drw_lin(dev, r->left + 1, r->bottom - 1, r->right - 1, r->bottom - 1);
-        drw_lin(dev, r->right - 1, r->top + 1, r->right - 1, r->bottom - 1);
+        drw_lin(dev, r->left + 1, r->top + 1, r->right - 2, r->top + 1);
+        drw_lin(dev, r->left + 1, r->top + 1, r->left + 1, r->bottom - 2);
+        set_col(dev, INST_COL_SHADOW, bg_col);
+        drw_lin(dev, r->left + 1, r->bottom - 2, r->right - 2, r->bottom - 2);
+        drw_lin(dev, r->right - 2, r->top + 1, r->right - 2, r->bottom - 2);
     } else {
-        app_menu_draw_3d_bevel_box(dev, r);
-        if (primary) {
-            set_col(dev, 0xFF2B608A, bg_col);
-            RECT inner = { (H)(r->left + 1), (H)(r->top + 1), (H)(r->right - 1), (H)(r->bottom - 1) };
-            drw_rec(dev, &inner);
-        }
+        draw_3d_frame(dev, r, false);
     }
+    set_col(dev, COLOR_BLACK, bg_col);
 
     if (label) {
         int text_w = (int)strlen(label) * 8;
         int tx = r->left + (r->right - r->left - text_w) / 2;
         int ty = r->top + (r->bottom - r->top - 14) / 2;
-        if (pressed) { tx++; ty++; }
+        if (pressed && enabled) { tx++; ty++; }
 
+        if (!enabled) {
+            drw_tc_string(dev, tx + 1, ty + 1, label, COLOR_WHITE, bg_col);
+        }
         COLOR fg = enabled ? (primary ? 0xFF1B4F8A : COLOR_BLACK) : COLOR_GRAY;
         drw_tc_string(dev, tx, ty, label, fg, bg_col);
     }
 }
 
 static void draw_haiku_combobox(GDEV *dev, const RECT *r, const char *text, bool is_open) {
-    /* Native BTRON 3D Beveled Outer Plate */
-    fill_rec(dev, r, COLOR_WHITE);
-    app_menu_draw_3d_bevel_box(dev, r);
+    /* 2px Sunken 3D Field Well */
+    fill_rec(dev, r, INST_COL_CARD_WHITE);
+    draw_3d_frame(dev, r, true);
 
-    /* Right Down-Arrow Tab using standard BTRON bevel */
+    /* Right Down-Arrow 3D Tab (24px wide, raised when closed, sunken when open) */
     int tab_w = 24;
-    RECT tab_r = { (H)(r->right - tab_w), (H)(r->top + 1), (H)(r->right - 1), (H)(r->bottom - 1) };
+    RECT tab_r = { (H)(r->right - tab_w), (H)(r->top + 2), (H)(r->right - 2), (H)(r->bottom - 2) };
     fill_rec(dev, &tab_r, is_open ? 0xFFCFCAC0 : COLOR_LTGRAY);
-    app_menu_draw_3d_bevel_box(dev, &tab_r);
+    draw_3d_frame(dev, &tab_r, is_open);
 
-    int mid_x = tab_r.left + tab_w / 2;
-    int mid_y = r->top + (r->bottom - r->top) / 2;
-    draw_down_triangle(dev, mid_x, mid_y, 4, COLOR_BLACK);
+    set_col(dev, INST_COL_SHADOW_DARK, COLOR_LTGRAY);
+    drw_lin(dev, (H)(tab_r.left - 1), (H)(r->top + 2), (H)(tab_r.left - 1), (H)(r->bottom - 3));
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+
+    int mid_x = tab_r.left + (tab_r.right - tab_r.left) / 2 + (is_open ? 1 : 0);
+    int mid_y = r->top + (r->bottom - r->top) / 2 + (is_open ? 1 : 0);
+    draw_down_triangle(dev, mid_x, mid_y, 5, INST_COL_TEXT_BLACK);
 
     if (text) {
-        drw_tc_string(dev, r->left + 8, r->top + 6, text, COLOR_BLACK, INST_COL_CARD_BORDER);
+        drw_tc_string(dev, r->left + 8, r->top + 6, text, INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
     }
 }
 
@@ -199,9 +233,17 @@ static void installer_calc_layout(InstallerState *st, int w, int h) {
     st->disclosure_rect.bottom = 224;
 
     st->optional_box_rect.left   = 16;
-    st->optional_box_rect.top    = 228;
+    st->optional_box_rect.top    = 226;
     st->optional_box_rect.right  = (H)(w - 16);
-    st->optional_box_rect.bottom = 286;
+    st->optional_box_rect.bottom = 288;
+
+    for (int i = 0; i < INSTALLER_PKG_COUNT; i++) {
+        H ry = (H)(st->optional_box_rect.top + 6 + i * 19);
+        st->pkg_checkbox_rects[i].left   = (H)(st->optional_box_rect.left + 10);
+        st->pkg_checkbox_rects[i].top    = ry;
+        st->pkg_checkbox_rects[i].right  = (H)(st->optional_box_rect.right - 10);
+        st->pkg_checkbox_rects[i].bottom = (H)(ry + 18);
+    }
 
     /* Bottom Buttons */
     int btn_y = h - 42;
@@ -258,6 +300,9 @@ void b_installer_init(InstallerState *st) {
     st->tools_menu_open = false;
     st->tools_menu_hover = -1;
     st->show_optional_packages = false;
+    for (int i = 0; i < INSTALLER_PKG_COUNT; i++) {
+        st->pkg_checked[i] = true;
+    }
 
     /* Initialize Native B-System Application Menu Bar */
     app_menu_init(&st->menu_bar, APP_MENU_STYLE_CLASSIC_3D);
@@ -711,32 +756,59 @@ void installer_paint(WND *wnd, GDEV *dev) {
     /* ── 1. Top Menu Bar (Native B-System APP_MENU_BAR) ── */
     app_menu_paint_bar(&st->menu_bar, dev);
 
-    /* ── 2. Top Header Card (Japanese Card Brand + Haiku Instruction) ── */
-    RECT banner_r = { 12, 32, (H)(w - 12), 122 };
-    fill_rec(dev, &banner_r, INST_COL_CARD_WHITE);
+    /* ── 2. Top 3D Panel Pad Header (Logo Seal + Invitation Message) ── */
+    RECT banner_r = { 12, 28, (H)(w - 12), 122 };
+    fill_rec(dev, &banner_r, INST_COL_MENUBAR_BG);
+    draw_3d_frame(dev, &banner_r, false);
 
-    /* Refined Japanese hairline border */
-    set_col(dev, INST_COL_CARD_BORDER, INST_COL_CARD_WHITE);
-    drw_rec(dev, &banner_r);
-    draw_3d_frame(dev, &banner_r, true);
+    /* Inner Sunken Meishi Card Plaque */
+    RECT plaque_r = { 16, 32, (H)(w - 16), 118 };
+    fill_rec(dev, &plaque_r, INST_COL_CARD_WHITE);
+    set_col(dev, INST_COL_SHADOW, INST_COL_CARD_WHITE);
+    drw_lin(dev, plaque_r.left, plaque_r.top, plaque_r.right - 1, plaque_r.top);
+    drw_lin(dev, plaque_r.left, plaque_r.top, plaque_r.left, plaque_r.bottom - 1);
+    set_col(dev, COLOR_WHITE, INST_COL_CARD_WHITE);
+    drw_lin(dev, plaque_r.left, plaque_r.bottom - 1, plaque_r.right - 1, plaque_r.bottom - 1);
+    drw_lin(dev, plaque_r.right - 1, plaque_r.top, plaque_r.right - 1, plaque_r.bottom - 1);
 
-    /* Left: Japanese Vermilion Lacquer Seal Mark (角印: 40x40) */
+    /* Left: Japanese Vermilion Lacquer Seal Mark (角印: 40x40, 2px 3D Bevel) */
     RECT seal_r = { 24, 38, 64, 78 };
     fill_rec(dev, &seal_r, INST_COL_RED_SEAL);
+    set_col(dev, 0xFFEE6666, INST_COL_RED_SEAL);
+    drw_lin(dev, seal_r.left, seal_r.top, seal_r.right - 1, seal_r.top);
+    drw_lin(dev, seal_r.left, seal_r.top, seal_r.left, seal_r.bottom - 1);
     set_col(dev, 0xFFE27A7A, INST_COL_RED_SEAL);
-    drw_rec(dev, &seal_r);
+    drw_lin(dev, seal_r.left + 1, seal_r.top + 1, seal_r.right - 2, seal_r.top + 1);
+    drw_lin(dev, seal_r.left + 1, seal_r.top + 1, seal_r.left + 1, seal_r.bottom - 2);
+    set_col(dev, 0xFF991818, INST_COL_RED_SEAL);
+    drw_lin(dev, seal_r.left + 1, seal_r.bottom - 2, seal_r.right - 2, seal_r.bottom - 2);
+    drw_lin(dev, seal_r.right - 2, seal_r.top + 1, seal_r.right - 2, seal_r.bottom - 2);
+    set_col(dev, 0xFF660E0E, INST_COL_RED_SEAL);
+    drw_lin(dev, seal_r.left, seal_r.bottom - 1, seal_r.right - 1, seal_r.bottom - 1);
+    drw_lin(dev, seal_r.right - 1, seal_r.top, seal_r.right - 1, seal_r.bottom - 1);
+    set_col(dev, COLOR_BLACK, INST_COL_CARD_WHITE);
     drw_tc_string(dev, 38, 48, "ヨ", COLOR_WHITE, INST_COL_RED_SEAL);
 
     /* Left: B·SYSTEM Brand Typography */
-    drw_tc_string(dev, 76, 44, "B-System", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
-    drw_tc_string(dev, 76, 60, "BTRON 3.20 Workstation", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, 76, 42, "B-System", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, 76, 58, "BTRON 3.20 Workstation", INST_COL_BLUE_ACCENT, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, 76, 76, "Cho-Kanji / 90s HMI", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
 
-    /* Right: poetic copy */
+    /* Center: 2px Vertical Etched Divider Groove */
     int instr_x = (w >= 540) ? (w / 2 + 10) : 230;
-    drw_tc_string(dev, instr_x, 40, "空白の器に、世界を。", INST_COL_RED_SEAL, INST_COL_CARD_WHITE);
-    drw_tc_string(dev, instr_x, 65, "Give an empty disk a world.", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
+    set_col(dev, INST_COL_SHADOW, INST_COL_CARD_WHITE);
+    drw_lin(dev, (H)(instr_x - 14), 38, (H)(instr_x - 14), 112);
+    set_col(dev, COLOR_WHITE, INST_COL_CARD_WHITE);
+    drw_lin(dev, (H)(instr_x - 13), 38, (H)(instr_x - 13), 112);
+
+    /* Right: Invitation Message */
+    drw_tc_string(dev, instr_x, 38, "空白の器に、世界を。", INST_COL_RED_SEAL, INST_COL_CARD_WHITE);
+    set_col(dev, INST_COL_CARD_BORDER, INST_COL_CARD_WHITE);
+    drw_lin(dev, (H)instr_x, 58, (H)(plaque_r.right - 12), 58);
+    set_col(dev, COLOR_BLACK, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, instr_x, 64, "Give an empty disk a world.", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
     drw_tc_string(dev, instr_x, 80, "Choose where it will live.", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
-    drw_tc_string(dev, instr_x, 95, "Press Begin.", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
+    drw_tc_string(dev, instr_x, 96, "Press Begin.", INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
 
     /* ── 3. Main Form Section (Install from / Onto) ── */
     if (st->mode == INSTALLER_STATE_SETUP || st->mode == INSTALLER_STATE_WELCOME) {
@@ -758,29 +830,54 @@ void installer_paint(WND *wnd, GDEV *dev) {
         }
         draw_haiku_combobox(dev, &st->target_combobox_rect, tgt_label, st->target_dropdown_open);
 
-        /* Row 3: "› Show optional packages" Disclosure */
-        const char *disc_arrow = st->show_optional_packages ? "v " : "> ";
-        const char *disc_text  = st->show_optional_packages ? "Hide optional packages" : "Show optional packages";
-        drw_tc_string(dev, st->disclosure_rect.left, st->disclosure_rect.top, disc_arrow, INST_COL_BLUE_ACCENT, INST_COL_BG);
-        drw_tc_string(dev, st->disclosure_rect.left + 14, st->disclosure_rect.top, disc_text, INST_COL_TEXT_BLACK, INST_COL_BG);
+        /* Row 3: Toggable 3D Disclosure Expander */
+        H tri_cx = (H)(st->disclosure_rect.left + 5);
+        H tri_cy = (H)(st->disclosure_rect.top + 8);
+        if (st->show_optional_packages) {
+            draw_down_triangle(dev, tri_cx, tri_cy, 5, INST_COL_BLUE_ACCENT);
+        } else {
+            set_col(dev, INST_COL_BLUE_ACCENT, INST_COL_BG);
+            for (int r = 0; r < 5; r++) {
+                drw_lin(dev, (H)(tri_cx - 2 + r), (H)(tri_cy - 4 + r),
+                             (H)(tri_cx - 2 + r), (H)(tri_cy + 4 - r));
+            }
+            set_col(dev, COLOR_BLACK, INST_COL_BG);
+        }
+        const char *disc_text = st->show_optional_packages ? "Hide optional packages" : "Show optional packages";
+        drw_tc_string(dev, st->disclosure_rect.left + 16, st->disclosure_rect.top, disc_text, INST_COL_TEXT_BLACK, INST_COL_BG);
+
+        /* 2px Etched Horizontal Groove beside Expander label */
+        H rule_x = (H)(st->disclosure_rect.right - 14);
+        H rule_y = (H)(st->disclosure_rect.top + 8);
+        set_col(dev, INST_COL_SHADOW, INST_COL_BG);
+        drw_lin(dev, rule_x, rule_y, (H)(w - 16), rule_y);
+        set_col(dev, COLOR_WHITE, INST_COL_BG);
+        drw_lin(dev, rule_x, (H)(rule_y + 1), (H)(w - 16), (H)(rule_y + 1));
+        set_col(dev, COLOR_BLACK, INST_COL_BG);
 
         if (st->show_optional_packages) {
-            /* Optional Packages Card */
+            /* 2px Sunken Optional Packages Panel with Three Interactive 3D Checkboxes */
             fill_rec(dev, &st->optional_box_rect, INST_COL_CARD_WHITE);
-            set_col(dev, INST_COL_CARD_BORDER, INST_COL_CARD_WHITE);
-            drw_rec(dev, &st->optional_box_rect);
+            draw_3d_frame(dev, &st->optional_box_rect, true);
 
-            drw_tc_string(dev, st->optional_box_rect.left + 12, st->optional_box_rect.top + 8,
-                          "[X] Base System (Editor, Browser, Cabinet)", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
-            drw_tc_string(dev, st->optional_box_rect.left + 12, st->optional_box_rect.top + 24,
-                          "[X] SDK (Lil Cu 64, MSX, Quake)", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
-            drw_tc_string(dev, st->optional_box_rect.left + 12, st->optional_box_rect.top + 40,
-                          "[X] TAD Books", INST_COL_TEXT_BLACK, INST_COL_CARD_WHITE);
+            static const char *const pkg_labels[INSTALLER_PKG_COUNT] = {
+                "Base System (Editor, Browser, Cabinet)",
+                "SDK (Lil Cu 64, MSX, Quake)",
+                "TAD Books"
+            };
+            for (int i = 0; i < INSTALLER_PKG_COUNT; i++) {
+                settings_draw_ui_checkbox(dev,
+                                          st->pkg_checkbox_rects[i].left,
+                                          st->pkg_checkbox_rects[i].top,
+                                          pkg_labels[i],
+                                          st->pkg_checked[i] ? TRUE : FALSE,
+                                          FALSE);
+            }
         }
 
         /* Bottom Action Buttons */
         draw_bevel_btn(dev, &st->btn_setup_partitions, "Set up targets...", false, true, false);
-        draw_bevel_btn(dev, &st->btn_begin, "Begin", false, (st->target_count > 0), false);
+        draw_bevel_btn(dev, &st->btn_begin, "Begin", false, (st->target_count > 0), true);
 
     } else if (st->mode == INSTALLER_STATE_COPYING) {
         /* Copying / Progress Screen */
@@ -833,7 +930,7 @@ void installer_paint(WND *wnd, GDEV *dev) {
 
         /* Action Buttons */
         draw_bevel_btn(dev, &st->btn_close, "Continue Testing", false, true, false);
-        draw_bevel_btn(dev, &st->btn_restart, "Restart Computer", false, true, false);
+        draw_bevel_btn(dev, &st->btn_restart, "Restart Computer", false, true, true);
     }
 
     /* ── Dropdown Overlays (Rendered last so they sit on top of everything) ── */
@@ -847,10 +944,19 @@ void installer_paint(WND *wnd, GDEV *dev) {
         st->source_dropdown_rect.right  = st->source_combobox_rect.right;
         st->source_dropdown_rect.bottom = (H)(st->source_combobox_rect.bottom + drop_h);
 
-        RECT drop_sh = { (H)(st->source_dropdown_rect.left + 2), (H)(st->source_dropdown_rect.top + 2),
-                         (H)(st->source_dropdown_rect.right + 2), (H)(st->source_dropdown_rect.bottom + 2) };
-        fill_rec(dev, &drop_sh, 0xFFB0ACA2);
         draw_3d_bevel_box_custom(dev, &st->source_dropdown_rect, INST_COL_CARD_WHITE);
+        /* 2px perimeter drop-shadow lines (right & bottom) */
+        set_col(dev, INST_COL_SHADOW_DARK, INST_COL_BG);
+        drw_lin(dev, (H)(st->source_dropdown_rect.left + 2), st->source_dropdown_rect.bottom,
+                     st->source_dropdown_rect.right, st->source_dropdown_rect.bottom);
+        drw_lin(dev, st->source_dropdown_rect.right, (H)(st->source_dropdown_rect.top + 2),
+                     st->source_dropdown_rect.right, st->source_dropdown_rect.bottom);
+        set_col(dev, INST_COL_SHADOW, INST_COL_BG);
+        drw_lin(dev, (H)(st->source_dropdown_rect.left + 2), (H)(st->source_dropdown_rect.bottom + 1),
+                     (H)(st->source_dropdown_rect.right + 1), (H)(st->source_dropdown_rect.bottom + 1));
+        drw_lin(dev, (H)(st->source_dropdown_rect.right + 1), (H)(st->source_dropdown_rect.top + 2),
+                     (H)(st->source_dropdown_rect.right + 1), (H)(st->source_dropdown_rect.bottom + 1));
+        set_col(dev, COLOR_BLACK, INST_COL_CARD_WHITE);
 
         for (int i = 0; i < st->source_count; i++) {
             RECT row_r = { (H)(st->source_dropdown_rect.left + 3),
@@ -863,13 +969,16 @@ void installer_paint(WND *wnd, GDEV *dev) {
             fill_rec(dev, &row_r, r_bg);
 
             if (i == st->selected_source_idx) {
-                drw_tc_string(dev, row_r.left + 6, row_r.top + 6, "*", r_fg, r_bg);
+                set_col(dev, r_fg, r_bg);
+                drw_lin(dev, (H)(row_r.left + 6), (H)(row_r.top + 13), (H)(row_r.left + 9), (H)(row_r.top + 16));
+                drw_lin(dev, (H)(row_r.left + 9), (H)(row_r.top + 16), (H)(row_r.left + 15), (H)(row_r.top + 9));
+                set_col(dev, COLOR_BLACK, r_bg);
             }
             drw_tc_string(dev, row_r.left + 22, row_r.top + 6, st->sources[i].desc, r_fg, r_bg);
         }
     }
 
-    /* 3. Target Combobox Dropdown */
+    /* 2. Target Combobox Dropdown */
     if (st->target_dropdown_open && st->target_count > 0) {
         int row_h = (st->target_count > 5) ? 20 : 26;
         int drop_h = st->target_count * row_h + 6;
@@ -883,10 +992,19 @@ void installer_paint(WND *wnd, GDEV *dev) {
         st->target_dropdown_rect.right  = st->target_combobox_rect.right;
         st->target_dropdown_rect.bottom = (H)(d_top + drop_h);
 
-        RECT drop_sh = { (H)(st->target_dropdown_rect.left + 2), (H)(st->target_dropdown_rect.top + 2),
-                         (H)(st->target_dropdown_rect.right + 2), (H)(st->target_dropdown_rect.bottom + 2) };
-        fill_rec(dev, &drop_sh, 0xFFB0ACA2);
         draw_3d_bevel_box_custom(dev, &st->target_dropdown_rect, INST_COL_CARD_WHITE);
+        /* 2px perimeter drop-shadow lines (right & bottom) */
+        set_col(dev, INST_COL_SHADOW_DARK, INST_COL_BG);
+        drw_lin(dev, (H)(st->target_dropdown_rect.left + 2), st->target_dropdown_rect.bottom,
+                     st->target_dropdown_rect.right, st->target_dropdown_rect.bottom);
+        drw_lin(dev, st->target_dropdown_rect.right, (H)(st->target_dropdown_rect.top + 2),
+                     st->target_dropdown_rect.right, st->target_dropdown_rect.bottom);
+        set_col(dev, INST_COL_SHADOW, INST_COL_BG);
+        drw_lin(dev, (H)(st->target_dropdown_rect.left + 2), (H)(st->target_dropdown_rect.bottom + 1),
+                     (H)(st->target_dropdown_rect.right + 1), (H)(st->target_dropdown_rect.bottom + 1));
+        drw_lin(dev, (H)(st->target_dropdown_rect.right + 1), (H)(st->target_dropdown_rect.top + 2),
+                     (H)(st->target_dropdown_rect.right + 1), (H)(st->target_dropdown_rect.bottom + 1));
+        set_col(dev, COLOR_BLACK, INST_COL_CARD_WHITE);
 
         int ty_off = (row_h >= 24) ? 6 : 3;
         for (int i = 0; i < st->target_count; i++) {
@@ -900,7 +1018,10 @@ void installer_paint(WND *wnd, GDEV *dev) {
             fill_rec(dev, &row_r, r_bg);
 
             if (i == st->selected_target_idx) {
-                drw_tc_string(dev, row_r.left + 6, row_r.top + ty_off, "*", r_fg, r_bg);
+                set_col(dev, r_fg, r_bg);
+                drw_lin(dev, (H)(row_r.left + 6), (H)(row_r.top + ty_off + 7), (H)(row_r.left + 9), (H)(row_r.top + ty_off + 10));
+                drw_lin(dev, (H)(row_r.left + 9), (H)(row_r.top + ty_off + 10), (H)(row_r.left + 15), (H)(row_r.top + ty_off + 3));
+                set_col(dev, COLOR_BLACK, r_bg);
             }
             drw_tc_string(dev, row_r.left + 22, row_r.top + ty_off, st->targets[i].dev_path, r_fg, r_bg);
         }
@@ -984,6 +1105,36 @@ void installer_event_handler(WND *wnd, const EVT *evt) {
                 st->source_dropdown_open = false;
                 st->target_dropdown_open = false;
                 inval_wnd(wnd);
+            } else if (st->source_dropdown_open && st->source_count > 0) {
+                if (evt->key == BTRON_KEY_UP && st->source_dropdown_hover > 0) {
+                    st->source_dropdown_hover--;
+                    inval_wnd(wnd);
+                } else if (evt->key == BTRON_KEY_DOWN && st->source_dropdown_hover < st->source_count - 1) {
+                    st->source_dropdown_hover++;
+                    inval_wnd(wnd);
+                } else if (evt->key == BTRON_KEY_RETURN || evt->key == BTRON_KEY_KP_ENTER || evt->key == '\r' || evt->key == '\n') {
+                    if (st->source_dropdown_hover >= 0 && st->source_dropdown_hover < st->source_count) {
+                        st->selected_source_idx = st->source_dropdown_hover;
+                        st->source_vol = st->sources[st->selected_source_idx].vol;
+                        safe_strcpy(st->source_name, st->sources[st->selected_source_idx].desc, sizeof(st->source_name));
+                    }
+                    st->source_dropdown_open = false;
+                    inval_wnd(wnd);
+                }
+            } else if (st->target_dropdown_open && st->target_count > 0) {
+                if (evt->key == BTRON_KEY_UP && st->target_dropdown_hover > 0) {
+                    st->target_dropdown_hover--;
+                    inval_wnd(wnd);
+                } else if (evt->key == BTRON_KEY_DOWN && st->target_dropdown_hover < st->target_count - 1) {
+                    st->target_dropdown_hover++;
+                    inval_wnd(wnd);
+                } else if (evt->key == BTRON_KEY_RETURN || evt->key == BTRON_KEY_KP_ENTER || evt->key == '\r' || evt->key == '\n') {
+                    if (st->target_dropdown_hover >= 0 && st->target_dropdown_hover < st->target_count) {
+                        st->selected_target_idx = st->target_dropdown_hover;
+                    }
+                    st->target_dropdown_open = false;
+                    inval_wnd(wnd);
+                }
             }
         }
     } else if (evt->type == EV_BUT_DOWN) {
@@ -1078,6 +1229,14 @@ void installer_event_handler(WND *wnd, const EVT *evt) {
             st->show_optional_packages = !st->show_optional_packages;
             inval_wnd(wnd);
             return;
+        } else if (st->show_optional_packages && pt_in_rect(mx, my, &st->optional_box_rect)) {
+            for (int i = 0; i < INSTALLER_PKG_COUNT; i++) {
+                if (pt_in_rect(mx, my, &st->pkg_checkbox_rects[i])) {
+                    st->pkg_checked[i] = !st->pkg_checked[i];
+                    inval_wnd(wnd);
+                    return;
+                }
+            }
         }
 
         if (st->mode == INSTALLER_STATE_WELCOME) {

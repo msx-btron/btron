@@ -30,6 +30,7 @@ extern "C" {
 #define INSTALLER_MAX_TARGETS       16
 #define INSTALLER_MAX_SOURCES       4
 #define INSTALLER_MAX_PATH_LEN      64
+#define INSTALLER_PKG_COUNT         3
 
 enum {
     INST_CMD_NONE = 0,
@@ -97,10 +98,12 @@ typedef struct {
     char                status_msg[96];
     char                error_msg[96];
 
-    /* Haiku-style Optional Packages Disclosure */
+    /* Haiku-style Optional Packages Disclosure & Three Package Checkboxes */
     bool                show_optional_packages;
+    bool                pkg_checked[INSTALLER_PKG_COUNT];
     RECT                disclosure_rect;
     RECT                optional_box_rect;
+    RECT                pkg_checkbox_rects[INSTALLER_PKG_COUNT];
 
     /* Native B-System Application Menu Bar */
     APP_MENU_BAR        menu_bar;

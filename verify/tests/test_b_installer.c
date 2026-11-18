@@ -248,6 +248,25 @@ int main(void) {
     assert(gst->target_dropdown_open == false);
     printf("  [PASS] MacOS 9 Pop-up Combobox opens dropdown and selects target disk.\n");
 
+    /* 11b. Toggable Expander & Three Package Checkboxes test */
+    assert(gst->show_optional_packages == false);
+    assert(gst->pkg_checked[0] == true && gst->pkg_checked[1] == true && gst->pkg_checked[2] == true);
+    evt.pos.x = wnd->client.left + gst->disclosure_rect.left + 10;
+    evt.pos.y = wnd->client.top  + gst->disclosure_rect.top  + 6;
+    installer_event_handler(wnd, &evt);
+    assert(gst->show_optional_packages == true);
+    installer_paint(wnd, &g_mock_gdev);
+
+    for (int i = 0; i < INSTALLER_PKG_COUNT; i++) {
+        evt.pos.x = wnd->client.left + gst->pkg_checkbox_rects[i].left + 6;
+        evt.pos.y = wnd->client.top  + gst->pkg_checkbox_rects[i].top  + 6;
+        installer_event_handler(wnd, &evt);
+        assert(gst->pkg_checked[i] == false);
+        installer_event_handler(wnd, &evt);
+        assert(gst->pkg_checked[i] == true);
+    }
+    printf("  [PASS] Toggable Expander and three 3D package checkboxes verified.\n");
+
     /* 12. Auto-partitioning blank target disk */
     size_t blank_size = 64 * 1024 * 1024;
     uint8_t *blank_mem = (uint8_t *)calloc(1, blank_size);

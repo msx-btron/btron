@@ -139,6 +139,8 @@ void set_clip(GDEV *dev, const RECT *clip) {
     }
 }
 
+static COLOR s_dp_fg_fb = 0;
+
 ER drw_pnt(GDEV *dev, H x, H y) {
     if (!dev || !dev->pixels) return E_PAR;
     if (x < dev->clip.left || x >= dev->clip.right ||
@@ -146,7 +148,7 @@ ER drw_pnt(GDEV *dev, H x, H y) {
         return E_OK; /* Clipped */
     }
 
-    dev->pixels[y * dev->width + x] = BTRON_PIXEL_FB(COLOR_BLACK);
+    dev->pixels[y * dev->width + x] = s_dp_fg_fb ? s_dp_fg_fb : BTRON_PIXEL_FB(COLOR_BLACK);
     return E_OK;
 }
 
@@ -155,6 +157,7 @@ ER drw_lin(GDEV *dev, H x1, H y1, H x2, H y2) {
 
     volatile COLOR *pix = (volatile COLOR*)dev->pixels;
     H width = dev->width;
+    const COLOR fbcol = s_dp_fg_fb ? s_dp_fg_fb : BTRON_PIXEL_FB(COLOR_BLACK);
 
     /* Fast path: horizontal line */
     if (y1 == y2) {
@@ -164,9 +167,27 @@ ER drw_lin(GDEV *dev, H x1, H y1, H x2, H y2) {
         if (min_x < dev->clip.left) min_x = dev->clip.left;
         if (max_x >= dev->clip.right) max_x = dev->clip.right - 1;
         if (min_x > max_x) return E_OK;
-        volatile COLOR *row = pix + y1 * width;
-        for (H x = min_x; x <= max_x; x++) {
-            row[x] = BTRON_PIXEL_FB(COLOR_BLACK);
+        volatile COLOR *row = pix + (y1 * width + min_x);
+        H span = (H)(max_x - min_x + 1);
+        H x = 0;
+        for (; x + 8 <= span; x += 8) {
+            row[x]     = fbcol;
+            row[x + 1] = fbcol;
+            row[x + 2] = fbcol;
+            row[x + 3] = fbcol;
+            row[x + 4] = fbcol;
+            row[x + 5] = fbcol;
+            row[x + 6] = fbcol;
+            row[x + 7] = fbcol;
+        }
+        for (; x + 4 <= span; x += 4) {
+            row[x]     = fbcol;
+            row[x + 1] = fbcol;
+            row[x + 2] = fbcol;
+            row[x + 3] = fbcol;
+        }
+        for (; x < span; x++) {
+            row[x] = fbcol;
         }
         return E_OK;
     }
@@ -179,8 +200,9 @@ ER drw_lin(GDEV *dev, H x1, H y1, H x2, H y2) {
         if (min_y < dev->clip.top) min_y = dev->clip.top;
         if (max_y >= dev->clip.bottom) max_y = dev->clip.bottom - 1;
         if (min_y > max_y) return E_OK;
-        for (H y = min_y; y <= max_y; y++) {
-            pix[y * width + x1] = BTRON_PIXEL_FB(COLOR_BLACK);
+        volatile COLOR *p = pix + (min_y * width + x1);
+        for (H y = min_y; y <= max_y; y++, p += width) {
+            *p = fbcol;
         }
         return E_OK;
     }
@@ -194,7 +216,7 @@ ER drw_lin(GDEV *dev, H x1, H y1, H x2, H y2) {
     while (1) {
         if (x >= dev->clip.left && x < dev->clip.right &&
             y >= dev->clip.top && y < dev->clip.bottom) {
-            pix[y * width + x] = BTRON_PIXEL_FB(COLOR_BLACK);
+            pix[y * width + x] = fbcol;
         }
 
         if (x == x2 && y == y2) break;
@@ -279,6 +301,7 @@ ER drw_ovl(GDEV *dev, const RECT *r) {
     H ry = (r->bottom - r->top) / 2;
     H cx = r->left + rx;
     H cy = r->top + ry;
+    const COLOR fbcol = s_dp_fg_fb ? s_dp_fg_fb : BTRON_PIXEL_FB(COLOR_BLACK);
 
     for (H y = r->top; y < r->bottom; y++) {
         for (H x = r->left; x < r->right; x++) {
@@ -289,7 +312,7 @@ ER drw_ovl(GDEV *dev, const RECT *r) {
                 if (val >= 0.85f && val <= 1.15f) {
                     if (x >= dev->clip.left && x < dev->clip.right &&
                         y >= dev->clip.top && y < dev->clip.bottom) {
-                        dev->pixels[y * dev->width + x] = BTRON_PIXEL_FB(COLOR_BLACK);
+                        dev->pixels[y * dev->width + x] = fbcol;
                     }
                 }
             }
@@ -325,8 +348,8 @@ ER fill_ovl(GDEV *dev, const RECT *r, COLOR col) {
 
 void set_col(GDEV *dev, COLOR fg, COLOR bg) {
     (void)dev;
-    (void)fg;
     (void)bg;
+    s_dp_fg_fb = BTRON_PIXEL_FB(fg ? (fg | 0xFF000000u) : COLOR_BLACK);
 }
 
 void set_pat(GDEV *dev, const PAT *pat) {
