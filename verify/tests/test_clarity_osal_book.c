@@ -53,10 +53,15 @@ int main(void)
         TEST_ASSERT(strstr(out_line, "སྔོན་འགྲོ་དང་གཞིའི་ཆོས") != NULL, "Class Wylie transliterated to སྔོན་འགྲོ་དང་གཞིའི་ཆོས");
 
         /* C. Section item */
-        const char *sec_line = "01) //dkar chag/ Індекси";
+        const char *sec_line = "01) //dkar chag/ Індекси\n";
         clarity_wylie_line_to_tibetan(sec_line, out_line, sizeof(out_line));
         TEST_ASSERT(strstr(out_line, "01)") != NULL, "Section number 01 preserved");
         TEST_ASSERT(strstr(out_line, "དཀར་ཆག") != NULL, "Section term transliterated to དཀར་ཆག");
+        TEST_ASSERT(strstr(out_line, "(Індекси)\n") != NULL, "Section item closing parenthesis is on the same line");
+
+        const char *sec_phowa = "01) //'pho ba/ Пхова\n";
+        clarity_wylie_line_to_tibetan(sec_phowa, out_line, sizeof(out_line));
+        TEST_ASSERT(strstr(out_line, "(Пхова)\n") != NULL, "Section item with trailing newline keeps parenthesis intact without extra line break");
 
         /* D. Glossary entry */
         const char *term_line = "/khro bo ka li zhi ba/ Кродха Калі. Чорна мирна";

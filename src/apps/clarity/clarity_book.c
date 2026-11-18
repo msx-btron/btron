@@ -311,9 +311,12 @@ int clarity_wylie_line_to_tibetan(const char *in_line, char *out_line, size_t ma
                 char tb_cls[512] = "";
                 wylie_to_tibetan(wylie_cls, tb_cls, sizeof(tb_cls));
 
+                char clean_rest[512] = "";
                 const char *rest = sl2 + 1;
                 while (*rest == ' ') rest++;
-                snprintf(out_line, max_out, "%s) ༄༅། %s — %s\n", roman, tb_cls, rest);
+                strncpy(clean_rest, rest, sizeof(clean_rest) - 1);
+                for (char *c = clean_rest + strlen(clean_rest) - 1; c >= clean_rest && (*c == ' ' || *c == '\n' || *c == '\r'); c--) *c = '\0';
+                snprintf(out_line, max_out, "%s) ༄༅། %s — %s\n", roman, tb_cls, clean_rest);
                 return (int)strlen(out_line);
             }
         }
@@ -339,9 +342,12 @@ int clarity_wylie_line_to_tibetan(const char *in_line, char *out_line, size_t ma
                 char tb_sec[512] = "";
                 wylie_to_tibetan(wylie_sec, tb_sec, sizeof(tb_sec));
 
+                char clean_rest[512] = "";
                 const char *rest = sl2 + 1;
                 while (*rest == ' ') rest++;
-                snprintf(out_line, max_out, "%s %s (%s)\n", num_buf, tb_sec, rest);
+                strncpy(clean_rest, rest, sizeof(clean_rest) - 1);
+                for (char *c = clean_rest + strlen(clean_rest) - 1; c >= clean_rest && (*c == ' ' || *c == '\n' || *c == '\r'); c--) *c = '\0';
+                snprintf(out_line, max_out, "%s %s (%s)\n", num_buf, tb_sec, clean_rest);
                 return (int)strlen(out_line);
             }
         }
@@ -403,9 +409,12 @@ int clarity_wylie_line_to_tibetan(const char *in_line, char *out_line, size_t ma
             if (is_wylie_str(wylie_term, w_len)) {
                 char tb_term[256] = "";
                 wylie_to_tibetan(wylie_term, tb_term, sizeof(tb_term));
+                char clean_def[512] = "";
                 const char *def = sl2 + 1;
                 while (*def == ' ') def++;
-                snprintf(out_line, max_out, "[ %s། ] %s\n", tb_term, def);
+                strncpy(clean_def, def, sizeof(clean_def) - 1);
+                for (char *c = clean_def + strlen(clean_def) - 1; c >= clean_def && (*c == ' ' || *c == '\n' || *c == '\r'); c--) *c = '\0';
+                snprintf(out_line, max_out, "[ %s། ] %s\n", tb_term, clean_def);
                 return (int)strlen(out_line);
             }
         }
