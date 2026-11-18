@@ -119,7 +119,7 @@ int main(void)
 
     /* ── Test Group 3: Pecha Document Formatting & Navigation ──────── */
     printf("\n==> Test Group 3: Pecha Loose-Leaf Formatting & Navigation\n");
-    ClarityDoc doc;
+    static ClarityDoc doc;
     {
         memset(&doc, 0, sizeof(ClarityDoc));
         int l_rc = clarity_book_load_chapter_into_doc(&book, 0, &doc);
@@ -162,7 +162,7 @@ int main(void)
         TEST_ASSERT(t_rc == 0, "Directly opened ./assets/osal/test.txt as single chapter");
         TEST_ASSERT(test_book.chapter_count == 1, "Single chapter initialized for test.txt");
 
-        ClarityDoc t_doc;
+        static ClarityDoc t_doc;
         memset(&t_doc, 0, sizeof(ClarityDoc));
         int load_rc = clarity_book_load_chapter_into_doc(&test_book, 0, &t_doc);
         TEST_ASSERT(load_rc == 0, "Loaded test.txt into ClarityDoc");
@@ -215,7 +215,8 @@ int main(void)
     /* ── Test Group 5: Ingestion & Verification in TAD Browser ──────── */
     printf("\n==> Test Group 5: Ingestion & Verification in TAD Browser\n");
     {
-        TAD_BROWSER tb;
+        static TAD_BROWSER tb;
+        memset(&tb, 0, sizeof(tb));
         tad_browser_init(&tb);
 
         /* A. Load Master TOC in TAD Browser */
@@ -296,7 +297,8 @@ int main(void)
 
         /* D. Double Newline (\n\n) Preservation & Empty Line Spacing */
         /* D1: Text TAD source with intentional \n\n between paragraphs */
-        TAD_BROWSER tb_nl;
+        static TAD_BROWSER tb_nl;
+        memset(&tb_nl, 0, sizeof(tb_nl));
         tad_browser_init(&tb_nl);
         const char *txt_source =
             "Paragraph One: Introductory invocation.\n"
@@ -321,7 +323,8 @@ int main(void)
         TEST_ASSERT(gap_p1_p2 >= 18, "Vertical spacing between P1 and P2 reflects intentional blank line");
 
         /* D2: Binary TAD chapter with intentional \n\n */
-        TAD_BROWSER tb_ch;
+        static TAD_BROWSER tb_ch;
+        memset(&tb_ch, 0, sizeof(tb_ch));
         tad_browser_init(&tb_ch);
         ER y_er = tad_browser_load_file(&tb_ch, "tad_bin/osal/yang_ti.tad");
         TEST_ASSERT(y_er == E_OK, "Loaded produced chapter tad_bin/osal/yang_ti.tad");
@@ -368,7 +371,7 @@ int main(void)
         int d_rc = clarity_book_open_dir(&derge_book, "./assets/osal", PECHA_SIZE_DERGE, TRUE);
         TEST_ASSERT(d_rc == 0, "Opened osal dir with PECHA_SIZE_DERGE (700x180 mm)");
 
-        ClarityDoc d_doc;
+        static ClarityDoc d_doc;
         memset(&d_doc, 0, sizeof(ClarityDoc));
         int d_load = clarity_book_load_chapter_into_doc(&derge_book, 0, &d_doc);
         TEST_ASSERT(d_load == 0, "Loaded chapter 0 as Derge Woodblock");
@@ -388,7 +391,7 @@ int main(void)
         int rc = clarity_book_open_dir(&book, "./assets/osal", PECHA_SIZE_DERGE, TRUE);
         TEST_ASSERT(rc == 0, "Opened osal directory for consistency verification");
 
-        ClarityDoc doc;
+        static ClarityDoc doc;
         memset(&doc, 0, sizeof(ClarityDoc));
         int load_rc = clarity_book_load_chapter_into_doc(&book, 0, &doc);
         TEST_ASSERT(load_rc == 0, "Loaded dkar.chag.txt with full integrity tracking");
@@ -429,7 +432,8 @@ int main(void)
         TEST_ASSERT(strstr(last_utf8, "2025") != NULL, "Final page contains end-of-file colophon ('2025')");
 
         /* Test incomplete loading detection: mock truncated doc */
-        ClarityDoc trunc_doc = doc;
+        static ClarityDoc trunc_doc;
+        trunc_doc = doc;
         trunc_doc.is_complete = FALSE;
         trunc_doc.loaded_lines = 300;
         ClarityIntegrityReport trunc_rep;
@@ -440,7 +444,7 @@ int main(void)
                     "Integrity check produced diagnostic error message for unfinished load");
 
         /* Test single chapter integrity: smon.lam.txt (chapter 1) */
-        ClarityDoc smon_doc;
+        static ClarityDoc smon_doc;
         memset(&smon_doc, 0, sizeof(ClarityDoc));
         int smon_load = clarity_book_load_chapter_into_doc(&book, 1, &smon_doc);
         TEST_ASSERT(smon_load == 0, "Loaded smon.lam.txt");
@@ -495,12 +499,12 @@ int main(void)
     printf("\n==> Test Group 7: TOC Hover, Keyboard Navigation & Default Deck Focus\n");
     {
         /* 1. Default focus in Deck area of Clarity is on Deck itself (-1), not TextFrame */
-        ClarityDoc foc_doc;
+        static ClarityDoc foc_doc;
         memset(&foc_doc, 0, sizeof(ClarityDoc));
         clarity_book_load_chapter_into_doc(&book, 0, &foc_doc);
         TEST_ASSERT(foc_doc.selected_frame == -1, "Loaded book chapter sets selected_frame = -1 (Deck focus)");
 
-        ClarityDoc sample_doc;
+        static ClarityDoc sample_doc;
         memset(&sample_doc, 0, sizeof(ClarityDoc));
         clarity_init_sample_page(&sample_doc);
         TEST_ASSERT(sample_doc.selected_frame == -1, "Sample Clarity document starts with selected_frame = -1 (Deck focus)");

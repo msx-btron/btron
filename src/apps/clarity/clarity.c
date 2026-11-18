@@ -165,7 +165,8 @@ typedef struct {
 /* Application state                                                   */
 /* ------------------------------------------------------------------ */
 
-static ClarityDoc         g_doc;
+static ClarityDoc         *g_pdoc = NULL;
+#define g_doc             (*clarity_get_doc())
 static ClarityDialogState g_dlg;
 static WND               *g_wnd        = NULL;
 static WND               *g_toc_wnd    = NULL;   /* TOC sidebar window */
@@ -2363,7 +2364,10 @@ WND* open_clarity_window(void)
 
 ClarityDoc* clarity_get_doc(void)
 {
-    return &g_doc;
+    if (!g_pdoc) {
+        g_pdoc = (ClarityDoc*)calloc(1, sizeof(ClarityDoc));
+    }
+    return g_pdoc;
 }
 
 void clarity_app_open(void)

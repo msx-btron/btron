@@ -82,7 +82,8 @@ static void test_binary_tad_stream_parser(void) {
     /* Text */
     memcpy(&tad_buf[pos], "Hello BTRON\n", 12); pos += 12;
 
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
+    memset(&tb, 0, sizeof(tb));
     ER er = tad_browser_load_buffer(&tb, tad_buf, pos, "Synthetic TAD Test");
     TEST_ASSERT(er == E_OK, "tad_browser_load_buffer successfully parsed binary TAD stream");
     TEST_ASSERT(tb.is_binary_tad == TRUE, "Identified format as Binary BTRON3 TAD");
@@ -111,7 +112,8 @@ static void test_linear_stream_layout(void) {
         "────────────────────────────────────────\n"
         "End of Chapter 1\n";
 
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
+    memset(&tb, 0, sizeof(tb));
     ER er = tad_browser_load_buffer(&tb, doc_text, (UW)strlen(doc_text), "Layout Test");
     TEST_ASSERT(er == E_OK, "Parsed symbolic TAD document");
     TEST_ASSERT(tb.span_count >= 4, "Generated spans for headings, text, links, and HR");
@@ -140,7 +142,8 @@ static void test_vobj_link_interaction(void) {
         "[仮身] #201 : T-Kernel Startup Guide (t-kernel/tkernel_startup.html)\n"
         "Footer Note\n";
 
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
+    memset(&tb, 0, sizeof(tb));
     tad_browser_load_buffer(&tb, doc_text, (UW)strlen(doc_text), "Link Test");
     tad_browser_layout(&tb, 640);
 
@@ -175,7 +178,8 @@ static void test_vobj_link_interaction(void) {
 static void test_elixir_compiled_tad_loading(void) {
     printf("\n[TEST GROUP 4] Elixir-Compiled Binary TAD Verification (tad_bin/)\n");
 
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
+    memset(&tb, 0, sizeof(tb));
     ER er = tad_browser_load_file(&tb, "tad_bin/01_btron3_spec.tad");
     TEST_ASSERT(er == E_OK, "Successfully loaded tad_bin/01_btron3_spec.tad");
     TEST_ASSERT(tb.span_count > 10, "Document loaded with >10 structured spans");
@@ -189,7 +193,8 @@ static void test_elixir_compiled_tad_loading(void) {
 static void test_viewport_scrolling(void) {
     printf("\n[TEST GROUP 5] Deterministic Viewport Scrolling\n");
 
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
+    memset(&tb, 0, sizeof(tb));
     tad_browser_init(&tb);
     tad_browser_load_file(&tb, "tad_bin/01_btron3_spec.tad");
     tb.doc_height = 800;
@@ -281,7 +286,8 @@ static void test_browser_history_and_path_resolution(void) {
     TEST_ASSERT(strcmp(resolved, "tad_bin/02_bcore_book.tad") == 0, "Resolved neighbor canonical book");
 
     /* 2. Test In-place Browser History Navigation */
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
+    memset(&tb, 0, sizeof(tb));
     tad_browser_init(&tb);
 
     tad_browser_navigate(&tb, "tad_bin/01_btron3_spec.tad");
@@ -436,7 +442,7 @@ static void test_btron3_picture_figure_segments(void) {
     printf("\n[TEST GROUP 10] BTRON3 3.20 Figure & Picture Segment Fusen (GIF & PNG Decoders)\n");
 
     /* 1. Test Canonical Book with embedded GIF Figure */
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
     memset(&tb, 0, sizeof(tb));
     ER er = tad_browser_load_file(&tb, "tad_bin/01_btron3_spec.tad");
     TEST_ASSERT(er == E_OK, "Loaded tad_bin/01_btron3_spec.tad with embedded figures");
@@ -506,7 +512,7 @@ static void test_canonical_books_links_resolution(void) {
     };
 
     for (int b = 0; b < 3; b++) {
-        TAD_BROWSER tb;
+        static TAD_BROWSER tb;
         memset(&tb, 0, sizeof(tb));
         ER er = tad_browser_load_file(&tb, book_files[b]);
         TEST_ASSERT(er == E_OK, "Successfully loaded Canonical book");
@@ -685,7 +691,8 @@ static void test_dynamic_text_wrapping_and_reflow(void) {
         "────────────────────────────────────────\n"
         "The quick brown fox jumps over the lazy dog repeatedly to test long lines without horizontal scrolling in the document viewer.\n";
 
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
+    memset(&tb, 0, sizeof(tb));
     tad_browser_init(&tb);
     ER er = tad_browser_load_buffer(&tb, doc_text, (UW)strlen(doc_text), "Wrap & Reflow Test");
     TEST_ASSERT(er == E_OK, "Loaded test document for layout re-flow");
@@ -956,7 +963,7 @@ static void test_box_drawing_and_monospace_layout(void) {
     TEST_ASSERT(bmp_h[7] == 0xFF || bmp_h[8] == 0xFF, "Horizontal line spans all 8 columns edge-to-edge");
 
     /* 5. TAD Browser Preformatted Monospace Table Layout (font_id == 2) */
-    TAD_BROWSER tb;
+    static TAD_BROWSER tb;
     memset(&tb, 0, sizeof(tb));
     tb.span_count = 1;
     tb.spans[0].style.font_id = 2; /* monospace / preformatted */
