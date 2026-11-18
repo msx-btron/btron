@@ -977,6 +977,6 @@ void clarity_init_sample_page(ClarityDoc *doc)
         f_guide->cursor_pos = (int)f_guide->text_len;
     }
 
-    doc->selected_frame = 1;
+    doc->selected_frame = -1; /* Default focus on Deck itself (allows immediate document scrolling) */
 }
 

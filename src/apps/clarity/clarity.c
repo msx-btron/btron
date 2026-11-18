@@ -173,6 +173,7 @@ static int                g_toc_scroll = 0;       /* TOC window scroll */
 static BOOL               g_toc_sb_drag = FALSE;  /* TOC scrollbar dragging */
 static int                g_toc_sb_start_y = 0;
 static int                g_toc_sb_orig_scroll = 0;
+static int                g_toc_hover_idx = -1;   /* Hovered chapter in TOC */
 static APP_MENU_BAR       g_menu;
 
 /* Scroll state (offsets in canvas space) */
@@ -593,9 +594,9 @@ static void paint_clarity_dialog(GDEV *dev, int win_w, int win_h)
 /* ------------------------------------------------------------------ */
 
 #define TOC_ENTRY_H      18   /* pixels per TOC row                          */
-#define TOC_HEADER_H     36   /* title header height                         */
-#define TOC_INDENT_CL     8   /* indent per class header (px)                */
-#define TOC_INDENT_CH    20   /* indent per chapter entry (px)               */
+#define TOC_HEADER_H     28   /* title header height                         */
+#define TOC_INDENT_CL     6   /* indent per class header (px)                */
+#define TOC_INDENT_CH    12   /* indent per chapter entry (px)               */
 #define TOC_SCROLLBAR_W  12   /* reduced width for mini-window (12px vs 16px)*/
 #define TOC_SB_BTN_H     12   /* square mini stepper button (12x12)          */
 
@@ -690,6 +691,40 @@ static void paint_mini_scrollbar_v(GDEV *dev, int x, int y, int w, int h,
     }
 }
 
+/* Scroll selected chapter into visible TOC viewport if outside */
+static void toc_scroll_into_view(int chidx, int view_h)
+{
+    ClarityBook *bk = clarity_get_book();
+    if (!bk || !bk->is_loaded || chidx < 0 || chidx >= bk->chapter_count) return;
+
+    int row_top = 0;
+    BOOL found = FALSE;
+    for (int ci = 0; ci < bk->class_count && !found; ci++) {
+        const ClarityBookClass *cls = &bk->classes[ci];
+        row_top += TOC_ENTRY_H; /* skip class header */
+        for (int ci2 = 0; ci2 < cls->chapter_count; ci2++) {
+            if (cls->chapter_indices[ci2] == chidx) {
+                found = TRUE;
+                break;
+            }
+            row_top += TOC_ENTRY_H;
+        }
+    }
+    if (!found) return;
+
+    int total_h = (bk->chapter_count + bk->class_count) * TOC_ENTRY_H;
+    int max_sc = (total_h > view_h) ? (total_h - view_h) : 0;
+
+    int row_bot = row_top + TOC_ENTRY_H;
+    if (row_top < g_toc_scroll) {
+        g_toc_scroll = row_top;
+    } else if (row_bot > g_toc_scroll + view_h) {
+        g_toc_scroll = row_bot - view_h;
+    }
+    if (g_toc_scroll < 0) g_toc_scroll = 0;
+    if (g_toc_scroll > max_sc) g_toc_scroll = max_sc;
+}
+
 static void paint_toc_wnd(WND *wnd, GDEV *dev)
 {
     if (!wnd || !dev) return;
@@ -747,15 +782,21 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
 
             if (y + TOC_ENTRY_H > TOC_HEADER_H && y < wh) {
                 BOOL is_active = (chidx == active_idx);
-                COLOR bg_col = is_active ? 0xFFCCE0FF : COLOR_WHITE;
+                BOOL is_hover  = (chidx == g_toc_hover_idx && !is_active);
+                COLOR bg_col = is_active ? 0xFFCCE0FF : (is_hover ? 0xFFE8F0FE : COLOR_WHITE);
                 COLOR fg_col = is_active ? COLOR_NAVY   : COLOR_BLACK;
                 RECT rr = { 0, (H)y, (H)content_w, (H)(y + TOC_ENTRY_H) };
                 fill_rec(dev, &rr, bg_col);
                 if (is_active) {
+                    RECT border_r = { 0, (H)y, (H)(content_w - 1), (H)(y + TOC_ENTRY_H - 1) };
                     set_col(dev, COLOR_NAVY, bg_col);
-                    drw_rec(dev, &rr);
+                    drw_rec(dev, &border_r);
+                } else if (is_hover) {
+                    RECT border_r = { 0, (H)y, (H)(content_w - 1), (H)(y + TOC_ENTRY_H - 1) };
+                    set_col(dev, 0xFF7A9EC2, bg_col);
+                    drw_rec(dev, &border_r);
                 }
-                set_col(dev, COLOR_DKGRAY, bg_col);
+                set_col(dev, 0xFFE8E8E8, bg_col);
                 drw_lin(dev, (H)TOC_INDENT_CH, (H)(y + TOC_ENTRY_H - 1),
                              (H)content_w, (H)(y + TOC_ENTRY_H - 1));
 
@@ -772,7 +813,7 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
                 } else {
                     snprintf(row_buf, sizeof(row_buf), "%s", lbl);
                 }
-                drw_tc_string(dev, TOC_INDENT_CH + 24, y + 3, row_buf, fg_col, bg_col);
+                drw_tc_string(dev, TOC_INDENT_CH + 18, y + 3, row_buf, fg_col, bg_col);
             }
             y += TOC_ENTRY_H;
         }
@@ -786,14 +827,14 @@ static void paint_toc_wnd(WND *wnd, GDEV *dev)
     fill_rec(dev, &hdr, COLOR_NAVY);
     char hdr_buf[64];
     snprintf(hdr_buf, sizeof(hdr_buf), "目録 (%d 章)", bk->chapter_count);
-    drw_tc_string(dev, 6, 4,  hdr_buf,          COLOR_WHITE, COLOR_NAVY);
+    drw_tc_string(dev, 6, 2,  hdr_buf,          COLOR_WHITE, COLOR_NAVY);
     char hdr_sub[256];
     if (bk->title[0] != '\0') {
         snprintf(hdr_sub, sizeof(hdr_sub), "%s — %s", bk->tibetan_title, bk->title);
     } else {
         snprintf(hdr_sub, sizeof(hdr_sub), "%s", bk->tibetan_title);
     }
-    drw_tc_string(dev, 6, 20, hdr_sub, COLOR_LTGRAY, COLOR_NAVY);
+    drw_tc_string(dev, 6, 14, hdr_sub, COLOR_LTGRAY, COLOR_NAVY);
     set_col(dev, COLOR_DKGRAY, COLOR_NAVY);
     drw_lin(dev, 0, (H)(TOC_HEADER_H - 1), (H)ww, (H)(TOC_HEADER_H - 1));
 
@@ -881,6 +922,8 @@ static void toc_event(WND *wnd, const EVT *evt)
                 if (rel_y >= (H)y && rel_y < (H)(y + TOC_ENTRY_H) && rel_x < sb_x) {
                     clarity_book_load_chapter_into_doc(bk, chidx, &g_doc);
                     g_scroll_y = 0;
+                    g_toc_hover_idx = chidx;
+                    toc_scroll_into_view(chidx, view_h);
                     if (g_wnd) inval_wnd(g_wnd);
                     inval_wnd(wnd);
                     return;
@@ -905,6 +948,32 @@ static void toc_event(WND *wnd, const EVT *evt)
             }
             return;
         }
+
+        /* Hover tracking over chapter rows */
+        int new_hover = -1;
+        if (rel_x >= 0 && rel_x < sb_x && rel_y >= TOC_HEADER_H && rel_y < wh) {
+            int y = TOC_HEADER_H - g_toc_scroll;
+            for (int ci = 0; ci < bk->class_count; ci++) {
+                const ClarityBookClass *cls = &bk->classes[ci];
+                y += TOC_ENTRY_H; /* skip class header */
+                for (int ci2 = 0; ci2 < cls->chapter_count; ci2++) {
+                    int chidx = cls->chapter_indices[ci2];
+                    if (chidx >= 0 && chidx < bk->chapter_count) {
+                        if (rel_y >= (H)y && rel_y < (H)(y + TOC_ENTRY_H)) {
+                            new_hover = chidx;
+                            break;
+                        }
+                    }
+                    y += TOC_ENTRY_H;
+                }
+                if (new_hover != -1) break;
+            }
+        }
+        if (g_toc_hover_idx != new_hover) {
+            g_toc_hover_idx = new_hover;
+            inval_wnd(wnd);
+        }
+        return;
     }
 
     if (evt->type == EV_BUT_UP) {
@@ -918,10 +987,11 @@ static void toc_event(WND *wnd, const EVT *evt)
     if (evt->type == EV_KEY_DOWN) {
         BOOL is_wheel = (evt->button == EV_KEY_FROM_WHEEL);
         UW key = evt->key;
-        if (is_wheel || key == BTRON_KEY_DOWN || key == BTRON_KEY_PAGE_DOWN ||
-            key == BTRON_KEY_UP || key == BTRON_KEY_PAGE_UP) {
-            int step = (key == BTRON_KEY_PAGE_DOWN || key == BTRON_KEY_PAGE_UP) ? view_h : (TOC_ENTRY_H * 3);
-            if (key == BTRON_KEY_DOWN || key == BTRON_KEY_PAGE_DOWN) {
+
+        /* Mouse wheel arrives as EV_KEY_FROM_WHEEL: scroll viewport without moving selection */
+        if (is_wheel) {
+            int step = TOC_ENTRY_H * 3;
+            if (key == BTRON_KEY_DOWN) {
                 g_toc_scroll += step;
                 if (g_toc_scroll > max_sc) g_toc_scroll = max_sc;
             } else {
@@ -931,6 +1001,46 @@ static void toc_event(WND *wnd, const EVT *evt)
             inval_wnd(wnd);
             return;
         }
+
+        /* Keyboard navigation: Up/Down/j/k, PgUp/PgDn, Home/End, Enter/Space */
+        int visible_rows = (view_h > 0) ? (view_h / TOC_ENTRY_H) : 1;
+        if (visible_rows < 1) visible_rows = 1;
+        int cur = bk->active_chapter_idx;
+        int next_ch = cur;
+
+        if (key == BTRON_KEY_UP || key == 'k') {
+            next_ch = cur - 1;
+        } else if (key == BTRON_KEY_DOWN || key == 'j') {
+            next_ch = cur + 1;
+        } else if (key == BTRON_KEY_PAGE_UP) {
+            next_ch = cur - visible_rows;
+        } else if (key == BTRON_KEY_PAGE_DOWN) {
+            next_ch = cur + visible_rows;
+        } else if (key == BTRON_KEY_HOME) {
+            next_ch = 0;
+        } else if (key == BTRON_KEY_END) {
+            next_ch = bk->chapter_count - 1;
+        } else if (key == BTRON_KEY_RETURN || key == BTRON_KEY_KP_ENTER ||
+                   key == '\r' || key == '\n' || key == ' ') {
+            if (g_toc_hover_idx >= 0 && g_toc_hover_idx < bk->chapter_count) {
+                next_ch = g_toc_hover_idx;
+            } else {
+                next_ch = cur;
+            }
+        } else {
+            return;
+        }
+
+        if (next_ch < 0) next_ch = 0;
+        if (next_ch >= bk->chapter_count) next_ch = bk->chapter_count - 1;
+
+        clarity_book_load_chapter_into_doc(bk, next_ch, &g_doc);
+        g_scroll_y = 0;
+        g_toc_hover_idx = next_ch;
+        toc_scroll_into_view(next_ch, view_h);
+        if (g_wnd) inval_wnd(g_wnd);
+        inval_wnd(wnd);
+        return;
     }
 }
 
@@ -939,6 +1049,7 @@ static void destroy_toc_wnd(WND *wnd)
     (void)wnd;
     g_toc_wnd = NULL;
     g_toc_sb_drag = FALSE;
+    g_toc_hover_idx = -1;
 }
 
 static void open_clarity_toc_window(void)
@@ -958,15 +1069,17 @@ static void open_clarity_toc_window(void)
         g_toc_wnd = NULL;
     }
 
+    g_toc_hover_idx = -1;
+
     /* Position TOC window to the left of Clarity window */
-    int toc_w = 280;
-    int toc_x = 10, toc_y = 36;
-    int toc_h = 620;
+    int toc_w = 214;
+    int toc_x = 96, toc_y = 64;
+    int toc_h = 510;
     if (g_wnd) {
-        toc_x = g_wnd->bounds.left - (toc_w + 6);
-        toc_y = g_wnd->bounds.top;
-        toc_h = g_wnd->bounds.bottom - g_wnd->bounds.top;
-        if (toc_x < 4) toc_x = 4;
+        toc_x = g_wnd->bounds.left - (toc_w + 20);
+        if (toc_x < 96) toc_x = 96;
+        toc_y = g_wnd->bounds.top + 20;
+        toc_h = (g_wnd->bounds.bottom - toc_y - 30 >= 400) ? (g_wnd->bounds.bottom - toc_y - 30) : 510;
     }
 
     g_toc_scroll = 0;
@@ -986,6 +1099,21 @@ static void open_clarity_toc_window(void)
 WND* clarity_get_toc_wnd(void)
 {
     return g_toc_wnd;
+}
+
+void clarity_open_toc_window(void)
+{
+    open_clarity_toc_window();
+}
+
+int clarity_get_toc_hover_idx(void)
+{
+    return g_toc_hover_idx;
+}
+
+int clarity_get_toc_scroll(void)
+{
+    return g_toc_scroll;
 }
 
 /* ------------------------------------------------------------------ */
@@ -1154,7 +1282,11 @@ static void handle_cmd(int cmd)
             if (bk->is_loaded) {
                 clarity_book_next_chapter(bk, &g_doc);
                 g_scroll_y = 0;
-                if (g_toc_wnd) inval_wnd(g_toc_wnd);
+                if (g_toc_wnd) {
+                    int toc_vh = (g_toc_wnd->client.bottom - g_toc_wnd->client.top) - TOC_HEADER_H;
+                    toc_scroll_into_view(bk->active_chapter_idx, toc_vh);
+                    inval_wnd(g_toc_wnd);
+                }
             }
             break;
         }
@@ -1164,7 +1296,11 @@ static void handle_cmd(int cmd)
             if (bk->is_loaded) {
                 clarity_book_prev_chapter(bk, &g_doc);
                 g_scroll_y = 0;
-                if (g_toc_wnd) inval_wnd(g_toc_wnd);
+                if (g_toc_wnd) {
+                    int toc_vh = (g_toc_wnd->client.bottom - g_toc_wnd->client.top) - TOC_HEADER_H;
+                    toc_scroll_into_view(bk->active_chapter_idx, toc_vh);
+                    inval_wnd(g_toc_wnd);
+                }
             }
             break;
         }
@@ -1773,6 +1909,21 @@ static void clarity_event(WND *wnd, const EVT *evt)
         BOOL ctrl = (mod & BTRON_KMOD_CTRL) != 0;
         BOOL shift = (mod & BTRON_KMOD_SHIFT) != 0;
 
+        /* Mouse wheel scrolling in Clarity deck */
+        BOOL is_wheel = (evt->button == EV_KEY_FROM_WHEEL);
+        if (is_wheel) {
+            int step = CLARITY_STEP_SCROLL * 2;
+            if (key == BTRON_KEY_DOWN) {
+                g_scroll_y += step;
+                if (g_scroll_y > max_y) g_scroll_y = max_y;
+            } else {
+                g_scroll_y -= step;
+                if (g_scroll_y < 0) g_scroll_y = 0;
+            }
+            inval_wnd(wnd);
+            return;
+        }
+
         /* Modal Dialog Key Handling */
         if (g_dlg.type != CLARITY_DLG_NONE) {
             if (key == BTRON_KEY_ESCAPE) {
@@ -1903,15 +2054,6 @@ static void clarity_event(WND *wnd, const EVT *evt)
             }
         }
 
-        if (key == BTRON_KEY_PAGE_DOWN) {
-            handle_cmd(CMD_BOOK_NEXT_CHAP);
-            return;
-        }
-        if (key == BTRON_KEY_PAGE_UP) {
-            handle_cmd(CMD_BOOK_PREV_CHAP);
-            return;
-        }
-
         /* Check Mozc / Tibetan TIP input method */
         char tip_buf[128] = "";
         if (tip_process_key(key, mod, tip_buf, sizeof(tip_buf))) {
@@ -1925,12 +2067,13 @@ static void clarity_event(WND *wnd, const EVT *evt)
         /* Escape key: clear selection or tool */
         if (key == BTRON_KEY_ESCAPE) {
             g_doc.tool = TOOL_SELECT;
+            g_doc.selected_frame = -1;
             app_menu_close(&g_menu);
             inval_wnd(wnd);
             return;
         }
 
-        /* If no text frame is selected, UP/DOWN arrow keys scroll the canvas */
+        /* If no text frame is selected, the Deck itself has focus: keyboard navigates and scrolls canvas */
         int fidx = g_doc.selected_frame;
         if (fidx < 0 || g_doc.frames[fidx].type != FRAME_TEXT) {
             int vw = 0, vh = 0, cw = 0, ch = 0, max_x = 0, max_y = 0;
@@ -1943,6 +2086,44 @@ static void clarity_event(WND *wnd, const EVT *evt)
             } else if (key == BTRON_KEY_DOWN) {
                 g_scroll_y += CLARITY_STEP_SCROLL;
                 if (g_scroll_y > max_y) g_scroll_y = max_y;
+                inval_wnd(wnd);
+                return;
+            } else if (key == BTRON_KEY_PAGE_UP) {
+                int page_step = (vh > 60) ? (vh - 60) : vh;
+                if (g_scroll_y > 0) {
+                    g_scroll_y -= page_step;
+                    if (g_scroll_y < 0) g_scroll_y = 0;
+                } else {
+                    handle_cmd(CMD_BOOK_PREV_CHAP);
+                }
+                inval_wnd(wnd);
+                return;
+            } else if (key == BTRON_KEY_PAGE_DOWN) {
+                int page_step = (vh > 60) ? (vh - 60) : vh;
+                if (g_scroll_y < max_y) {
+                    g_scroll_y += page_step;
+                    if (g_scroll_y > max_y) g_scroll_y = max_y;
+                } else {
+                    handle_cmd(CMD_BOOK_NEXT_CHAP);
+                }
+                inval_wnd(wnd);
+                return;
+            } else if (key == BTRON_KEY_HOME) {
+                g_scroll_y = 0;
+                inval_wnd(wnd);
+                return;
+            } else if (key == BTRON_KEY_END) {
+                g_scroll_y = max_y;
+                inval_wnd(wnd);
+                return;
+            } else if (key == BTRON_KEY_LEFT) {
+                g_scroll_x -= CLARITY_STEP_SCROLL;
+                if (g_scroll_x < 0) g_scroll_x = 0;
+                inval_wnd(wnd);
+                return;
+            } else if (key == BTRON_KEY_RIGHT) {
+                g_scroll_x += CLARITY_STEP_SCROLL;
+                if (g_scroll_x > max_x) g_scroll_x = max_x;
                 inval_wnd(wnd);
                 return;
             }
@@ -2128,10 +2309,10 @@ WND* open_clarity_window(void)
     }
 #endif
 
-    int clr_x = has_osal ? 286 : 40;
-    int clr_y = 36;
-    int clr_w = has_osal ? 730 : 900;
-    int clr_h = 620;
+    int clr_x = has_osal ? 330 : 40;
+    int clr_y = has_osal ? 44  : 36;
+    int clr_w = has_osal ? 652 : 900;
+    int clr_h = has_osal ? 560 : 620;
 
     g_wnd = opn_wnd("電子帳票 – Clarity",
                     clr_x, clr_y, clr_w, clr_h,

@@ -88,6 +88,10 @@ int  clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clar
 int  clarity_book_next_chapter(ClarityBook *book, ClarityDoc *doc);
 int  clarity_book_prev_chapter(ClarityBook *book, ClarityDoc *doc);
 ClarityBook* clarity_get_book(void);
+struct WND*   clarity_get_toc_wnd(void);
+void          clarity_open_toc_window(void);
+int           clarity_get_toc_hover_idx(void);
+int           clarity_get_toc_scroll(void);
 
 /* TAD Book Export */
 int  clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const char *single_tad_path);

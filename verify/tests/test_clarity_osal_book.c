@@ -456,9 +456,9 @@ int main(void)
         /* Mini-window reduced proportions (12px vs standard 16px) */
         int toc_sb_w = 12;
         int toc_btn_h = 12;
-        int toc_hdr_h = 36;
-        int win_w = 280;
-        int win_h = 620;
+        int toc_hdr_h = 28;
+        int win_w = 214;
+        int win_h = 510;
         int view_h = win_h - toc_hdr_h;
         int total_entries = book.chapter_count + book.class_count;
         int total_h = total_entries * 18; /* 18px per row */
@@ -478,21 +478,112 @@ int main(void)
 
         /* Scrollbar position does not obscure chapter titles */
         int content_w = win_w - toc_sb_w;
-        TEST_ASSERT(content_w >= 260, "TOC content area has >= 260px width for bilingual titles");
+        TEST_ASSERT(content_w >= 200, "TOC content area has >= 200px width for bilingual titles");
 
         /* Header pinning and viewport clipping tests */
         RECT content_clip = { 0, (H)toc_hdr_h, (H)content_w, (H)win_h };
-        TEST_ASSERT(content_clip.top == toc_hdr_h, "Content clip strictly starts below pinned header (y >= 36)");
+        TEST_ASSERT(content_clip.top == toc_hdr_h, "Content clip strictly starts below pinned header (y >= 28)");
         TEST_ASSERT(content_clip.right == win_w - toc_sb_w, "Content clip strictly excludes scrollbar gutter");
 
         /* Simulate scroll offset and verify rows with y + h <= toc_hdr_h are not rendered in header */
         int test_scroll = 72; /* Scrolled down 4 rows */
-        int row0_y = toc_hdr_h - test_scroll; /* 36 - 72 = -36 */
+        int row0_y = toc_hdr_h - test_scroll; /* 28 - 72 = -44 */
         TEST_ASSERT(row0_y + 18 <= toc_hdr_h, "Scrolled rows do not draw over pinned header");
     }
 
+    /* ── Test Group 7: TOC Hover, Keyboard Navigation & Deck Focus ─── */
+    printf("\n==> Test Group 7: TOC Hover, Keyboard Navigation & Default Deck Focus\n");
+    {
+        /* 1. Default focus in Deck area of Clarity is on Deck itself (-1), not TextFrame */
+        ClarityDoc foc_doc;
+        memset(&foc_doc, 0, sizeof(ClarityDoc));
+        clarity_book_load_chapter_into_doc(&book, 0, &foc_doc);
+        TEST_ASSERT(foc_doc.selected_frame == -1, "Loaded book chapter sets selected_frame = -1 (Deck focus)");
+
+        ClarityDoc sample_doc;
+        memset(&sample_doc, 0, sizeof(ClarityDoc));
+        clarity_init_sample_page(&sample_doc);
+        TEST_ASSERT(sample_doc.selected_frame == -1, "Sample Clarity document starts with selected_frame = -1 (Deck focus)");
+
+        /* 2. TOC Window Hover and Keyboard Navigation like Cabinet */
+        ClarityBook *gbk = clarity_get_book();
+        if (!gbk->is_loaded) {
+            clarity_book_open_dir(gbk, "./assets/osal", PECHA_SIZE_KANGYUR, TRUE);
+        }
+        clarity_open_toc_window();
+        WND *toc_w = clarity_get_toc_wnd();
+        TEST_ASSERT(toc_w != NULL, "Opened TOC window successfully");
+        TEST_ASSERT(clarity_get_toc_hover_idx() == -1, "Initial TOC hover index is -1");
+
+        /* Mouse Move: Hover over Chapter 0 */
+        /* Chapter 0 is right after Class I header: rel_y = 28 (hdr) + 18 (class) + 5 = 51 */
+        EVT ev_hover;
+        memset(&ev_hover, 0, sizeof(EVT));
+        ev_hover.type = EV_MOUSE_MOVE;
+        ev_hover.pos.x = toc_w->client.left + 50;
+        ev_hover.pos.y = toc_w->client.top + 28 + 18 + 5;
+        toc_w->event_handler(toc_w, &ev_hover);
+        TEST_ASSERT(clarity_get_toc_hover_idx() == 0, "Mouse move sets hover index on Chapter 0");
+
+        /* Mouse Move: Hover over Chapter 1 (y += 18) */
+        ev_hover.pos.y += 18;
+        toc_w->event_handler(toc_w, &ev_hover);
+        TEST_ASSERT(clarity_get_toc_hover_idx() == 1, "Mouse move sets hover index on Chapter 1");
+
+        /* Keyboard: Down arrow / 'j' steps selection to next chapter */
+        int cur_chap = gbk->active_chapter_idx;
+        EVT ev_key;
+        memset(&ev_key, 0, sizeof(EVT));
+        ev_key.type = EV_KEY_DOWN;
+        ev_key.key = BTRON_KEY_DOWN;
+        toc_w->event_handler(toc_w, &ev_key);
+        TEST_ASSERT(gbk->active_chapter_idx == cur_chap + 1, "TOC Down arrow advances active chapter selection");
+        TEST_ASSERT(clarity_get_toc_hover_idx() == gbk->active_chapter_idx, "Hover index tracks keyboard navigation");
+
+        /* Keyboard: 'k' steps selection back up */
+        ev_key.key = 'k';
+        toc_w->event_handler(toc_w, &ev_key);
+        TEST_ASSERT(gbk->active_chapter_idx == cur_chap, "TOC 'k' key moves active chapter selection back up");
+
+        /* Keyboard: End jumps to last chapter */
+        ev_key.key = BTRON_KEY_END;
+        toc_w->event_handler(toc_w, &ev_key);
+        TEST_ASSERT(gbk->active_chapter_idx == gbk->chapter_count - 1, "TOC End key jumps to final chapter");
+
+        /* Keyboard: Home jumps to first chapter */
+        ev_key.key = BTRON_KEY_HOME;
+        toc_w->event_handler(toc_w, &ev_key);
+        TEST_ASSERT(gbk->active_chapter_idx == 0, "TOC Home key jumps to first chapter");
+
+        /* Wheel: Scrolls viewport without changing chapter selection */
+        int sel_before = gbk->active_chapter_idx;
+        int sc_before = clarity_get_toc_scroll();
+        EVT ev_wheel;
+        memset(&ev_wheel, 0, sizeof(EVT));
+        ev_wheel.type = EV_KEY_DOWN;
+        ev_wheel.button = EV_KEY_FROM_WHEEL;
+        ev_wheel.key = BTRON_KEY_DOWN;
+        toc_w->event_handler(toc_w, &ev_wheel);
+        TEST_ASSERT(gbk->active_chapter_idx == sel_before, "Mouse wheel does NOT alter chapter selection");
+        TEST_ASSERT(clarity_get_toc_scroll() > sc_before, "Mouse wheel smoothly scrolls TOC viewport down");
+
+        /* Deck focus is maintained after chapter load via Enter */
+        ev_key.key = BTRON_KEY_RETURN;
+        toc_w->event_handler(toc_w, &ev_key);
+        ClarityDoc *active_doc = clarity_get_doc();
+        if (active_doc) {
+            TEST_ASSERT(active_doc->selected_frame == -1, "Clarity Doc retains Deck focus (-1) after TOC activation");
+        }
+
+        /* 3. TOC Window Default Geometry */
+        TEST_ASSERT(toc_w->bounds.left == 96, "TOC window default X is 96 (clears desktop icon rack)");
+        TEST_ASSERT(toc_w->bounds.top == 64, "TOC window default Y is 64");
+        TEST_ASSERT(toc_w->bounds.right - toc_w->bounds.left == 214, "TOC window default width is 214px");
+        TEST_ASSERT(toc_w->bounds.bottom - toc_w->bounds.top == 510, "TOC window default height is 510px");
+    }
+
     printf("\n=================================================================\n");
-    printf(" ALL 64 CLARITY OSAL TIBETAN BOOK & TAD TESTS PASSED (100%%)\n");
+    printf(" ALL 79 CLARITY OSAL TIBETAN BOOK & TAD TESTS PASSED (100%%)\n");
     printf("=================================================================\n");
     return 0;
 }
