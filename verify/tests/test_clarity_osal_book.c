@@ -212,8 +212,8 @@ int main(void)
         tad_browser_init(&tb);
 
         /* A. Load Master TOC in TAD Browser */
-        ER er = tad_browser_load_file(&tb, "tad_bin/osal/index.tad");
-        TEST_ASSERT(er == E_OK, "tad_browser_load_file loaded tad_bin/osal/index.tad");
+        ER er = tad_browser_navigate(&tb, "tad_bin/osal/index.tad");
+        TEST_ASSERT(er == E_OK, "tad_browser_navigate loaded tad_bin/osal/index.tad");
         TEST_ASSERT(tb.is_binary_tad == TRUE, "TAD Browser identified valid BTRON3 Record Type 1 binary TAD");
         TEST_ASSERT(tb.span_count > 10, "Parsed formatted spans in TAD Browser (> 10 spans)");
 
@@ -248,6 +248,31 @@ int main(void)
             TEST_ASSERT(nav_er == E_OK, "tad_browser_navigate successfully followed chapter link");
             TEST_ASSERT(tb.is_binary_tad == TRUE, "Target chapter loaded as valid binary TAD");
             TEST_ASSERT(tb.span_count > 0, "Chapter spans rendered in TAD Browser");
+            TEST_ASSERT(tad_browser_can_go_back(&tb) == TRUE, "History stack records previous TOC page");
+
+            /* B2. Verify Back Button Window Invalidation & Navigation */
+            extern void handle_tad_browser_event(WND *wnd, const EVT *evt);
+            WND test_wnd;
+            memset(&test_wnd, 0, sizeof(WND));
+            test_wnd.bounds.left = 100;
+            test_wnd.bounds.top = 100;
+            test_wnd.bounds.right = 820;
+            test_wnd.bounds.bottom = 600;
+            test_wnd.user_data = (VW)(uintptr_t)&tb;
+            test_wnd.event_handler = handle_tad_browser_event;
+            test_wnd.img_valid = TRUE; /* starts valid */
+
+            /* Simulate clicking toolbar [◄ 戻る] (Back button at x=20, y=30 relative to window body) */
+            EVT click_back;
+            memset(&click_back, 0, sizeof(EVT));
+            click_back.type = EV_BUT_DOWN;
+            click_back.pos.x = test_wnd.bounds.left + 4 + 20;
+            click_back.pos.y = test_wnd.bounds.top + 26 + 30;
+
+            int hist_before = tb.history_idx;
+            test_wnd.event_handler(&test_wnd, &click_back);
+            TEST_ASSERT(tb.history_idx < hist_before, "Back button click successfully stepped back in history");
+            TEST_ASSERT(test_wnd.img_valid == FALSE, "Back button invalidated window for immediate screen repaint");
         }
 
         /* C. Ingest Unified Scroll Volume (shog-dril) */
@@ -329,6 +354,22 @@ int main(void)
         TEST_ASSERT(rep.frame_count == rep.page_count, "Frame count matches page count");
         TEST_ASSERT(rep.source_bytes > 0, "Source file size recorded in integrity report");
         TEST_ASSERT(rep.source_checksum > 0, "Source file Adler-32 checksum computed");
+
+        /* Verify 32-bit canvas coordinates beyond legacy 16-bit boundary (page 58..80) */
+        TEST_ASSERT(doc.frames[doc.frame_count - 1].bounds.top > 32767,
+                    "Page 80 frame bounds.top exceeds 16-bit int16 boundary (> 32767)");
+        for (int p = 0; p < doc.frame_count; p++) {
+            TEST_ASSERT(doc.frames[p].bounds.top >= 0,
+                        "Frame bounds.top is strictly positive (no 16-bit overflow wrap to negative)");
+            TEST_ASSERT(doc.frames[p].bounds.bottom > doc.frames[p].bounds.top,
+                        "Frame bounds.bottom > bounds.top");
+            TEST_ASSERT(doc.frames[p].text_len > 0,
+                        "Frame has non-empty text content (no empty pages after item 63)");
+            if (p > 0) {
+                TEST_ASSERT(doc.frames[p].bounds.top > doc.frames[p - 1].bounds.top,
+                            "Frame bounds.top monotonically increases across consecutive pages");
+            }
+        }
 
         /* Verify final frame contains closing colophon */
         ClarityFrame *last_frame = &doc.frames[doc.frame_count - 1];

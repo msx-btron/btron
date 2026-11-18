@@ -774,16 +774,27 @@ static void render_text_vrtl_zoom(GDEV *dev, const ClarityFrame *f,
     }
 }
 
+static inline H clamp_to_h(int val)
+{
+    if (val < -32000) return -32000;
+    if (val > 32000) return 32000;
+    return (H)val;
+}
+
 void clarity_render_text(GDEV *dev, const ClarityFrame *f, int ox, int oy, int zoom, BOOL is_selected)
 {
     if (!dev || !f || f->type != FRAME_TEXT) return;
     if (zoom <= 0) zoom = 100;
 
+    int by0 = oy + (f->bounds.top    * zoom) / 100 + 1;
+    int by1 = oy + (f->bounds.bottom * zoom) / 100 - 1;
+    if (by1 < dev->clip.top || by0 > dev->clip.bottom) return;
+
     RECT bg;
-    bg.left   = (H)(ox + (f->bounds.left   * zoom) / 100 + 1);
-    bg.top    = (H)(oy + (f->bounds.top    * zoom) / 100 + 1);
-    bg.right  = (H)(ox + (f->bounds.right  * zoom) / 100 - 1);
-    bg.bottom = (H)(oy + (f->bounds.bottom * zoom) / 100 - 1);
+    bg.left   = clamp_to_h(ox + (f->bounds.left   * zoom) / 100 + 1);
+    bg.top    = clamp_to_h(by0);
+    bg.right  = clamp_to_h(ox + (f->bounds.right  * zoom) / 100 - 1);
+    bg.bottom = clamp_to_h(by1);
     fill_rec(dev, &bg, COLOR_WHITE);
 
     if (f->flow == FLOW_V_RTL)
@@ -865,8 +876,9 @@ void clarity_render_image(GDEV *dev, const ClarityFrame *f, int ox, int oy, int 
     int fy = oy + (f->bounds.top  * zoom) / 100 + 1;
     int fw = ((f->bounds.right - f->bounds.left) * zoom) / 100 - 2;
     int fh = ((f->bounds.bottom - f->bounds.top) * zoom) / 100 - 2;
+    if (fy + fh < dev->clip.top || fy > dev->clip.bottom) return;
 
-    RECT bg = { (H)fx, (H)fy, (H)(fx + fw), (H)(fy + fh) };
+    RECT bg = { clamp_to_h(fx), clamp_to_h(fy), clamp_to_h(fx + fw), clamp_to_h(fy + fh) };
     fill_rec(dev, &bg, COLOR_LTGRAY);
 
     /* On-demand image loading if path is set but bitmap not yet loaded */
@@ -897,11 +909,12 @@ void clarity_render_tad(GDEV *dev, const ClarityFrame *f, int ox, int oy, int zo
     int fy = oy + (f->bounds.top  * zoom) / 100 + 1;
     int fw = ((f->bounds.right - f->bounds.left) * zoom) / 100 - 2;
     int fh = ((f->bounds.bottom - f->bounds.top) * zoom) / 100 - 2;
+    if (fy + fh < dev->clip.top || fy > dev->clip.bottom) return;
 
-    RECT bg = { (H)fx, (H)fy, (H)(fx + fw), (H)(fy + fh) };
+    RECT bg = { clamp_to_h(fx), clamp_to_h(fy), clamp_to_h(fx + fw), clamp_to_h(fy + fh) };
     fill_rec(dev, &bg, COLOR_WHITE);
 
-    RECT header = { (H)fx, (H)fy, (H)(fx + fw), (H)(fy + 22) };
+    RECT header = { clamp_to_h(fx), clamp_to_h(fy), clamp_to_h(fx + fw), clamp_to_h(fy + 22) };
     fill_rec(dev, &header, COLOR_NAVY);
     drw_tc_string(dev, fx + 6, fy + 4, "【TAD 仮想実身 / Virtual Body】", COLOR_WHITE, COLOR_NAVY);
 

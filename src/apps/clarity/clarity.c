@@ -52,8 +52,8 @@ extern void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy);
 extern void clarity_draw_frames(GDEV *dev, const ClarityDoc *doc, int ox, int oy);
 extern int  clarity_hittest_frame(const ClarityDoc *doc, H x, H y, int ox, int oy);
 extern int  clarity_hittest_handle(const ClarityFrame *f, H x, H y, int ox, int oy, int zoom_pct);
-extern void clarity_resize_frame_handle(ClarityFrame *f, int h, H mx, H my, int ox, int oy, int zoom_pct);
-extern void clarity_move_frame(ClarityFrame *f, H dx, H dy);
+extern void clarity_resize_frame_handle(ClarityFrame *f, int h, int mx, int my, int ox, int oy, int zoom_pct);
+extern void clarity_move_frame(ClarityFrame *f, int dx, int dy);
 
 #define CLARITY_SAMPLE_PATH "/SYS/Clarity-Sample.TAD"
 
@@ -186,8 +186,8 @@ static int  g_sb_orig_x  = 0;
 
 /* Frame drag move state */
 static BOOL g_drag_move   = FALSE;
-static H    g_drag_prev_x = 0;
-static H    g_drag_prev_y = 0;
+static int  g_drag_prev_x = 0;
+static int  g_drag_prev_y = 0;
 
 /* Current active mouse cursor type */
 static ClarityCursorType g_curr_cursor = CLARITY_CURSOR_ARROW;
@@ -261,7 +261,7 @@ static void doc_new(ClarityPageFmt fmt)
     g_scroll_y = 0;
 }
 
-static ClarityFrame *doc_add_frame(ClarityFrameType type, H x, H y, H w, H h)
+static ClarityFrame *doc_add_frame(ClarityFrameType type, int x, int y, int w, int h)
 {
     return clarity_doc_add_frame(&g_doc, type, x, y, w, h);
 }
@@ -1499,7 +1499,7 @@ static void clarity_event(WND *wnd, const EVT *evt)
                         f->cursor_pos = clarity_text_xy_to_pos(f, cx, cy, ox, oy, zoom);
                     }
                 } else if (f->type == FRAME_TAD) {
-                    if (is_double || cy >= (H)(oy + (f->bounds.top * zoom) / 100 + 60)) {
+                    if (is_double || cy >= (oy + (f->bounds.top * zoom) / 100 + 60)) {
                         open_tad_browser_window(f->tad_path, f->tad_title);
                     }
                 }
@@ -1525,8 +1525,8 @@ static void clarity_event(WND *wnd, const EVT *evt)
         /* Tool active: start drag-creation */
         if (g_doc.tool == TOOL_TEXT_FRAME || g_doc.tool == TOOL_IMAGE_FRAME) {
             g_doc.dragging     = TRUE;
-            g_doc.drag_start_x = (H)(((cx - ox) * 100) / zoom);
-            g_doc.drag_start_y = (H)(((cy - oy) * 100) / zoom);
+            g_doc.drag_start_x = (((cx - ox) * 100) / zoom);
+            g_doc.drag_start_y = (((cy - oy) * 100) / zoom);
             g_doc.drag_handle  = -1;
             return;
         }
@@ -1551,12 +1551,12 @@ static void clarity_event(WND *wnd, const EVT *evt)
         if (g_doc.dragging &&
             (g_doc.tool == TOOL_TEXT_FRAME || g_doc.tool == TOOL_IMAGE_FRAME)) {
             g_doc.dragging = FALSE;
-            H cur_unzoomed_x = (H)(((rel_x - ox) * 100) / zoom);
-            H cur_unzoomed_y = (H)(((rel_y - oy) * 100) / zoom);
-            H fx = g_doc.drag_start_x;
-            H fy = g_doc.drag_start_y;
-            H fw = (H)(cur_unzoomed_x - fx);
-            H fh = (H)(cur_unzoomed_y - fy);
+            int cur_unzoomed_x = (((rel_x - ox) * 100) / zoom);
+            int cur_unzoomed_y = (((rel_y - oy) * 100) / zoom);
+            int fx = g_doc.drag_start_x;
+            int fy = g_doc.drag_start_y;
+            int fw = cur_unzoomed_x - fx;
+            int fh = cur_unzoomed_y - fy;
             if (fw < 0) { fx += fw; fw = -fw; }
             if (fh < 0) { fy += fh; fh = -fh; }
             if (fw < 32) fw = 32;

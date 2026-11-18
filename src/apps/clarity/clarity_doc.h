@@ -75,9 +75,16 @@ typedef struct {
 } ClarityVObjLink;
 
 typedef struct {
+    int left;
+    int top;
+    int right;
+    int bottom;
+} ClarityRect;
+
+typedef struct {
     UB             id;              /* 1-based; 0 = free slot          */
     ClarityFrameType type;
-    RECT           bounds;          /* position in canvas pixels       */
+    ClarityRect    bounds;          /* position in canvas pixels (32-bit coordinates) */
     ClarityFlow    flow;
 
     /* --- TextFrame payload ---------------------------------------- */
@@ -128,8 +135,8 @@ typedef struct {
 
     /* Drag state for frame creation / resize */
     BOOL           dragging;
-    H              drag_start_x;
-    H              drag_start_y;
+    int            drag_start_x;
+    int            drag_start_y;
     int            drag_handle;     /* resize handle id 0-7, or -1     */
     int            hover_drop_frame;/* index of frame hovered during DND, or -1 */
 } ClarityDoc;
@@ -225,8 +232,8 @@ enum {
 void clarity_hittest_full(const ClarityDoc *doc, H x, H y, int ox, int oy, ClarityHitInfo *info);
 int  clarity_hittest_handle(const ClarityFrame *f, H x, H y, int ox, int oy, int zoom_pct);
 int  clarity_hittest_frame(const ClarityDoc *doc, H x, H y, int ox, int oy);
-void clarity_resize_frame_handle(ClarityFrame *f, int h, H mx, H my, int ox, int oy, int zoom_pct);
-void clarity_move_frame(ClarityFrame *f, H dx, H dy);
+void clarity_resize_frame_handle(ClarityFrame *f, int h, int mx, int my, int ox, int oy, int zoom_pct);
+void clarity_move_frame(ClarityFrame *f, int dx, int dy);
 void clarity_draw_frames(GDEV *dev, const ClarityDoc *doc, int ox, int oy);
 
 /* Text Rendering & Editing Function Prototypes */
@@ -249,7 +256,7 @@ int  clarity_frame_find_vobj_at(const ClarityFrame *f, H mx, H my);
 void clarity_frame_insert_vobj(ClarityFrame *f, ID target_robj, VOBJ_TYPE type, const char *label, const char *path);
 int  clarity_frame_load_image(ClarityFrame *f, const char *path, ID robj_id);
 int  clarity_frame_load_text(ClarityFrame *f, const char *path, ID robj_id, const char *name);
-ClarityFrame* clarity_doc_add_frame(ClarityDoc *doc, ClarityFrameType type, H x, H y, H w, H h);
+ClarityFrame* clarity_doc_add_frame(ClarityDoc *doc, ClarityFrameType type, int x, int y, int w, int h);
 void clarity_handle_dnd_drop(ClarityDoc *doc, const BTRON_DND *dnd, H mx, H my, int ox, int oy);
 
 /* Z-Ordering and Layout Frame Manipulation */

@@ -2185,7 +2185,7 @@ static void tad_browser_execute_menu_cmd(TAD_BROWSER *tb, WND *wnd, int cmd) {
     if (wnd) inval_wnd(wnd);
 }
 
-static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
+void handle_tad_browser_event(WND *wnd, const EVT *evt) {
     if (!wnd || !evt) return;
     TAD_BROWSER *tb = (wnd->user_data) ? (TAD_BROWSER*)(uintptr_t)wnd->user_data : &g_active_browser;
 
@@ -2270,21 +2270,25 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
             /* [◄ 戻る] (6..68) */
             if (rel_x >= 6 && rel_x <= 68) {
                 tad_browser_go_back(tb);
+                inval_wnd(wnd);
                 return;
             }
             /* [► 進む] (72..134) */
             if (rel_x >= 72 && rel_x <= 134) {
                 tad_browser_go_forward(tb);
+                inval_wnd(wnd);
                 return;
             }
             /* [⌂ 原点] (138..200) */
             if (rel_x >= 138 && rel_x <= 200) {
                 tad_browser_go_home(tb);
+                inval_wnd(wnd);
                 return;
             }
             /* [↻ 更新] (204..266) */
             if (rel_x >= 204 && rel_x <= 266) {
                 tad_browser_reload(tb);
+                inval_wnd(wnd);
                 return;
             }
             /* Location Bar / Address Input (272 .. dev->width - 12) */
@@ -2293,6 +2297,7 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
                 strncpy(tb->addr_input, tb->file_path, sizeof(tb->addr_input) - 1);
                 tb->addr_input[sizeof(tb->addr_input) - 1] = '\0';
                 tb->addr_cursor = (int)strlen(tb->addr_input);
+                inval_wnd(wnd);
                 return;
             }
             return;
@@ -2350,15 +2355,44 @@ static void handle_tad_browser_event(WND *wnd, const EVT *evt) {
             }
         }
 
-        /* D. Document Content Link Clicks (y >= 48) */
+        /* D. Bottom Status Bar Clicks */
+        if (wnd->dev && rel_y >= wnd->dev->height - 22) {
+            char pfx[64];
+            snprintf(pfx, sizeof(pfx), "TAD 3.20 | %d 項目 | %u B | ", tb->span_count, tb->total_bytes);
+            int pfx_w = 8 + tc_calc_string_width(pfx, (int)strlen(pfx));
+            int back_w = tc_calc_string_width("[◄ 戻る]", (int)strlen("[◄ 戻る]"));
+            int fwd_w  = tc_calc_string_width(" [► 進む]", (int)strlen(" [► 進む]"));
+            int home_w = tc_calc_string_width(" [⌂ 原点]", (int)strlen(" [⌂ 原点]"));
+            int rel_w  = tc_calc_string_width(" [↻ 更新]", (int)strlen(" [↻ 更新]"));
+
+            if (rel_x >= pfx_w && rel_x < pfx_w + back_w) {
+                tad_browser_go_back(tb);
+                inval_wnd(wnd);
+                return;
+            } else if (rel_x >= pfx_w + back_w && rel_x < pfx_w + back_w + fwd_w) {
+                tad_browser_go_forward(tb);
+                inval_wnd(wnd);
+                return;
+            } else if (rel_x >= pfx_w + back_w + fwd_w && rel_x < pfx_w + back_w + fwd_w + home_w) {
+                tad_browser_go_home(tb);
+                inval_wnd(wnd);
+                return;
+            } else if (rel_x >= pfx_w + back_w + fwd_w + home_w && rel_x < pfx_w + back_w + fwd_w + home_w + rel_w) {
+                tad_browser_reload(tb);
+                inval_wnd(wnd);
+                return;
+            }
+        }
+
+        /* E. Document Content Link Clicks (y >= 48) */
         tb->addr_active = FALSE;
         ID clicked_robj = 0;
         char clicked_path[128] = "";
         if (tad_browser_handle_mouse(tb, rel_x, rel_y, TRUE, &clicked_robj, clicked_path)) {
             if (clicked_path[0] != '\0') {
                 tad_browser_navigate(tb, clicked_path);
-                inval_wnd(wnd);  /* FIX: repaint after navigation – content changed */
             }
+            inval_wnd(wnd);
         }
         return;
     }

@@ -162,6 +162,7 @@ void tad_browser_go_back(TAD_BROWSER *tb);
 void tad_browser_go_forward(TAD_BROWSER *tb);
 void tad_browser_go_home(TAD_BROWSER *tb);
 void tad_browser_reload(TAD_BROWSER *tb);
+void handle_tad_browser_event(WND *wnd, const EVT *evt);
 
 /* Image Raster Decoders (GIF & PNG) */
 int decode_and_draw_gif(GDEV *dev, const char *file_path, int dst_x, int dst_y, int max_w, int max_h);

@@ -266,13 +266,20 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
 /* Frame drawing & Hit Testing with Zoom                               */
 /* ------------------------------------------------------------------ */
 
+static inline H clamp_to_h(int val)
+{
+    if (val < -32000) return -32000;
+    if (val > 32000) return 32000;
+    return (H)val;
+}
+
 static RECT frame_screen_rect_zoom(const ClarityFrame *f, int ox, int oy, int zoom)
 {
     RECT r;
-    r.left   = (H)(ox + (f->bounds.left   * zoom) / 100);
-    r.top    = (H)(oy + (f->bounds.top    * zoom) / 100);
-    r.right  = (H)(ox + (f->bounds.right  * zoom) / 100);
-    r.bottom = (H)(oy + (f->bounds.bottom * zoom) / 100);
+    r.left   = clamp_to_h(ox + (f->bounds.left   * zoom) / 100);
+    r.top    = clamp_to_h(oy + (f->bounds.top    * zoom) / 100);
+    r.right  = clamp_to_h(ox + (f->bounds.right  * zoom) / 100);
+    r.bottom = clamp_to_h(oy + (f->bounds.bottom * zoom) / 100);
     return r;
 }
 
@@ -443,14 +450,14 @@ void clarity_hittest_full(const ClarityDoc *doc, H x, H y, int ox, int oy, Clari
     }
 }
 
-void clarity_resize_frame_handle(ClarityFrame *f, int h, H mx, H my, int ox, int oy, int zoom_pct)
+void clarity_resize_frame_handle(ClarityFrame *f, int h, int mx, int my, int ox, int oy, int zoom_pct)
 {
     if (!f) return;
     int zoom = zoom_pct > 0 ? zoom_pct : 100;
 
     /* Convert screen coords back to unzoomed canvas document space */
-    H cx = (H)(((mx - ox) * 100) / zoom);
-    H cy = (H)(((my - oy) * 100) / zoom);
+    int cx = (((mx - ox) * 100) / zoom);
+    int cy = (((my - oy) * 100) / zoom);
 
 #define MIN_W 32
 #define MIN_H 24
@@ -489,20 +496,20 @@ void clarity_resize_frame_handle(ClarityFrame *f, int h, H mx, H my, int ox, int
 #undef MIN_H
 }
 
-void clarity_move_frame(ClarityFrame *f, H dx, H dy)
+void clarity_move_frame(ClarityFrame *f, int dx, int dy)
 {
     if (!f) return;
-    f->bounds.left   = (H)(f->bounds.left   + dx);
-    f->bounds.top    = (H)(f->bounds.top    + dy);
-    f->bounds.right  = (H)(f->bounds.right  + dx);
-    f->bounds.bottom = (H)(f->bounds.bottom + dy);
+    f->bounds.left   += dx;
+    f->bounds.top    += dy;
+    f->bounds.right  += dx;
+    f->bounds.bottom += dy;
 }
 
 /* ================================================================
  * Virtual Body & Direct Manipulation DND Ingestion Helpers
  * ================================================================ */
 
-ClarityFrame* clarity_doc_add_frame(ClarityDoc *doc, ClarityFrameType type, H x, H y, H w, H h)
+ClarityFrame* clarity_doc_add_frame(ClarityDoc *doc, ClarityFrameType type, int x, int y, int w, int h)
 {
     if (!doc || doc->frame_count >= CLARITY_MAX_FRAMES) return NULL;
     ClarityFrame *f = &doc->frames[doc->frame_count];
@@ -511,8 +518,8 @@ ClarityFrame* clarity_doc_add_frame(ClarityDoc *doc, ClarityFrameType type, H x,
     f->type         = type;
     f->bounds.left  = x;
     f->bounds.top   = y;
-    f->bounds.right = (H)(x + w);
-    f->bounds.bottom = (H)(y + h);
+    f->bounds.right = x + w;
+    f->bounds.bottom = y + h;
     f->flow         = (doc->fmt == FMT_SHIROKU) ? FLOW_V_RTL : FLOW_H_LTR;
     f->cursor_pos   = 0;
     doc->frame_count++;

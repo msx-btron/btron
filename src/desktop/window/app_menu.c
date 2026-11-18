@@ -961,10 +961,10 @@ static void paint_about_dialog(WND *wnd, GDEV *dev) {
         drw_lin(dev, sep_x + 6, hsep_y, card.right - 10, hsep_y);
 
         drw_tc_string(dev, text_x, hsep_y + 8,  data->attribution, COLOR_BLACK, 0x00000000);
-        drw_tc_string(dev, text_x, hsep_y + 26, "B-System (BTRON3 3.20)", COLOR_DKGRAY, 0x00000000);
-        drw_tc_string(dev, text_x, hsep_y + 44, "TRON ITRON/ITRON/BTRON/HMI", COLOR_DKGRAY, 0x00000000);
-        drw_tc_string(dev, text_x, hsep_y + 62, "OpenGL ES/SC", COLOR_DKGRAY, 0x00000000);
-        drw_tc_string(dev, text_x, hsep_y + 80, "B-Sound DSP B-MSX EMU B-Audio RTP B-Media ICN", COLOR_DKGRAY, 0x00000000);
+        drw_tc_string(dev, text_x, hsep_y + 26, "OS: B-System (BTRON3 3.20)", COLOR_DKGRAY, 0x00000000);
+        drw_tc_string(dev, text_x, hsep_y + 44, "Kernel: B-Kernel (TRON/ITRON/BTRON/HMI)", COLOR_DKGRAY, 0x00000000);
+        drw_tc_string(dev, text_x, hsep_y + 62, "OpenGL: B-GL (ES/SC)", COLOR_DKGRAY, 0x00000000);
+        drw_tc_string(dev, text_x, hsep_y + 80, "Libraries: B-RT B-Media B-Audio B-Sound B-MSX", COLOR_DKGRAY, 0x00000000);
     }
 
     /* 3D OK Button */
