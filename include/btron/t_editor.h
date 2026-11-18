@@ -23,6 +23,28 @@ extern "C" {
 
 #include <btron/app_menu.h>
 
+/* Editor Menu Command IDs */
+enum {
+    TCMD_NONE = 0,
+    TCMD_FILE_NEW,
+    TCMD_FILE_OPEN_SUBMENU,
+    TCMD_FILE_OPEN_ASSET,
+    TCMD_FILE_SAVE,
+    TCMD_FILE_CLOSE,
+    TCMD_EDIT_UNDO,
+    TCMD_EDIT_CUT,
+    TCMD_EDIT_COPY,
+    TCMD_EDIT_PASTE,
+    TCMD_EDIT_SELECT_ALL,
+    TCMD_VIEW_ZOOM_IN,
+    TCMD_VIEW_ZOOM_OUT,
+    TCMD_VIEW_TOGGLE_LINES,
+    TCMD_VIEW_WRAP_TOGGLE,
+    TCMD_VOBJ_INSERT,
+    TCMD_VOBJ_CABINET,
+    TCMD_HELP_ABOUT
+};
+
 /* ── Hierarchical Tree Open Menu Subsystem ───────────────────────── */
 #define TEDITOR_TREE_MAX_LEVELS  6
 #define TEDITOR_MENU_NAME_LEN    64
@@ -44,6 +66,8 @@ typedef struct {
     /* Scrolling */
     int scroll_row;
     int scroll_col;
+    int scroll_x;              /* Horizontal pixel scroll in unwrapped mode */
+    int max_content_width;     /* Widest line width in pixels */
 
     /* File State */
     char filename[128];
@@ -93,6 +117,7 @@ WND* open_teditor_about_window(void);
 /* CUA Selection & Word Wrap APIs */
 void teditor_get_selection_range(const TEditor *ed, int *r1, int *c1, int *r2, int *c2);
 void teditor_toggle_wrap(TEditor *ed);
+void teditor_set_hscroll_clamped(TEditor *ed, int ns, H dev_w);
 
 #ifdef __cplusplus
 }

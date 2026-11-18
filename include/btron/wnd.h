@@ -289,6 +289,12 @@ enum {
 };
 WND* wnd_mgr_get_interaction(int *kind);
 
+/* ── Common BTRON Word-Wrap & Typography Layout Engine ── */
+typedef void (*btron_wrap_line_cb)(const char *line_str, int line_len, H line_w, int line_idx, void *user_data);
+
+BOOL btron_is_cjk_no_break_before(TC code);
+int  btron_wrap_text(const char *utf8_text, int max_w, btron_wrap_line_cb cb, void *user_data);
+
 #ifdef __cplusplus
 }
 #endif

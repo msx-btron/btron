@@ -1212,6 +1212,80 @@ static void test_editor_mouse_scroll(void) {
     cls_wnd(wnd);
 }
 
+static void test_word_wrap_and_hscrollbar(void) {
+    printf("\n[UI TEST 20] Word Wrap Toggle & Horizontal Scrollbar\n");
+    WND *wnd = open_t_editor_window();
+    TEST_ASSERT(wnd != NULL, "Opened Editor window for wrap/hscroll test");
+    TEditor *ed = (TEditor*)(uintptr_t)wnd->user_data;
+    TEST_ASSERT(ed != NULL, "TEditor instance valid");
+
+    /* 1. Default wrap_text state is FALSE (NOWRAP) */
+    TEST_ASSERT(ed->wrap_text == FALSE, "wrap_text defaults to FALSE");
+    TEST_ASSERT(ed->scroll_x == 0, "scroll_x starts at 0");
+
+    /* Initial paint to populate layout */
+    wnd->paint(wnd, wnd->dev);
+    TEST_ASSERT(app_menu_is_item_checked(&ed->menu_bar, TCMD_VIEW_WRAP_TOGGLE) == FALSE,
+                "Menu checkmark reflects wrap_text FALSE at init");
+
+    /* 2. Toggle wrap via teditor_toggle_wrap -> TRUE */
+    teditor_toggle_wrap(ed);
+    TEST_ASSERT(ed->wrap_text == TRUE, "wrap_text toggled to TRUE");
+    TEST_ASSERT(app_menu_is_item_checked(&ed->menu_bar, TCMD_VIEW_WRAP_TOGGLE) == TRUE,
+                "Menu checkmark updated to reflect wrap_text TRUE");
+
+    /* 3. Toggle back to FALSE (NOWRAP) */
+    teditor_toggle_wrap(ed);
+    TEST_ASSERT(ed->wrap_text == FALSE, "wrap_text toggled to FALSE");
+    TEST_ASSERT(app_menu_is_item_checked(&ed->menu_bar, TCMD_VIEW_WRAP_TOGGLE) == FALSE,
+                "Menu checkmark updated to reflect wrap_text FALSE");
+
+    /* 4. Insert a long line to cause horizontal overflow */
+    snprintf(ed->lines[0], sizeof(ed->lines[0]),
+             "Long line test: The quick brown fox jumps over the lazy dog and BTRON provides hyper-object multi-lingual text display engine with zero post-boot dynamic memory allocation!");
+    wnd->paint(wnd, wnd->dev);
+    TEST_ASSERT(ed->max_content_width > wnd->dev->width,
+                "max_content_width exceeds window width in unwrapped mode");
+
+    /* 5. Clamped horizontal scroll */
+    int max_scroll = ed->max_content_width - (wnd->dev->width - 16);
+    if (max_scroll < 0) max_scroll = 0;
+    teditor_set_hscroll_clamped(ed, 200, wnd->dev->width);
+    TEST_ASSERT(ed->scroll_x == 200 || ed->scroll_x == max_scroll,
+                "scroll_x updated and clamped properly");
+
+    /* 6. Toggle wrap to TRUE -> scroll_x resets to 0 */
+    teditor_toggle_wrap(ed);
+    TEST_ASSERT(ed->wrap_text == TRUE, "wrap_text re-enabled");
+    TEST_ASSERT(ed->scroll_x == 0, "scroll_x reset to 0 when wrap re-enabled");
+
+    /* 7. Toggle back to FALSE and test horizontal scrollbar click */
+    teditor_toggle_wrap(ed);
+    TEST_ASSERT(ed->wrap_text == FALSE, "wrap_text back to FALSE");
+
+    /* Right arrow button click on horizontal scrollbar */
+    H dev_w = wnd->dev ? wnd->dev->width : 560;
+    H dev_h = wnd->dev ? wnd->dev->height : 360;
+    EVT ev_click_r;
+    memset(&ev_click_r, 0, sizeof(EVT));
+    ev_click_r.type = EV_BUT_DOWN;
+    ev_click_r.pos.x = wnd->client.left + (dev_w - 16 - 8); /* inside right arrow button */
+    ev_click_r.pos.y = wnd->client.top + (dev_h - 22 - 8);  /* inside horizontal scrollbar */
+    wnd->event_handler(wnd, &ev_click_r);
+    TEST_ASSERT(ed->scroll_x == 32, "Clicking right arrow stepped scroll_x by 32px");
+
+    /* Left arrow button click on horizontal scrollbar */
+    EVT ev_click_l;
+    memset(&ev_click_l, 0, sizeof(EVT));
+    ev_click_l.type = EV_BUT_DOWN;
+    ev_click_l.pos.x = wnd->client.left + 8;                /* inside left arrow button */
+    ev_click_l.pos.y = wnd->client.top + (dev_h - 22 - 8);  /* inside horizontal scrollbar */
+    wnd->event_handler(wnd, &ev_click_l);
+    TEST_ASSERT(ed->scroll_x == 0, "Clicking left arrow stepped scroll_x back to 0");
+
+    cls_wnd(wnd);
+}
+
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
@@ -1239,6 +1313,7 @@ int main(int argc, char **argv) {
     test_teditor_nano_about_box();
     test_volume_and_markdown_file_operations();
     test_editor_mouse_scroll();
+    test_word_wrap_and_hscrollbar();
 
     printf("\n==========================================================\n");
     printf(" Editor TEST RESULTS: %d / %d tests passed (%.1f%%)\n",

@@ -38,19 +38,31 @@ static char g_clipboard[2048] = "";
  * bar greys out (thumb fills the track) when nothing overflows.  The mouse
  * wheel arrives as PAGE_UP/PAGE_DOWN and scrolls the content by one line
  * without moving the caret. */
-#define TE_SB_W   16
-#define TE_SB_BTN 16
-#define TE_SB_TOP 24
+#define TE_SB_W    16
+#define TE_SB_BTN  16
+#define TE_SB_TOP  24
+#define TE_HSB_H   16
+#define TE_HSB_BTN 16
 
-static BOOL s_sb_dragging = FALSE;
-static H    s_sb_drag_y   = 0;
-static int  s_sb_drag_off = 0;
+static BOOL s_sb_dragging  = FALSE;
+static H    s_sb_drag_y    = 0;
+static int  s_sb_drag_off  = 0;
+
+static BOOL s_hsb_dragging = FALSE;
+static H    s_hsb_drag_x   = 0;
+static int  s_hsb_drag_off = 0;
 
 typedef struct {
     RECT bar, up_btn, dn_btn, thumb;
     int  track_top, track_bot;
     BOOL overflow;
 } te_sbar_t;
+
+typedef struct {
+    RECT bar, left_btn, right_btn, thumb;
+    int  track_left, track_right;
+    BOOL overflow;
+} te_hsbar_t;
 
 static int te_view_rows(H dev_h) {
     int vr = ((int)dev_h - 60) / 18;   /* keep in sync with paint/PAGE geometry */
@@ -64,8 +76,10 @@ static void te_sbar_layout(const TEditor *ed, H dev_w, H dev_h, te_sbar_t *sb) {
     int max_off = total - vis;
     if (max_off < 0) max_off = 0;
 
+    int bar_bot = dev_h - 22 - (ed->wrap_text ? 0 : TE_HSB_H);
+
     sb->bar.left = dev_w - TE_SB_W; sb->bar.right = dev_w;
-    sb->bar.top = TE_SB_TOP;        sb->bar.bottom = dev_h - 22;
+    sb->bar.top = TE_SB_TOP;        sb->bar.bottom = bar_bot;
 
     sb->up_btn.left = sb->bar.left;  sb->up_btn.right = sb->bar.right;
     sb->up_btn.top = sb->bar.top;    sb->up_btn.bottom = sb->bar.top + TE_SB_BTN;
@@ -92,6 +106,69 @@ static void te_sbar_layout(const TEditor *ed, H dev_w, H dev_h, te_sbar_t *sb) {
     }
     sb->thumb.left = sb->bar.left + 2;  sb->thumb.right = sb->bar.right - 2;
     sb->thumb.top = ty;                 sb->thumb.bottom = ty + th_h;
+}
+
+static void te_hsbar_layout(TEditor *ed, H dev_w, H dev_h, te_hsbar_t *sb) {
+    int text_x_start = ed->show_line_nums ? 36 : 12;
+    int bar_left = 0;
+    int bar_right = dev_w - TE_SB_W;
+    int bar_top = dev_h - 22 - TE_HSB_H;
+    int bar_bot = dev_h - 22;
+
+    sb->bar.left = bar_left;   sb->bar.top = bar_top;
+    sb->bar.right = bar_right; sb->bar.bottom = bar_bot;
+
+    sb->left_btn.left = bar_left; sb->left_btn.right = bar_left + TE_HSB_BTN;
+    sb->left_btn.top = bar_top;   sb->left_btn.bottom = bar_bot;
+
+    sb->right_btn.left = bar_right - TE_HSB_BTN; sb->right_btn.right = bar_right;
+    sb->right_btn.top = bar_top;   sb->right_btn.bottom = bar_bot;
+
+    sb->track_left = bar_left + TE_HSB_BTN;
+    sb->track_right = bar_right - TE_HSB_BTN;
+    int track_w = sb->track_right - sb->track_left;
+    if (track_w < 1) track_w = 1;
+
+    /* Measure maximum line width across document */
+    int max_w = 0;
+    for (int r = 0; r < ed->total_lines; r++) {
+        int lw = tc_calc_string_width(ed->lines[r], (int)strlen(ed->lines[r])) + text_x_start + 20;
+        if (lw > max_w) max_w = lw;
+    }
+    ed->max_content_width = max_w;
+
+    int page_w = dev_w - TE_SB_W;
+    if (page_w < 1) page_w = 1;
+    int max_scroll = ed->max_content_width - page_w;
+    if (max_scroll < 0) max_scroll = 0;
+    sb->overflow = (max_scroll > 0 && bar_right > bar_left + 2 * TE_HSB_BTN);
+
+    int th_w, tx;
+    if (sb->overflow && ed->max_content_width > 0) {
+        th_w = (page_w * track_w) / ed->max_content_width;
+        if (th_w < 15) th_w = 15;
+        if (th_w > track_w) th_w = track_w;
+        int sx = ed->scroll_x;
+        if (sx < 0) sx = 0;
+        if (sx > max_scroll) sx = max_scroll;
+        tx = sb->track_left + (sx * (track_w - th_w)) / max_scroll;
+    } else {
+        th_w = track_w;
+        tx = sb->track_left;
+    }
+    sb->thumb.left = tx;              sb->thumb.right = tx + th_w;
+    sb->thumb.top = sb->bar.top + 2;  sb->thumb.bottom = sb->bar.bottom - 2;
+}
+
+void teditor_set_hscroll_clamped(TEditor *ed, int ns, H dev_w) {
+    if (!ed) return;
+    int page_w = dev_w - TE_SB_W;
+    if (page_w < 1) page_w = 1;
+    int max_scroll = ed->max_content_width - page_w;
+    if (max_scroll < 0) max_scroll = 0;
+    if (ns < 0) ns = 0;
+    if (ns > max_scroll) ns = max_scroll;
+    ed->scroll_x = ns;
 }
 
 /* Move the viewport to an absolute line, clamped to the scrollable range.
@@ -147,6 +224,53 @@ static void te_draw_scrollbar(TEditor *ed, GDEV *dev) {
     drw_lin(dev, sb.thumb.left, sb.thumb.top, sb.thumb.left, sb.thumb.bottom - 1);
     drw_lin(dev, sb.thumb.left, sb.thumb.bottom - 1, sb.thumb.right - 1, sb.thumb.bottom - 1);
     drw_lin(dev, sb.thumb.right - 1, sb.thumb.top, sb.thumb.right - 1, sb.thumb.bottom - 1);
+}
+
+static void te_draw_hscrollbar(TEditor *ed, GDEV *dev) {
+    if (dev->height <= 90 || dev->width <= 60) return;
+    te_hsbar_t sb;
+    te_hsbar_layout(ed, dev->width, dev->height, &sb);
+    const int sx = sb.bar.left, sy = sb.bar.top, sw = sb.bar.right - sb.bar.left;
+    const COLOR btn_pen = sb.overflow ? COLOR_BLACK : COLOR_DKGRAY;
+
+    fill_rec(dev, &sb.bar, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_lin(dev, sx, sy, sx + sw, sy);
+    drw_lin(dev, sx + TE_HSB_BTN, sy, sx + TE_HSB_BTN, sy + TE_HSB_H - 1);
+    drw_lin(dev, sx + sw - TE_HSB_BTN, sy, sx + sw - TE_HSB_BTN, sy + TE_HSB_H - 1);
+
+    /* Left arrow button */
+    fill_rec(dev, &sb.left_btn, COLOR_LTGRAY);
+    drw_rec(dev, &sb.left_btn);
+    set_col(dev, btn_pen, COLOR_LTGRAY);
+    drw_lin(dev, sx + 4, sy + 8, sx + 11, sy + 4);
+    drw_lin(dev, sx + 4, sy + 8, sx + 11, sy + 12);
+    drw_lin(dev, sx + 11, sy + 4, sx + 11, sy + 12);
+
+    /* Right arrow button */
+    const int rx = sb.right_btn.left;
+    fill_rec(dev, &sb.right_btn, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &sb.right_btn);
+    set_col(dev, btn_pen, COLOR_LTGRAY);
+    drw_lin(dev, rx + 11, sy + 8, rx + 4, sy + 4);
+    drw_lin(dev, rx + 11, sy + 8, rx + 4, sy + 12);
+    drw_lin(dev, rx + 4, sy + 4, rx + 4, sy + 12);
+
+    /* Thumb */
+    fill_rec(dev, &sb.thumb, sb.overflow ? COLOR_GRAY : COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &sb.thumb);
+    drw_lin(dev, sb.thumb.left, sb.thumb.top, sb.thumb.right - 1, sb.thumb.top);
+    drw_lin(dev, sb.thumb.left, sb.thumb.top, sb.thumb.left, sb.thumb.bottom - 1);
+    drw_lin(dev, sb.thumb.left, sb.thumb.bottom - 1, sb.thumb.right - 1, sb.thumb.bottom - 1);
+    drw_lin(dev, sb.thumb.right - 1, sb.thumb.top, sb.thumb.right - 1, sb.thumb.bottom - 1);
+
+    /* Corner junction between vertical and horizontal scrollbars */
+    RECT corner = { dev->width - TE_SB_W, sy, dev->width, sy + TE_HSB_H };
+    fill_rec(dev, &corner, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &corner);
 }
 
 static void teditor_init_default(TEditor *ed) {
@@ -236,6 +360,17 @@ static void teditor_ensure_cursor_visible(TEditor *ed) {
         ed->scroll_col = ed->cursor_col - TEDITOR_VIEW_COLS + 1;
     }
     if (ed->scroll_col < 0) ed->scroll_col = 0;
+
+    if (!ed->wrap_text && ed->cursor_row >= 0 && ed->cursor_row < ed->total_lines) {
+        int caret_px = tc_calc_string_width(ed->lines[ed->cursor_row], ed->cursor_col);
+        int avail_w = 480;
+        if (caret_px < ed->scroll_x) {
+            ed->scroll_x = (caret_px > 32) ? (caret_px - 32) : 0;
+        } else if (caret_px > ed->scroll_x + avail_w - 32) {
+            ed->scroll_x = caret_px - avail_w + 32;
+        }
+        if (ed->scroll_x < 0) ed->scroll_x = 0;
+    }
 }
 
 static void teditor_delete_selection(TEditor *ed) {
@@ -655,97 +790,38 @@ static int find_word_next(const char *line, int col) {
     return c;
 }
 
-/* ── Word Wrap & Japanese Kinsoku Shori ───────────────────────────────── */
-static BOOL is_cjk_no_break_before(TC code) {
-    if (code == '.' || code == ',' || code == '!' || code == '?' ||
-        code == ':' || code == ';' || code == ')' || code == ']' || code == '}') {
-        return TRUE;
+/* ── Word Wrap & Japanese Kinsoku Shori (delegates to window subsystem) ── */
+typedef struct {
+    char (*lines)[TEDITOR_MAX_COLS];
+    int max_lines;
+    int count;
+} te_wrap_ctx_t;
+
+static void te_wrap_cb(const char *str, int len, H line_w, int idx, void *ud) {
+    (void)line_w;
+    te_wrap_ctx_t *ctx = (te_wrap_ctx_t*)ud;
+    if (idx < ctx->max_lines) {
+        int clen = (len >= TEDITOR_MAX_COLS) ? TEDITOR_MAX_COLS - 1 : len;
+        memcpy(ctx->lines[idx], str, clen);
+        ctx->lines[idx][clen] = '\0';
+        ctx->count = idx + 1;
     }
-    if ((code >> 8) == 0x21) {
-        UB low = code & 0xFF;
-        if (low >= 0x22 && low <= 0x2A) return TRUE; /* 、 。 ， ． ・ ： ； ？ ！ */
-        if (low == 0x3C) return TRUE; /* ー */
-        if (low == 0x4B || low == 0x4D || low == 0x4F || low == 0x51 ||
-            low == 0x53 || low == 0x55 || low == 0x57 || low == 0x59 || low == 0x5B) {
-            return TRUE; /* ） 〕 〉 》 ］ ｝ 」 』 】 */
-        }
-    }
-    return FALSE;
 }
 
 static int teditor_wrap_line(const char *utf8_line, int max_w, char wrapped_lines[][TEDITOR_MAX_COLS], int max_wrapped) {
     if (!utf8_line || max_wrapped <= 0) return 0;
-    if (utf8_line[0] == '\0') {
-        wrapped_lines[0][0] = '\0';
-        return 1;
-    }
-    if (max_w < 40) max_w = 40;
-
-    const char *p = utf8_line;
-    const char *line_start = p;
-    const char *last_break = NULL;
-    H cur_line_w = 0;
-    TC prev_code = 0;
-    int line_idx = 0;
-
-    while (*p && line_idx < max_wrapped) {
-        int consumed = 0;
-        TC code = utf8_to_tc(p, &consumed);
-        int step = (consumed > 0) ? consumed : 1;
-        H adv = tc_get_char_advance(code, prev_code);
-
-        if (*p == ' ') {
-            last_break = p;
-        } else if (*p == '-' || *p == '/') {
-            last_break = p + 1;
-        } else if ((code >> 8) == 0x6F && (code & 0xFF) == 0x0B) {
-            last_break = p + step;
-        } else if (adv == 16) {
-            if (prev_code != 0 && !is_cjk_no_break_before(code)) {
-                last_break = p;
-            }
-        }
-
-        if (cur_line_w + adv > max_w && cur_line_w > 0) {
-            const char *break_pt = last_break;
-            if (!break_pt || break_pt <= line_start) {
-                break_pt = p;
-            }
-            int len = (int)(break_pt - line_start);
-            if (len >= TEDITOR_MAX_COLS) len = TEDITOR_MAX_COLS - 1;
-            memcpy(wrapped_lines[line_idx], line_start, len);
-            wrapped_lines[line_idx][len] = '\0';
-            line_idx++;
-
-            if (*break_pt == ' ') break_pt++;
-            p = break_pt;
-            line_start = p;
-            last_break = NULL;
-            cur_line_w = 0;
-            prev_code = 0;
-            continue;
-        }
-
-        cur_line_w += adv;
-        if (adv > 0 || (code >> 8) != 0x6F) {
-            prev_code = code;
-        }
-        p += step;
-    }
-
-    if (line_start && line_idx < max_wrapped) {
-        int len = (int)strlen(line_start);
-        if (len >= TEDITOR_MAX_COLS) len = TEDITOR_MAX_COLS - 1;
-        memcpy(wrapped_lines[line_idx], line_start, len);
-        wrapped_lines[line_idx][len] = '\0';
-        line_idx++;
-    }
-    return line_idx;
+    te_wrap_ctx_t ctx = { wrapped_lines, max_wrapped, 0 };
+    btron_wrap_text(utf8_line, max_w, te_wrap_cb, &ctx);
+    return ctx.count;
 }
 
 void teditor_toggle_wrap(TEditor *ed) {
     if (!ed) return;
     ed->wrap_text = !ed->wrap_text;
+    app_menu_set_item_checked(&ed->menu_bar, TCMD_VIEW_WRAP_TOGGLE, ed->wrap_text);
+    if (ed->wrap_text) {
+        ed->scroll_x = 0;
+    }
 }
 
 /* ── Live Filesystem Walker — Open Menu Subsystem ──────────────── */
@@ -1124,27 +1200,6 @@ typedef enum {
     TMENU_COUNT
 } TMenuId;
 
-enum {
-    TCMD_NONE = 0,
-    TCMD_FILE_NEW,
-    TCMD_FILE_OPEN_SUBMENU,
-    TCMD_FILE_OPEN_ASSET,
-    TCMD_FILE_SAVE,
-    TCMD_FILE_CLOSE,
-    TCMD_EDIT_UNDO,
-    TCMD_EDIT_CUT,
-    TCMD_EDIT_COPY,
-    TCMD_EDIT_PASTE,
-    TCMD_EDIT_SELECT_ALL,
-    TCMD_VIEW_ZOOM_IN,
-    TCMD_VIEW_ZOOM_OUT,
-    TCMD_VIEW_TOGGLE_LINES,
-    TCMD_VIEW_WRAP_TOGGLE,
-    TCMD_VOBJ_INSERT,
-    TCMD_VOBJ_CABINET,
-    TCMD_HELP_ABOUT
-};
-
 static void teditor_sync_menu_state(TEditor *ed) {
     if (!ed) return;
     ed->active_menu = ed->menu_bar.active_menu;
@@ -1179,6 +1234,7 @@ static void teditor_init_menu_bar(TEditor *ed) {
     app_menu_add_separator(&ed->menu_bar, h2);
     app_menu_add_item(&ed->menu_bar, h2, "行番号表示 (Line Nums)", "", TCMD_VIEW_TOGGLE_LINES, TRUE);
     app_menu_add_item(&ed->menu_bar, h2, "行折り返し (Wrap Text)", "Ctrl+W", TCMD_VIEW_WRAP_TOGGLE, TRUE);
+    app_menu_set_item_checked(&ed->menu_bar, TCMD_VIEW_WRAP_TOGGLE, ed->wrap_text);
 
     int h3 = app_menu_add_header(&ed->menu_bar, "仮身(O)", 72);
     app_menu_add_item(&ed->menu_bar, h3, "仮身を挿入 (Insert Fusen)", "", TCMD_VOBJ_INSERT, TRUE);
@@ -1369,6 +1425,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
 
     if (evt->type == EV_BUT_UP) {
         s_sb_dragging = FALSE;
+        s_hsb_dragging = FALSE;
         return;
     }
 
@@ -1376,8 +1433,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
         H rel_x = evt->pos.x - wnd->client.left;
         H rel_y = evt->pos.y - wnd->client.top;
 
-        /* Thumb drag: proportional to pointer travel, active only when the
-         * thumb rect was grabbed on button-down. */
+        /* Vertical thumb drag */
         if (s_sb_dragging) {
             H dev_w = wnd->dev ? wnd->dev->width : (H)1;
             H dev_h = wnd->dev ? wnd->dev->height : (H)1;
@@ -1389,6 +1445,24 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
             if (travel > 0 && max_off > 0) {
                 int dy = (int)rel_y - (int)s_sb_drag_y;
                 te_set_scroll_clamped(ed, s_sb_drag_off + (dy * max_off) / travel, dev_h);
+                inval_wnd(wnd);
+            }
+            return;
+        }
+
+        /* Horizontal thumb drag */
+        if (s_hsb_dragging && !ed->wrap_text) {
+            H dev_w = wnd->dev ? wnd->dev->width : (H)1;
+            H dev_h = wnd->dev ? wnd->dev->height : (H)1;
+            te_hsbar_t hsb;
+            te_hsbar_layout(ed, dev_w, dev_h, &hsb);
+            int page_w = dev_w - TE_SB_W;
+            int max_scroll = ed->max_content_width - page_w;
+            if (max_scroll < 0) max_scroll = 0;
+            int travel = (hsb.track_right - hsb.track_left) - (hsb.thumb.right - hsb.thumb.left);
+            if (travel > 0 && max_scroll > 0) {
+                int dx = (int)rel_x - (int)s_hsb_drag_x;
+                teditor_set_hscroll_clamped(ed, s_hsb_drag_off + (dx * max_scroll) / travel, dev_w);
                 inval_wnd(wnd);
             }
             return;
@@ -1445,7 +1519,7 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
             return;
         }
 
-        /* Windows 95 scrollbar hit-test: arrow steps, track pages, thumb drags. */
+        /* Windows 95 vertical scrollbar hit-test: arrow steps, track pages, thumb drags. */
         H sb_w = wnd->dev ? wnd->dev->width : 560;
         H sb_h = wnd->dev ? wnd->dev->height : 360;
         te_sbar_t sb;
@@ -1472,6 +1546,32 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
             return;
         }
 
+        /* Windows 95 horizontal scrollbar hit-test (unwrapped mode only) */
+        if (!ed->wrap_text) {
+            te_hsbar_t hsb;
+            te_hsbar_layout(ed, sb_w, sb_h, &hsb);
+            if (rel_x >= hsb.bar.left && rel_x < hsb.bar.right &&
+                rel_y >= hsb.bar.top && rel_y < hsb.bar.bottom) {
+                if (hsb.overflow) {
+                    int page = (sb_w - TE_SB_W) / 2;
+                    if (page < 32) page = 32;
+                    if (rel_x >= hsb.left_btn.left && rel_x < hsb.left_btn.right) {
+                        teditor_set_hscroll_clamped(ed, ed->scroll_x - 32, sb_w);
+                    } else if (rel_x >= hsb.right_btn.left && rel_x < hsb.right_btn.right) {
+                        teditor_set_hscroll_clamped(ed, ed->scroll_x + 32, sb_w);
+                    } else if (rel_x < hsb.thumb.left || rel_x >= hsb.thumb.right) {
+                        teditor_set_hscroll_clamped(ed, ed->scroll_x + ((rel_x < hsb.thumb.left) ? -page : page), sb_w);
+                    } else {
+                        s_hsb_dragging = TRUE;
+                        s_hsb_drag_x = rel_x;
+                        s_hsb_drag_off = ed->scroll_x;
+                    }
+                    inval_wnd(wnd);
+                }
+                return;
+            }
+        }
+
         /* Status Bar Footer click -> Toggle JP / EN mode */
         H client_h = wnd->dev ? wnd->dev->height : (wnd->bounds.bottom - wnd->bounds.top - 26);
         if (rel_y >= client_h - 22) {
@@ -1481,12 +1581,15 @@ static void handle_t_editor_event(WND *wnd, const EVT *evt) {
         }
 
         /* Editor client canvas click -> Move cursor (y >= 24) */
-        if (rel_y >= 24) {
+        int canvas_bot = sb_h - 22 - (ed->wrap_text ? 0 : TE_HSB_H);
+        if (rel_y >= 24 && rel_y < canvas_bot && rel_x < sb_w - TE_SB_W) {
             int click_r = (rel_y - 24) / 18 + ed->scroll_row;
             if (click_r >= 0 && click_r < ed->total_lines) {
                 ed->cursor_row = click_r;
-                int text_x_offset = ed->show_line_nums ? 36 : 10;
-                ed->cursor_col = teditor_find_byte_offset_from_x(ed->lines[click_r], rel_x - (text_x_offset - 36));
+                int text_x_offset = ed->show_line_nums ? 36 : 12;
+                int click_x = rel_x - text_x_offset + (ed->wrap_text ? 0 : ed->scroll_x);
+                if (click_x < 0) click_x = 0;
+                ed->cursor_col = teditor_find_byte_offset_from_x(ed->lines[click_r], click_x);
                 ed->sel_active = FALSE;
                 ed->sel_anchor_r = ed->cursor_row;
                 ed->sel_anchor_c = ed->cursor_col;
@@ -1839,10 +1942,15 @@ static void paint_t_editor(WND *wnd, GDEV *dev) {
         }
 
         /* Line content (unwrapped mode) */
+        RECT orig_clip = dev->clip;
+        int text_bot = dev->height - 22 - (ed->wrap_text ? 0 : TE_HSB_H);
+        RECT text_clip = { text_x_start, 24, dev->width - TE_SB_W, text_bot };
+        set_clip(dev, &text_clip);
+
         const char *p = line;
         int byte_idx = 0;
-        int x = text_x_start;
-        while (*p && x < dev->width - 16) {
+        int x = text_x_start - ed->scroll_x;
+        while (*p && x < dev->width - TE_SB_W) {
             int consumed = 0;
             (void)utf8_to_tc(p, &consumed);
             int step = (consumed > 0 ? consumed : 1);
@@ -1867,9 +1975,11 @@ static void paint_t_editor(WND *wnd, GDEV *dev) {
             glyph[step] = '\0';
 
             int gw = tc_calc_string_width(glyph, step);
-            RECT gr = { x, y, x + gw, y + 16 };
-            if (in_sel) fill_rec(dev, &gr, bg);
-            drw_tc_string(dev, x, y, glyph, fg, bg);
+            if (x + gw > text_x_start && x < dev->width - TE_SB_W) {
+                RECT gr = { x, y, x + gw, y + 16 };
+                if (in_sel) fill_rec(dev, &gr, bg);
+                drw_tc_string(dev, x, y, glyph, fg, bg);
+            }
 
             x += gw;
             p += step;
@@ -1878,8 +1988,8 @@ static void paint_t_editor(WND *wnd, GDEV *dev) {
 
         /* Draw Blinking/Solid Cursor and Inline TIP Composition */
         if (r_idx == ed->cursor_row) {
-            int cur_x = text_x_start + tc_calc_string_width(line, ed->cursor_col);
-            if (cur_x >= text_x_start && cur_x < dev->width - 10) {
+            int cur_x = text_x_start - ed->scroll_x + tc_calc_string_width(line, ed->cursor_col);
+            if (cur_x >= text_x_start && cur_x < dev->width - TE_SB_W) {
                 if (wnd->focused && tip_get_state() != TIP_STATE_IDLE) {
                     char comp_buf[128];
                     tip_get_converted_text(comp_buf, sizeof(comp_buf));
@@ -1892,11 +2002,17 @@ static void paint_t_editor(WND *wnd, GDEV *dev) {
                 }
             }
         }
+        set_clip(dev, &orig_clip);
         y += 18;
     }
 
     /* Windows 95 vertical scrollbar in the right gutter. */
     te_draw_scrollbar(ed, dev);
+
+    /* Windows 95 horizontal scrollbar in unwrapped mode */
+    if (!ed->wrap_text) {
+        te_draw_hscrollbar(ed, dev);
+    }
 
     /* Embedded Virtual Body Icon inside Document */
     if (ed->has_vobj) {

@@ -1697,3 +1697,147 @@ BOOL wnd_mgr_handle_event(const EVT *ev) {
 
     return FALSE;
 }
+
+/* ── Common BTRON Word-Wrap & Kinsoku-shori Typography Engine ───── */
+
+BOOL btron_is_cjk_no_break_before(TC code) {
+    if ((code >> 8) == 0x21) {
+        UB low = (UB)(code & 0xFF);
+        if (low == 0x22 || low == 0x23 || low == 0x24 || low == 0x25 ||
+            low == 0x27 || low == 0x29 || low == 0x2B || low == 0x2D ||
+            low == 0x2F || low == 0x31 || low == 0x33 || low == 0x35 ||
+            low == 0x37 || low == 0x39 || low == 0x3B || low == 0x3D ||
+            low == 0x3F || low == 0x41 || low == 0x43 || low == 0x47 ||
+            low == 0x49 || low == 0x4B || low == 0x4D || low == 0x4F ||
+            low == 0x51 || low == 0x53 || low == 0x55 || low == 0x57 ||
+            low == 0x59 || low == 0x5B) {
+            return TRUE; /* 、 。 々 〆 〇 … etc. */
+        }
+        if (low == 0x47 || low == 0x49 || low == 0x4B || low == 0x4D ||
+            low == 0x4F || low == 0x51 || low == 0x53 || low == 0x55) {
+            return TRUE; /* ） 〕 〉 》 ］ ｝ 」 』 】 */
+        }
+    }
+    return FALSE;
+}
+
+int btron_wrap_text(const char *utf8_text, int max_w, btron_wrap_line_cb cb, void *user_data) {
+    if (!utf8_text) return 0;
+    if (utf8_text[0] == '\0') {
+        if (cb) cb("", 0, 0, 0, user_data);
+        return 1;
+    }
+    if (max_w < 40) max_w = 40;
+
+    const char *p = utf8_text;
+    const char *line_start = p;
+    const char *last_break = NULL;
+    H last_break_w = 0;
+    H cur_line_w = 0;
+    TC prev_code = 0;
+    int line_idx = 0;
+
+    while (*p) {
+        if (*p == '\n' || *p == '\r') {
+            /* Explicit newline */
+            if (cb) {
+                char buf[2048];
+                int len = (int)(p - line_start);
+                if (len > (int)sizeof(buf) - 1) len = (int)sizeof(buf) - 1;
+                while (len > 0 && ((unsigned char)line_start[len] & 0xC0) == 0x80) len--;
+                memcpy(buf, line_start, len);
+                buf[len] = '\0';
+                cb(buf, len, cur_line_w, line_idx, user_data);
+            }
+            line_idx++;
+            p++;
+            if (*p == '\n' && *(p - 1) == '\r') p++;
+            line_start = p;
+            last_break = NULL;
+            last_break_w = 0;
+            cur_line_w = 0;
+            prev_code = 0;
+            continue;
+        }
+
+        int consumed = 0;
+        TC code = utf8_to_tc(p, &consumed);
+        int step = (consumed > 0) ? consumed : 1;
+        H adv = tc_get_char_advance(code, prev_code);
+
+        /* Determine if this position is a valid break candidate */
+        if (*p == ' ') {
+            last_break = p;
+            last_break_w = cur_line_w;
+        } else if (*p == '-' || *p == '/') {
+            last_break = p + 1;
+            last_break_w = cur_line_w + adv;
+        } else if ((code >> 8) == 0x9F && ((code & 0xFF) == 0x0B || (code & 0xFF) == 0x0C)) {
+            /* Tibetan Tsheg: break after tsheg */
+            last_break = p + step;
+            last_break_w = cur_line_w + adv;
+        } else if ((code >> 8) == 0x6F && (code & 0xFF) == 0x0B) {
+            last_break = p + step;
+            last_break_w = cur_line_w + adv;
+        } else if (adv == 16) {
+            /* CJK character: break before this character if allowed */
+            if (prev_code != 0 && !btron_is_cjk_no_break_before(code)) {
+                last_break = p;
+                last_break_w = cur_line_w;
+            }
+        }
+
+        /* Check if adding this character exceeds line width */
+        if (cur_line_w + adv > max_w && cur_line_w > 0) {
+            const char *break_pt = last_break;
+            H break_w = last_break_w;
+
+            if (!break_pt || break_pt <= line_start) {
+                break_pt = p;
+                break_w = cur_line_w;
+            }
+
+            if (cb) {
+                char buf[2048];
+                int len = (int)(break_pt - line_start);
+                if (len > (int)sizeof(buf) - 1) len = (int)sizeof(buf) - 1;
+                while (len > 0 && ((unsigned char)line_start[len] & 0xC0) == 0x80) len--;
+                memcpy(buf, line_start, len);
+                buf[len] = '\0';
+                cb(buf, len, break_w, line_idx, user_data);
+            }
+            line_idx++;
+
+            p = break_pt;
+            while (*p == ' ') p++;
+            line_start = p;
+            last_break = NULL;
+            last_break_w = 0;
+            cur_line_w = 0;
+            prev_code = 0;
+            continue;
+        }
+
+        cur_line_w += adv;
+        if (adv > 0 || (code >> 8) != 0x9F) {
+            prev_code = code;
+        }
+        p += step;
+    }
+
+    /* Emit remaining tail of line */
+    if (p > line_start || line_idx == 0) {
+        if (cb) {
+            char buf[2048];
+            int len = (int)(p - line_start);
+            if (len > (int)sizeof(buf) - 1) len = (int)sizeof(buf) - 1;
+            while (len > 0 && ((unsigned char)line_start[len] & 0xC0) == 0x80) len--;
+            memcpy(buf, line_start, len);
+            buf[len] = '\0';
+            cb(buf, len, cur_line_w, line_idx, user_data);
+        }
+        line_idx++;
+    }
+
+    return line_idx;
+}
