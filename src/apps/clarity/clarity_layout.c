@@ -74,22 +74,26 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
     if (!dev || !doc) return;
 
     int zoom = doc->zoom_pct > 0 ? doc->zoom_pct : 100;
-    int pw = clarity_mm_to_px(doc->page_w_mm, zoom);
-    int ph = clarity_mm_to_px(doc->page_h_mm, zoom);
-    int p_gap = (CLARITY_PAGE_GAP_PX * zoom) / 100;
-    if (p_gap < 24) p_gap = 24;
+    int unzoomed_pw = (doc->page_w_mm * CLARITY_DPI * 10) / 254;
+    int unzoomed_ph = (doc->page_h_mm * CLARITY_DPI * 10) / 254;
+    int unzoomed_gap = CLARITY_PAGE_GAP_PX;
 
+    int pw = (unzoomed_pw * zoom) / 100;
     int pages = doc->page_count > 0 ? doc->page_count : 1;
     RECT vclip = dev->clip;
 
     for (int p = 0; p < pages; p++) {
         int page_ox = ox;
-        int page_oy = oy + p * (ph + p_gap);
+        int unzoomed_page_y = p * (unzoomed_ph + unzoomed_gap);
+        int page_oy = oy + (unzoomed_page_y * zoom) / 100;
+        int page_bottom = oy + ((unzoomed_page_y + unzoomed_ph) * zoom) / 100;
+        int next_page_oy = oy + ((unzoomed_page_y + unzoomed_ph + unzoomed_gap) * zoom) / 100;
+        int ph = page_bottom - page_oy;
 
         /* Viewport culling: skip sheets entirely outside the viewport */
         int page_top = (p == 0) ? (page_oy - 28) : (page_oy - 4);
-        int page_bottom = (p < pages - 1) ? (page_oy + ph + p_gap) : (page_oy + ph + 8);
-        if (page_bottom < vclip.top || page_top > vclip.bottom) {
+        int page_cull_bottom = (p < pages - 1) ? next_page_oy : (page_bottom + 8);
+        if (page_cull_bottom < vclip.top || page_top > vclip.bottom) {
             continue;
         }
 
@@ -98,7 +102,7 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
         shadow.left   = (H)(page_ox + 4);
         shadow.top    = (H)(page_oy + 4);
         shadow.right  = (H)(page_ox + pw + 6);
-        shadow.bottom = (H)(page_oy + ph + 6);
+        shadow.bottom = (H)(page_bottom + 6);
         fill_rec(dev, &shadow, COLOR_GRAY);
 
         /* 2. Crisp White Paper Sheet */
@@ -106,7 +110,7 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
         page.left   = (H)page_ox;
         page.top    = (H)page_oy;
         page.right  = (H)(page_ox + pw);
-        page.bottom = (H)(page_oy + ph);
+        page.bottom = (H)page_bottom;
         fill_rec(dev, &page, COLOR_WHITE);
 
         /* Page outer border */
@@ -161,7 +165,7 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
             inner.left   = (H)(page_ox + 6);
             inner.top    = (H)(page_oy + 6);
             inner.right  = (H)(page_ox + pw - 6);
-            inner.bottom = (H)(page_oy + ph - 6);
+            inner.bottom = (H)(page_bottom - 6);
             set_col(dev, COLOR_RED, COLOR_WHITE);
             drw_rec(dev, &inner);
             set_col(dev, COLOR_DKGRAY, COLOR_WHITE);
@@ -170,7 +174,7 @@ void clarity_draw_page(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
 
         /* 7. Professional Folio Separator (between consecutive sheets) */
         if (p < pages - 1) {
-            int sep_y = page_oy + ph + p_gap / 2;
+            int sep_y = (page_bottom + next_page_oy) / 2;
             int sep_w = pw > 200 ? pw : 200;
 
             /* Clean, professional DTP folio indicator (InDesign / QuarkXPress style) */

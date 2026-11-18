@@ -25,13 +25,13 @@
 #include <btron/pmc.h>
 #include <btron/tip.h>
 #include <btron/t_editor.h>
-#include <device/virtio.h>
+#include <drivers/virtio/virtio.h>
 /* The desk's own private header: it declares the seven window openers, the
  * shared painters' helpers and orch_inval_all(), and it pulls in
  * <apps/orchestra.h> -> <media/gst_rt.h> for OrchView.  Declaring the openers
  * again here would be a second copy of a signature that orchestra_*.c already
  * owns, which is how the desk drifts. */
-#include "../media/orchestra_desk.h"
+#include <orchestra_desk.h>
 
 /* Forward declarations for Settings applet window openers */
 extern WND* open_control_panel_window(void);
@@ -242,6 +242,10 @@ typedef struct {
 
 static void reset_isolation_state(GDEV *dev) {
     if (!dev || !dev->pixels) return;
+    WND *w;
+    while ((w = get_wnd_list()) != NULL) {
+        cls_wnd(w);
+    }
     init_wnd_mgr(dev);
     memset((void*)dev->pixels, 0, dev->width * dev->height * sizeof(COLOR));
 }
@@ -761,12 +765,24 @@ int main(int argc, char **argv) {
             dump_window_rect(dev, w_abt_ds, "/tmp/btron_raw_screens/DriveSetup_About.raw");
         }
 
-        /* Clarity DTP Application Window (Isolated) */
+        /* Clarity DTP Application Window with Left TOC Window (Opened Osal Book) */
         reset_isolation_state(dev);
+        extern WND* clarity_get_toc_wnd(void);
         WND *w_clarity = open_clarity_window();
         if (w_clarity) {
             redraw_all_windows();
-            dump_window_rect(dev, w_clarity, "/tmp/btron_raw_screens/Clarity_Application.raw");
+            WND *w_toc = clarity_get_toc_wnd();
+            if (w_toc) {
+                int x0 = w_toc->bounds.left - 4;
+                int y0 = (w_toc->bounds.top < w_clarity->bounds.top ? w_toc->bounds.top : w_clarity->bounds.top) - 30;
+                int x1 = w_clarity->bounds.right + 6;
+                int y1 = (w_toc->bounds.bottom > w_clarity->bounds.bottom ? w_toc->bounds.bottom : w_clarity->bounds.bottom) + 6;
+                if (x0 < 0) x0 = 0;
+                if (y0 < 0) y0 = 0;
+                dump_raw_region(dev, x0, y0, x1 - x0, y1 - y0, "Clarity with Left TOC Window", "/tmp/btron_raw_screens/Clarity_Application.raw");
+            } else {
+                dump_window_rect(dev, w_clarity, "/tmp/btron_raw_screens/Clarity_Application.raw");
+            }
         }
 
         /* Paint Image Viewer Application Window (Isolated, live decoded image) */
@@ -948,6 +964,18 @@ int main(int argc, char **argv) {
             global_menu_render_overlay(dev);
         }
         dump_raw_region(dev, 0, 0, 1280, 800, "Full Desktop with Opened BTRON Menu", "/tmp/btron_raw_screens/Desktop_Full.raw");
+    }
+
+    /* 5b. Full Desktop with Opened Osal Book in Clarity and Left TOC Window */
+    {
+        reset_isolation_state(dev);
+        tracker_init();
+        global_menu_init();
+        open_clarity_window();
+        render_desktop_background(dev);
+        redraw_all_windows();
+        render_system_panel(dev);
+        dump_raw_region(dev, 0, 0, 1280, 800, "Full Desktop with Clarity Osal Book & TOC", "/tmp/btron_raw_screens/Desktop_Clarity_Osal.raw");
     }
 
     /* 6. Language Page — TIP Dictionary Candidate Window Showcase */

@@ -5,6 +5,7 @@
  */
 
 #include "clarity_doc.h"
+#include "clarity_book.h"
 #include <btron/tad.h>
 #include <btron/vobj.h>
 #include <btron/error.h>
@@ -314,7 +315,7 @@ ER clarity_export_deserialize(ClarityDoc *doc, const UB *buf, UW len)
                     UW off = pos + 5;
                     if (seg_len >= 6 && off < pos + seg_len) {
                         UB p_len = buf[off++];
-                        if (p_len > 0 && p_len < sizeof(cur_frame->img_path) && off + p_len <= pos + seg_len) {
+                        if (p_len > 0 && (size_t)p_len < sizeof(cur_frame->img_path) - 1 && off + p_len <= pos + seg_len) {
                             memcpy(cur_frame->img_path, &buf[off], p_len);
                             cur_frame->img_path[p_len] = '\0';
                             off += p_len;
@@ -531,6 +532,11 @@ ER clarity_export_load_file(ClarityDoc *doc, const char *filepath)
     try_paths[n_paths++] = ceremony_path;
 
     for (int p = 0; p < n_paths; p++) {
+        ClarityFileIntegrity fi;
+        if (clarity_check_file_integrity(try_paths[p], &fi) != 0 || !fi.is_valid) {
+            continue;
+        }
+
         FILE *fp = fopen(try_paths[p], "rb");
         if (!fp) continue;
 

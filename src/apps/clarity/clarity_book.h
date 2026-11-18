@@ -16,11 +16,19 @@ extern "C" {
 
 /* Canonical Tibetan Pecha Sizes */
 typedef enum {
-    PECHA_SIZE_KANGYUR = 0,  /* Kangyur / Tengyur: 560 × 110 mm */
-    PECHA_SIZE_RINCHEN = 1,  /* Rinchen Terdzö:   650 × 140 mm */
-    PECHA_SIZE_DERGE   = 2,  /* Derge Woodblock:  700 × 180 mm */
-    PECHA_SIZE_POCKET  = 3   /* Pocket Dharma:    320 × 85 mm  */
+    PECHA_SIZE_KANGYUR     = 0,  /* Kangyur / Tengyur:    560 × 110 mm (12-13 rows) */
+    PECHA_SIZE_RINCHEN     = 1,  /* Rinchen Terdzö:      650 × 140 mm */
+    PECHA_SIZE_DERGE       = 2,  /* Derge Wide Woodblock: 720 × 200 mm (25 rows)    */
+    PECHA_SIZE_POCKET      = 3,  /* Pocket Dharma:       320 × 85 mm  */
+    PECHA_SIZE_DERGE_WIDE  = 4   /* Derge Wide Woodblock: 720 × 200 mm (25 rows)    */
 } ClarityPechaSize;
+
+typedef struct {
+    size_t file_size;
+    UW     checksum;             /* Adler-32 checksum */
+    BOOL   is_valid;
+    char   err_msg[64];
+} ClarityFileIntegrity;
 
 #define CLARITY_MAX_CHAPTERS 64
 #define CLARITY_MAX_CLASSES   8
@@ -83,6 +91,9 @@ ClarityBook* clarity_get_book(void);
 
 /* TAD Book Export */
 int  clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const char *single_tad_path);
+
+/* Robust file integrity verification */
+int  clarity_check_file_integrity(const char *path, ClarityFileIntegrity *out_info);
 
 #ifdef __cplusplus
 }

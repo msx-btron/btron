@@ -27,6 +27,7 @@ extern WND* open_t_editor_window(void);
 #include <btron/libc_shim.h>
 #if BTRON_HOSTED
 #include <sys/time.h>
+#include <sys/stat.h>
 #endif
 
 #if defined(__APPLE__) || defined(__linux__)
@@ -381,15 +382,16 @@ static void get_viewport_and_content_bounds(int *out_vw, int *out_vh,
     if (vh < 100) vh = 100;
 
     int zoom = g_doc.zoom_pct > 0 ? g_doc.zoom_pct : 100;
-    int pw = clarity_mm_to_px(g_doc.page_w_mm, zoom);
-    int ph = clarity_mm_to_px(g_doc.page_h_mm, zoom);
-    int p_gap = (CLARITY_PAGE_GAP_PX * zoom) / 100;
-    if (p_gap < 24) p_gap = 24;
+    int unzoomed_pw = (g_doc.page_w_mm * CLARITY_DPI * 10) / 254;
+    int unzoomed_ph = (g_doc.page_h_mm * CLARITY_DPI * 10) / 254;
+    int unzoomed_gap = CLARITY_PAGE_GAP_PX;
 
+    int pw = (unzoomed_pw * zoom) / 100;
     int pages = g_doc.page_count > 0 ? g_doc.page_count : 1;
 
     int cw = pw + CLARITY_CANVAS_MARGIN_PX * 2;
-    int ch = ph * pages + p_gap * (pages - 1) + CLARITY_CANVAS_MARGIN_PX * 2;
+    int total_unzoomed_h = unzoomed_ph * pages + unzoomed_gap * (pages - 1);
+    int ch = (total_unzoomed_h * zoom) / 100 + CLARITY_CANVAS_MARGIN_PX * 2;
 
     int max_x = (cw > vw) ? (cw - vw) : 0;
     int max_y = (ch > vh) ? (ch - vh) : 0;
@@ -745,16 +747,18 @@ static void open_clarity_toc_window(void)
     }
 
     /* Position TOC window to the left of Clarity window */
-    int toc_x = 10, toc_y = 60;
+    int toc_x = 10, toc_y = 36;
+    int toc_h = 620;
     if (g_wnd) {
-        toc_x = g_wnd->bounds.left - 184;
+        toc_x = g_wnd->bounds.left - 186;
         toc_y = g_wnd->bounds.top;
-        if (toc_x < 2) toc_x = 2;
+        toc_h = g_wnd->bounds.bottom - g_wnd->bounds.top;
+        if (toc_x < 4) toc_x = 4;
     }
 
     g_toc_scroll = 0;
     g_toc_wnd = opn_wnd("目録 – TOC",
-                        toc_x, toc_y, 180, 500,
+                        toc_x, toc_y, 180, toc_h,
                         WND_ATTR_TITLE | WND_ATTR_CLOSE |
                         WND_ATTR_BORDER | WND_ATTR_RESIZE);
     if (g_toc_wnd) {
@@ -764,6 +768,11 @@ static void open_clarity_toc_window(void)
         top_wnd(g_toc_wnd);
         inval_wnd(g_toc_wnd);
     }
+}
+
+WND* clarity_get_toc_wnd(void)
+{
+    return g_toc_wnd;
 }
 
 /* ------------------------------------------------------------------ */
@@ -875,11 +884,12 @@ static void handle_cmd(int cmd)
             g_doc.dirty = FALSE;
             break;
         case CMD_FILE_OPEN:
-            if (clarity_export_load_file(&g_doc, CLARITY_SAMPLE_PATH) != E_OK || g_doc.frame_count == 0) {
-                clarity_init_sample_page(&g_doc);
-            }
-            g_doc.selected_frame = 0;
-            g_doc.dirty = FALSE;
+            g_dlg.type = CLARITY_DLG_OPEN_BOOK;
+            if (!g_dlg.path[0]) strcpy(g_dlg.path, "./assets/osal");
+            g_dlg.path_len = (int)strlen(g_dlg.path);
+            g_dlg.pecha_size = g_doc.pecha_size;
+            g_dlg.auto_tibetan = TRUE;
+            g_dlg.focus_field = 0;
             break;
         case CMD_FILE_SAVE:
             clarity_export_save(&g_doc, "Clarity-Sample");
@@ -1230,15 +1240,19 @@ static void clarity_event(WND *wnd, const EVT *evt)
         if (g_dlg.type != CLARITY_DLG_NONE) {
             if (rel_x >= g_dlg.btn_ok.left && rel_x <= g_dlg.btn_ok.right &&
                 rel_y >= g_dlg.btn_ok.top && rel_y <= g_dlg.btn_ok.bottom) {
-                ClarityBook *bk = clarity_get_book();
-                clarity_book_open_dir(bk, g_dlg.path[0] ? g_dlg.path : "./assets/osal",
-                                      (ClarityPechaSize)g_dlg.pecha_size, g_dlg.auto_tibetan);
-                clarity_book_load_chapter_into_doc(bk, 0, &g_doc);
-                g_dlg.type = CLARITY_DLG_NONE;
-                g_scroll_y = 0;
-                open_clarity_toc_window();
-                inval_wnd(wnd);
-                return;
+                const char *tgt_path = g_dlg.path[0] ? g_dlg.path : "./assets/osal";
+                ClarityFileIntegrity fi;
+                if (clarity_check_file_integrity(tgt_path, &fi) == 0 && fi.is_valid) {
+                    ClarityBook *bk = clarity_get_book();
+                    clarity_book_open_dir(bk, tgt_path,
+                                          (ClarityPechaSize)g_dlg.pecha_size, g_dlg.auto_tibetan);
+                    clarity_book_load_chapter_into_doc(bk, 0, &g_doc);
+                    g_dlg.type = CLARITY_DLG_NONE;
+                    g_scroll_y = 0;
+                    open_clarity_toc_window();
+                    inval_wnd(wnd);
+                    return;
+                }
             }
             if (rel_x >= g_dlg.btn_cancel.left && rel_x <= g_dlg.btn_cancel.right &&
                 rel_y >= g_dlg.btn_cancel.top && rel_y <= g_dlg.btn_cancel.bottom) {
@@ -1507,15 +1521,19 @@ static void clarity_event(WND *wnd, const EVT *evt)
                 return;
             }
             if (key == BTRON_KEY_RETURN || key == BTRON_KEY_KP_ENTER || key == '\r' || key == '\n') {
-                ClarityBook *bk = clarity_get_book();
-                clarity_book_open_dir(bk, g_dlg.path[0] ? g_dlg.path : "./assets/osal",
-                                      (ClarityPechaSize)g_dlg.pecha_size, g_dlg.auto_tibetan);
-                clarity_book_load_chapter_into_doc(bk, 0, &g_doc);
-                g_dlg.type = CLARITY_DLG_NONE;
-                g_scroll_y = 0;
-                open_clarity_toc_window();
-                inval_wnd(wnd);
-                return;
+                const char *tgt_path = g_dlg.path[0] ? g_dlg.path : "./assets/osal";
+                ClarityFileIntegrity fi;
+                if (clarity_check_file_integrity(tgt_path, &fi) == 0 && fi.is_valid) {
+                    ClarityBook *bk = clarity_get_book();
+                    clarity_book_open_dir(bk, tgt_path,
+                                          (ClarityPechaSize)g_dlg.pecha_size, g_dlg.auto_tibetan);
+                    clarity_book_load_chapter_into_doc(bk, 0, &g_doc);
+                    g_dlg.type = CLARITY_DLG_NONE;
+                    g_scroll_y = 0;
+                    open_clarity_toc_window();
+                    inval_wnd(wnd);
+                    return;
+                }
             }
             if (key == '\t' || key == BTRON_KEY_TAB) {
                 g_dlg.focus_field = (g_dlg.focus_field + 1) % 5;
@@ -1821,18 +1839,46 @@ WND* open_clarity_window(void)
     }
     g_wnd = NULL;
 
-    doc_new(FMT_A4);
+    /* Make Osal Book opened by default in Clarity if available */
+    BOOL has_osal = FALSE;
+    const char *osal_dir = "./assets/osal";
+#if BTRON_HOSTED
+    struct stat st_osal;
+    if (stat(osal_dir, &st_osal) == 0 && S_ISDIR(st_osal.st_mode)) {
+        has_osal = TRUE;
+    } else if (stat("assets/osal", &st_osal) == 0 && S_ISDIR(st_osal.st_mode)) {
+        osal_dir = "assets/osal";
+        has_osal = TRUE;
+    }
+#endif
 
-    /* Try loading saved sample file from /SYS/Clarity-Sample.TAD */
-    if (clarity_export_load_file(&g_doc, CLARITY_SAMPLE_PATH) == E_OK && g_doc.frame_count > 0) {
-        g_doc.selected_frame = 0;
+    if (has_osal) {
+        ClarityBook *bk = clarity_get_book();
+        clarity_book_open_dir(bk, osal_dir, PECHA_SIZE_DERGE, TRUE);
+        if (bk->is_loaded && bk->chapter_count > 0) {
+            clarity_book_load_chapter_into_doc(bk, 0, &g_doc);
+        } else {
+            doc_new(FMT_A4);
+            clarity_init_sample_page(&g_doc);
+        }
     } else {
-        clarity_init_sample_page(&g_doc);
-        clarity_export_save_file(&g_doc, CLARITY_SAMPLE_PATH);
+        doc_new(FMT_A4);
+        /* Try loading saved sample file from /SYS/Clarity-Sample.TAD */
+        if (clarity_export_load_file(&g_doc, CLARITY_SAMPLE_PATH) == E_OK && g_doc.frame_count > 0) {
+            g_doc.selected_frame = 0;
+        } else {
+            clarity_init_sample_page(&g_doc);
+            clarity_export_save_file(&g_doc, CLARITY_SAMPLE_PATH);
+        }
     }
 
+    int clr_x = has_osal ? 196 : 40;
+    int clr_y = 36;
+    int clr_w = has_osal ? 820 : 900;
+    int clr_h = 620;
+
     g_wnd = opn_wnd("電子帳票 – Clarity",
-                    40, 60, 900, 620,
+                    clr_x, clr_y, clr_w, clr_h,
                     WND_ATTR_TITLE | WND_ATTR_CLOSE |
                     WND_ATTR_BORDER | WND_ATTR_RESIZE);
     if (!g_wnd) return NULL;
@@ -1847,6 +1893,11 @@ WND* open_clarity_window(void)
 
     top_wnd(g_wnd);
     inval_wnd(g_wnd);
+
+    if (has_osal) {
+        open_clarity_toc_window();
+    }
+
     return g_wnd;
 }
 

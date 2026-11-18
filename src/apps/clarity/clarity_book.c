@@ -84,8 +84,9 @@ void clarity_get_pecha_dimensions(ClarityPechaSize size, int *w_mm, int *h_mm, c
             name = "Rinchen Terdzo (650x140 mm)";
             break;
         case PECHA_SIZE_DERGE:
-            w = 700; h = 180;
-            name = "Derge Woodblock (700x180 mm)";
+        case PECHA_SIZE_DERGE_WIDE:
+            w = 720; h = 200;
+            name = "Derge Wide Woodblock (720x200 mm)";
             break;
         case PECHA_SIZE_POCKET:
             w = 320; h = 85;
@@ -97,6 +98,82 @@ void clarity_get_pecha_dimensions(ClarityPechaSize size, int *w_mm, int *h_mm, c
     if (w_mm) *w_mm = w;
     if (h_mm) *h_mm = h;
     if (name_out) *name_out = name;
+}
+
+/* ── Robust File Integrity Verification ─────────────────────────── */
+
+int clarity_check_file_integrity(const char *path, ClarityFileIntegrity *out_info)
+{
+    if (out_info) {
+        memset(out_info, 0, sizeof(ClarityFileIntegrity));
+        out_info->is_valid = FALSE;
+    }
+    if (!path || !path[0]) {
+        if (out_info) strncpy(out_info->err_msg, "Path is null or empty", 63);
+        return -1;
+    }
+
+#if BTRON_HOSTED
+    struct stat st;
+    if (stat(path, &st) != 0) {
+        if (out_info) strncpy(out_info->err_msg, "File not found", 63);
+        return -1;
+    }
+    if (S_ISDIR(st.st_mode)) {
+        if (out_info) {
+            out_info->file_size = 0;
+            out_info->is_valid = TRUE;
+            strcpy(out_info->err_msg, "Directory");
+        }
+        return 0;
+    }
+    if (st.st_size <= 0) {
+        if (out_info) strncpy(out_info->err_msg, "Empty file (0 bytes)", 63);
+        return -1;
+    }
+    if (st.st_size > 16 * 1024 * 1024) {
+        if (out_info) strncpy(out_info->err_msg, "File exceeds 16MB limit", 63);
+        return -1;
+    }
+
+    FILE *fp = fopen(path, "rb");
+    if (!fp) {
+        if (out_info) strncpy(out_info->err_msg, "Cannot open for reading", 63);
+        return -1;
+    }
+
+    /* Compute Adler-32 checksum while reading */
+    UW a = 1, b = 0;
+    unsigned char buf[4096];
+    size_t total_read = 0;
+    size_t n;
+    while ((n = fread(buf, 1, sizeof(buf), fp)) > 0) {
+        total_read += n;
+        for (size_t i = 0; i < n; i++) {
+            a = (a + buf[i]) % 65521;
+            b = (b + a) % 65521;
+        }
+    }
+    fclose(fp);
+
+    if (total_read != (size_t)st.st_size) {
+        if (out_info) strncpy(out_info->err_msg, "Size mismatch / truncated read", 63);
+        return -1;
+    }
+
+    if (out_info) {
+        out_info->file_size = total_read;
+        out_info->checksum = (b << 16) | a;
+        out_info->is_valid = TRUE;
+        out_info->err_msg[0] = '\0';
+    }
+    return 0;
+#else
+    if (out_info) {
+        out_info->is_valid = TRUE;
+    }
+    return 0;
+#endif
 }
 
 /* ── Wylie Transliteration Helpers ───────────────────────────────── */
@@ -124,6 +201,36 @@ int clarity_wylie_line_to_tibetan(const char *in_line, char *out_line, size_t ma
 
     const char *p = in_line;
     while (*p == ' ' || *p == '\t') p++;
+
+    /* Fast-path 1: Empty line or newline only */
+    if (*p == '\0' || *p == '\n' || *p == '\r') {
+        if (max_out > 1) { out_line[0] = '\n'; out_line[1] = '\0'; return 1; }
+        return 0;
+    }
+
+    /* Fast-path 2: Commentary lines starting with '|' without '(' or '/' */
+    if (*p == '|' && !strchr(p, '(') && !strchr(p, '/')) {
+        size_t len = strlen(in_line);
+        if (len >= max_out) len = max_out - 1;
+        memcpy(out_line, in_line, len);
+        out_line[len] = '\0';
+        if (len > 0 && out_line[len - 1] != '\n' && len + 1 < max_out) {
+            out_line[len] = '\n'; out_line[len + 1] = '\0'; len++;
+        }
+        return (int)len;
+    }
+
+    /* Fast-path 3: Lines containing neither '/', '(', nor ':' cannot match any Wylie rule */
+    if (!strchr(p, '/') && !strchr(p, '(') && !strchr(p, ':')) {
+        size_t len = strlen(in_line);
+        if (len >= max_out) len = max_out - 1;
+        memcpy(out_line, in_line, len);
+        out_line[len] = '\0';
+        if (len > 0 && out_line[len - 1] != '\n' && len + 1 < max_out) {
+            out_line[len] = '\n'; out_line[len + 1] = '\0'; len++;
+        }
+        return (int)len;
+    }
 
     /* 1. Master text / work header starting with @#/_/ or @#/ */
     if (strncmp(p, "@#/_/", 5) == 0 || strncmp(p, "@#/", 3) == 0) {
@@ -730,6 +837,32 @@ ClarityBook* clarity_get_book(void)
     return &s_active_book;
 }
 
+static int estimate_visual_lines(const char *ln, int inner_w)
+{
+    if (!ln || !*ln) return 1;
+    int vlines = 0;
+    const char *p = ln;
+    while (*p) {
+        const char *nl = strchr(p, '\n');
+        size_t seg_len = nl ? (size_t)(nl - p) : strlen(p);
+        int est_px = 0;
+        for (size_t i = 0; i < seg_len; i++) {
+            if ((unsigned char)p[i] >= 0x80) {
+                est_px += 16;
+                while (i + 1 < seg_len && ((unsigned char)p[i + 1] & 0xC0) == 0x80) i++;
+            } else {
+                est_px += 8;
+            }
+        }
+        int cur_lines = (inner_w > 16) ? ((est_px + inner_w - 1) / inner_w) : 1;
+        if (cur_lines < 1) cur_lines = 1;
+        vlines += cur_lines;
+        if (!nl) break;
+        p = nl + 1;
+    }
+    return vlines > 0 ? vlines : 1;
+}
+
 int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, ClarityDoc *doc)
 {
     if (!book || !doc || chapter_idx < 0 || chapter_idx >= book->chapter_count) return -1;
@@ -755,8 +888,19 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     int glyph_lh = 19;  /* GLYPH_H(16) + 3 line spacing */
 
     /* How many lines of body text fit on one Pecha folio */
-    int lines_per_page = (inner_h > glyph_lh) ? (inner_h / glyph_lh) : 8;
-    if (lines_per_page < 4) lines_per_page = 4;
+    int lines_per_page = 13;
+    if (book->pecha_size == PECHA_SIZE_DERGE || (int)book->pecha_size == PECHA_SIZE_DERGE_WIDE) {
+        lines_per_page = 25;
+    } else if (book->pecha_size == PECHA_SIZE_RINCHEN) {
+        lines_per_page = 17;
+    } else if (book->pecha_size == PECHA_SIZE_POCKET) {
+        lines_per_page = 8;
+    } else {
+        lines_per_page = 13; /* Kangyur / Standard Pecha: 12-13 rows */
+    }
+    if (inner_h / glyph_lh < lines_per_page && inner_h / glyph_lh > 3) {
+        lines_per_page = inner_h / glyph_lh;
+    }
 
     /* Accumulate all file lines into heap buffer */
     char  *raw_lines[4096];
@@ -788,7 +932,6 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
 
     /* Page gap in unzoomed pixels (matches clarity_draw_page p_gap at 100%) */
     int p_gap = CLARITY_PAGE_GAP_PX;
-    if (p_gap < 24) p_gap = 24;
 
     /* Distribute lines into pages of CLARITY_MAX_FRAMES max */
     int page_idx = 0;
@@ -802,21 +945,19 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
         page_buf[0] = '\0';
         int lines_on_page = 0;
 
-        while (line_cursor < raw_count && lines_on_page < lines_per_page) {
+        while (line_cursor < raw_count) {
             const char *ln = raw_lines[line_cursor];
-            /* Count newlines in ln to avoid overflowing visual lines */
-            int newlines_here = 0;
-            for (const char *p = ln; *p; p++) {
-                if (*p == '\n') newlines_here++;
+            int vlines_here = estimate_visual_lines(ln, px_w - margin_x * 2);
+            if (lines_on_page > 0 && lines_on_page + vlines_here > lines_per_page) {
+                break; /* Exceeds folio capacity, wrap cleanly to next folio */
             }
-            if (newlines_here == 0) newlines_here = 1;
             if (strlen(page_buf) + strlen(ln) < sizeof(page_buf) - 2) {
                 strcat(page_buf, ln);
-                lines_on_page += newlines_here;
+                lines_on_page += vlines_here;
+                line_cursor++;
             } else {
                 break; /* page_buf full — flush */
             }
-            line_cursor++;
         }
 
         /* Frame Y-origin for this page (each page stacked below previous) */
@@ -1090,7 +1231,38 @@ int clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const 
         fclose(f_toc);
     }
 
-    /* ── B. Generate Individual Chapter TAD Files ─────────────────── */
+    /* ── B & C. Single-Pass Streaming TAD Generation ──────────────── */
+    /* Allocate chapter buffer (4MB) and shog-dril scroll buffer (16MB) */
+    UW buf_ch_cap = 4 * 1024 * 1024;
+    UW buf_shog_cap = 16 * 1024 * 1024;
+    UB *buf_ch = (UB*)malloc(buf_ch_cap);
+    UB *buf_shog = (UB*)malloc(buf_shog_cap);
+    if (!buf_ch || !buf_shog) {
+        if (buf_ch) free(buf_ch);
+        if (buf_shog) free(buf_shog);
+        free(buf);
+        return -1;
+    }
+
+    const char *unified_path = (single_tad_path && single_tad_path[0]) ?
+                                single_tad_path : "tad_bin/osal_shog_dril.tad";
+
+    UW pos_shog = 6;
+    pos_shog = append_page_seg(buf_shog, pos_shog, px_w, px_h, 30);
+    pos_shog = append_font_seg(buf_shog, pos_shog, 0, 1);
+    pos_shog = append_char_seg(buf_shog, pos_shog, 20, 700, 0x002255);
+    pos_shog = append_ruler_seg(buf_shog, pos_shog, 30, 0);
+
+    /* Frontispiece */
+    pos_shog = append_text(buf_shog, pos_shog, "༄༅། །ཀློང་ཆེན་འོད་གསལ་སྙིང་ཐིག ཤོག་དྲིལ་བཞུགས་སོ། །");
+    pos_shog = append_hr_seg(buf_shog, pos_shog, px_w - 60);
+
+    pos_shog = append_char_seg(buf_shog, pos_shog, 12, 400, 0x444444);
+    pos_shog = append_ruler_seg(buf_shog, pos_shog, 20, 0);
+    pos_shog = append_text(buf_shog, pos_shog, "Лонгчен Осал — Повний сувій (Shog-dril Roll Volume)");
+    pos_shog = append_text(buf_shog, pos_shog, "");
+
+    /* Single pass over all chapters: reads each chapter once, transliterates once */
     for (int i = 0; i < book->chapter_count; i++) {
         const ClarityBookChapter *ch = &book->chapters[i];
 
@@ -1101,30 +1273,43 @@ int clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const 
         char ch_path[512];
         snprintf(ch_path, sizeof(ch_path), "%s/%s", target_dir, ch_tad_name);
 
-        pos = 6;
-        pos = append_page_seg(buf, pos, px_w, px_h, 30);
-        pos = append_font_seg(buf, pos, 0, 1);
-        pos = append_char_seg(buf, pos, 16, 700, 0x003366);
-        pos = append_ruler_seg(buf, pos, 26, 0);
+        /* 1. Initialize chapter buffer */
+        UW pos_ch = 6;
+        pos_ch = append_page_seg(buf_ch, pos_ch, px_w, px_h, 30);
+        pos_ch = append_font_seg(buf_ch, pos_ch, 0, 1);
+        pos_ch = append_char_seg(buf_ch, pos_ch, 16, 700, 0x003366);
+        pos_ch = append_ruler_seg(buf_ch, pos_ch, 26, 0);
 
-        /* Chapter Title */
         char ch_title_str[512];
         snprintf(ch_title_str, sizeof(ch_title_str), "༄༅། །%s །%s", ch->tibetan_title, ch->transl_title);
-        pos = append_text(buf, pos, ch_title_str);
-        pos = append_hr_seg(buf, pos, px_w - 60);
+        pos_ch = append_text(buf_ch, pos_ch, ch_title_str);
+        pos_ch = append_hr_seg(buf_ch, pos_ch, px_w - 60);
 
-        /* Back link to TOC */
-        pos = append_vobj_seg(buf, pos, 1000, "⌂ 目録 (TOC / དཀར་ཆག)", "index.tad");
-        pos = append_text(buf, pos, "");
+        pos_ch = append_vobj_seg(buf_ch, pos_ch, 1000, "⌂ 目録 (TOC / དཀར་ཆག)", "index.tad");
+        pos_ch = append_text(buf_ch, pos_ch, "");
 
-        /* Body text */
-        pos = append_char_seg(buf, pos, 11, 400, 0x000000);
-        pos = append_ruler_seg(buf, pos, 18, 0);
+        pos_ch = append_char_seg(buf_ch, pos_ch, 11, 400, 0x000000);
+        pos_ch = append_ruler_seg(buf_ch, pos_ch, 18, 0);
 
+        /* 2. Chapter header in unified roll */
+        if (pos_shog + 8192 < buf_shog_cap) {
+            pos_shog = append_char_seg(buf_shog, pos_shog, 14, 700, 0x882200);
+            pos_shog = append_ruler_seg(buf_shog, pos_shog, 24, 0);
+
+            char ch_sec_hdr[512];
+            snprintf(ch_sec_hdr, sizeof(ch_sec_hdr), "■ ལེའུ %02d. ༄༅། %s — %s", i + 1, ch->tibetan_title, ch->transl_title);
+            pos_shog = append_text(buf_shog, pos_shog, ch_sec_hdr);
+            pos_shog = append_hr_seg(buf_shog, pos_shog, px_w - 60);
+
+            pos_shog = append_char_seg(buf_shog, pos_shog, 11, 400, 0x000000);
+            pos_shog = append_ruler_seg(buf_shog, pos_shog, 18, 0);
+        }
+
+        /* 3. Read chapter once and stream to both buffers */
         FILE *f_src = fopen(ch->file_path, "r");
         if (f_src) {
             char l_buf[4096];
-            while (fgets(l_buf, sizeof(l_buf), f_src) && pos + 8192 < buf_cap) {
+            while (fgets(l_buf, sizeof(l_buf), f_src)) {
                 char conv_line[8192];
                 if (book->auto_tibetan) {
                     clarity_wylie_line_to_tibetan(l_buf, conv_line, sizeof(conv_line));
@@ -1132,88 +1317,49 @@ int clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const 
                     strncpy(conv_line, l_buf, sizeof(conv_line) - 1);
                     conv_line[sizeof(conv_line) - 1] = '\0';
                 }
-                pos = append_text(buf, pos, conv_line);
+                if (pos_ch + 8192 < buf_ch_cap) {
+                    pos_ch = append_text(buf_ch, pos_ch, conv_line);
+                }
+                if (pos_shog + 8192 < buf_shog_cap) {
+                    pos_shog = append_text(buf_shog, pos_shog, conv_line);
+                }
             }
             fclose(f_src);
         }
 
-        /* Footer link */
-        pos = append_text(buf, pos, "");
-        pos = append_hr_seg(buf, pos, px_w - 60);
-        pos = append_vobj_seg(buf, pos, 1000, "⌂ 目録に戻る (Return to TOC)", "index.tad");
+        /* 4. Finalize and write chapter TAD */
+        pos_ch = append_text(buf_ch, pos_ch, "");
+        pos_ch = append_hr_seg(buf_ch, pos_ch, px_w - 60);
+        pos_ch = append_vobj_seg(buf_ch, pos_ch, 1000, "⌂ 目録に戻る (Return to TOC)", "index.tad");
 
-        payload_len = pos - 6;
-        buf[0] = 0x00; buf[1] = 0x01;
-        tad_write_u32(&buf[2], payload_len);
+        UW ch_payload_len = pos_ch - 6;
+        buf_ch[0] = 0x00; buf_ch[1] = 0x01;
+        tad_write_u32(&buf_ch[2], ch_payload_len);
 
         FILE *f_ch = fopen(ch_path, "wb");
         if (f_ch) {
-            fwrite(buf, 1, pos, f_ch);
+            fwrite(buf_ch, 1, pos_ch, f_ch);
             fclose(f_ch);
         }
-    }
 
-    /* ── C. Generate Unified Master Scroll Volume (shog.dril.tad) ─── */
-    const char *unified_path = (single_tad_path && single_tad_path[0]) ?
-                                single_tad_path : "tad_bin/osal_shog_dril.tad";
-
-    pos = 6;
-    pos = append_page_seg(buf, pos, px_w, px_h, 30);
-    pos = append_font_seg(buf, pos, 0, 1);
-    pos = append_char_seg(buf, pos, 20, 700, 0x002255);
-    pos = append_ruler_seg(buf, pos, 30, 0);
-
-    /* Frontispiece */
-    pos = append_text(buf, pos, "༄༅། །ཀློང་ཆེན་འོད་གསལ་སྙིང་ཐིག ཤོག་དྲིལ་བཞུགས་སོ། །");
-    pos = append_hr_seg(buf, pos, px_w - 60);
-
-    pos = append_char_seg(buf, pos, 12, 400, 0x444444);
-    pos = append_ruler_seg(buf, pos, 20, 0);
-    pos = append_text(buf, pos, "Лонгчен Осал — Повний сувій (Shog-dril Roll Volume)");
-    pos = append_text(buf, pos, "");
-
-    for (int i = 0; i < book->chapter_count && pos + 8192 < buf_cap; i++) {
-        const ClarityBookChapter *ch = &book->chapters[i];
-
-        pos = append_char_seg(buf, pos, 14, 700, 0x882200);
-        pos = append_ruler_seg(buf, pos, 24, 0);
-
-        char ch_sec_hdr[512];
-        snprintf(ch_sec_hdr, sizeof(ch_sec_hdr), "■ ལེའུ %02d. ༄༅། %s — %s", i + 1, ch->tibetan_title, ch->transl_title);
-        pos = append_text(buf, pos, ch_sec_hdr);
-        pos = append_hr_seg(buf, pos, px_w - 60);
-
-        pos = append_char_seg(buf, pos, 11, 400, 0x000000);
-        pos = append_ruler_seg(buf, pos, 18, 0);
-
-        FILE *f_src = fopen(ch->file_path, "r");
-        if (f_src) {
-            char l_buf[4096];
-            while (fgets(l_buf, sizeof(l_buf), f_src) && pos + 8192 < buf_cap) {
-                char conv_line[8192];
-                if (book->auto_tibetan) {
-                    clarity_wylie_line_to_tibetan(l_buf, conv_line, sizeof(conv_line));
-                } else {
-                    strncpy(conv_line, l_buf, sizeof(conv_line) - 1);
-                    conv_line[sizeof(conv_line) - 1] = '\0';
-                }
-                pos = append_text(buf, pos, conv_line);
-            }
-            fclose(f_src);
+        if (pos_shog + 8192 < buf_shog_cap) {
+            pos_shog = append_text(buf_shog, pos_shog, "");
         }
-        pos = append_text(buf, pos, "");
     }
 
-    payload_len = pos - 6;
-    buf[0] = 0x00; buf[1] = 0x01;
-    tad_write_u32(&buf[2], payload_len);
+    /* 5. Finalize and write unified scroll TAD */
+    UW shog_payload_len = pos_shog - 6;
+    buf_shog[0] = 0x00; buf_shog[1] = 0x01;
+    tad_write_u32(&buf_shog[2], shog_payload_len);
 
     FILE *f_shog = fopen(unified_path, "wb");
     if (f_shog) {
-        fwrite(buf, 1, pos, f_shog);
+        fwrite(buf_shog, 1, pos_shog, f_shog);
         fclose(f_shog);
     }
 
+    free(buf_ch);
+    free(buf_shog);
     free(buf);
     return 0;
 #else
