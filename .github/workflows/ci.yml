@@ -244,12 +244,12 @@ jobs:
 
       - name: Install Dependencies
         run: |
-          sudo pkg_add \
-            sdl2 \
-            python3 \
-            pkgconf \
-            gmake \
-            llvm-21.1.8p4
+          echo "https://cdn.openbsd.org/pub/OpenBSD" | sudo tee /etc/installurl
+          sudo pkg_add -I sdl2 gmake python%3.13 || \
+            PKG_PATH="https://ftp.openbsd.org/pub/OpenBSD/7.9/packages/amd64/" sudo pkg_add -I sdl2 gmake python%3.13
+          if ! command -v python3 >/dev/null 2>&1 && command -v python3.13 >/dev/null 2>&1; then
+            sudo ln -sf "$(command -v python3.13)" /usr/local/bin/python3
+          fi
 
       - name: Python TAD Compiler Self-Tests
         run: |
