@@ -698,6 +698,7 @@ static void paint_mini_scrollbar_v(GDEV *dev, int x, int y, int w, int h,
             drw_lin(dev, (H)(x + 3), (H)(gy + 2), (H)(x + w - 4), (H)(gy + 2));
         }
     }
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
 }
 
 /* Scroll selected chapter into visible TOC viewport if outside */

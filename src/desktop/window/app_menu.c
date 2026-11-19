@@ -524,6 +524,7 @@ void app_menu_paint_bar(const APP_MENU_BAR *bar, GDEV *dev) {
 
     RECT bar_rect = { 0, 0, dev->width, APP_MENU_BAR_HEIGHT };
     fill_rec(dev, &bar_rect, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
     drw_lin(dev, 0, APP_MENU_BAR_HEIGHT, dev->width, APP_MENU_BAR_HEIGHT);
 
     for (int h = 0; h < bar->header_count; h++) {

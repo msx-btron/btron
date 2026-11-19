@@ -56,6 +56,8 @@ typedef struct {
      * 0 means "capacity is width/height" so stack GDEVs in tests stay valid. */
     H cap_w;
     H cap_h;
+    /* Per-device foreground color in framebuffer pixel order; 0 defaults to COLOR_BLACK. */
+    COLOR fg_fb;
 } GDEV;
 
 /* Display Primitive Operations */

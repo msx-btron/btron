@@ -139,7 +139,9 @@ void set_clip(GDEV *dev, const RECT *clip) {
     }
 }
 
-static COLOR s_dp_fg_fb = 0;
+static inline COLOR dp_fg_fb(const GDEV *dev) {
+    return (dev && dev->fg_fb) ? dev->fg_fb : BTRON_PIXEL_FB(COLOR_BLACK);
+}
 
 ER drw_pnt(GDEV *dev, H x, H y) {
     if (!dev || !dev->pixels) return E_PAR;
@@ -148,7 +150,7 @@ ER drw_pnt(GDEV *dev, H x, H y) {
         return E_OK; /* Clipped */
     }
 
-    dev->pixels[y * dev->width + x] = s_dp_fg_fb ? s_dp_fg_fb : BTRON_PIXEL_FB(COLOR_BLACK);
+    dev->pixels[y * dev->width + x] = dp_fg_fb(dev);
     return E_OK;
 }
 
@@ -157,7 +159,7 @@ ER drw_lin(GDEV *dev, H x1, H y1, H x2, H y2) {
 
     volatile COLOR *pix = (volatile COLOR*)dev->pixels;
     H width = dev->width;
-    const COLOR fbcol = s_dp_fg_fb ? s_dp_fg_fb : BTRON_PIXEL_FB(COLOR_BLACK);
+    const COLOR fbcol = dp_fg_fb(dev);
 
     /* Fast path: horizontal line */
     if (y1 == y2) {
@@ -301,7 +303,7 @@ ER drw_ovl(GDEV *dev, const RECT *r) {
     H ry = (r->bottom - r->top) / 2;
     H cx = r->left + rx;
     H cy = r->top + ry;
-    const COLOR fbcol = s_dp_fg_fb ? s_dp_fg_fb : BTRON_PIXEL_FB(COLOR_BLACK);
+    const COLOR fbcol = dp_fg_fb(dev);
 
     for (H y = r->top; y < r->bottom; y++) {
         for (H x = r->left; x < r->right; x++) {
@@ -347,9 +349,9 @@ ER fill_ovl(GDEV *dev, const RECT *r, COLOR col) {
 }
 
 void set_col(GDEV *dev, COLOR fg, COLOR bg) {
-    (void)dev;
     (void)bg;
-    s_dp_fg_fb = BTRON_PIXEL_FB(fg ? (fg | 0xFF000000u) : COLOR_BLACK);
+    if (!dev) return;
+    dev->fg_fb = BTRON_PIXEL_FB(fg ? (fg | 0xFF000000u) : COLOR_BLACK);
 }
 
 void set_pat(GDEV *dev, const PAT *pat) {

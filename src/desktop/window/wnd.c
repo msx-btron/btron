@@ -1216,6 +1216,7 @@ void redraw_all_windows_clip(const RECT *damage, BOOL blit_only) {
                 s_gl_scope_owner = wnd;
                 if (s_gl_bind && wnd->gl_surf) s_gl_bind(wnd);
                 btron_cooperative_input_pump();   /* once, before draw: pointer latency */
+                set_col(wnd->dev, COLOR_BLACK, COLOR_WHITE);
                 wnd->paint(wnd, wnd->dev);
                 s_gl_scope_owner = NULL;
                 t_paint += btron_render_perf_us() - t_mark;
