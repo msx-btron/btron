@@ -2082,8 +2082,8 @@ void btron_core_hfds_log(void) {
             if (anders_blk) {
                 g_anders_vol = vol_mount(anders_blk);
                 if (g_anders_vol) {
-                    uart_puts("[FS  ] /ANDERS mounted from RAM 0x03200000 (btron_anders.vol)  [OK]\n");
-                    fb_log("[FS  ] /ANDERS mounted from RAM 0x03200000  [OK]\n");
+                    uart_puts("[FS  ] /ANDERS mounted from RAM 0x07400000 (btron_anders.vol)  [OK]\n");
+                    fb_log("[FS  ] /ANDERS mounted from RAM 0x07400000  [OK]\n");
                 } else {
                     blk_destroy(anders_blk);
                 }

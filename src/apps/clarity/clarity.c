@@ -255,11 +255,13 @@ static void doc_new(ClarityPageFmt fmt)
         }
     }
     memset(&g_doc, 0, sizeof(ClarityDoc));
-    g_doc.fmt            = fmt;
-    g_doc.page_count     = 2;   /* 2 pages by default */
-    g_doc.zoom_pct       = 75;  /* 75% default fit */
-    g_doc.selected_frame = -1;
-    g_doc.tool           = TOOL_SELECT;
+    g_doc.fmt              = fmt;
+    g_doc.page_count       = 2;   /* 2 pages by default */
+    g_doc.zoom_pct         = 75;  /* 75% default fit */
+    g_doc.selected_frame   = -1;
+    g_doc.drag_handle      = -1;
+    g_doc.hover_drop_frame = -1;
+    g_doc.tool             = TOOL_SELECT;
     clarity_fmt_dimensions(&g_doc);
 
     g_scroll_x = 0;
@@ -280,13 +282,14 @@ static void paint_scrollbar_v(GDEV *dev, int x, int y, int w, int h,
 {
     RECT bg = { (H)x, (H)y, (H)(x + w), (H)(y + h) };
     fill_rec(dev, &bg, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
     drw_lin(dev, (H)x, (H)y, (H)x, (H)(y + h));
 
     /* Up Button */
     RECT up_btn = { (H)x, (H)y, (H)(x + w), (H)(y + 16) };
     fill_rec(dev, &up_btn, COLOR_LTGRAY);
-    drw_rec(dev, &up_btn);
     set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &up_btn);
     drw_lin(dev, (H)(x + 8), (H)(y + 4), (H)(x + 4),  (H)(y + 11));
     drw_lin(dev, (H)(x + 8), (H)(y + 4), (H)(x + 12), (H)(y + 11));
     drw_lin(dev, (H)(x + 4), (H)(y + 11), (H)(x + 12), (H)(y + 11));
@@ -295,8 +298,8 @@ static void paint_scrollbar_v(GDEV *dev, int x, int y, int w, int h,
     int dy_b = y + h - 16;
     RECT dn_btn = { (H)x, (H)dy_b, (H)(x + w), (H)(y + h) };
     fill_rec(dev, &dn_btn, COLOR_LTGRAY);
-    drw_rec(dev, &dn_btn);
     set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &dn_btn);
     drw_lin(dev, (H)(x + 4),  (H)(dy_b + 5), (H)(x + 12), (H)(dy_b + 5));
     drw_lin(dev, (H)(x + 4),  (H)(dy_b + 5), (H)(x + 8),  (H)(dy_b + 12));
     drw_lin(dev, (H)(x + 12), (H)(dy_b + 5), (H)(x + 8),  (H)(dy_b + 12));
@@ -316,10 +319,12 @@ static void paint_scrollbar_v(GDEV *dev, int x, int y, int w, int h,
 
         RECT thumb = { (H)(x + 1), (H)thumb_y, (H)(x + w - 1), (H)(thumb_y + thumb_h) };
         fill_rec(dev, &thumb, COLOR_GRAY);
+        set_col(dev, COLOR_BLACK, COLOR_GRAY);
         drw_rec(dev, &thumb);
         set_col(dev, COLOR_WHITE, COLOR_GRAY);
         drw_lin(dev, (H)(x + 2), (H)(thumb_y + 1), (H)(x + w - 3), (H)(thumb_y + 1));
         drw_lin(dev, (H)(x + 2), (H)(thumb_y + 1), (H)(x + 2), (H)(thumb_y + thumb_h - 2));
+        set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
     }
 }
 
@@ -328,13 +333,14 @@ static void paint_scrollbar_h(GDEV *dev, int x, int y, int w, int h,
 {
     RECT bg = { (H)x, (H)y, (H)(x + w), (H)(y + h) };
     fill_rec(dev, &bg, COLOR_LTGRAY);
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
     drw_lin(dev, (H)x, (H)y, (H)(x + w), (H)y);
 
     /* Left Button */
     RECT lt_btn = { (H)x, (H)y, (H)(x + 16), (H)(y + h) };
     fill_rec(dev, &lt_btn, COLOR_LTGRAY);
-    drw_rec(dev, &lt_btn);
     set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &lt_btn);
     drw_lin(dev, (H)(x + 4), (H)(y + 8), (H)(x + 11), (H)(y + 4));
     drw_lin(dev, (H)(x + 4), (H)(y + 8), (H)(x + 11), (H)(y + 12));
     drw_lin(dev, (H)(x + 11), (H)(y + 4), (H)(x + 11), (H)(y + 12));
@@ -343,8 +349,8 @@ static void paint_scrollbar_h(GDEV *dev, int x, int y, int w, int h,
     int rx_b = x + w - 16;
     RECT rt_btn = { (H)rx_b, (H)y, (H)(x + w), (H)(y + h) };
     fill_rec(dev, &rt_btn, COLOR_LTGRAY);
-    drw_rec(dev, &rt_btn);
     set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
+    drw_rec(dev, &rt_btn);
     drw_lin(dev, (H)(rx_b + 5), (H)(y + 4),  (H)(rx_b + 12), (H)(y + 8));
     drw_lin(dev, (H)(rx_b + 5), (H)(y + 12), (H)(rx_b + 12), (H)(y + 8));
     drw_lin(dev, (H)(rx_b + 5), (H)(y + 4),  (H)(rx_b + 5),  (H)(y + 12));
@@ -364,10 +370,12 @@ static void paint_scrollbar_h(GDEV *dev, int x, int y, int w, int h,
 
         RECT thumb = { (H)thumb_x, (H)(y + 1), (H)(thumb_x + thumb_w), (H)(y + h - 1) };
         fill_rec(dev, &thumb, COLOR_GRAY);
+        set_col(dev, COLOR_BLACK, COLOR_GRAY);
         drw_rec(dev, &thumb);
         set_col(dev, COLOR_WHITE, COLOR_GRAY);
         drw_lin(dev, (H)(thumb_x + 1), (H)(y + 2), (H)(thumb_x + thumb_w - 2), (H)(y + 2));
         drw_lin(dev, (H)(thumb_x + 1), (H)(y + 2), (H)(thumb_x + 1), (H)(y + h - 3));
+        set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
     }
 }
 
@@ -1513,6 +1521,9 @@ static void clarity_event(WND *wnd, const EVT *evt)
             }
             clarity_set_cursor(CLARITY_CURSOR_HAND);
             return;
+        } else if (g_doc.hover_drop_frame != -1) {
+            g_doc.hover_drop_frame = -1;
+            inval_wnd(wnd);
         }
 
         if (g_doc.selected_frame >= 0 && g_doc.selected_frame < g_doc.frame_count) {
@@ -2301,6 +2312,15 @@ WND* open_clarity_window(void)
     BOOL has_osal = FALSE;
     const char *osal_dir = "./assets/osal";
     struct stat st_osal;
+#if !BTRON_HOSTED
+    if (stat("/SYS/dkar.chag.txt", &st_osal) == 0) {
+        osal_dir = "/SYS";
+        has_osal = TRUE;
+    } else if (stat("dkar.chag.txt", &st_osal) == 0) {
+        osal_dir = "/SYS";
+        has_osal = TRUE;
+    }
+#else
     if (stat("./assets/osal/dkar.chag.txt", &st_osal) == 0 || (stat("./assets/osal", &st_osal) == 0 && S_ISDIR(st_osal.st_mode))) {
         osal_dir = "./assets/osal";
         has_osal = TRUE;
@@ -2314,6 +2334,7 @@ WND* open_clarity_window(void)
         osal_dir = "/SYS";
         has_osal = TRUE;
     }
+#endif
 
     int clr_x = has_osal ? 330 : 40;
     int clr_y = has_osal ? 44  : 36;
@@ -2332,6 +2353,10 @@ WND* open_clarity_window(void)
     g_wnd->menu_open     = clarity_menu_open;
 
     build_menu();
+
+    g_doc.selected_frame   = -1;
+    g_doc.drag_handle      = -1;
+    g_doc.hover_drop_frame = -1;
 
     if (has_osal) {
         ClarityBook *bk = clarity_get_book();
@@ -2388,11 +2413,13 @@ void clarity_init(ClarityDoc *doc)
 {
     if (!doc) return;
     memset(doc, 0, sizeof(ClarityDoc));
-    doc->fmt             = FMT_A4;
-    doc->page_count      = 2;
-    doc->zoom_pct        = 75;
-    doc->selected_frame  = -1;
-    doc->tool            = TOOL_SELECT;
+    doc->fmt              = FMT_A4;
+    doc->page_count       = 2;
+    doc->zoom_pct         = 75;
+    doc->selected_frame   = -1;
+    doc->drag_handle      = -1;
+    doc->hover_drop_frame = -1;
+    doc->tool             = TOOL_SELECT;
     clarity_fmt_dimensions(doc);
 }
 

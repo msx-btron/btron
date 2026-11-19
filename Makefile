@@ -1213,7 +1213,7 @@ TARGET_HDD_IMG  = .build/target_hdd.img
 
 storage-images: $(USB_IMG) $(HDD_IMG) $(CD_ISO) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG) $(TARGET_HDD_IMG)
 
-$(USB_IMG) $(HDD_IMG) $(CD_ISO) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG) $(TARGET_HDD_IMG): scripts/mk_uefi_storage.py
+$(USB_IMG) $(HDD_IMG) $(CD_ISO) $(TARGET_HDD1_IMG) $(TARGET_HDD2_IMG) $(TARGET_HDD_IMG): btron_sys.vol btron_anders.vol scripts/mk_uefi_storage.py
 	@python3 scripts/mk_uefi_storage.py all
 
 clean-disks:
@@ -2913,7 +2913,7 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	@echo " Honoring : Takanori Yokoyama (横山 孝徳) — T-Kernel Pioneer"
 	@echo " Machine  : raspi4b  |  CPU: Cortex-A72 / AArch64  |  RAM: 2G"
 	@echo " ELF      : $(ARM64_TARGET)"
-	@echo " Volumes  : btron_sys.vol (@0x03000000), btron_anders.vol (@0x03200000), btron_msx.vol (@0x05400000)"
+	@echo " Volumes  : btron_sys.vol (@0x03000000), btron_msx.vol (@0x05400000), btron_anders.vol (@0x07400000)"
 	@echo " Devices  : USB Keyboard, USB Mouse, USB DAC & VideoCore GPU Display"
 	@echo "=========================================================="
 	@echo " INPUT CAPTURE:"
@@ -2924,8 +2924,8 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	@if command -v $(QEMU_AARCH64) >/dev/null 2>&1; then \
 	    $(QEMU_AARCH64) -M raspi4b -m 2G $(KERNEL_DISPLAY) \
 	        -device loader,file=btron_sys.vol,addr=0x03000000 \
-	        -device loader,file=btron_anders.vol,addr=0x03200000 \
 	        -device loader,file=btron_msx.vol,addr=0x05400000 \
+	        -device loader,file=btron_anders.vol,addr=0x07400000 \
 	        $$(test -f assets/quake/pak/pak0.pak && echo "-device loader,file=assets/quake/pak/pak0.pak,addr=0x04000000") \
 	        -device usb-kbd -device usb-mouse \
 	        $$(if [ "$$(uname -s)" = Darwin ]; then echo "-audiodev coreaudio,id=snd0,out.frequency=48000,out.channels=2,out.format=s16 -device usb-audio,audiodev=snd0,buffer=12288"; fi) \

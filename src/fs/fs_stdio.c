@@ -90,6 +90,9 @@ typedef struct {
     UW       rec_left;                   /* bytes still readable in `rec` */
     UW       pos;                        /* byte cursor, from body start */
     UW       size;                       /* body length at open */
+    UW       raw_pos;                    /* record-stream byte cursor (buffered reads) */
+    UW       rbuf_pos;                   /* read cursor within buf */
+    UW       rbuf_len;                   /* valid bytes in buf */
     UW       wpos;                       /* bytes committed to records */
     UW       wrec;                       /* next record index to append at */
     UW       staged;                     /* bytes sitting in buf */
@@ -264,6 +267,28 @@ static int seek_to(FsStdio *f, UW at)
     return -1;                       /* offset at or past the last record */
 }
 
+static UW read_raw(FsStdio *f, unsigned char *dst, UW want)
+{
+    UW got = 0u;
+    while (got < want && f->raw_pos < f->size) {
+        UW need = want - got;
+        ER er;
+        W read_back = 0;
+        if (f->rec_left == 0u) {
+            if (seek_to(f, f->raw_pos) != 0) break;
+            continue;
+        }
+        if (need > f->rec_left) need = f->rec_left;
+        er = rd_rec(f->rec, dst + got, (W)need, &read_back);
+        if (er != E_OK || read_back <= 0) break;
+        got         += (UW)read_back;
+        f->raw_pos  += (UW)read_back;
+        f->rec_left -= (UW)read_back;
+    }
+    rec_drop(f);
+    return got;
+}
+
 size_t fread(void *ptr, size_t size, size_t count, FILE *stream)
 {
     FsStdio *f = (FsStdio *)stream;
@@ -278,22 +303,36 @@ size_t fread(void *ptr, size_t size, size_t count, FILE *stream)
     if (want / sz != (UW)count) return 0;          /* 32-bit product wrapped */
     if (f->writable) return 0;
 
-    while (got < want && f->pos + got < f->size) {
-        UW need = want - got;
-        ER er;
-        W read_back = 0;
-        if (f->rec_left == 0u) {
-            if (seek_to(f, f->pos + got) != 0) break;
-            continue;
-        }
-        if (need > f->rec_left) need = f->rec_left;
-        er = rd_rec(f->rec, dst + got, (W)need, &read_back);
-        if (er != E_OK || read_back <= 0) break;
-        got        += (UW)read_back;
-        f->rec_left -= (UW)read_back;
+    /* 1. Drain buffered read bytes first */
+    if (f->rbuf_pos < f->rbuf_len) {
+        UW avail = f->rbuf_len - f->rbuf_pos;
+        UW take = (want < avail) ? want : avail;
+        memcpy(dst, f->buf + f->rbuf_pos, take);
+        f->rbuf_pos += take;
+        f->pos      += take;
+        got         += take;
     }
-    rec_drop(f);
-    f->pos += got;
+
+    /* 2. Read remaining bytes from record stream */
+    if (got < want && f->pos < f->size) {
+        UW rem = want - got;
+        if (rem >= f->cap) {
+            UW n = read_raw(f, dst + got, rem);
+            f->pos += n;
+            got    += n;
+        } else {
+            f->rbuf_len = read_raw(f, f->buf, f->cap);
+            f->rbuf_pos = 0u;
+            if (f->rbuf_len > 0u) {
+                UW take = (rem < f->rbuf_len) ? rem : f->rbuf_len;
+                memcpy(dst + got, f->buf, take);
+                f->rbuf_pos = take;
+                f->pos     += take;
+                got        += take;
+            }
+        }
+    }
+
     return (size_t)(got / sz);
 }
 
@@ -364,8 +403,12 @@ int fseek(FILE *stream, long offset, int whence)
     else if (whence == 2 /* SEEK_END */) target = (long)f->size + offset;
     else return -1;
     if (target < 0) return -1;
-    f->pos = (UW)target;
+    f->pos      = (UW)target;
+    f->raw_pos  = (UW)target;
+    f->rbuf_pos = 0u;
+    f->rbuf_len = 0u;
     f->rec_left = 0u;
+    rec_drop(f);
     return 0;
 }
 
@@ -378,14 +421,24 @@ long ftell(FILE *stream)
 
 char *fgets(char *s, int size, FILE *stream)
 {
-    if (!s || size <= 1 || !stream) return NULL;
+    FsStdio *f = (FsStdio *)stream;
+    if (!s || size <= 1 || !f || f->writable) return NULL;
     int idx = 0;
     while (idx < size - 1) {
-        char ch;
-        if (fread(&ch, 1, 1, stream) != 1) {
-            if (idx == 0) return NULL;
-            break;
+        if (f->rbuf_pos >= f->rbuf_len) {
+            if (f->raw_pos >= f->size) {
+                if (idx == 0) return NULL;
+                break;
+            }
+            f->rbuf_len = read_raw(f, f->buf, f->cap);
+            f->rbuf_pos = 0u;
+            if (f->rbuf_len == 0u) {
+                if (idx == 0) return NULL;
+                break;
+            }
         }
+        char ch = (char)f->buf[f->rbuf_pos++];
+        f->pos++;
         s[idx++] = ch;
         if (ch == '\n') break;
     }

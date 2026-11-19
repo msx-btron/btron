@@ -1276,7 +1276,7 @@ static void run_btron_shell(int active_cores) {
     }
 }
 
-static uint8_t s_boot_stack[32768] __attribute__((aligned(16)));
+static uint8_t s_boot_stack[65536] __attribute__((aligned(16)));
 
 void kernel_main(void) {
     uart_init();

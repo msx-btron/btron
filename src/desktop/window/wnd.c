@@ -1009,6 +1009,7 @@ static void draw_retro_window_frame(GDEV *dev, WND *wnd, BOOL layer_records) {
         s_frame_body_px += body_px;
         fill_rec(dev, &body, COLOR_LTGRAY);
     }
+    set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
     drw_rec(dev, &body);
 
     RECT inner_b;
@@ -1027,6 +1028,7 @@ static void draw_retro_window_frame(GDEV *dev, WND *wnd, BOOL layer_records) {
         COLOR title_col = wnd->focused ? COLOR_BLACK : COLOR_DKGRAY;
 
         fill_rec(dev, &tab_r, tab_bg);
+        set_col(dev, COLOR_BLACK, tab_bg);
         drw_rec(dev, &tab_r);
 
         /* Replicate canonical Window Body double-line border with intermediary space */
@@ -1056,6 +1058,7 @@ static void draw_retro_window_frame(GDEV *dev, WND *wnd, BOOL layer_records) {
             close_btn.bottom = tab_r.top + 22;
 
             fill_rec(dev, &close_btn, wnd->focused ? COLOR_LTGRAY : COLOR_GRAY);
+            set_col(dev, COLOR_BLACK, wnd->focused ? COLOR_LTGRAY : COLOR_GRAY);
             drw_rec(dev, &close_btn);
             /* Centered cross inside close button shifted 2px up (tab_r.top + 6) */
             drw_tc_string(dev, close_btn.left + 5, tab_r.top + 6, "x", COLOR_BLACK, 0x00000000);
@@ -1070,6 +1073,7 @@ static void draw_retro_window_frame(GDEV *dev, WND *wnd, BOOL layer_records) {
         fill_rec(dev, &grip_r, COLOR_LTGRAY);
 
         /* 3 Diagonal hatch grip lines */
+        set_col(dev, COLOR_BLACK, COLOR_LTGRAY);
         drw_lin(dev, body.right - 12, body.bottom - 3, body.right - 3, body.bottom - 12);
         drw_lin(dev, body.right - 8,  body.bottom - 3, body.right - 3, body.bottom - 8);
         drw_lin(dev, body.right - 4,  body.bottom - 3, body.right - 3, body.bottom - 4);

@@ -6,10 +6,10 @@ Offsets matching physical RAM addresses when loaded at 0x03000000
 (initramfs btron_payload.bin 0x03000000). Packed so the file is ~68 MiB
 instead of 144 MiB of zeros through the old 0x0A000000 /MSX slot:
 
-  0x00000000 -> 0x03000000: btron_sys.vol     (HFDS /SYS, 1 MB)
-  0x00200000 -> 0x03200000: btron_anders.vol  (HFDS /ANDERS, 1 MB)
+  0x00000000 -> 0x03000000: btron_sys.vol     (HFDS /SYS, 16 MB)
   0x01000000 -> 0x04000000: pak0.pak          (Quake PAK, ~18.6 MB)
   0x02400000 -> 0x05400000: btron_msx.vol     (HFDS /MSX, 32 MB)
+  0x04400000 -> 0x07400000: btron_anders.vol  (HFDS /ANDERS, 1 MB)
 
 The Quake hunk lives at 0x08000000 and is not part of this blob.
 """
@@ -83,13 +83,15 @@ def build_payload(out_path, use_mbr=False):
         else:
             out.write(sys_data)
             print(f"[PAYLOAD] /SYS written: {len(sys_data)} bytes at offset 0x0")
-            write_optional(out, 'btron_anders.vol', 0x00200000, '/ANDERS')
 
         write_optional(out, 'assets/quake/pak/pak0.pak', 0x01000000, 'pak0.pak')
 
         out.seek(MSX_PAYLOAD_OFF)
         out.write(msx_data)
         print(f"[PAYLOAD] /MSX written: {len(msx_data)} bytes at offset 0x{MSX_PAYLOAD_OFF:x}")
+
+        if not use_mbr:
+            write_optional(out, 'btron_anders.vol', 0x04400000, '/ANDERS')
 
         total_sz = out.tell()
         print(f"[PAYLOAD] Total payload size: {total_sz} bytes ({total_sz // (1024*1024)} MiB)")

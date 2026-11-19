@@ -321,7 +321,7 @@ void clarity_draw_frames(GDEV *dev, const ClarityDoc *doc, int ox, int oy)
         drw_rec(dev, &sr);
 
         /* Drop-target highlight during DND */
-        if (doc->hover_drop_frame == i) {
+        if (btron_dnd_is_active() && doc->hover_drop_frame == i) {
             RECT hr = sr;
             hr.left -= 2; hr.top -= 2; hr.right += 2; hr.bottom += 2;
             set_col(dev, COLOR_CYAN, COLOR_WHITE);
@@ -775,7 +775,10 @@ int clarity_frame_load_text(ClarityFrame *f, const char *path, ID robj_id, const
     snprintf(path_bufs[8], 256, "./btron_store/%s", bname);
     try_paths[n_try++] = path_bufs[8];
 
-    char raw_buf[16384];
+    const size_t raw_cap = 16384;
+    const size_t full_cap = 20480;
+    char *raw_buf = (char*)malloc(raw_cap);
+    if (!raw_buf) return -1;
     size_t nread = 0;
     BOOL read_ok = FALSE;
 
@@ -792,7 +795,7 @@ int clarity_frame_load_text(ClarityFrame *f, const char *path, ID robj_id, const
     }
     if (r) {
         UW bytes = 0;
-        if (rd_vobj_data(r, raw_buf, sizeof(raw_buf) - 1, &bytes) == E_OK && bytes > 0) {
+        if (rd_vobj_data(r, raw_buf, (UW)(raw_cap - 1), &bytes) == E_OK && bytes > 0) {
             raw_buf[bytes] = '\0';
             nread = bytes;
             read_ok = TRUE;
@@ -800,30 +803,34 @@ int clarity_frame_load_text(ClarityFrame *f, const char *path, ID robj_id, const
         cls_robj(r);
     }
 
-    /* 2. Fall back to reading from file system */
+    /* 2. Fall back to reading from file system (hosted or freestanding fs_stdio) */
     if (!read_ok) {
-#if BTRON_HOSTED
         FILE *fp = NULL;
         for (int i = 0; i < n_try; i++) {
             fp = fopen(try_paths[i], "rb");
             if (fp) break;
         }
 
-        if (!fp) return -1;
+        if (!fp) {
+            free(raw_buf);
+            return -1;
+        }
 
-        nread = fread(raw_buf, 1, sizeof(raw_buf) - 1, fp);
+        nread = fread(raw_buf, 1, raw_cap - 1, fp);
         fclose(fp);
         raw_buf[nread] = '\0';
-#else
-        return -1;
-#endif
     }
 
     /* Build text buffer with moniker header [TXT name] followed by content */
-    char full_buf[20480];
+    char *full_buf = (char*)malloc(full_cap);
+    if (!full_buf) {
+        free(raw_buf);
+        return -1;
+    }
     const char *display_name = (name && name[0]) ? name : bname;
     const char *tag = (strstr(path, ".md") || strstr(path, ".MD")) ? "MD" : "TXT";
-    snprintf(full_buf, sizeof(full_buf), "[%s %s]\n\n%s", tag, display_name, raw_buf);
+    snprintf(full_buf, full_cap, "[%s %s]\n\n%s", tag, display_name, raw_buf);
+    free(raw_buf);
 
     /* Update moniker link at offset 0 */
     f->vobj_count = 1;
@@ -837,6 +844,7 @@ int clarity_frame_load_text(ClarityFrame *f, const char *path, ID robj_id, const
 
     /* Convert UTF-8 content to TRON Code */
     int tlen = utf8_to_tc_string(full_buf, (TC*)f->text, CLARITY_TEXT_BUF - 1);
+    free(full_buf);
     f->text_len = (tlen > 0) ? (UW)tlen : 0;
     f->text[f->text_len] = 0;
     f->cursor_pos = 0;
@@ -935,11 +943,13 @@ void clarity_init_sample_page(ClarityDoc *doc)
         }
     }
     memset(doc, 0, sizeof(ClarityDoc));
-    doc->fmt            = FMT_A4;
-    doc->page_count     = 2;
-    doc->zoom_pct       = 75;
-    doc->selected_frame = -1;
-    doc->tool           = TOOL_SELECT;
+    doc->fmt              = FMT_A4;
+    doc->page_count       = 2;
+    doc->zoom_pct         = 75;
+    doc->selected_frame   = -1;
+    doc->drag_handle      = -1;
+    doc->hover_drop_frame = -1;
+    doc->tool             = TOOL_SELECT;
     clarity_fmt_dimensions(doc);
 
     /* Frame 0: Image Frame linked with /SYS/clarity.png */

@@ -702,7 +702,8 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
 
     /* Support opening a single .txt file directly as Chapter 0 */
     struct stat st_single;
-    if (stat(dir_path, &st_single) == 0 && !S_ISDIR(st_single.st_mode)) {
+    if (strcmp(dir_path, "/SYS") != 0 && strcmp(dir_path, "/ANDERS") != 0 &&
+        stat(dir_path, &st_single) == 0 && !S_ISDIR(st_single.st_mode)) {
         ClarityBookChapter *ch = &book->chapters[book->chapter_count];
         ch->id = 1;
         ch->class_id = map_file_to_class(dir_path);
@@ -942,10 +943,12 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     doc->fmt = FMT_PECHA;
     doc->pecha_size = (int)book->pecha_size;
     clarity_get_pecha_dimensions(book->pecha_size, &doc->page_w_mm, &doc->page_h_mm, NULL);
-    doc->page_count  = 0;
-    doc->active_page = 0;
-    doc->frame_count = 0;
-    doc->selected_frame = -1;
+    doc->page_count       = 0;
+    doc->active_page      = 0;
+    doc->frame_count      = 0;
+    doc->selected_frame   = -1;
+    doc->drag_handle      = -1;
+    doc->hover_drop_frame = -1;
 
     FILE *fp = fopen(ch->file_path, "r");
     if (!fp) return -1;
@@ -986,10 +989,18 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
         if (lines_per_page < 5) lines_per_page = 5;
     }
 
-    /* Accumulate all file lines into heap buffer */
-    char  *raw_lines[4096];
+    /* Accumulate all file lines into heap buffer (avoid blowing 32 KiB freestanding stacks) */
+    char **raw_lines = (char**)malloc(4096 * sizeof(char*));
+    char  *line_buf  = (char*)malloc(1024);
+    char  *conv      = (char*)malloc(2048);
+    char  *page_buf  = (char*)malloc(16384);
+    char  *head_buf  = (char*)malloc(4096);
+    if (!raw_lines || !line_buf || !conv || !page_buf || !head_buf) {
+        free(raw_lines); free(line_buf); free(conv); free(page_buf); free(head_buf);
+        fclose(fp);
+        return -1;
+    }
     int    raw_count = 0;
-    char  line_buf[1024];
 
     /* Pecha chapter header occupies first few lines */
     {
@@ -1002,19 +1013,20 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
     }
 
     int file_lines = 0;
-    while (fgets(line_buf, sizeof(line_buf), fp) && raw_count < 4094) {
+    while (fgets(line_buf, 1024, fp) && raw_count < 4094) {
         file_lines++;
-        char conv[2048];
         if (book->auto_tibetan) {
-            clarity_wylie_line_to_tibetan(line_buf, conv, sizeof(conv));
+            clarity_wylie_line_to_tibetan(line_buf, conv, 2048);
         } else {
-            strncpy(conv, line_buf, sizeof(conv) - 1);
-            conv[sizeof(conv) - 1] = '\0';
+            strncpy(conv, line_buf, 2048 - 1);
+            conv[2048 - 1] = '\0';
         }
         raw_lines[raw_count] = (char*)malloc(strlen(conv) + 1);
         if (raw_lines[raw_count]) { strcpy(raw_lines[raw_count], conv); raw_count++; }
     }
     fclose(fp);
+    free(line_buf);
+    free(conv);
 
     /* Page gap in unzoomed pixels (matches clarity_draw_page p_gap at 100%) */
     int p_gap = CLARITY_PAGE_GAP_PX;
@@ -1026,7 +1038,6 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
 
     while (line_cursor < raw_count && page_idx < max_pages) {
         /* Accumulate one page worth of lines */
-        char page_buf[16384];
         page_buf[0] = '\0';
         int lines_on_page = 0;
 
@@ -1037,7 +1048,7 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
             if (rem_lines <= 0) break;
 
             if (vlines_here <= rem_lines) {
-                if (strlen(page_buf) + strlen(ln) < sizeof(page_buf) - 2) {
+                if (strlen(page_buf) + strlen(ln) < 16384 - 2) {
                     strcat(page_buf, ln);
                     lines_on_page += vlines_here;
                     line_cursor++;
@@ -1054,15 +1065,14 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
                 /* Cut portion proportional to visible area of the format */
                 int cut_pos = find_cut_point(ln, inner_w, rem_lines);
                 if (cut_pos > 0 && cut_pos < (int)strlen(ln)) {
-                    char head_buf[4096];
                     int hlen = cut_pos;
-                    if (hlen > (int)sizeof(head_buf) - 4) hlen = sizeof(head_buf) - 4;
+                    if (hlen > 4096 - 4) hlen = 4096 - 4;
                     memcpy(head_buf, ln, hlen);
                     head_buf[hlen] = '\0';
                     if (head_buf[hlen - 1] != '\n') {
                         strcat(head_buf, "\n");
                     }
-                    if (strlen(page_buf) + strlen(head_buf) < sizeof(page_buf) - 2) {
+                    if (strlen(page_buf) + strlen(head_buf) < 16384 - 2) {
                         strcat(page_buf, head_buf);
                         lines_on_page += rem_lines;
                     }
@@ -1073,7 +1083,7 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
                 } else if (lines_on_page > 0) {
                     break;
                 } else {
-                    if (strlen(page_buf) + strlen(ln) < sizeof(page_buf) - 2) {
+                    if (strlen(page_buf) + strlen(ln) < 16384 - 2) {
                         strcat(page_buf, ln);
                         lines_on_page += vlines_here;
                         line_cursor++;
@@ -1113,10 +1123,13 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
         page_idx++;
     }
 
-    /* Free heap lines */
+    /* Free heap lines and scratch buffers */
     for (int i = 0; i < raw_count; i++) {
         free(raw_lines[i]);
     }
+    free(raw_lines);
+    free(page_buf);
+    free(head_buf);
 
     int total_pages = (page_idx > 0) ? page_idx : 1;
     if (total_pages < 2) total_pages = 2; /* At least a 2-page Pecha spread */
