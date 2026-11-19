@@ -245,8 +245,9 @@ jobs:
       - name: Install Dependencies
         run: |
           echo "https://cdn.openbsd.org/pub/OpenBSD" | sudo tee /etc/installurl
-          sudo pkg_add -I sdl2 gmake python%3.13 || \
-            PKG_PATH="https://ftp.openbsd.org/pub/OpenBSD/7.9/packages/amd64/" sudo pkg_add -I sdl2 gmake python%3.13
+          sudo pkg_add -I sdl2 gmake python-3.13.13 || \
+            sudo pkg_add -Iz sdl2 gmake python-3.13 || \
+            PKG_PATH="https://ftp.openbsd.org/pub/OpenBSD/7.9/packages/amd64/" sudo pkg_add -I sdl2 gmake python-3.13.13
           if ! command -v python3 >/dev/null 2>&1 && command -v python3.13 >/dev/null 2>&1; then
             sudo ln -sf "$(command -v python3.13)" /usr/local/bin/python3
           fi
@@ -300,6 +301,11 @@ jobs:
 
       - name: Install Dependencies
         run: |
+          echo "https://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/x86_64/11.0/All" | sudo tee /usr/pkg/etc/pkgin/repositories.conf
+          sudo pkgin -y update || {
+            echo "http://cdn.NetBSD.org/pub/pkgsrc/packages/NetBSD/x86_64/11.0/All" | sudo tee /usr/pkg/etc/pkgin/repositories.conf
+            sudo pkgin -y update
+          }
           sudo pkgin -y install \
             SDL2 \
             python312 \
