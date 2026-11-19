@@ -190,8 +190,8 @@ code {
 
 /* ── comparison table ── */
 .market-table {
-    width: 100%; border-collapse: collapse;
-    font-size: 0.9rem; margin-top: 0.8rem;
+    width: 100%; max-width: 100%; border-collapse: collapse;
+    font-size: 0.9rem; margin: 0.8rem auto 0;
     border-radius: 12px; overflow: hidden;
     box-shadow: 0 4px 16px rgba(255,93,162,0.1);
 }
@@ -201,14 +201,23 @@ code {
     font-weight: 700; font-size: 0.8rem;
     text-transform: uppercase; letter-spacing: 0.05em;
     color: DarkMagenta;
+    overflow-wrap: break-word;
 }
 .market-table td {
     padding: 0.7rem 1rem;
     border-top: 1px solid rgba(255,93,162,0.15);
     color: #4a3560; vertical-align: top;
     background: rgba(255,255,255,0.5);
+    overflow-wrap: break-word;
 }
 .market-table tr:hover td { background: rgba(255,240,248,0.7); }
+
+/* Optional column shown only on wide screens */
+@media (max-width: 1024px) {
+    .market-table .col-wide-only {
+        display: none !important;
+    }
+}
 
 /* ── cross-app footer ── */
 .app-footer {
@@ -370,6 +379,7 @@ code {
     .market-table {
         width: 100%;
         max-width: 100%;
+        margin: 0.8rem auto 0;
         table-layout: fixed;
         font-size: 0.78rem;
         overflow: hidden;
