@@ -242,7 +242,8 @@ static void* smp_task_trampoline(void *arg) {
 #else
 static uint8_t s_baremetal_task_stacks[MAX_SMP_TASKS][16384] __attribute__((aligned(16)));
 static void *s_scheduler_sp = NULL;
-static int s_current_task_idx = -1;
+static volatile int s_current_task_idx = -1;
+static volatile uint32_t s_task_slice_ticks = 0;
 
 #if defined(__x86_64__)
 __attribute__((naked)) static void btron_ctx_switch(void **old_sp, void *new_sp) {
@@ -283,6 +284,9 @@ __attribute__((naked, regparm(2))) static void btron_ctx_switch(void **old_sp, v
 #endif
 
 static void btron_task_trampoline(void) {
+#if defined(__x86_64__) || defined(__i386__)
+    __asm__ volatile("sti");
+#endif
     int idx = s_current_task_idx;
     if (idx >= 0 && idx < MAX_SMP_TASKS && s_smp_tasks[idx].config.task) {
         s_smp_tasks[idx].config.task(s_smp_tasks[idx].config.exinf);
@@ -696,6 +700,17 @@ void btron_lapic_timer_isr_c(void) {
             }
         }
     }
+    /* Hardware-timer preemption: yield long-running tasks back to high-priority UI/mouse loop */
+    int idx = s_current_task_idx;
+    if (idx >= 0 && idx < MAX_SMP_TASKS && s_scheduler_sp != NULL) {
+        s_task_slice_ticks++;
+        uint32_t quantum = (s_smp_tasks[idx].config.itskpri >= 16) ? 2u : 8u;
+        if (s_task_slice_ticks >= quantum) {
+            s_task_slice_ticks = 0;
+            s_current_task_idx = -1;
+            btron_ctx_switch(&s_smp_tasks[idx].sp, s_scheduler_sp);
+        }
+    }
 }
 
 __attribute__((naked)) static void btron_lapic_timer_isr(void) {
@@ -703,12 +718,13 @@ __attribute__((naked)) static void btron_lapic_timer_isr(void) {
         "pushl %eax\n\t"
         "pushl %ecx\n\t"
         "pushl %edx\n\t"
-        "call btron_lapic_timer_isr_c\n\t"
+        /* Send LAPIC EOI BEFORE C handler so preemption never masks future timer IRQs */
         "movl s_lapic, %eax\n\t"
         "testl %eax, %eax\n\t"
         "jz 1f\n\t"
         "movl $0, 0xB0(%eax)\n\t"
         "1:\n\t"
+        "call btron_lapic_timer_isr_c\n\t"
         "popl %edx\n\t"
         "popl %ecx\n\t"
         "popl %eax\n\t"
@@ -785,10 +801,36 @@ void btron_scheduler_tick(void) {
 #endif
 }
 
+W btron_list_tasks(BTRON_TSK_ROW *out, W max) {
+    W n = 0;
+    if (!out || max <= 0) return 0;
+
+    for (int i = 0; i < MAX_SMP_TASKS && n < max; i++) {
+        const SMP_TASK *t = &s_smp_tasks[i];
+        if (!t->active) continue;
+        out[n].tskid = t->tskid;
+        out[n].name  = t->config.name ? t->config.name : "(worker)";
+        out[n].pri   = t->config.itskpri;
+        out[n].entry = t->config.task;
+        if (t->sleeping) {
+            out[n].state = BTRON_TSK_SLEEP;
+        } else if (t->runnable) {
+            out[n].state = BTRON_TSK_RUN;
+        } else {
+            out[n].state = BTRON_TSK_NEW;
+        }
+        n++;
+    }
+    return n;
+}
+
 void btron_scheduler_dispatch(void) {
 #if !SMP_HOSTED && (defined(__x86_64__) || defined(__i386__))
     btron_scheduler_tick();
 
+    /* Dispatch runnable tasks in strict priority order (lower itskpri = higher priority) */
+    int order[MAX_SMP_TASKS];
+    int n_ready = 0;
     for (int i = 0; i < MAX_SMP_TASKS; i++) {
         if (!s_smp_tasks[i].active) continue;
         if (s_smp_tasks[i].sleeping) {
@@ -800,10 +842,27 @@ void btron_scheduler_dispatch(void) {
             }
         }
         if (s_smp_tasks[i].runnable) {
-            s_current_task_idx = i;
-            btron_ctx_switch(&s_scheduler_sp, s_smp_tasks[i].sp);
-            s_current_task_idx = -1;
+            order[n_ready++] = i;
         }
+    }
+
+    for (int a = 0; a < n_ready; a++) {
+        for (int b = a + 1; b < n_ready; b++) {
+            if (s_smp_tasks[order[b]].config.itskpri < s_smp_tasks[order[a]].config.itskpri) {
+                int tmp = order[a]; order[a] = order[b]; order[b] = tmp;
+            }
+        }
+    }
+
+    for (int k = 0; k < n_ready; k++) {
+        int i = order[k];
+        if (!s_smp_tasks[i].active || !s_smp_tasks[i].runnable) continue;
+        s_task_slice_ticks = 0;
+        s_current_task_idx = i;
+        btron_ctx_switch(&s_scheduler_sp, s_smp_tasks[i].sp);
+        s_current_task_idx = -1;
+        /* Re-enable interrupts in case task returned via hardware timer ISR preemption */
+        __asm__ volatile("sti");
     }
 #endif
 }

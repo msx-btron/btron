@@ -326,7 +326,10 @@ static const compositor_ops_t s_posix_comp_ops = {
 static compositor_t s_posix_comp;
 static int s_posix_comp_ready;
 
+extern void b_installer_ui_tick(void) __attribute__((weak, weak_import));
+
 void btron_desktop_step(void) {
+    if (b_installer_ui_tick) b_installer_ui_tick();
     if (!s_desktop_screen_dev) {
         s_desktop_screen_dev = wnd_mgr_get_screen();
         if (!s_desktop_screen_dev) return;

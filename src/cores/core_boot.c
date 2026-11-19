@@ -314,6 +314,25 @@ static void safe_strcpy_boot(char *dst, const char *src, size_t dst_sz) {
 extern Volume *g_sys_vol;
 extern Volume *g_anders_vol;
 extern WND* open_installer_window(void) __attribute__((weak));
+extern void b_installer_ui_tick(void) __attribute__((weak));
+
+#ifdef BTRON_ALLOW_VOL_BOOT
+static int s_slice_boot_enabled = 1;
+#else
+static int s_slice_boot_enabled = 0;
+#endif
+
+static void uart_log_er(const char *subsys, const char *op, ER er) {
+    uart_puts_raw("[");
+    uart_puts_raw(subsys);
+    uart_puts_raw("] ");
+    uart_puts_raw(op);
+    uart_puts_raw(": ");
+    uart_puts_raw(btron_err_name(er));
+    uart_puts_raw(" - ");
+    uart_puts_raw(btron_err_str(er));
+    uart_puts_raw("\r\n");
+}
 
 static void btron_storage_probe_and_mount(void) {
 #if !defined(BTRON_PC98_TARGET)
@@ -325,23 +344,34 @@ static void btron_storage_probe_and_mount(void) {
         BlkDev *vdev = blk_virtio_create(i);
         if (!vdev) continue;
 
-        if (!g_sys_vol) {
-            BlkDev *part = blk_mbr_find_btron_partition_idx(vdev, 0, 1024);
-            if (part) {
-                g_sys_vol = vol_mount(part);
-                if (g_sys_vol) {
-                    uart_puts_raw("[HFDS] Mounted /SYS on VirtIO-Block device\r\n");
-                }
+        int had_sys = (g_sys_vol != NULL);
+        int had_anders = (g_anders_vol != NULL);
+        ER er = blk_mount_disk_partitions(vdev, -1);
+        if (er > 0) {
+            if (!had_sys && g_sys_vol) {
+                uart_puts_raw("[HFDS] Mounted /SYS on VirtIO-Block device\r\n");
             }
-        }
-        if (!g_anders_vol) {
-            BlkDev *part = blk_mbr_find_btron_partition_idx(vdev, 1, 1024);
-            if (part) {
-                g_anders_vol = vol_mount(part);
-                if (g_anders_vol) {
-                    uart_puts_raw("[HFDS] Mounted /ANDERS on VirtIO-Block device\r\n");
-                }
+            if (!had_anders && g_anders_vol) {
+                uart_puts_raw("[HFDS] Mounted /ANDERS on VirtIO-Block device\r\n");
             }
+        } else if (er == ER_PART_NOMBR) {
+            if (s_slice_boot_enabled && !g_sys_vol) {
+                BlkDev *raw_slice = blk_partition_create(vdev, 0, vdev->nblocks / 2, 1024);
+                if (raw_slice) {
+                    Volume *v = vol_mount(raw_slice);
+                    if (v) {
+                        g_sys_vol = v;
+                        uart_puts_raw("[HFDS] Mounted direct .vol slice (slice_boot=1)\r\n");
+                    } else {
+                        blk_partition_release(raw_slice);
+                        uart_log_er("HFDS", "direct slice mount", ER_FS_BADMAGIC);
+                    }
+                }
+            } else {
+                uart_log_er("HFDS", "virtio disk probe", ER_PART_SLICE_DIS);
+            }
+        } else if (er < 0 && er != ER_PART_NOTFOUND) {
+            uart_log_er("HFDS", "virtio disk probe", er);
         }
     }
 #endif
@@ -372,14 +402,90 @@ static void ski_init_targets(void) {
         char d_c = (char)('0' + d);
         if (virtio_blk_read_sectors(d, 0, sec0, 1) != 0) continue;
         if (sec0[510] != 0x55 || sec0[511] != 0xAA) {
-            /* Unpartitioned / unknown disk: still show it so the user sees every volume */
+            /* Unpartitioned disk (or raw .vol slice). On UEFI, direct .vol boot requires slice_boot=1 */
+            uint16_t m0 = (uint16_t)sec0[0] | ((uint16_t)sec0[1] << 8);
+            bool raw_btron = (m0 == 0x52FE || m0 == 0x42FE || m0 == 0x62FE ||
+                              m0 == 0xFE52 || m0 == 0xFE42 || m0 == 0xFE62);
             ski_target_t *t = &s_targets[s_target_count++];
-            safe_strcpy_boot(t->title, "[virtio0] Unpartitioned disk (not bootable)", sizeof(t->title));
-            t->title[7] = d_c;
-            safe_strcpy_boot(t->cmdline, "(no partition table)", sizeof(t->cmdline));
-            t->cores = 1; t->dev_idx = d; t->part_idx = -1;
-            t->is_bootable = 0; t->is_installer = 0; t->status = 0;
+            if (raw_btron && s_slice_boot_enabled) {
+                safe_strcpy_boot(t->title, "[virtio0] Direct .vol Slice (BTRON OS)", sizeof(t->title));
+                t->title[7] = d_c;
+                safe_strcpy_boot(t->cmdline, "btron3 root=virtio0 slice_boot=1 smp=4", sizeof(t->cmdline));
+                t->cmdline[18] = d_c;
+                t->cores = 4; t->dev_idx = d; t->part_idx = -1;
+                t->is_bootable = 1; t->is_installer = 0; t->status = 0x80;
+                found_bootable++;
+            } else {
+                safe_strcpy_boot(t->title, "[virtio0] Unpartitioned disk (not bootable)", sizeof(t->title));
+                t->title[7] = d_c;
+                safe_strcpy_boot(t->cmdline, raw_btron ? "(direct .vol disabled; pass slice_boot=1)" : "(no partition table)", sizeof(t->cmdline));
+                t->cores = 1; t->dev_idx = d; t->part_idx = -1;
+                t->is_bootable = 0; t->is_installer = 0; t->status = 0;
+            }
             continue;
+        }
+
+        /* Check for Protective MBR (0xEE) -> GPT enumeration */
+        bool is_gpt = false;
+        for (int p = 0; p < 4; p++) {
+            if (sec0[446 + p * 16 + 4] == 0xEE) { is_gpt = true; break; }
+        }
+        if (is_gpt) {
+            uint8_t gpt_hdr[512];
+            if (virtio_blk_read_sectors(d, 1, gpt_hdr, 1) == 0 &&
+                gpt_hdr[0] == 'E' && gpt_hdr[1] == 'F' && gpt_hdr[2] == 'I' && gpt_hdr[3] == ' ' &&
+                gpt_hdr[4] == 'P' && gpt_hdr[5] == 'A' && gpt_hdr[6] == 'R' && gpt_hdr[7] == 'T') {
+                uint32_t part_lba  = (uint32_t)gpt_hdr[72] | ((uint32_t)gpt_hdr[73] << 8) |
+                                     ((uint32_t)gpt_hdr[74] << 16) | ((uint32_t)gpt_hdr[75] << 24);
+                uint32_t num_parts = (uint32_t)gpt_hdr[80] | ((uint32_t)gpt_hdr[81] << 8) |
+                                     ((uint32_t)gpt_hdr[82] << 16) | ((uint32_t)gpt_hdr[83] << 24);
+                if (num_parts > 16) num_parts = 16;
+                for (uint32_t gp = 0; gp < num_parts && s_target_count < SKI_MAX_TARGETS; gp++) {
+                    uint8_t esec[512];
+                    if (virtio_blk_read_sectors(d, part_lba + (gp / 4), esec, 1) != 0) break;
+                    const uint8_t *ent = esec + (gp % 4) * 128;
+                    uint32_t start = (uint32_t)ent[32] | ((uint32_t)ent[33] << 8) |
+                                     ((uint32_t)ent[34] << 16) | ((uint32_t)ent[35] << 24);
+                    uint32_t end   = (uint32_t)ent[40] | ((uint32_t)ent[41] << 8) |
+                                     ((uint32_t)ent[42] << 16) | ((uint32_t)ent[43] << 24);
+                    if (start == 0 || end < start) continue;
+                    uint8_t probe[512];
+                    bool is_btron = false;
+                    if (virtio_blk_read_sectors(d, start, probe, 1) == 0) {
+                        uint16_t m = (uint16_t)probe[0] | ((uint16_t)probe[1] << 8);
+                        if (m == 0x52FE || m == 0x42FE || m == 0x62FE ||
+                            m == 0xFE52 || m == 0xFE42 || m == 0xFE62) {
+                            is_btron = true;
+                        }
+                    }
+                    ski_target_t *t = &s_targets[s_target_count++];
+                    char title[64];
+                    int tp = 0;
+                    #define TPUT(ch) do { if (tp < 60) title[tp++] = (ch); } while (0)
+                    #define TSTR(str) do { const char *q_ = (str); while (*q_) TPUT(*q_++); } while (0)
+                    TSTR("[virtio"); TPUT(d_c); TSTR(":gpt"); TPUT((char)('1' + (gp % 9))); TSTR("] ");
+                    if (is_btron) {
+                        const VolumeHeader *vh = (const VolumeHeader *)probe;
+                        int li = 0;
+                        while (li < 24 && vh->vol_name[li] >= 32 && vh->vol_name[li] <= 126) {
+                            TPUT((char)vh->vol_name[li++]);
+                        }
+                        if (li == 0) TSTR("BTRON GPT Volume");
+                        TSTR(" (BTRON GPT)");
+                    } else {
+                        TSTR("GPT Partition");
+                    }
+                    title[tp] = '\0';
+                    safe_strcpy_boot(t->title, title, sizeof(t->title));
+                    #undef TPUT
+                    #undef TSTR
+                    safe_strcpy_boot(t->cmdline, is_btron ? "btron3 root=gpt smp=4 acpi=6.5" : "(not a B-System volume - cannot boot)", sizeof(t->cmdline));
+                    t->cores = 4; t->dev_idx = d; t->part_idx = (int)gp;
+                    t->is_bootable = is_btron ? 1 : 0; t->is_installer = 0; t->status = is_btron ? 0x80 : 0;
+                    if (is_btron) found_bootable++;
+                }
+                continue;
+            }
         }
 
         for (int p = 0; p < 4 && s_target_count < SKI_MAX_TARGETS; p++) {
@@ -398,13 +504,15 @@ static void ski_init_targets(void) {
             bool probe_ok = (virtio_blk_read_sectors(d, start, probe, 1) == 0);
             if (probe_ok) {
                 uint16_t m = (uint16_t)probe[0] | ((uint16_t)probe[1] << 8);
-                bool magic = (m == 0x52FE || m == 0x42FE || m == 0xFE52 || m == 0xFE42);
+                bool magic = (m == 0x52FE || m == 0x42FE || m == 0x62FE ||
+                              m == 0xFE52 || m == 0xFE42 || m == 0xFE62);
                 if (!magic && count > 8) {
                     /* Volumes formatted into a raw slice start 8 sectors in (see blk_part.c) */
                     uint8_t probe2[512];
                     if (virtio_blk_read_sectors(d, start + 8, probe2, 1) == 0) {
                         uint16_t m2 = (uint16_t)probe2[0] | ((uint16_t)probe2[1] << 8);
-                        if (m2 == 0x52FE || m2 == 0x42FE || m2 == 0xFE52 || m2 == 0xFE42) {
+                        if (m2 == 0x52FE || m2 == 0x42FE || m2 == 0x62FE ||
+                            m2 == 0xFE52 || m2 == 0xFE42 || m2 == 0xFE62) {
                             for (int k = 0; k < 512; k++) probe[k] = probe2[k];
                             magic = true;
                         }
@@ -412,7 +520,7 @@ static void ski_init_targets(void) {
                 }
                 if (magic) is_btron = true;
             }
-            if (!probe_ok && type == 0x13) is_btron = true;
+            if (!probe_ok && blk_is_btron_mbr_type(type)) is_btron = true;
 
             ski_target_t *t = &s_targets[s_target_count++];
             char title[64];
@@ -935,7 +1043,7 @@ static void launch_vesa_desktop_session(int active_cores) {
         H mouse_x = 512, mouse_y = 384;
         get_baremetal_mouse_pos(&mouse_x, &mouse_y);
 
-        if (btron_kbd_has_key()) {
+        while (btron_kbd_has_key()) {
             uint8_t sc = btron_kbd_get_scancode();
             if (sc == 0xE0) {
                 s_ps2_extended = 1;
@@ -954,7 +1062,7 @@ static void launch_vesa_desktop_session(int active_cores) {
                     ev.key = b_key;
                     ev.pos.x = mouse_x;
                     ev.pos.y = mouse_y;
-                    ev.data = shift ? (VW)(uintptr_t)1 : (VW)0;
+                    ev.data = shift ? (VW)(uintptr_t)BTRON_KMOD_LSHIFT : (VW)0;
                     snd_evt(&ev);
                     need_redraw = 1;
                 }
@@ -1004,6 +1112,7 @@ static void launch_vesa_desktop_session(int active_cores) {
 
         orchestra_ui_tick();
         cassette_service();
+        if (b_installer_ui_tick) b_installer_ui_tick();
 
 #if defined(BTRON_UEFI_TARGET)
         /* Dispatch tasks in the UEFI scheduler (Local APIC timer driven) */
@@ -1210,6 +1319,10 @@ void kernel_main(void) {
                     uart_puts_raw("[BOOT] Installer mode detected via cmdline. Bypassing console shell.\r\n");
                     g_bootmode_installer = 1;
                 }
+                if (strstr_k(cmd, "slice_boot=1")) {
+                    uart_puts_raw("[BOOT] Direct .vol slice granularity enabled via cmdline (slice_boot=1).\r\n");
+                    s_slice_boot_enabled = 1;
+                }
             }
         }
     }
@@ -1370,18 +1483,16 @@ void kernel_main(void) {
             if (s_targets[s_selected].dev_idx >= 0 && s_targets[s_selected].part_idx >= 0) {
                 BlkDev *vdev = blk_virtio_create(s_targets[s_selected].dev_idx);
                 if (vdev) {
-                    BlkDev *part = blk_mbr_find_partition_by_slot(vdev, s_targets[s_selected].part_idx, 1024);
-                    if (!part) {
-                        part = blk_mbr_find_btron_partition_idx(vdev, s_targets[s_selected].part_idx, 1024);
-                    }
-                    if (part) {
-                        Volume *vol = vol_mount(part);
-                        if (vol) {
-                            g_sys_vol = vol;
-                            uart_puts_raw("[BOOT] Freshly installed root /SYS mounted from bootable partition on VirtIO disk ");
-                            uart_putc((char)('0' + s_targets[s_selected].dev_idx));
-                            uart_puts_raw("\r\n");
-                        }
+                    /* Reset sibling mounts so switching disks in Ski never leaves stale volumes */
+                    g_sys_vol = NULL;
+                    g_anders_vol = NULL;
+                    ER er = blk_mount_disk_partitions(vdev, s_targets[s_selected].part_idx);
+                    if (er > 0) {
+                        uart_puts_raw("[BOOT] Mounted boot root /SYS and sibling partitions from VirtIO disk ");
+                        uart_putc((char)('0' + s_targets[s_selected].dev_idx));
+                        uart_puts_raw("\r\n");
+                    } else {
+                        uart_log_er("BOOT", "selected partition mount", er);
                     }
                 }
             }

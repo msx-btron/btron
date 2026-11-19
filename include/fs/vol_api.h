@@ -17,6 +17,7 @@
 
 #include <fs/block.h>
 #include <fs/fs_types.h>
+#include <btron/error.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -83,6 +84,21 @@ Volume *vol_find_by_prefix(const char *path, const char **out_suffix);
  */
 void vol_sync(Volume *v);
 
+/*
+ * vol_set_batch_mode — defer metadata flushes during bulk replication.
+ * When disabled (enable == 0), performs a single batched vol_sync(v).
+ */
+void vol_set_batch_mode(Volume *v, int enable);
+
+/*
+ * blk_mount_disk_partitions — Mount all BTRON partitions on a 512-byte sector
+ * MBR or Protective GPT disk device. If preferred_slot >= 0, mounts that slot
+ * first as g_sys_vol. Assigns "SYS" -> g_sys_vol, "ANDERS" -> g_anders_vol,
+ * "CHOKANJI" -> g_chokanji_vol, and registers all volumes in vol.c's registry.
+ * Returns mounted volume count (>= 1) on success, or negative ER code on failure.
+ */
+ER blk_mount_disk_partitions(BlkDev *disk_512, int preferred_slot);
+
 /* ── Volume statistics ─────────────────────────────────────────── */
 
 /*
@@ -138,6 +154,7 @@ void btr_utf8_to_tcode(const char *utf8, UH *tc, int max_tcs);
 
 /* ── Internal helpers (used by file.c; not for application code) ── */
 BLK  vol_alloc_block(Volume *v);
+BLK  vol_alloc_blocks_contig(Volume *v, UW count);
 int  vol_alloc_block_pair(Volume *v, BLK *hdr, BLK *data);
 void vol_free_block(Volume *v, BLK blk);
 FID  vol_fid_alloc(Volume *v);
@@ -152,7 +169,33 @@ void vol_hash_set(Volume *v, FID fid, UW hash);
 UW   vol_hash_get(const Volume *v, FID fid);
 int  vol_read_blk(Volume *v, BLK lba, void *buf);
 int  vol_write_blk(Volume *v, BLK lba, const void *buf);
+ER   vol_read_blks(Volume *v, BLK lba, void *buf, UW count);
+ER   vol_write_blks(Volume *v, BLK lba, const void *buf, UW count);
 void vol_mark_dirty(Volume *v);
+
+/* ── Production Cross-Volume Real Body Copy & VOBJ Link API ─────── */
+/*
+ * fs_copy_file_vol — Copy a Real Body (FID) from src_vol to dst_vol at production
+ * speed using contiguous extent allocation and multi-block batch I/O (16-32 KiB).
+ * Preserves FileHeader metadata (flags, app_type, timestamps, nrec, RecordIndex
+ * types). If dst_name is NULL, preserves the source file's name.
+ * Rolls back destination FID and blocks atomically on any error.
+ * Returns E_OK or a normative BTRON ER code (ER_NODSK, ER_FS_FRAG, ER_FS_NOFID, ER_IO, ...).
+ */
+ER fs_copy_file_vol(Volume *src_vol, FID src_fid, Volume *dst_vol,
+                    const char *dst_name, FID *out_dst_fid, UW *out_bytes_copied);
+
+/*
+ * fs_add_vobj_link_vol — Append a Virtual Object (VOBJ) link record to parent_fid
+ * on dst_vol pointing to child_fid with name child_name.
+ */
+ER fs_add_vobj_link_vol(Volume *dst_vol, FID parent_fid, FID child_fid, const char *child_name);
+
+/*
+ * cpy_fil — Path-level file copy wrapper (supports cross-volume paths like
+ * "/SYS/Apps/Editor" -> "/ANDERS/Editor").
+ */
+ER cpy_fil(const char *src_path, const char *dst_path);
 
 /* ── File-level helpers exposed for host tools ─────────────────────── */
 /*

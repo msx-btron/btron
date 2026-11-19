@@ -92,7 +92,37 @@ void btron_core_mem_log(void) {
 void btron_core_hfds_log(void) {
     printf("[HFDS] VirtIO-Block MMIO 0x10001000  [DETECT]\n");
     printf("[HFDS] HFDS Hierarchical File/Data Set: INIT  [OK]\n");
-    /* ── Mount /SYS volume ─────────────────────────────────────────── */
+    /* ── Mount unified partitioned disk image first (unless BTRON_ALLOW_VOL_BOOT=1) ── */
+    if (!g_sys_vol && !getenv("BTRON_ALLOW_VOL_BOOT")) {
+        const char *disk_env = getenv("BTRON_DISK_IMAGE");
+        BlkDev *disk_blk = NULL;
+        const char *disk_used = NULL;
+        if (disk_env && disk_env[0]) {
+            disk_blk = blk_file_create(disk_env, 0, 0);
+            disk_used = disk_env;
+        }
+        if (!disk_blk) {
+            disk_blk = blk_file_create("btron_disk.img", 0, 0);
+            disk_used = "btron_disk.img";
+        }
+        if (!disk_blk) {
+            disk_blk = blk_file_create("../btron_disk.img", 0, 0);
+            disk_used = "../btron_disk.img";
+        }
+        if (disk_blk) {
+            disk_blk->block_size = 512;
+            disk_blk->nblocks   *= 2;
+            ER er = blk_mount_disk_partitions(disk_blk, -1);
+            if (er > 0) {
+                printf("[FS  ] Mounted %d partition(s) from %s  [OK]\n", (int)er, disk_used);
+            } else {
+                printf("[FS  ] %s: %s (%d) - %s; falling back to .vol slices\n",
+                       disk_used, btron_err_name(er), (int)er, btron_err_str(er));
+                blk_file_close(disk_blk);
+            }
+        }
+    }
+    /* ── Optional direct .vol slice granularity (/SYS) ──────────────── */
     if (!g_sys_vol) {
         BlkDev *sys_blk = blk_file_create("btron_sys.vol", 0 /*open existing*/, 0);
         if (!sys_blk) sys_blk = blk_file_create("../btron_sys.vol", 0, 0);

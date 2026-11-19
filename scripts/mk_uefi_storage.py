@@ -16,9 +16,20 @@ import sys
 import os
 import struct
 import subprocess
+import zlib
 
 SECTOR_SIZE = 512
 DISK_SECTORS = 131072  # 64 MiB total
+
+# Canonical 16-byte mixed-endian GPT Type GUIDs (matches src/fs/blk_part.c)
+GPT_GUID_ESP = bytes([
+    0x28, 0x73, 0x2A, 0xC1, 0x1F, 0xF8, 0xD2, 0x11,
+    0xBA, 0x4B, 0x00, 0xA0, 0xC9, 0x3E, 0xC9, 0x3B,
+])
+GPT_GUID_BFS_V1 = bytes([
+    0x53, 0x46, 0x68, 0x8B, 0x54, 0x42, 0x00, 0x31,
+    0xBE, 0xEF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+])
 
 # Partition layout:
 # Partition 1: ESP (FAT32/EFI, Type 0xEF), 8 MiB (16384 sectors) @ LBA 2048
@@ -69,50 +80,105 @@ def create_mbr(partitions):
     return mbr
 
 
+def create_gpt_header_and_entries(partitions):
+    """
+    Construct (protective_mbr, gpt_header_sec, gpt_entries_bytes) for GPT disks.
+    partitions: list of tuples (type_guid_16b, start_lba, total_sec, name_utf16)
+    """
+    pmbr = create_mbr([(0x00, 0xEE, 1, min(0xFFFFFFFF, DISK_SECTORS - 1))])
+
+    num_entries = 128
+    entry_size = 128
+    entries = bytearray(num_entries * entry_size)
+
+    for idx, (tguid, start_lba, count, name) in enumerate(partitions):
+        off = idx * entry_size
+        uguid = struct.pack("<IIQ", 0xB7200001 + idx, 0x4254524E, 0x0000000000000001 + idx)
+        first_lba = start_lba
+        last_lba = start_lba + count - 1
+        name_u16 = name.encode("utf-16le")[:72].ljust(72, b"\x00")
+        entries[off:off + 16] = tguid
+        entries[off + 16:off + 32] = uguid
+        struct.pack_into("<QQQ", entries, off + 32, first_lba, last_lba, 0)
+        entries[off + 56:off + 128] = name_u16
+
+    entries_crc = zlib.crc32(entries) & 0xFFFFFFFF
+
+    hdr = bytearray(512)
+    hdr[0:8] = b"EFI PART"
+    struct.pack_into("<I", hdr, 8, 0x00010000)         # Revision 1.0
+    struct.pack_into("<I", hdr, 12, 92)                # Header size
+    struct.pack_into("<I", hdr, 16, 0)                 # Header CRC32 (filled below)
+    struct.pack_into("<I", hdr, 20, 0)                 # Reserved
+    struct.pack_into("<Q", hdr, 24, 1)                 # Current LBA
+    struct.pack_into("<Q", hdr, 32, DISK_SECTORS - 1)  # Backup LBA
+    struct.pack_into("<Q", hdr, 40, 34)                # First usable LBA
+    struct.pack_into("<Q", hdr, 48, DISK_SECTORS - 34) # Last usable LBA
+    hdr[56:72] = b"BTRON320-DISKGPT"                   # Disk GUID
+    struct.pack_into("<Q", hdr, 72, 2)                 # Partition entries LBA
+    struct.pack_into("<I", hdr, 80, num_entries)
+    struct.pack_into("<I", hdr, 84, entry_size)
+    struct.pack_into("<I", hdr, 88, entries_crc)
+
+    hdr_crc = zlib.crc32(hdr[:92]) & 0xFFFFFFFF
+    struct.pack_into("<I", hdr, 16, hdr_crc)
+    return pmbr, hdr, entries
+
+
 def build_btron_volumes():
-    """Build btron_sys.vol and btron_anders.vol using mkbtronfs if not present."""
+    """Return paths to btron_sys.vol and btron_anders.vol, preferring root Makefile-built volumes."""
     os.makedirs(".build", exist_ok=True)
-    sys_vol = ".build/btron_sys.vol"
-    anders_vol = ".build/btron_anders.vol"
+    root_sys = "btron_sys.vol"
+    root_anders = "btron_anders.vol"
+    sys_vol = root_sys if os.path.exists(root_sys) else ".build/btron_sys.vol"
+    anders_vol = root_anders if os.path.exists(root_anders) else ".build/btron_anders.vol"
 
     mkbtronfs_bin = "./mkbtronfs"
-    if not os.path.exists(mkbtronfs_bin):
-        # Build mkbtronfs if needed
-        subprocess.run(["make", "mkbtronfs"], check=True)
+    if not os.path.exists(sys_vol) or not os.path.exists(anders_vol):
+        if not os.path.exists(mkbtronfs_bin):
+            subprocess.run(["make", "mkbtronfs"], check=True)
 
     if not os.path.exists(sys_vol) and os.path.exists("tools/manifest.txt"):
-        print("[STORAGE] Generating .build/btron_sys.vol...")
+        print(f"[STORAGE] Generating {sys_vol}...")
         subprocess.run([mkbtronfs_bin, "tools/manifest.txt", "-o", sys_vol, "-n", "512", "-b", "16384"], check=True)
 
     if not os.path.exists(anders_vol) and os.path.exists("tools/manifest_anders.txt"):
-        print("[STORAGE] Generating .build/btron_anders.vol...")
+        print(f"[STORAGE] Generating {anders_vol}...")
         subprocess.run([mkbtronfs_bin, "tools/manifest_anders.txt", "-o", anders_vol, "-n", "256", "-b", "2048"], check=True)
 
     return sys_vol, anders_vol
 
 
-def build_raw_disk(output_path, is_installed=False):
-    """Build a partitioned raw disk image (USB or installed HDD)."""
+def build_raw_disk(output_path, is_installed=False, use_gpt=False):
+    """Build a partitioned raw disk image (MBR by default, or Protective GPT if use_gpt=True)."""
     sys_vol_path, anders_vol_path = build_btron_volumes()
 
-    print(f"[STORAGE] Creating {'installed HDD' if is_installed else 'Live USB'} disk image: {output_path} ({DISK_SECTORS * SECTOR_SIZE // (1024*1024)} MiB)...")
+    scheme = "GPT" if use_gpt else "MBR"
+    print(f"[STORAGE] Creating {'installed HDD' if is_installed else 'Live USB'} {scheme} disk image: {output_path} ({DISK_SECTORS * SECTOR_SIZE // (1024*1024)} MiB)...")
 
-    # MBR partitions:
-    # Part 1: ESP (0xEF)
-    # Part 2: BTRON /SYS (0x13) - active if is_installed
-    # Part 3: BTRON /ANDERS (0x13)
-    p1 = (0x00, 0xEF, ESP_START_LBA, ESP_SECTORS)
-    p2 = (0x80 if is_installed else 0x00, 0x13, SYS_START_LBA, SYS_SECTORS)
-    p3 = (0x00, 0x13, ANDERS_START_LBA, ANDERS_SECTORS)
-
-    mbr = create_mbr([p1, p2, p3])
+    if use_gpt:
+        pmbr, gpt_hdr, gpt_entries = create_gpt_header_and_entries([
+            (GPT_GUID_ESP,    ESP_START_LBA,    ESP_SECTORS,    "EFI System"),
+            (GPT_GUID_BFS_V1, SYS_START_LBA,    SYS_SECTORS,    "SYS"),
+            (GPT_GUID_BFS_V1, ANDERS_START_LBA, ANDERS_SECTORS, "ANDERS"),
+        ])
+        header_blob = bytes(pmbr) + bytes(gpt_hdr) + bytes(gpt_entries)
+    else:
+        # MBR partitions:
+        # Part 1: ESP (0xEF)
+        # Part 2: BTRON /SYS (0x13) - active if is_installed
+        # Part 3: BTRON /ANDERS (0x13)
+        p1 = (0x00, 0xEF, ESP_START_LBA, ESP_SECTORS)
+        p2 = (0x80 if is_installed else 0x00, 0x13, SYS_START_LBA, SYS_SECTORS)
+        p3 = (0x00, 0x13, ANDERS_START_LBA, ANDERS_SECTORS)
+        header_blob = bytes(create_mbr([p1, p2, p3]))
 
     with open(output_path, "wb") as f:
-        # Write MBR
-        f.write(mbr)
+        # Write MBR (or Protective MBR + GPT Header + Partition Entries)
+        f.write(header_blob)
 
         # Pad up to Partition 2 (/SYS)
-        current_pos = len(mbr)
+        current_pos = len(header_blob)
         pad_size = (SYS_START_LBA * SECTOR_SIZE) - current_pos
         if pad_size > 0:
             f.write(b"\x00" * pad_size)
@@ -276,16 +342,25 @@ def build_cd_iso(output_path):
 
 def main():
     if len(sys.argv) < 2:
-        print("Usage: mk_uefi_storage.py [all|usb|hdd|cd|target]")
+        print("Usage: mk_uefi_storage.py [all|disk|usb|hdd|cd|target] [--gpt] [-o output_path]")
         sys.exit(1)
 
     cmd = sys.argv[1]
+    use_gpt = "--gpt" in sys.argv[2:]
+    out_override = None
+    if "-o" in sys.argv[2:]:
+        oi = sys.argv.index("-o")
+        if oi + 1 < len(sys.argv):
+            out_override = sys.argv[oi + 1]
+
     os.makedirs(".build", exist_ok=True)
 
+    if cmd in ("all", "disk"):
+        build_raw_disk(out_override or "btron_disk.img", is_installed=True, use_gpt=use_gpt)
     if cmd in ("all", "usb"):
-        build_raw_disk(".build/btron-uefi-usb.img", is_installed=False)
+        build_raw_disk(out_override or ".build/btron-uefi-usb.img", is_installed=False, use_gpt=use_gpt)
     if cmd in ("all", "hdd"):
-        build_raw_disk(".build/btron-uefi-hdd.img", is_installed=True)
+        build_raw_disk(out_override or ".build/btron-uefi-hdd.img", is_installed=True, use_gpt=use_gpt)
     if cmd in ("all", "cd"):
         build_cd_iso(".build/btron-uefi-cd.iso")
     if cmd == "all":

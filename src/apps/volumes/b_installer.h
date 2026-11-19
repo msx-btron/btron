@@ -15,9 +15,11 @@
 #define BTRON_APPS_VOLUMES_B_INSTALLER_H
 
 #include <btron/types.h>
+#include <btron/error.h>
 #include <btron/wnd.h>
 #include <btron/dp.h>
 #include <btron/app_menu.h>
+#include <btron/progress_bar.h>
 #include <fs/block.h>
 #include <fs/volume.h>
 #include <stdbool.h>
@@ -31,6 +33,26 @@ extern "C" {
 #define INSTALLER_MAX_SOURCES       4
 #define INSTALLER_MAX_PATH_LEN      64
 #define INSTALLER_PKG_COUNT         3
+#define INSTALLER_MAX_COPY_ITEMS    512
+
+typedef struct {
+    FID         src_fid;
+    uint32_t    size_bytes;
+    uint32_t    work_weight;    /* Real-time linear cost weight (meta overhead + block I/O) */
+    char        name[40];
+} InstallerCopyItem;
+
+typedef struct {
+    InstallerCopyItem   items[INSTALLER_MAX_COPY_ITEMS];
+    int                 count;
+    int                 cursor;
+    uint32_t            total_files;
+    uint32_t            copied_files;
+    uint32_t            total_bytes;
+    uint32_t            copied_bytes;
+    uint64_t            total_work;
+    uint64_t            done_work;
+} InstallerCopyPlan;
 
 enum {
     INST_CMD_NONE = 0,
@@ -93,10 +115,21 @@ typedef struct {
     Volume              *source_vol;
 
     int                 progress_percent;           /* 0..100 */
-    int                 current_step;               /* 1..4 */
+    int                 current_step;               /* 1..4 (PLAN, PREPARE, REPLICATE, FINALIZE) */
+    ER                  last_err;                   /* Normative BTRON ER code */
     char                unique_disk_label[32];      /* e.g. "BTRON-X45IJ-37GFX" */
+    char                current_file_path[96];      /* Live file path currently being replicated */
     char                status_msg[96];
     char                error_msg[96];
+
+    /* Haiku-Style Progress Bar Control & Incremental Replication Engine */
+    BTRON_PROGRESS_BAR  progress_bar;
+    InstallerCopyPlan   copy_plan;
+    BlkDev             *dst_part_dev;
+    Volume             *dst_vol;
+    ID                  copy_tskid;                 /* Standalone low-priority inst_copy task ID */
+    volatile bool       ui_dirty;                   /* Set by inst_copy after each file for repaint */
+    volatile bool       cancel_requested;           /* Cooperative cancel signal to inst_copy */
 
     /* Haiku-style Optional Packages Disclosure & Three Package Checkboxes */
     bool                show_optional_packages;
@@ -131,7 +164,10 @@ void            b_installer_generate_unique_label(char *out, size_t out_sz);
 void            b_installer_scan_targets(InstallerState *st);
 bool            b_installer_select_target(InstallerState *st, int idx);
 bool            b_installer_start_install(InstallerState *st);
+bool            b_installer_spawn_copy_task(InstallerState *st);
 bool            b_installer_step_copy(InstallerState *st);
+void            b_installer_cancel_install(InstallerState *st);
+void            b_installer_ui_tick(void);
 WND*            open_installer_window(void);
 
 /* Window callbacks */

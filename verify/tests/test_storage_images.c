@@ -63,6 +63,51 @@ int main(void) {
     vol_umount(hdd_vol);
     blk_file_close(hdd_dev);
 
+    /* 5. Validate unified btron_disk.img (if present) & normative ER_* error codes */
+    {
+        unsigned char blank[4096];
+        memset(blank, 0, sizeof(blank));
+        BlkDev *bdev = blk_mem_create(blank, (UW)sizeof(blank), 0);
+        assert(bdev != NULL);
+        bdev->block_size = 512;
+        bdev->nblocks   *= 2;
+
+        ER er = E_OK;
+        assert(blk_mbr_find_btron_partition_ex(bdev, 0, 1024, &er) == NULL);
+        assert(er == ER_PART_NOMBR);
+
+        /* Write Protective MBR (0xEE) without valid GPT header -> ER_PART_BADGPT */
+        blank[446 + 4] = 0xEE;
+        blank[510] = 0x55;
+        blank[511] = 0xAA;
+        assert(blk_mbr_find_btron_partition_ex(bdev, 0, 1024, &er) == NULL);
+        assert(er == ER_PART_BADGPT);
+
+        /* Clear 0xEE -> valid empty MBR -> ER_PART_NOTFOUND */
+        blank[446 + 4] = 0x00;
+        assert(blk_mbr_find_btron_partition_ex(bdev, 0, 1024, &er) == NULL);
+        assert(er == ER_PART_NOTFOUND);
+
+        blk_destroy(bdev);
+        printf("  [PASS] Normative partition error codes (ER_PART_NOMBR, ER_PART_BADGPT, ER_PART_NOTFOUND) verified.\n");
+    }
+
+    /* 6. Validate GPT disk image built by mk_uefi_storage.py --gpt if present */
+    BlkDev *gpt_dev = blk_file_create(".build/test_gpt_disk.img", 0, 0);
+    if (gpt_dev) {
+        gpt_dev->block_size = 512;
+        gpt_dev->nblocks   *= 2;
+        ER er = E_OK;
+        BlkDev *g0 = blk_mbr_find_btron_partition_ex(gpt_dev, 0, 1024, &er);
+        assert(g0 != NULL && er == E_OK);
+        Volume *gv = vol_mount(g0);
+        assert(gv != NULL);
+        printf("  [PASS] Mounted Protective GPT /SYS partition: \"%s\"\n", vol_name(gv));
+        vol_umount(gv);
+        blk_partition_release(g0);
+        blk_file_close(gpt_dev);
+    }
+
     printf("=== All Storage Image Validations Passed! ===\n");
     return 0;
 }

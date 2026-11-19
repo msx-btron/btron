@@ -607,7 +607,7 @@ static void test_nasa_defensive_and_bounds(void)
     /* 2. Bounds and invalid handle checks */
     CHECK(cls_fil(-1) == -1, "cls_fil(-1) must fail");
     CHECK(cls_fil(MAX_OPEN_FILES) == -1, "cls_fil(OOB) must fail");
-    CHECK(ins_rec(-1, 0, "a", 1) == -1, "ins_rec(-1) must fail");
+    CHECK(ins_rec(-1, 0, "a", 1) == ER_FD, "ins_rec(-1) must fail");
     CHECK(del_rec(-1, 0) == -1, "del_rec(-1) must fail");
     CHECK(cls_rec(-1) == -1, "cls_rec(-1) must fail");
     CHECK(pos_rec(-1, 0, 0) == -1, "pos_rec(-1) must fail");
@@ -1171,6 +1171,86 @@ static void test_clu_tree_cleanroom(void)
 }
 
 /* ─────────────────────────────────────────────────────────────────── */
+/* TEST 21: Contiguous allocator, multi-block copy & rollback          */
+/* ─────────────────────────────────────────────────────────────────── */
+static void test_v1_fast_file_copy_and_contig(void)
+{
+    /* Source & destination in-memory volumes (512 KiB each) */
+    size_t vsz = 512 * 1024;
+    unsigned char *src_buf = (unsigned char *)calloc(1, vsz);
+    unsigned char *dst_buf = (unsigned char *)calloc(1, vsz);
+    CHECK(src_buf && dst_buf, "calloc volumes");
+
+    BlkDev *sdev = blk_mem_create(src_buf, (UW)vsz, 0);
+    BlkDev *ddev = blk_mem_create(dst_buf, (UW)vsz, 0);
+    CHECK(sdev && ddev, "blk_mem_create");
+    CHECK(vol_format(sdev, 64, sdev->nblocks, "SRC") == 0, "vol_format src");
+    CHECK(vol_format(ddev, 64, ddev->nblocks, "DST") == 0, "vol_format dst");
+    Volume *sv = vol_mount(sdev);
+    Volume *dv = vol_mount(ddev);
+    CHECK(sv && dv, "vol_mount src/dst");
+    g_sys_vol = sv;
+
+    /* Create 24 KiB multi-block file on source volume */
+    unsigned char payload[24 * 1024];
+    for (size_t i = 0; i < sizeof(payload); i++) payload[i] = (unsigned char)((i * 37 + 13) & 0xFF);
+
+    ID fd = cre_fil("BigBody", F_WRITE | F_CREATE);
+    CHECK(fd >= 0, "cre_fil BigBody");
+    CHECK(ins_rec(fd, 0, payload, (W)sizeof(payload)) == E_OK, "ins_rec 24 KiB");
+    fil_set_rec_type(fd, 0, RT_TADDATA);
+    FID src_fid = 1;
+    cls_fil(fd);
+
+    /* Fast cross-volume copy via fs_copy_file_vol */
+    vol_set_batch_mode(dv, 1);
+    FID dst_fid = FID_INVALID;
+    UW copied = 0;
+    ER er = fs_copy_file_vol(sv, src_fid, dv, "BigBodyCopy", &dst_fid, &copied);
+    CHECK(er == E_OK, "fs_copy_file_vol E_OK");
+    CHECK(dst_fid != FID_INVALID && copied == sizeof(payload), "fs_copy_file_vol size");
+    CHECK(fs_add_vobj_link_vol(dv, FID_ROOT, dst_fid, "BigBodyCopy") == E_OK, "fs_add_vobj_link_vol");
+    vol_set_batch_mode(dv, 0);
+
+    /* Read back from destination volume and verify bit-exact equality */
+    g_sys_vol = dv;
+    ID dfd = opn_fil("BigBodyCopy", F_READ);
+    CHECK(dfd >= 0, "opn_fil BigBodyCopy");
+    ID rec = opn_rec(dfd, 0, F_READ);
+    CHECK(rec >= 0, "opn_rec 0");
+    unsigned char verify_buf[24 * 1024];
+    W got = 0;
+    CHECK(rd_rec(rec, verify_buf, (W)sizeof(verify_buf), &got) == 0, "rd_rec 24 KiB");
+    CHECK(got == (W)sizeof(payload) && memcmp(payload, verify_buf, sizeof(payload)) == 0,
+          "24 KiB copied payload must be bit-exact");
+    cls_rec(rec);
+    cls_fil(dfd);
+
+    /* Verify atomic rollback and ER_NODSK on tiny destination volume */
+    unsigned char tiny_buf[16 * 1024];
+    memset(tiny_buf, 0, sizeof(tiny_buf));
+    BlkDev *tdev = blk_mem_create(tiny_buf, (UW)sizeof(tiny_buf), 0);
+    CHECK(tdev && vol_format(tdev, 16, tdev->nblocks, "TINY") == 0, "format tiny");
+    Volume *tv = vol_mount(tdev);
+    CHECK(tv != NULL, "mount tiny");
+    UW free_before = vol_free_blocks(tv);
+    ER tiny_er = fs_copy_file_vol(sv, src_fid, tv, "TooBig", NULL, NULL);
+    CHECK(tiny_er == ER_NODSK, "copy into tiny volume must return ER_NODSK");
+    CHECK(vol_free_blocks(tv) == free_before, "failed copy must roll back all allocated blocks");
+    vol_umount(tv);
+    blk_destroy(tdev);
+
+    vol_umount(dv);
+    vol_umount(sv);
+    g_sys_vol = NULL;
+    blk_destroy(ddev);
+    blk_destroy(sdev);
+    free(dst_buf);
+    free(src_buf);
+    TEST_PASS();
+}
+
+/* ─────────────────────────────────────────────────────────────────── */
 /* Main                                                                */
 /* ─────────────────────────────────────────────────────────────────── */
 int main(void)
@@ -1197,6 +1277,7 @@ int main(void)
     test_packed_markdown_files();
     test_df_all_volumes();
     test_clu_tree_cleanroom();
+    test_v1_fast_file_copy_and_contig();
 
     printf("\n=== Results: %d PASS  %d FAIL ===\n", g_pass, g_fail);
     return (g_fail > 0) ? 1 : 0;

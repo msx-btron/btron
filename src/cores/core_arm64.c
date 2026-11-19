@@ -2023,7 +2023,27 @@ void btron_core_hfds_log(void) {
     uart_puts("[HFDS] EMMC2 / SD Storage Interface: INIT  [OK]\n");
     uart_puts("[HFDS] HFDS Hierarchical File/Data Set: INIT  [OK]\n");
 
-    /* ── Mount /SYS volume ─────────────────────────────────────────── */
+    /* ── Probe partitioned MBR/GPT disk image at RAM 0x03000000 first ── */
+    if (!g_sys_vol) {
+        const uint8_t *mbr_ptr = (const uint8_t *)BTRON_RAM_SYS_VOL;
+        if (mbr_ptr[510] == 0x55 && mbr_ptr[511] == 0xAA) {
+            /* 80 MiB RAM payload window (0x03000000..0x07FFFFFF) */
+            BlkDev *ram_disk = blk_mem_create((void *)BTRON_RAM_SYS_VOL, 80U * 1024U * 1024U, 0);
+            if (ram_disk) {
+                ram_disk->block_size = 512;
+                ram_disk->nblocks   *= 2;
+                ER er = blk_mount_disk_partitions(ram_disk, -1);
+                if (er > 0) {
+                    uart_puts("[FS  ] Mounted partitioned MBR/GPT RAM payload @ 0x03000000  [OK]\n");
+                    fb_log("[FS  ] Partitioned RAM payload mounted @ 0x03000000  [OK]\n");
+                } else {
+                    blk_destroy(ram_disk);
+                }
+            }
+        }
+    }
+
+    /* ── Optional direct .vol slice granularity (/SYS) ──────────────── */
     if (!g_sys_vol) {
         const uint16_t *magic_ptr = (const uint16_t *)BTRON_RAM_SYS_VOL;
         if (*magic_ptr == 0xFE42 || *magic_ptr == 0x42FE) {

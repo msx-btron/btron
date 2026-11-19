@@ -13,6 +13,8 @@
 #define _BTRON_FS_BLOCK_H_
 
 #include <fs/fs_types.h>
+#include <btron/error.h>
+#include <stdbool.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -95,14 +97,34 @@ int     blk_qcow2_create_file(const char *path, uint64_t disk_size);
 BlkDev *blk_partition_create(BlkDev *parent, UW start_lba, UW nblocks, UW block_size);
 
 /*
- * blk_mbr_find_btron_partition — Scan MBR on dev for type 0x13 (BTRON / B-right/V).
- * If found, creates a partition BlkDev adjusted for the 8-sector VBR offset,
+ * blk_is_btron_mbr_type — Returns true for all recognized BTRON MBR partition types:
+ *   0x13 (Chokanji / B-right/V), 0x61 (B-FS V1), 0x62 (B-FS V2),
+ *   0xB3..0xB5 (Signed B-FS), 0xE1..0xE4 (Encrypted B-FS).
+ */
+bool blk_is_btron_mbr_type(uint8_t part_type);
+
+/*
+ * blk_mbr_find_btron_partition — Scan MBR (or Protective GPT) on dev for BTRON partitions.
+ * Accounts for direct raw volume (+0) or 8-sector VBR/IPL offset (+8),
  * using the specified filesystem logical block size (e.g. 8192 or 1024).
- * Returns the partition BlkDev, or NULL if not found / on error.
+ * The _ex variants populate *out_err with a normative BTRON ER code (E_OK,
+ * ER_PART_NOMBR, ER_PART_BADGPT, ER_PART_NOTFOUND, ER_PART_POOLFULL, ER_IO, E_PAR).
  */
 BlkDev *blk_mbr_find_btron_partition(BlkDev *dev, UW fs_block_size);
 BlkDev *blk_mbr_find_btron_partition_idx(BlkDev *dev, int part_idx, UW fs_block_size);
+BlkDev *blk_mbr_find_btron_partition_ex(BlkDev *dev, int part_idx, UW fs_block_size, ER *out_err);
+BlkDev *blk_gpt_find_btron_partition_idx(BlkDev *dev, int part_idx, UW fs_block_size);
+BlkDev *blk_gpt_find_btron_partition_ex(BlkDev *dev, int part_idx, UW fs_block_size, ER *out_err);
 BlkDev *blk_mbr_find_partition_by_slot(BlkDev *dev, int slot_idx, UW fs_block_size);
+BlkDev *blk_mbr_find_partition_by_slot_ex(BlkDev *dev, int slot_idx, UW fs_block_size, ER *out_err);
+
+/*
+ * blk_probe_partition_label — Inspect a 512-byte sector partition start_lba for a
+ * BTRON superblock magic (+0 or +8 sectors) and copy its VolumeHeader vol_name
+ * into out_label (if non-NULL). Returns E_OK if valid BTRON magic found, else ER_FS_BADMAGIC / ER_IO.
+ */
+ER blk_probe_partition_label(BlkDev *dev, uint32_t start_lba, uint32_t total_sec,
+                             char *out_label, int out_label_sz, uint32_t *out_fs_start_lba);
 
 #ifdef __cplusplus
 }

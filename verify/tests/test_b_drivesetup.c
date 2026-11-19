@@ -1100,6 +1100,26 @@ static void test_make_bootable(void) {
     printf("  PASS: Partition and Disk bootable state transitions and MBR signature verified.\n");
 }
 
+static void test_tier_readonly_partition_table_guard(void) {
+    printf("[15/15] Testing Tier B/C SD-Safe read-only partition table guard (ER_PART_READONLY)...\n");
+    DriveSetupState st;
+    b_drivesetup_init(&st);
+    st.device_count = 1;
+    st.selected_dev_idx = 0;
+    st.selected_part_idx = 0;
+    strncpy(st.devices[0].raw_path, "/dev/mmcblk0", sizeof(st.devices[0].raw_path) - 1);
+    st.devices[0].is_partition_table_readonly = true;
+    st.devices[0].partition_count = 1;
+
+    assert(!b_drivesetup_init_disk(&st, 0, PART_SCHEME_MBR));
+    assert(st.last_err == ER_PART_READONLY);
+    assert(!b_drivesetup_create_slice(&st, 0, "Blocked", 1024 * 1024));
+    assert(st.last_err == ER_PART_READONLY);
+    assert(!b_drivesetup_delete_partition(&st, 0, 0));
+    assert(st.last_err == ER_PART_READONLY);
+    printf("  PASS: Protected SD/Tier B-C devices reject destructive table writes with ER_PART_READONLY.\n");
+}
+
 int main(void) {
     printf("==========================================================\n");
     printf(" B-System Production DriveSetup (b_drivesetup) Test Suite\n");
@@ -1120,9 +1140,10 @@ int main(void) {
     test_warning_dialog_and_write_safety();
     test_e2e_full_lifecycle_and_clu_browsing();
     test_make_bootable();
+    test_tier_readonly_partition_table_guard();
 
     printf("\n==========================================================\n");
-    printf(" ALL 14 DRIVESETUP TEST SUITES PASSED SUCCESSFULLY (100.0%%)\n");
+    printf(" ALL 15 DRIVESETUP TEST SUITES PASSED SUCCESSFULLY (100.0%%)\n");
     printf("==========================================================\n");
     return 0;
 }

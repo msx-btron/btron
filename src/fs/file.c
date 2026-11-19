@@ -997,45 +997,87 @@ ER del_fil(const char *path)
 }
 
 /* ── ins_rec ─────────────────────────────────────────────────────── */
+static unsigned char s_fs_copy_buf[16 * 1024]; /* NASA/JPL Rule 3: static 16 KiB I/O scratch */
+
 ER ins_rec(ID fd, W rec_idx, const void *buf, W sz)
 {
-    if (fd < 0 || fd >= MAX_OPEN_FILES) return (ER)-1;
+    if (fd < 0 || fd >= MAX_OPEN_FILES) return ER_FD;
     OpenFile *of = &g_open_files[(int)fd];
-    if (!of->used) return (ER)-1;
-    if (of->nrec >= REC_IDX_LEVEL0_MAX) return (ER)-5; /* E_LIMIT */
+    if (!of->used) return ER_FD;
+    if (of->nrec >= REC_IDX_LEVEL0_MAX) return E_LIMIT;
 
     Volume *v = of_vol(of);
-    if (!v) return (ER)-1;
+    if (!v) return ER_NOFS;
 
     UW payload = (sz > 0) ? (UW)sz : 0;
     UW data_offset = of->data_used;
     UW bsize = vol_block_size(v);
 
-    /* Write payload across blocks */
+    /* Ensure contiguous block extent covers [0 .. data_offset + payload) */
     if (payload > 0 && buf) {
+        UW old_blks = (of->data_used > 0) ? ((of->data_used + bsize - 1) / bsize) : 0;
+        UW new_blks = (data_offset + payload + bsize - 1) / bsize;
+
+        if (of->data_blk == 0) {
+            BLK db = vol_alloc_blocks_contig(v, new_blks);
+            if (db == FID_INVALID) {
+                return (vol_free_blocks(v) >= new_blks) ? ER_FS_FRAG : ER_NODSK;
+            }
+            of->data_blk     = db;
+            of->hdr.data_blk = db;
+        } else if (new_blks > old_blks) {
+            /* Relocate into a fresh contiguous extent so adjacent files are never corrupted */
+            BLK new_base = vol_alloc_blocks_contig(v, new_blks);
+            if (new_base == FID_INVALID) {
+                return (vol_free_blocks(v) >= new_blks) ? ER_FS_FRAG : ER_NODSK;
+            }
+            if (old_blks > 0) {
+                UW max_chunk = (UW)sizeof(s_fs_copy_buf) / bsize;
+                if (max_chunk == 0) max_chunk = 1;
+                UW copied = 0;
+                while (copied < old_blks) {
+                    UW chunk = old_blks - copied;
+                    if (chunk > max_chunk) chunk = max_chunk;
+                    if (vol_read_blks(v, of->data_blk + copied, s_fs_copy_buf, chunk) != E_OK ||
+                        vol_write_blks(v, new_base + copied, s_fs_copy_buf, chunk) != E_OK) {
+                        for (UW k = 0; k < new_blks; k++) vol_free_block(v, new_base + k);
+                        return ER_IO;
+                    }
+                    copied += chunk;
+                }
+                for (UW k = 0; k < old_blks; k++) vol_free_block(v, of->data_blk + k);
+            }
+            of->data_blk     = new_base;
+            of->hdr.data_blk = new_base;
+        }
+
         const unsigned char *src = (const unsigned char *)buf;
-        UW remaining = payload;
+        UW remaining  = payload;
         UW cur_offset = data_offset;
-        unsigned char *blk_buf = (unsigned char *)malloc(bsize);
-        if (!blk_buf) return (ER)-1;
+        unsigned char *blk_buf = (bsize <= sizeof(s_fs_copy_buf))
+                               ? s_fs_copy_buf
+                               : (unsigned char *)malloc(bsize);
+        if (!blk_buf) return E_NOMEM;
 
         while (remaining > 0) {
             UW blk_idx = cur_offset / bsize;
             UW blk_off = cur_offset % bsize;
+            BLK cur_blk = of->data_blk + blk_idx;
 
-            /* Ensure data_blk is allocated */
-            if (of->data_blk == 0) {
-                BLK db = vol_alloc_block(v);
-                if (db == FID_INVALID) { free(blk_buf); return (ER)-1; }
-                of->data_blk = db;
-                of->hdr.data_blk = db;
-            } else if (blk_idx > 0 && blk_off == 0) {
-                /* Allocate next block in contiguous extent */
-                BLK nb = vol_alloc_block(v);
-                if (nb == FID_INVALID) { free(blk_buf); return (ER)-1; }
+            /* Fast path: full aligned multi-block write */
+            if (blk_off == 0 && remaining >= bsize) {
+                UW full_blks = remaining / bsize;
+                if (vol_write_blks(v, cur_blk, src, full_blks) != E_OK) {
+                    if (blk_buf != s_fs_copy_buf) free(blk_buf);
+                    return ER_IO;
+                }
+                UW bytes = full_blks * bsize;
+                src        += bytes;
+                remaining  -= bytes;
+                cur_offset += bytes;
+                continue;
             }
 
-            BLK cur_blk = of->data_blk + blk_idx;
             if (blk_off > 0 || remaining < bsize) {
                 if (vol_read_blk(v, cur_blk, blk_buf) != 0)
                     memset(blk_buf, 0, bsize);
@@ -1046,13 +1088,16 @@ ER ins_rec(ID fd, W rec_idx, const void *buf, W sz)
             UW space = bsize - blk_off;
             UW chunk = (remaining < space) ? remaining : space;
             memcpy(blk_buf + blk_off, src, chunk);
-            vol_write_blk(v, cur_blk, blk_buf);
+            if (vol_write_blk(v, cur_blk, blk_buf) != 0) {
+                if (blk_buf != s_fs_copy_buf) free(blk_buf);
+                return ER_IO;
+            }
 
             src        += chunk;
             remaining  -= chunk;
             cur_offset += chunk;
         }
-        free(blk_buf);
+        if (blk_buf != s_fs_copy_buf) free(blk_buf);
     }
 
     /* Insert RecordIndex entry at rec_idx (shift later entries) */
@@ -2135,4 +2180,163 @@ ER fil_get_rec_link_info(ID fd, W rec_idx, FID *out_fid, char *out_name, size_t 
         tkl_strscpy(out_name, link_name[0] ? link_name : "(link)", name_max);
     }
     return (ER)0;
+}
+
+/* ── Production Cross-Volume Real Body Copy & VOBJ Link API ─────── */
+ER fs_copy_file_vol(Volume *src_vol, FID src_fid, Volume *dst_vol,
+                    const char *dst_name, FID *out_dst_fid, UW *out_bytes_copied)
+{
+    if (out_bytes_copied) *out_bytes_copied = 0;
+    if (!src_vol || !dst_vol) return E_PAR;
+    if (src_fid >= vol_nfmax(src_vol)) return ER_ID;
+    if (vol_fid_refcount(src_vol, src_fid) == 0 && src_fid != FID_ROOT) return E_NOEXS;
+
+    UW src_bsize = vol_block_size(src_vol);
+    UW dst_bsize = vol_block_size(dst_vol);
+    if (src_bsize != dst_bsize || src_bsize == 0) return E_NOSPT;
+
+    BLK src_hdr_blk = vol_fid_get_blk(src_vol, src_fid);
+    if (src_hdr_blk == 0 || src_hdr_blk == FID_INVALID) return ER_FS_CORRUPT;
+
+    static OpenFile s_src_of;
+    static OpenFile s_dst_of;
+    memset(&s_src_of, 0, sizeof(s_src_of));
+    memset(&s_dst_of, 0, sizeof(s_dst_of));
+
+    if (read_header_block(src_vol, src_hdr_blk, &s_src_of) != 0) {
+        return ER_IO;
+    }
+
+    /* Allocate destination FID & header block */
+    FID dst_fid = vol_fid_alloc(dst_vol);
+    if (dst_fid == FID_INVALID) return ER_FS_NOFID;
+
+    BLK dst_hdr_blk = vol_alloc_block(dst_vol);
+    if (dst_hdr_blk == FID_INVALID) {
+        vol_fid_free(dst_vol, dst_fid);
+        return ER_NODSK;
+    }
+
+    /* Allocate contiguous data extent on destination volume */
+    UW total_bytes = s_src_of.data_used;
+    UW data_blks = (total_bytes > 0) ? ((total_bytes + dst_bsize - 1) / dst_bsize) : 0;
+    BLK dst_data_blk = 0;
+
+    if (data_blks > 0) {
+        dst_data_blk = vol_alloc_blocks_contig(dst_vol, data_blks);
+        if (dst_data_blk == FID_INVALID) {
+            vol_free_block(dst_vol, dst_hdr_blk);
+            vol_fid_free(dst_vol, dst_fid);
+            return (vol_free_blocks(dst_vol) >= data_blks) ? ER_FS_FRAG : ER_NODSK;
+        }
+
+        /* Stream raw data blocks in 16 KiB multi-block chunks (zero heap) */
+        UW max_chunk = (UW)sizeof(s_fs_copy_buf) / dst_bsize;
+        if (max_chunk == 0) max_chunk = 1;
+        UW copied = 0;
+        while (copied < data_blks) {
+            UW chunk = data_blks - copied;
+            if (chunk > max_chunk) chunk = max_chunk;
+            if (vol_read_blks(src_vol, s_src_of.data_blk + copied, s_fs_copy_buf, chunk) != E_OK ||
+                vol_write_blks(dst_vol, dst_data_blk + copied, s_fs_copy_buf, chunk) != E_OK) {
+                for (UW k = 0; k < data_blks; k++) vol_free_block(dst_vol, dst_data_blk + k);
+                vol_free_block(dst_vol, dst_hdr_blk);
+                vol_fid_free(dst_vol, dst_fid);
+                return ER_IO;
+            }
+            copied += chunk;
+        }
+    }
+
+    /* Clone FileHeader + RecordIndex metadata with remapped data_blk */
+    s_dst_of = s_src_of;
+    s_dst_of.vol          = dst_vol;
+    s_dst_of.fid          = dst_fid;
+    s_dst_of.hdr_blk      = dst_hdr_blk;
+    s_dst_of.data_blk     = dst_data_blk;
+    s_dst_of.hdr.data_blk = dst_data_blk;
+    s_dst_of.dirty        = 1;
+
+    char final_name[40];
+    memset(final_name, 0, sizeof(final_name));
+    if (dst_name && dst_name[0]) {
+        tkl_strscpy(final_name, dst_name, sizeof(final_name));
+        memset(s_dst_of.hdr.name, 0, sizeof(s_dst_of.hdr.name));
+        tkl_strscpy((char *)s_dst_of.hdr.name, final_name, sizeof(s_dst_of.hdr.name));
+    } else {
+        tkl_strscpy(final_name, (const char *)s_src_of.hdr.name, sizeof(final_name));
+    }
+
+    if (write_header_block(dst_vol, dst_hdr_blk, &s_dst_of) != 0) {
+        for (UW k = 0; k < data_blks; k++) vol_free_block(dst_vol, dst_data_blk + k);
+        vol_free_block(dst_vol, dst_hdr_blk);
+        vol_fid_free(dst_vol, dst_fid);
+        return ER_IO;
+    }
+
+    vol_fid_set(dst_vol, dst_fid, dst_hdr_blk, 1);
+    vol_hash_set(dst_vol, dst_fid, vol_name_hash(final_name));
+    vol_mark_dirty(dst_vol);
+    fil_hier_invalidate(dst_vol);
+
+    if (out_dst_fid) *out_dst_fid = dst_fid;
+    if (out_bytes_copied) *out_bytes_copied = total_bytes;
+    return E_OK;
+}
+
+ER fs_add_vobj_link_vol(Volume *dst_vol, FID parent_fid, FID child_fid, const char *child_name)
+{
+    if (!dst_vol || !child_name || !child_name[0]) return E_PAR;
+    if (parent_fid >= vol_nfmax(dst_vol) || child_fid >= vol_nfmax(dst_vol)) return ER_ID;
+
+    ID fd = opn_fil_fid(dst_vol, parent_fid, F_WRITE | F_READ);
+    if (fd < 0) return ER_FD;
+
+    unsigned char payload[16 + 40];
+    memset(payload, 0, sizeof(payload));
+    payload[0] = (unsigned char)(child_fid >> 24);
+    payload[1] = (unsigned char)(child_fid >> 16);
+    payload[2] = (unsigned char)(child_fid >>  8);
+    payload[3] = (unsigned char)(child_fid      );
+    unsigned int nlen = 0;
+    while (child_name[nlen] && nlen < 39) nlen++;
+    payload[14] = (unsigned char)(nlen >> 8);
+    payload[15] = (unsigned char)(nlen     );
+    memcpy(payload + 16, child_name, nlen);
+
+    OpenFile *of = &g_open_files[(int)fd];
+    W rec_pos = (W)of->nrec;
+    ER err = ins_rec(fd, rec_pos, payload, (W)(16 + nlen));
+    if (err == E_OK && rec_pos >= 0 && (UW)rec_pos < of->nrec) {
+        of->ridx[rec_pos].type = (UH)RT_LINK;
+        write_header_block(dst_vol, of->hdr_blk, of);
+    }
+    cls_fil(fd);
+    return err;
+}
+
+ER cpy_fil(const char *src_path, const char *dst_path)
+{
+    if (!src_path || !dst_path || !src_path[0] || !dst_path[0]) return E_PAR;
+
+    Volume *src_vol = resolve_volume_from_path(src_path);
+    Volume *dst_vol = resolve_volume_from_path(dst_path);
+    if (!src_vol || !dst_vol) return ER_NOFS;
+
+    ID src_fd = opn_fil(src_path, F_READ);
+    if (src_fd < 0) return E_NOEXS;
+    FID src_fid = g_open_files[(int)src_fd].fid;
+    cls_fil(src_fd);
+
+    /* Extract destination file name relative to volume prefix */
+    const char *dst_name = dst_path;
+    const char *suffix = NULL;
+    if (vol_find_by_prefix(dst_path, &suffix) && suffix) {
+        dst_name = (*suffix == '/') ? (suffix + 1) : suffix;
+    } else if (dst_name[0] == '/') {
+        dst_name++;
+    }
+    if (!dst_name[0]) return ER_FNAME;
+
+    return fs_copy_file_vol(src_vol, src_fid, dst_vol, dst_name, NULL, NULL);
 }

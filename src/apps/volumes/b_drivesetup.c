@@ -801,6 +801,16 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
         }
     }
 
+    /* Apply platform storage tier editability policy to all discovered devices */
+    for (int i = 0; i < st->device_count; i++) {
+#if BTRON_STORAGE_TIER == BTRON_STORAGE_TIER_FULL
+        st->devices[i].is_partition_table_readonly = false;
+#else
+        st->devices[i].is_partition_table_readonly = true;
+#endif
+    }
+    st->last_err = E_OK;
+
     if (st->device_count > 0 && st->selected_dev_idx < 0) {
         st->selected_dev_idx = 0;
         st->selected_part_idx = (st->devices[0].partition_count > 0) ? 0 : -1;
@@ -847,8 +857,23 @@ bool b_drivesetup_select_partition(DriveSetupState *st, int part_idx) {
     return true;
 }
 
+static bool ds_require_editable_table(DriveSetupState *st, int dev_idx) {
+    if (!st || dev_idx < 0 || dev_idx >= st->device_count) {
+        if (st) st->last_err = E_PAR;
+        return false;
+    }
+    if (st->devices[dev_idx].is_partition_table_readonly) {
+        st->last_err = ER_PART_READONLY;
+        snprintf(st->status_msg, sizeof(st->status_msg), "%s: %s",
+                 btron_err_name(ER_PART_READONLY), btron_err_str(ER_PART_READONLY));
+        return false;
+    }
+    st->last_err = E_OK;
+    return true;
+}
+
 bool b_drivesetup_init_disk(DriveSetupState *st, int dev_idx, PartitionScheme scheme) {
-    if (!st || dev_idx < 0 || dev_idx >= st->device_count) return false;
+    if (!ds_require_editable_table(st, dev_idx)) return false;
     DriveSetupDevice *dev = &st->devices[dev_idx];
     dev->scheme = scheme;
     dev->partition_count = 0;
@@ -979,7 +1004,7 @@ bool b_drivesetup_make_disk_bootable(DriveSetupState *st, int dev_idx) {
 }
 
 bool b_drivesetup_delete_partition(DriveSetupState *st, int dev_idx, int part_idx) {
-    if (!st || dev_idx < 0 || dev_idx >= st->device_count) return false;
+    if (!ds_require_editable_table(st, dev_idx)) return false;
     DriveSetupDevice *dev = &st->devices[dev_idx];
     if (part_idx < 0 || part_idx >= dev->partition_count) return false;
 
@@ -1004,7 +1029,7 @@ void b_drivesetup_open_warn_dialog(DriveSetupState *st, WriteOperationType op, c
 }
 
 bool b_drivesetup_create_slice(DriveSetupState *st, int dev_idx, const char *label, uint64_t size_bytes) {
-    if (!st || dev_idx < 0 || dev_idx >= st->device_count) return false;
+    if (!ds_require_editable_table(st, dev_idx)) return false;
     DriveSetupDevice *dev = &st->devices[dev_idx];
     int vidx = ds_virtio_unit(dev);
     int max_parts = (vidx >= 0) ? 4 : DRIVESETUP_MAX_PARTITIONS;
@@ -1108,6 +1133,11 @@ bool b_drivesetup_create_disk_image_typed(DriveSetupState *st, const char *path,
     d->sector_size = 512;
     d->total_bytes = size_bytes;
     d->scheme = (fs_type == FS_BFS_V2) ? PART_SCHEME_GPT : PART_SCHEME_MBR;
+#if BTRON_STORAGE_TIER == BTRON_STORAGE_TIER_FULL
+    d->is_partition_table_readonly = false;
+#else
+    d->is_partition_table_readonly = true;
+#endif
     d->partition_count = 1;
 
     DriveSetupPartition *p = &d->partitions[0];
@@ -1964,17 +1994,21 @@ static void drivesetup_dispatch_cmd(WND *wnd, DriveSetupState *st, int cmd) {
             else if (wnd) cls_wnd(wnd);
             return;
         case DSCMD_DISK_INIT_MBR:
+            if (!ds_require_editable_table(st, st->selected_dev_idx)) break;
             b_drivesetup_open_dialog(st, DIALOG_INIT_DISK);
             st->dlg_radio_sel1 = 0;
             break;
         case DSCMD_DISK_INIT_GPT:
+            if (!ds_require_editable_table(st, st->selected_dev_idx)) break;
             b_drivesetup_open_dialog(st, DIALOG_INIT_DISK);
             st->dlg_radio_sel1 = 1;
             break;
         case DSCMD_PART_CREATE:
+            if (!ds_require_editable_table(st, st->selected_dev_idx)) break;
             b_drivesetup_open_dialog(st, DIALOG_CREATE_SLICE);
             break;
         case DSCMD_PART_DELETE:
+            if (!ds_require_editable_table(st, st->selected_dev_idx)) break;
             if (st->selected_dev_idx >= 0 && st->selected_part_idx >= 0 &&
                 st->selected_dev_idx < st->device_count) {
                 DriveSetupPartition *p = &st->devices[st->selected_dev_idx].partitions[st->selected_part_idx];

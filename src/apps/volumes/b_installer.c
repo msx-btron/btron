@@ -24,6 +24,7 @@
 #include <btron/troncode.h>
 #include <btron/desktop.h>
 #include <btron/event.h>
+#include <btron/btron.h>
 #include <btron/settings_dlg.h>
 #include <fs/vol_api.h>
 #include <btron/libc_shim.h>
@@ -31,6 +32,10 @@
 extern void uart_puts_raw(const char *s);
 extern Volume *g_sys_vol;
 extern Volume *g_anders_vol;
+
+extern ID   cre_tsk(const T_CTSK *pk_ctsk) __attribute__((weak, weak_import));
+extern ER   sta_tsk(ID tskid, VW exinf)    __attribute__((weak, weak_import));
+extern void dly_tsk(W dlytim)              __attribute__((weak, weak_import));
 
 extern WND* open_vobj_manager_window(void) __attribute__((weak, weak_import));
 extern WND* open_t_editor_window(void) __attribute__((weak, weak_import));
@@ -315,28 +320,150 @@ void b_installer_init(InstallerState *st) {
     app_menu_add_separator(&st->menu_bar, h_tools);
     app_menu_add_item(&st->menu_bar, h_tools, "Quit Installer", "Q", INST_CMD_QUIT, TRUE);
 
-    /* Populate exactly two sources: /SYS and /ANDERS */
-    st->source_count = 0;
-
-    InstallerSource *s0 = &st->sources[st->source_count++];
-    safe_strcpy(s0->name, "/SYS", sizeof(s0->name));
-    safe_strcpy(s0->desc, "Live Media: /SYS - 24 MB (Core System)", sizeof(s0->desc));
-    s0->vol = g_sys_vol;
-    s0->size_mb = 24;
-
-    InstallerSource *s1 = &st->sources[st->source_count++];
-    safe_strcpy(s1->name, "/ANDERS", sizeof(s1->name));
-    safe_strcpy(s1->desc, "Live Media: /ANDERS - 24 MB (Applications)", sizeof(s1->desc));
-    s1->vol = g_anders_vol;
-    s1->size_mb = 24;
-
-    st->selected_source_idx = 0;
-    st->source_vol = g_sys_vol;
-    safe_strcpy(st->source_name, s0->desc, sizeof(st->source_name));
     safe_strcpy(st->status_msg, "Ready to configure installation.", sizeof(st->status_msg));
 
     b_installer_scan_targets(st);
     installer_calc_layout(st, 640, 480);
+}
+
+static void b_installer_scan_sources(InstallerState *st) {
+    if (!st) return;
+    int prev_sel = st->selected_source_idx;
+    st->source_count = 0;
+
+    /* Match DriveSetup /dev/ paths for mounted /SYS and /ANDERS volumes */
+    char sys_dev_path[INSTALLER_MAX_PATH_LEN] = "";
+    char anders_dev_path[INSTALLER_MAX_PATH_LEN] = "";
+    uint32_t sys_mb = g_sys_vol ? (uint32_t)(((uint64_t)vol_total_blocks(g_sys_vol) * 1024ULL) >> 20) : 24;
+    uint32_t anders_mb = g_anders_vol ? (uint32_t)(((uint64_t)vol_total_blocks(g_anders_vol) * 1024ULL) >> 20) : 24;
+    if (sys_mb == 0) sys_mb = 1;
+    if (anders_mb == 0) anders_mb = 1;
+
+    for (int d = 0; d < g_drivesetup_state.device_count; d++) {
+        DriveSetupDevice *dev = &g_drivesetup_state.devices[d];
+        for (int p = 0; p < dev->partition_count; p++) {
+            DriveSetupPartition *part = &dev->partitions[p];
+            bool is_sys = (strcmp(part->mount_point, "/SYS") == 0 ||
+                           strcmp(part->label, "SYS") == 0 ||
+                           (g_sys_vol && part->vol_handle == g_sys_vol));
+            bool is_anders = (strcmp(part->mount_point, "/ANDERS") == 0 ||
+                              strcmp(part->label, "ANDERS") == 0 ||
+                              (g_anders_vol && part->vol_handle == g_anders_vol));
+            uint32_t pmb = (uint32_t)(((uint64_t)part->block_count * (part->block_size ? part->block_size : 1024)) >> 20);
+            if (pmb == 0) pmb = 1;
+
+            if (is_sys && !sys_dev_path[0]) {
+                if (strncmp(part->dev_path, "/dev/", 5) == 0) {
+                    safe_strcpy(sys_dev_path, part->dev_path, sizeof(sys_dev_path));
+                } else {
+                    snprintf(sys_dev_path, sizeof(sys_dev_path), "/dev/disk%dp%d", d, p + 1);
+                }
+                sys_mb = pmb;
+            } else if (is_anders && !anders_dev_path[0]) {
+                if (strncmp(part->dev_path, "/dev/", 5) == 0) {
+                    safe_strcpy(anders_dev_path, part->dev_path, sizeof(anders_dev_path));
+                } else {
+                    snprintf(anders_dev_path, sizeof(anders_dev_path), "/dev/disk%dp%d", d, p + 1);
+                }
+                anders_mb = pmb;
+            }
+        }
+    }
+
+    if (!sys_dev_path[0]) {
+        safe_strcpy(sys_dev_path,
+                    (virtio_blk_get_device_count() > 0) ? "/dev/virtio0p2" : "/dev/disk0p2",
+                    sizeof(sys_dev_path));
+    }
+    if (!anders_dev_path[0]) {
+        safe_strcpy(anders_dev_path,
+                    (virtio_blk_get_device_count() > 0) ? "/dev/virtio0p3" : "/dev/disk0p3",
+                    sizeof(anders_dev_path));
+    }
+
+    InstallerSource *s0 = &st->sources[st->source_count++];
+    safe_strcpy(s0->name, "/SYS", sizeof(s0->name));
+    snprintf(s0->desc, sizeof(s0->desc), "%s - %u MB (/SYS)", sys_dev_path, (unsigned)sys_mb);
+    s0->vol = g_sys_vol;
+    s0->size_mb = sys_mb;
+
+    InstallerSource *s1 = &st->sources[st->source_count++];
+    safe_strcpy(s1->name, "/ANDERS", sizeof(s1->name));
+    snprintf(s1->desc, sizeof(s1->desc), "%s - %u MB (/ANDERS)", anders_dev_path, (unsigned)anders_mb);
+    s1->vol = g_anders_vol;
+    s1->size_mb = anders_mb;
+
+    if (prev_sel < 0 || prev_sel >= st->source_count) prev_sel = 0;
+    st->selected_source_idx = prev_sel;
+    st->source_vol = st->sources[prev_sel].vol;
+    safe_strcpy(st->source_name, st->sources[prev_sel].desc, sizeof(st->source_name));
+}
+
+static void installer_copy_task_fn(VW exinf) {
+    InstallerState *st = (InstallerState *)(uintptr_t)exinf;
+    if (!st) st = &g_installer_state;
+
+    while (st->mode == INSTALLER_STATE_COPYING) {
+        if (st->cancel_requested) {
+            st->cancel_requested = false;
+            b_installer_cancel_install(st);
+            st->ui_dirty = true;
+            break;
+        }
+        (void)b_installer_step_copy(st);
+        st->ui_dirty = true;
+        /* Yield one frame after every file so compositor & screen capture render each file */
+        if (&dly_tsk && dly_tsk) {
+            dly_tsk(20);
+        }
+    }
+    st->copy_tskid = 0;
+    st->ui_dirty = true;
+}
+
+bool b_installer_spawn_copy_task(InstallerState *st) {
+    if (!st || st->mode != INSTALLER_STATE_COPYING) return false;
+    st->cancel_requested = false;
+    st->ui_dirty = true;
+
+    if (&cre_tsk && cre_tsk && &sta_tsk && sta_tsk) {
+        T_CTSK ctsk;
+        memset(&ctsk, 0, sizeof(ctsk));
+        ctsk.exinf   = (VW)(uintptr_t)st;
+        ctsk.tskatr  = TA_HLNG;
+        ctsk.task    = installer_copy_task_fn;
+        ctsk.itskpri = 24;          /* Low priority (mouse/UI & glgears=10 preempt it) */
+        ctsk.stksz   = 16384;
+        ctsk.name    = "inst_copy"; /* Displayed by `ps` alongside glgears_task */
+        ID tid = cre_tsk(&ctsk);
+        if (tid > 0) {
+            st->copy_tskid = tid;
+            sta_tsk(tid, (VW)(uintptr_t)st);
+            return true;
+        }
+    }
+    st->copy_tskid = 0;
+    return false;
+}
+
+void b_installer_ui_tick(void) {
+    if (!g_installer_wnd) return;
+    InstallerState *st = &g_installer_state;
+    if (st->copy_tskid > 0) {
+        /* Standalone preemptive inst_copy task owns copying; UI thread only repaints */
+        if (st->ui_dirty) {
+            st->ui_dirty = false;
+            inval_wnd(g_installer_wnd);
+        }
+        return;
+    }
+    if (st->ui_dirty) {
+        st->ui_dirty = false;
+        inval_wnd(g_installer_wnd);
+    }
+    if (st->mode != INSTALLER_STATE_COPYING) return;
+    b_installer_step_copy(st);
+    inval_wnd(g_installer_wnd);
 }
 
 static uint32_t s_installer_label_seed = 0x19840420;
@@ -408,6 +535,7 @@ void b_installer_scan_targets(InstallerState *st) {
 
     /* Always synchronize DriveSetup devices with on-disk MBR & slices */
     b_drivesetup_scan_devices(&g_drivesetup_state);
+    b_installer_scan_sources(st);
 
     /* Scan DriveSetup devices and partitions:
      * - Partitions mounted by DriveSetup (excluding running /SYS and /ANDERS)
@@ -510,9 +638,76 @@ bool b_installer_select_target(InstallerState *st, int idx) {
     return true;
 }
 
+static bool inst_str_icontains(const char *hay, const char *needle) {
+    if (!hay || !needle || !needle[0]) return false;
+    for (const char *h = hay; *h; h++) {
+        const char *a = h;
+        const char *b = needle;
+        while (*a && *b) {
+            char ca = (*a >= 'A' && *a <= 'Z') ? (char)(*a + 32) : *a;
+            char cb = (*b >= 'A' && *b <= 'Z') ? (char)(*b + 32) : *b;
+            if (ca != cb) break;
+            a++; b++;
+        }
+        if (*b == '\0') return true;
+    }
+    return false;
+}
+
+static bool installer_should_include_file(const InstallerState *st, const char *name) {
+    if (!st || !name || !name[0]) return false;
+    /* Optional Folder Group 1: SDK & Demos (pkg_checked[1]) */
+    if (!st->pkg_checked[1]) {
+        if (inst_str_icontains(name, "msx") || inst_str_icontains(name, "cbios") ||
+            inst_str_icontains(name, "tbios") || inst_str_icontains(name, "quake") ||
+            inst_str_icontains(name, "pak0") || inst_str_icontains(name, ".rom") ||
+            inst_str_icontains(name, ".dem") || inst_str_icontains(name, ".fth") ||
+            inst_str_icontains(name, "sdk") || inst_str_icontains(name, "lilcu")) {
+            return false;
+        }
+    }
+    /* Optional Folder Group 2: TAD Books & Docs (pkg_checked[2]) */
+    if (!st->pkg_checked[2]) {
+        if (inst_str_icontains(name, ".tad") || inst_str_icontains(name, "book") ||
+            inst_str_icontains(name, "manual") || inst_str_icontains(name, ".txt") ||
+            inst_str_icontains(name, ".md") || inst_str_icontains(name, ".ps")) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static void installer_release_dst(InstallerState *st) {
+    if (!st) return;
+    if (st->dst_vol) {
+        vol_set_batch_mode(st->dst_vol, 0);
+        vol_umount(st->dst_vol);
+        st->dst_vol = NULL;
+    }
+    if (st->dst_part_dev) {
+        blk_partition_release(st->dst_part_dev);
+        st->dst_part_dev = NULL;
+    }
+}
+
+void b_installer_cancel_install(InstallerState *st) {
+    if (!st) return;
+    installer_release_dst(st);
+    st->last_err = ER_INST_CANCELLED;
+    st->mode = INSTALLER_STATE_SETUP;
+    st->current_step = 0;
+    st->progress_percent = 0;
+    st->current_file_path[0] = '\0';
+    snprintf(st->status_msg, sizeof(st->status_msg), "%s: %s",
+             btron_err_name(ER_INST_CANCELLED), btron_err_str(ER_INST_CANCELLED));
+}
+
 bool b_installer_start_install(InstallerState *st) {
-    if (!st || st->selected_target_idx < 0 || st->selected_target_idx >= st->target_count) {
-        safe_strcpy(st->error_msg, "Please choose a destination disk.", sizeof(st->error_msg));
+    if (!st) return false;
+    if (st->selected_target_idx < 0 || st->selected_target_idx >= st->target_count) {
+        st->last_err = ER_INST_NODST;
+        snprintf(st->error_msg, sizeof(st->error_msg), "%s: %s",
+                 btron_err_name(ER_INST_NODST), btron_err_str(ER_INST_NODST));
         return false;
     }
 
@@ -520,7 +715,9 @@ bool b_installer_start_install(InstallerState *st) {
 
     if (t->part_idx >= 0 && t->size_bytes > 0 && st->source_vol &&
         (uint64_t)vol_total_blocks(st->source_vol) * 1024ULL > t->size_bytes) {
-        snprintf(st->error_msg, sizeof(st->error_msg), "Target slice too small: need %u MB.",
+        st->last_err = ER_INST_TOOSMALL;
+        snprintf(st->error_msg, sizeof(st->error_msg), "%s: Target slice too small (need %u MB).",
+                 btron_err_name(ER_INST_TOOSMALL),
                  (unsigned)(((uint64_t)vol_total_blocks(st->source_vol) * 1024ULL) >> 20));
         return false;
     }
@@ -604,14 +801,55 @@ bool b_installer_start_install(InstallerState *st) {
         virtio_blk_write_sectors(t->dev_idx, 0, mbr, 1);
     }
 
+    installer_release_dst(st);
+    memset(&st->copy_plan, 0, sizeof(st->copy_plan));
+    st->last_err = E_OK;
     st->mode = INSTALLER_STATE_COPYING;
-    st->progress_percent = 10;
+    st->progress_percent = 5;
     st->current_step = 1;
     st->error_msg[0] = '\0';
+    st->current_file_path[0] = '\0';
+
+    RECT pb_r = { 24, 152, 536, 214 };
+    btron_progress_bar_init(&st->progress_bar, &pb_r, "Scanning source volume...");
+    btron_progress_bar_update(&st->progress_bar, 0, 0, "Preparing...", "Enumerating Real Bodies...");
     snprintf(st->status_msg, sizeof(st->status_msg),
-             "Step 1/4: Initializing destination partition (%s)...", st->unique_disk_label);
+             "Stage 1/4: Planning replication onto %s...", st->unique_disk_label);
 
     return true;
+}
+
+static void installer_update_copy_progress(InstallerState *st) {
+    uint32_t total = st->copy_plan.total_files;
+    uint32_t done  = st->copy_plan.copied_files;
+    uint64_t tw    = st->copy_plan.total_work;
+    uint64_t dw    = st->copy_plan.done_work;
+
+    /* Linear real-time progress: map [0..total_work] smoothly across [1500..9500] / 10000 */
+    uint32_t bar_max = 10000U;
+    uint32_t bar_cur = 1500U;
+    if (tw > 0) {
+        uint64_t scaled = (dw * 8000ULL) / tw;
+        if (scaled > 8000ULL) scaled = 8000ULL;
+        bar_cur = 1500U + (uint32_t)scaled;
+        st->progress_percent = (int)(bar_cur / 100U);
+    } else {
+        bar_cur = 9500U;
+        st->progress_percent = 95;
+    }
+
+    char trailing[48];
+    char detail[96];
+    snprintf(trailing, sizeof(trailing), "%d%% (%u/%u) %u KiB",
+             st->progress_percent, (unsigned)done, (unsigned)total,
+             (unsigned)(st->copy_plan.copied_bytes / 1024U));
+    snprintf(detail, sizeof(detail), "Copying: %s",
+             st->current_file_path[0] ? st->current_file_path : "/SYS");
+    btron_progress_bar_update(&st->progress_bar, bar_cur, bar_max, trailing, detail);
+    snprintf(st->status_msg, sizeof(st->status_msg),
+             "Stage 3/4: Replicated %u/%u files (%u KiB)...",
+             (unsigned)done, (unsigned)total, (unsigned)(st->copy_plan.copied_bytes / 1024U));
+    st->ui_dirty = true;
 }
 
 bool b_installer_step_copy(InstallerState *st) {
@@ -620,46 +858,198 @@ bool b_installer_step_copy(InstallerState *st) {
     InstallerTarget *t = &st->targets[st->selected_target_idx];
 
     if (st->current_step == 1) {
-        /* Step 1: Validate / format partition */
-        st->progress_percent = 30;
-        st->current_step = 2;
-        safe_strcpy(st->status_msg, "Step 2/4: Copying system Real Bodies and TAD records...", sizeof(st->status_msg));
-        return true;
-    } else if (st->current_step == 2) {
-        /* Step 2: Copy volume blocks */
-        BlkDev *vdev = blk_virtio_create(t->dev_idx);
-        if (vdev) {
-            BlkDev *part = blk_mbr_find_partition_by_slot(vdev, t->part_idx >= 0 ? t->part_idx : 1, 1024);
-            if (!part) {
-                part = blk_mbr_find_btron_partition_idx(vdev, 0, 1024);
-            }
-            if (part && st->source_vol) {
-                uint8_t blk_buf[1024];
-                UW src_blocks = vol_total_blocks(st->source_vol);
-                UW copy_blocks = (src_blocks < part->nblocks) ? src_blocks : part->nblocks;
-                for (UW b = 0; b < copy_blocks; b++) {
-                    if (vol_read_blk(st->source_vol, (BLK)b, blk_buf) == 0) {
-                        if (b == 0 && st->unique_disk_label[0]) {
-                            /* Overlay unique disk label onto block 0 VolumeHeader */
-                            VolumeHeader *hdr = (VolumeHeader *)blk_buf;
-                            memset(hdr->vol_name, 0, sizeof(hdr->vol_name));
-                            safe_strcpy((char *)hdr->vol_name, st->unique_disk_label, sizeof(hdr->vol_name));
-                        }
-                        part->write(part, b, blk_buf, 1);
-                    }
+        /* ── Stage 1: PLAN — Enumerate source volume & apply Optional Folder filters ── */
+        memset(&st->copy_plan, 0, sizeof(st->copy_plan));
+        if (st->source_vol) {
+            UW nfmax = vol_nfmax(st->source_vol);
+            uint8_t hdr_sec[1024];
+            for (UW fid = 1; fid < nfmax; fid++) {
+                if (vol_fid_refcount(st->source_vol, (FID)fid) == 0) continue;
+                BLK hblk = vol_fid_get_blk(st->source_vol, (FID)fid);
+                if (hblk == 0 || hblk == FID_INVALID) continue;
+                if (vol_read_blk(st->source_vol, hblk, hdr_sec) != 0) continue;
+
+                /* Extract FileHeader name (+32..+71) and total_size (+28..+31 BE) */
+                char fname[40];
+                memset(fname, 0, sizeof(fname));
+                for (int k = 0; k < 39; k++) {
+                    unsigned char c = hdr_sec[32 + k];
+                    if (c == 0) break;
+                    fname[k] = (char)c;
                 }
-            } else if (part) {
-                vol_format(part, 256, part->nblocks, st->unique_disk_label[0] ? st->unique_disk_label : "SYS");
+                if (!fname[0]) continue;
+                if (!installer_should_include_file(st, fname)) continue;
+
+                if (st->copy_plan.count >= INSTALLER_MAX_COPY_ITEMS) {
+                    st->last_err = ER_INST_PLANFULL;
+                    snprintf(st->error_msg, sizeof(st->error_msg), "%s: %s",
+                             btron_err_name(ER_INST_PLANFULL), btron_err_str(ER_INST_PLANFULL));
+                    st->mode = INSTALLER_STATE_ERROR;
+                    return false;
+                }
+
+                uint32_t fsize = ((uint32_t)hdr_sec[28] << 24) | ((uint32_t)hdr_sec[29] << 16) |
+                                 ((uint32_t)hdr_sec[30] <<  8) | ((uint32_t)hdr_sec[31]);
+                uint32_t blks  = (fsize + 1023U) / 1024U;
+                /* Real-time linear cost weight: 4 ms metadata/VOBJ overhead + 0.5 ms per 1 KiB block */
+                uint32_t weight = 4000U + blks * 500U;
+                InstallerCopyItem *it = &st->copy_plan.items[st->copy_plan.count++];
+                it->src_fid     = (FID)fid;
+                it->size_bytes  = fsize;
+                it->work_weight = weight;
+                safe_strcpy(it->name, fname, sizeof(it->name));
+                st->copy_plan.total_files++;
+                st->copy_plan.total_bytes += fsize;
+                st->copy_plan.total_work  += weight;
             }
-            if (part) blk_partition_release(part);
         }
 
-        st->progress_percent = 75;
-        st->current_step = 3;
-        safe_strcpy(st->status_msg, "Step 3/4: Writing bootloader stage (Ski & ESP)...", sizeof(st->status_msg));
+        /* Normalize per-file work_weight into exact budgeted outer-loop iterations
+         * (mean 10000 per file, clamped [1500..50000]) so Δprogress / Δtime is strictly linear. */
+        if (st->copy_plan.count > 0 && st->copy_plan.total_work > 0) {
+            uint64_t avg_w = st->copy_plan.total_work / (uint64_t)st->copy_plan.count;
+            if (avg_w == 0) avg_w = 1;
+            uint64_t budgeted_total = 0;
+            for (int i = 0; i < st->copy_plan.count; i++) {
+                uint32_t j_iters = (uint32_t)(((uint64_t)10000ULL * (uint64_t)st->copy_plan.items[i].work_weight) / avg_w);
+                if (j_iters < 1500U)  j_iters = 1500U;
+                if (j_iters > 50000U) j_iters = 50000U;
+                st->copy_plan.items[i].work_weight = j_iters;
+                budgeted_total += j_iters;
+            }
+            st->copy_plan.total_work = budgeted_total;
+        }
+
+        st->progress_percent = 10;
+        st->current_step = 2;
+        btron_progress_bar_init(&st->progress_bar, &st->progress_bar.rect, "Formatting target partition...");
+        btron_progress_bar_update(&st->progress_bar, 0, 0, "10%", st->unique_disk_label);
+        snprintf(st->status_msg, sizeof(st->status_msg),
+                 "Stage 2/4: Formatting target (%u files planned)...",
+                 (unsigned)st->copy_plan.total_files);
         return true;
+
+    } else if (st->current_step == 2) {
+        /* ── Stage 2: PREPARE — Format & mount destination partition in batch sync mode ── */
+        BlkDev *vdev = blk_virtio_create(t->dev_idx);
+        if (!vdev) {
+            st->last_err = ER_INST_NODST;
+            snprintf(st->error_msg, sizeof(st->error_msg), "%s: %s",
+                     btron_err_name(ER_INST_NODST), btron_err_str(ER_INST_NODST));
+            st->mode = INSTALLER_STATE_ERROR;
+            return false;
+        }
+
+        ER er = E_OK;
+        BlkDev *part = blk_mbr_find_partition_by_slot_ex(vdev, t->part_idx >= 0 ? t->part_idx : 1, 1024, &er);
+        if (!part) {
+            part = blk_mbr_find_btron_partition_ex(vdev, 0, 1024, &er);
+        }
+        if (!part) {
+            st->last_err = (er < 0) ? er : ER_PART_NOTFOUND;
+            snprintf(st->error_msg, sizeof(st->error_msg), "%s: %s",
+                     btron_err_name(st->last_err), btron_err_str(st->last_err));
+            st->mode = INSTALLER_STATE_ERROR;
+            return false;
+        }
+
+        UW nfmax = st->source_vol ? vol_nfmax(st->source_vol) : 256;
+        if (nfmax < 256) nfmax = 256;
+        const char *vlabel = st->unique_disk_label[0] ? st->unique_disk_label : "SYS";
+        if (vol_format(part, nfmax, part->nblocks, vlabel) != 0) {
+            blk_partition_release(part);
+            st->last_err = ER_IO;
+            snprintf(st->error_msg, sizeof(st->error_msg), "%s: Failed to format destination partition",
+                     btron_err_name(ER_IO));
+            st->mode = INSTALLER_STATE_ERROR;
+            return false;
+        }
+
+        Volume *dvol = vol_mount(part);
+        if (!dvol) {
+            blk_partition_release(part);
+            st->last_err = ER_FS_BADMAGIC;
+            snprintf(st->error_msg, sizeof(st->error_msg), "%s: %s",
+                     btron_err_name(ER_FS_BADMAGIC), btron_err_str(ER_FS_BADMAGIC));
+            st->mode = INSTALLER_STATE_ERROR;
+            return false;
+        }
+
+        vol_set_batch_mode(dvol, 1);
+        st->dst_part_dev = part;
+        st->dst_vol      = dvol;
+
+        st->progress_percent = 15;
+        st->current_step = 3;
+        char lbl_buf[64];
+        snprintf(lbl_buf, sizeof(lbl_buf), "Copying files to %s...", vlabel);
+        btron_progress_bar_init(&st->progress_bar, &st->progress_bar.rect, lbl_buf);
+        btron_progress_bar_update(&st->progress_bar, 1500U, 10000U,
+                                  "15%", "Starting file replication...");
+        safe_strcpy(st->status_msg, "Stage 3/4: Replicating Real Bodies...", sizeof(st->status_msg));
+        return true;
+
     } else if (st->current_step == 3) {
-        /* Step 3: Install Ski stage / MBR boot flag */
+        /* ── Stage 3: REPLICATE — Strictly 1 file per step with sub-file linear bar ticks ── */
+        if (st->copy_plan.cursor < st->copy_plan.count) {
+            const InstallerCopyItem *it = &st->copy_plan.items[st->copy_plan.cursor];
+            FID dst_fid = FID_INVALID;
+            UW  copied_b = 0;
+
+            /* Display filename immediately BEFORE starting copy/work so big files show live */
+            snprintf(st->current_file_path, sizeof(st->current_file_path), "/SYS/%s", it->name);
+            installer_update_copy_progress(st);
+
+            ER er = fs_copy_file_vol(st->source_vol, it->src_fid, st->dst_vol,
+                                     it->name, &dst_fid, &copied_b);
+            if (er != E_OK) {
+                installer_release_dst(st);
+                st->last_err = er;
+                snprintf(st->error_msg, sizeof(st->error_msg), "%s: %s (%s)",
+                         btron_err_name(er), btron_err_str(er), it->name);
+                st->mode = INSTALLER_STATE_ERROR;
+                return false;
+            }
+            (void)fs_add_vobj_link_vol(st->dst_vol, FID_ROOT, dst_fid, it->name);
+
+#if defined(BTRON_UEFI_TARGET)
+            /* Budgeted preemption stress stopper with sub-file progress bar ticks:
+             * Advance done_work & repaint every 500 units so big files glide smoothly
+             * pixel-by-pixel instead of pausing and jumping at file completion. */
+            const uint32_t slice = 500U;
+            uint32_t rem = it->work_weight;
+            while (rem > 0) {
+                if (st->cancel_requested) return true;
+                uint32_t chunk = (rem > slice) ? slice : rem;
+                for (uint32_t j = 0; j < chunk; j++)
+                    for (int i = 0; i < 10000; i++) { volatile int h = (int)j * i; (void)h; }
+                rem -= chunk;
+                st->copy_plan.done_work += chunk;
+                installer_update_copy_progress(st);
+            }
+#else
+            st->copy_plan.done_work += it->work_weight;
+#endif
+
+            st->copy_plan.cursor++;
+            st->copy_plan.copied_files++;
+            st->copy_plan.copied_bytes += copied_b;
+        }
+
+        installer_update_copy_progress(st);
+
+        if (st->copy_plan.cursor >= st->copy_plan.count) {
+            st->progress_percent = 95;
+            st->current_step = 4;
+            safe_strcpy(st->status_msg, "Stage 4/4: Syncing volume & writing Ski boot flag...",
+                        sizeof(st->status_msg));
+        }
+        return true;
+
+    } else if (st->current_step == 4) {
+        /* ── Stage 4: FINALIZE — Batched vol_sync, Ski/MBR active flag & DriveSetup refresh ── */
+        installer_release_dst(st);
+
         uint8_t sec0[512];
         if (virtio_blk_read_sectors(t->dev_idx, 0, sec0, 1) == 0) {
             sec0[510] = 0x55;
@@ -667,32 +1057,14 @@ bool b_installer_step_copy(InstallerState *st) {
             if (t->part_idx >= 0 && t->part_idx < 4) {
                 sec0[446 + t->part_idx * 16] = 0x80;
                 sec0[446 + t->part_idx * 16 + 4] = 0x13;
-                virtio_blk_write_sectors(t->dev_idx, 0, sec0, 1);
-            }
-        }
-
-        st->progress_percent = 95;
-        st->current_step = 4;
-        safe_strcpy(st->status_msg, "Step 4/4: Finalizing volume header and syncing...", sizeof(st->status_msg));
-        return true;
-    } else if (st->current_step == 4) {
-        /* Step 4: Complete and finalize labels */
-        BlkDev *vdev = blk_virtio_create(t->dev_idx);
-        if (vdev) {
-            BlkDev *part = blk_mbr_find_partition_by_slot(vdev, t->part_idx >= 0 ? t->part_idx : 1, 1024);
-            if (!part) {
-                part = blk_mbr_find_btron_partition_idx(vdev, 0, 1024);
-            }
-            if (part && st->unique_disk_label[0]) {
-                uint8_t blk0[1024];
-                if (part->read(part, 0, blk0, 1) == 0) {
-                    VolumeHeader *hdr = (VolumeHeader *)blk0;
-                    memset(hdr->vol_name, 0, sizeof(hdr->vol_name));
-                    safe_strcpy((char *)hdr->vol_name, st->unique_disk_label, sizeof(hdr->vol_name));
-                    part->write(part, 0, blk0, 1);
+                if (virtio_blk_write_sectors(t->dev_idx, 0, sec0, 1) != 0) {
+                    st->last_err = ER_INST_BOOTFLAG;
+                    snprintf(st->error_msg, sizeof(st->error_msg), "%s: %s",
+                             btron_err_name(ER_INST_BOOTFLAG), btron_err_str(ER_INST_BOOTFLAG));
+                    st->mode = INSTALLER_STATE_ERROR;
+                    return false;
                 }
             }
-            if (part) blk_partition_release(part);
         }
 
         /* Update in-memory target label and DriveSetup partition state */
@@ -720,7 +1092,7 @@ bool b_installer_step_copy(InstallerState *st) {
                         if (slot == t->part_idx) {
                             safe_strcpy(dsp->label, st->unique_disk_label, sizeof(dsp->label));
                             dsp->type_code = 0x13;
-                            dsp->fs_type = FS_BFS_V2;
+                            dsp->fs_type = FS_BFS_V1;
                             dsp->bootable = true;
                         }
                     }
@@ -728,10 +1100,13 @@ bool b_installer_step_copy(InstallerState *st) {
             }
         }
 
+        st->last_err = E_OK;
         st->progress_percent = 100;
         st->mode = INSTALLER_STATE_COMPLETE;
+        btron_progress_bar_update(&st->progress_bar, 100, 100, "100%", "Replication complete.");
         snprintf(st->status_msg, sizeof(st->status_msg),
-                 "Installation Complete! Disk Label: %s. Reboot into B-System.", st->unique_disk_label);
+                 "Installation Complete! Replicated %u files to %s.",
+                 (unsigned)st->copy_plan.copied_files, st->unique_disk_label);
         return true;
     }
 
@@ -880,24 +1255,17 @@ void installer_paint(WND *wnd, GDEV *dev) {
         draw_bevel_btn(dev, &st->btn_begin, "Begin", false, (st->target_count > 0), true);
 
     } else if (st->mode == INSTALLER_STATE_COPYING) {
-        /* Copying / Progress Screen */
-        drw_tc_string(dev, 24, 134, "種をまく。 Planting a world...", INST_COL_BLUE_ACCENT, INST_COL_BG);
+        /* Copying / Progress Screen with Haiku BStatusBar Control */
+        drw_tc_string(dev, 24, 132, "種をまく。 Planting a world...", INST_COL_BLUE_ACCENT, INST_COL_BG);
 
-        /* Progress Bar */
-        RECT pb_frame = { 24, 154, (H)(w - 24), 182 };
-        fill_rec(dev, &pb_frame, INST_COL_CARD_WHITE);
-        draw_3d_frame(dev, &pb_frame, true);
-
-        int pb_w = pb_frame.right - pb_frame.left - 4;
-        int fill_w = (pb_w * st->progress_percent) / 100;
-        if (fill_w > 0) {
-            RECT pb_fill = { (H)(pb_frame.left + 2), (H)(pb_frame.top + 2),
-                             (H)(pb_frame.left + 2 + fill_w), (H)(pb_frame.bottom - 2) };
-            fill_rec(dev, &pb_fill, INST_COL_BLUE_ACCENT);
-        }
+        st->progress_bar.rect.left   = 24;
+        st->progress_bar.rect.top    = 152;
+        st->progress_bar.rect.right  = (H)(w - 24);
+        st->progress_bar.rect.bottom = 214;
+        btron_progress_bar_paint(dev, &st->progress_bar, INST_COL_BG);
 
         /* Status Label */
-        drw_tc_string(dev, 24, 196, st->status_msg, INST_COL_TEXT_BLACK, INST_COL_BG);
+        drw_tc_string(dev, 24, 224, st->status_msg, INST_COL_TEXT_BLACK, INST_COL_BG);
 
         /* Cancel Button */
         draw_bevel_btn(dev, &st->btn_close, "Cancel", false, true, false);
@@ -929,8 +1297,8 @@ void installer_paint(WND *wnd, GDEV *dev) {
                       INST_COL_TEXT_MUTED, INST_COL_CARD_WHITE);
 
         /* Action Buttons */
-        draw_bevel_btn(dev, &st->btn_close, "Continue Testing", false, true, false);
-        draw_bevel_btn(dev, &st->btn_restart, "Restart Computer", false, true, true);
+        draw_bevel_btn(dev, &st->btn_close, "Quit", false, true, false);
+        draw_bevel_btn(dev, &st->btn_restart, "Reboot", false, true, true);
     }
 
     /* ── Dropdown Overlays (Rendered last so they sit on top of everything) ── */
@@ -1267,17 +1635,22 @@ void installer_event_handler(WND *wnd, const EVT *evt) {
                 }
             } else if (pt_in_rect(mx, my, &st->btn_begin)) {
                 if (b_installer_start_install(st)) {
-                    inval_wnd(wnd);
-                    while (st->mode == INSTALLER_STATE_COPYING) {
-                        b_installer_step_copy(st);
-                    }
-                    inval_wnd(wnd);
-                } else {
-                    inval_wnd(wnd);
+                    (void)b_installer_spawn_copy_task(st);
                 }
+                inval_wnd(wnd);
             } else if (pt_in_rect(mx, my, &st->btn_refresh)) {
                 b_installer_scan_targets(st);
                 inval_wnd(wnd);
+            }
+        } else if (st->mode == INSTALLER_STATE_COPYING) {
+            if (pt_in_rect(mx, my, &st->btn_close)) {
+                if (st->copy_tskid > 0) {
+                    st->cancel_requested = true;
+                } else {
+                    b_installer_cancel_install(st);
+                }
+                inval_wnd(wnd);
+                return;
             }
         } else if (st->mode == INSTALLER_STATE_COMPLETE) {
             if (pt_in_rect(mx, my, &st->btn_restart)) {

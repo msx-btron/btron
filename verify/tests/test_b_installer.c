@@ -15,6 +15,8 @@
 #include <string.h>
 #include <assert.h>
 #include <btron/types.h>
+#include <btron/btron.h>
+#include <btron/file.h>
 #include <btron/wnd.h>
 #include <btron/event.h>
 #include <drivers/virtio/virtio_blk.h>
@@ -26,8 +28,10 @@
 
 static int g_test_reboot_called = 0;
 void uart_puts_raw(const char *str) { (void)str; }
-UW   btron_fs_now_stamp(void)       { return 100000; }
 void btron_core_reboot(void)        { g_test_reboot_called++; }
+ID   cre_tsk(const T_CTSK *pk_ctsk) { (void)pk_ctsk; return E_NOSPT; }
+ER   sta_tsk(ID tskid, VW exinf)    { (void)tskid; (void)exinf; return E_NOSPT; }
+void dly_tsk(W dlytim)              { (void)dlytim; }
 
 H tc_calc_string_width(const char *utf8_text, int max_bytes) {
     if (!utf8_text) return 0;
@@ -402,6 +406,51 @@ int main(void) {
     free(ds_disk_mem);
     printf("  [PASS] DriveSetup slices visible after Rescan; labels rotated (%s -> %s, SliceB=%s).\n",
            label_a1, label_a2, label_b1);
+
+    /* 16. Verify real file replication, optional folder filtering, Haiku progress bar & Cancel */
+    ID f_core = cre_fil("Editor", F_WRITE | F_CREATE);
+    assert(f_core >= 0);
+    assert(ins_rec(f_core, 0, "CoreEditorPayload", 17) == E_OK);
+    cls_fil(f_core);
+    ID f_sdk = cre_fil("MSX_LOGO.rom", F_WRITE | F_CREATE);
+    assert(f_sdk >= 0);
+    assert(ins_rec(f_sdk, 0, "MSXROM", 6) == E_OK);
+    cls_fil(f_sdk);
+    ID f_book = cre_fil("Boot.tad", F_WRITE | F_CREATE);
+    assert(f_book >= 0);
+    assert(ins_rec(f_book, 0, "TADBook", 7) == E_OK);
+    cls_fil(f_book);
+
+    InstallerState repl_st;
+    b_installer_init(&repl_st);
+    repl_st.mode = INSTALLER_STATE_SETUP;
+    repl_st.pkg_checked[0] = true;  /* Base System ON */
+    repl_st.pkg_checked[1] = false; /* SDK & Demos OFF -> omit MSX_LOGO.rom */
+    repl_st.pkg_checked[2] = false; /* TAD Books OFF   -> omit Boot.tad */
+    assert(b_installer_select_target(&repl_st, 0));
+    assert(b_installer_start_install(&repl_st));
+    int saw_file_path = 0;
+    while (repl_st.mode == INSTALLER_STATE_COPYING) {
+        assert(b_installer_step_copy(&repl_st));
+        if (strstr(repl_st.progress_bar.detail_text, "Editor") != NULL) saw_file_path = 1;
+    }
+    assert(repl_st.mode == INSTALLER_STATE_COMPLETE);
+    assert(repl_st.last_err == E_OK);
+    assert(repl_st.copy_plan.copied_files == 1); /* Only Editor replicated; SDK & TAD Books filtered */
+    assert(saw_file_path == 1);
+
+    /* Verify mid-copy Cancel sets ER_INST_CANCELLED and returns cleanly to SETUP */
+    assert(b_installer_start_install(&repl_st));
+    assert(b_installer_step_copy(&repl_st)); /* Stage 1 -> 2 */
+    b_installer_cancel_install(&repl_st);
+    assert(repl_st.mode == INSTALLER_STATE_SETUP);
+    assert(repl_st.last_err == ER_INST_CANCELLED);
+
+    /* Verify source combobox shows /dev/ device addresses matching target format */
+    assert(strncmp(repl_st.sources[0].desc, "/dev/", 5) == 0);
+    assert(strncmp(repl_st.sources[1].desc, "/dev/", 5) == 0);
+    printf("  [PASS] Source combo /dev/ addresses (%s, %s), replication, Haiku progress bar & Cancel verified.\n",
+           repl_st.sources[0].desc, repl_st.sources[1].desc);
 
     vol_umount(g_sys_vol);
     free(src_mem);

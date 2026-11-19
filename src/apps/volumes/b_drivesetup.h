@@ -10,6 +10,7 @@
 #define _B_DRIVESETUP_H_
 
 #include <btron/types.h>
+#include <btron/error.h>
 #include <fs/bfs_disk.h>
 #include <btron/app_menu.h>
 #include <stdint.h>
@@ -108,12 +109,28 @@ typedef struct {
     void           *vol_handle;                      /* Attached Volume* handle */
 } DriveSetupPartition;
 
+/* ── Platform Storage Tier Policy (see Boot.html §2) ─────────────── */
+#define BTRON_STORAGE_TIER_FULL      1  /* Tier A: UEFI, POSIX, QEMU, Sakamura */
+#define BTRON_STORAGE_TIER_SD_SAFE   2  /* Tier B: Raspberry Pi 2B/3B/4B/400 (SD/EMMC) */
+#define BTRON_STORAGE_TIER_READONLY  3  /* Tier C: PC-98, M68K, PS2 (Fixed/Optical) */
+
+#ifndef BTRON_STORAGE_TIER
+#  if defined(BTRON_TARGET) && (BTRON_TARGET == 2 || BTRON_TARGET == 6)
+#    define BTRON_STORAGE_TIER BTRON_STORAGE_TIER_SD_SAFE
+#  elif defined(BTRON_TARGET) && (BTRON_TARGET == 5 || BTRON_TARGET == 7 || BTRON_TARGET == 8)
+#    define BTRON_STORAGE_TIER BTRON_STORAGE_TIER_READONLY
+#  else
+#    define BTRON_STORAGE_TIER BTRON_STORAGE_TIER_FULL
+#  endif
+#endif
+
 typedef struct {
     char                raw_path[DRIVESETUP_NAME_LEN]; /* e.g. "btron_sys.vol" */
     char                model[DRIVESETUP_NAME_LEN];    /* e.g. "B-System /SYS Volume" */
     uint64_t            total_bytes;
     uint32_t            sector_size;                   /* 512, 1024, 4096 */
     PartitionScheme     scheme;
+    bool                is_partition_table_readonly;   /* Tier B/C or locked slice = true; Tier A = false */
     int                 partition_count;
     DriveSetupPartition partitions[DRIVESETUP_MAX_PARTITIONS];
 } DriveSetupDevice;
@@ -160,6 +177,7 @@ typedef struct {
     int                 dlg_radio_sel2;       /* Second radio group selection */
     int                 dlg_radio_sel3;       /* Third radio group selection */
     uint32_t            dlg_check_flags;      /* Checkbox bit flags */
+    ER                  last_err;             /* Normative BTRON ER code from last operation */
     char                status_msg[128];
 
     /* Unified Write Warning Confirmation Context */

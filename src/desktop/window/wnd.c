@@ -1683,8 +1683,8 @@ BOOL wnd_mgr_handle_event(const EVT *ev) {
 
     if (ev->type == EV_KEY_DOWN || ev->type == EV_KEY_UP) {
         WND *target = NULL;
-        /* Route wheel-generated arrow keys to window under mouse cursor if present */
-        if (ev->pos.x > 0 || ev->pos.y > 0) {
+        /* Route wheel-generated arrow keys ONLY to window under mouse cursor */
+        if (ev->data == (VW)(uintptr_t)EV_KEY_FROM_WHEEL && (ev->pos.x > 0 || ev->pos.y > 0)) {
             target = find_wnd_at(ev->pos.x, ev->pos.y);
         }
         if (!target) target = get_top_wnd();

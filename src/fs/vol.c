@@ -176,6 +176,8 @@ struct Volume {
     UW             mount_seq;     /* monotonic, unique per vol_mount; lets
                                    * cached derived state notice a Volume that
                                    * was freed and whose address was reused     */
+    UW             next_free_hint;/* roving cursor for O(1) amortized alloc     */
+    int            batch_mode;    /* non-zero defers vol_sync() during bulk ops */
 };
 
 /* ── Globals ────────────────────────────────────────────────────── */
@@ -384,13 +386,32 @@ const char *vol_description(const Volume *v)
 /* ── Internal block I/O ─────────────────────────────────────────── */
 int vol_read_blk(Volume *v, BLK lba, void *buf)
 {
+    if (!v || !v->dev || !v->dev->read || !buf) return E_PAR;
     return v->dev->read(v->dev, lba, buf, 1);
 }
 
 int vol_write_blk(Volume *v, BLK lba, const void *buf)
 {
-    if (!v->dev->write) return -2; /* read-only */
+    if (!v || !v->dev || !buf) return E_PAR;
+    if (!v->dev->write) return ER_RONLY;
     return v->dev->write(v->dev, lba, buf, 1);
+}
+
+ER vol_read_blks(Volume *v, BLK lba, void *buf, UW count)
+{
+    if (!v || !v->dev || !v->dev->read || !buf) return E_PAR;
+    if (count == 0) return E_OK;
+    if (lba + count > v->hdr.nlb) return E_PAR;
+    return (v->dev->read(v->dev, lba, buf, count) == 0) ? E_OK : ER_IO;
+}
+
+ER vol_write_blks(Volume *v, BLK lba, const void *buf, UW count)
+{
+    if (!v || !v->dev || !buf) return E_PAR;
+    if (!v->dev->write) return ER_RONLY;
+    if (count == 0) return E_OK;
+    if (lba + count > v->hdr.nlb) return E_PAR;
+    return (v->dev->write(v->dev, lba, buf, count) == 0) ? E_OK : ER_IO;
 }
 
 void vol_mark_dirty(Volume *v) { if (v) v->dirty = 1; }
@@ -423,22 +444,55 @@ UW vol_name_hash(const char *name)
 }
 
 /* ── Block allocation ───────────────────────────────────────────── */
-BLK vol_alloc_block(Volume *v)
+BLK vol_alloc_blocks_contig(Volume *v, UW count)
 {
+    if (!v || count == 0) return FID_INVALID;
     UW data_start = v->hdr.data_start;
     UW nlb        = v->hdr.nlb;
-    for (UW b = data_start; b < nlb; b++) {
-        unsigned int byte = b >> 3;
-        unsigned int bit  = b & 7;
-        if (byte < v->ubmp_bytes && !(v->ubmp[byte] & (1u << bit))) {
-            v->ubmp[byte] |= (unsigned char)(1u << bit);
-            if (v->hdr.free_blocks > 0)
-                v->hdr.free_blocks--;
-            v->dirty = 1;
-            return b;
+    if (data_start >= nlb || count > (nlb - data_start)) return FID_INVALID;
+
+    UW start_hint = v->next_free_hint;
+    if (start_hint < data_start || start_hint >= nlb) start_hint = data_start;
+
+    /* Two-pass roving scan: [start_hint .. nlb), then [data_start .. start_hint) */
+    for (int pass = 0; pass < 2; pass++) {
+        UW lo = (pass == 0) ? start_hint : data_start;
+        UW hi = (pass == 0) ? nlb        : (start_hint + count - 1 < nlb ? start_hint + count - 1 : nlb);
+        UW run_start = lo;
+        UW run_len   = 0;
+
+        for (UW b = lo; b < hi; b++) {
+            unsigned int byte = b >> 3;
+            unsigned int bit  = b & 7;
+            if (byte >= v->ubmp_bytes) break;
+            if (!(v->ubmp[byte] & (1u << bit))) {
+                if (run_len == 0) run_start = b;
+                run_len++;
+                if (run_len == count) {
+                    for (UW k = 0; k < count; k++) {
+                        UW blk = run_start + k;
+                        v->ubmp[blk >> 3] |= (unsigned char)(1u << (blk & 7));
+                    }
+                    if (v->hdr.free_blocks >= count)
+                        v->hdr.free_blocks -= count;
+                    else
+                        v->hdr.free_blocks = 0;
+                    v->next_free_hint = (run_start + count < nlb) ? (run_start + count) : data_start;
+                    v->dirty = 1;
+                    return (BLK)run_start;
+                }
+            } else {
+                run_len = 0;
+            }
         }
     }
-    return FID_INVALID; /* no free block */
+
+    return FID_INVALID;
+}
+
+BLK vol_alloc_block(Volume *v)
+{
+    return vol_alloc_blocks_contig(v, 1);
 }
 
 /*
@@ -483,6 +537,9 @@ void vol_free_block(Volume *v, BLK blk)
         if (v->ubmp[byte] & (1u << bit)) {
             v->ubmp[byte] &= (unsigned char)~(1u << bit);
             v->hdr.free_blocks++;
+            if (blk >= v->hdr.data_start && (v->next_free_hint < v->hdr.data_start || blk < v->next_free_hint)) {
+                v->next_free_hint = blk;
+            }
             v->dirty = 1;
         }
     }
@@ -711,6 +768,15 @@ void vol_sync(Volume *v)
     v->dirty = 0;
 }
 
+void vol_set_batch_mode(Volume *v, int enable)
+{
+    if (!v) return;
+    v->batch_mode = enable ? 1 : 0;
+    if (!v->batch_mode && v->dirty) {
+        vol_sync(v);
+    }
+}
+
 /* ── vol_format ─────────────────────────────────────────────────── */
 int vol_format(BlkDev *dev, UW nfmax, UW nlb, const char *name)
 {
@@ -908,6 +974,7 @@ Volume *vol_mount(BlkDev *dev)
         v->fid_start        = 1;
         v->htbl_start       = 1 + v->hdr.sfidt;
     }
+    v->next_free_hint = v->hdr.data_start;
 
     /* Resize blk_buf if needed */
     UW bsize = vol_block_size(v);

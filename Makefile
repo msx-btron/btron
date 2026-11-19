@@ -595,6 +595,7 @@ FOMA_SRCS = $(FOMA_STARTUP)             \
             src/apps/workbench/main_mobile.c   \
             src/fs/blk_mem.c            \
             src/fs/blk_file.c           \
+            src/fs/blk_part.c           \
             src/fs/vol.c                \
             src/fs/file.c               \
             $(CLU_APPS_SRCS)            \
@@ -790,7 +791,7 @@ list-%:
 # ═══════════════════════════════════════════════════════════════════
 # POSIX Desktop
 # ═══════════════════════════════════════════════════════════════════
-posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol
+posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol btron_disk.img
 	@ln -sf $(POSIX_TARGET) $(DEFAULT_TARGET)
 	@echo "=========================================================="
 	@echo " B-System POSIX Kernel & Desktop successfully built!"
@@ -806,10 +807,10 @@ posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol
 $(POSIX_TARGET): $(POSIX_OBJS)
 	$(CC) $(POSIX_OBJS) -o $@ $(LDFLAGS) $(SDL_LIBS)
 
-run-posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol
+run-posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol btron_disk.img
 	./$(POSIX_TARGET)
 
-run-sakamura: $(SAKAMURA_TARGET) btron_sys.vol btron_anders.vol
+run-sakamura: $(SAKAMURA_TARGET) btron_sys.vol btron_anders.vol btron_disk.img
 	./$(SAKAMURA_TARGET)
 
 # ══════════════════════════════════════════════════════════════════════
@@ -884,6 +885,10 @@ btron_anders.vol: mkbtronfs tools/manifest_anders.txt
 btron_msx.vol: mkbtronfs tools/manifest_msx.txt
 	./mkbtronfs tools/manifest_msx.txt -o btron_msx.vol -l MSX -b 32768 --deps btron_msx.vol.d
 	@echo "[FS] btron_msx.vol written."
+
+btron_disk.img: btron_sys.vol btron_anders.vol scripts/mk_uefi_storage.py
+	python3 scripts/mk_uefi_storage.py disk -o btron_disk.img
+	@echo "[FS] btron_disk.img (unified MBR multi-partition disk) written."
 
 # Written by the recipe above, so the first build after a clean has no payload dependencies and
 # every one after it does -- exactly the trade `-include *.d` already makes for C headers.
@@ -3405,7 +3410,7 @@ test-installer: $(TEST_INSTALLER_BIN)
 	@echo "=========================================================="
 	@./$(TEST_INSTALLER_BIN)
 
-$(TEST_INSTALLER_BIN): verify/tests/test_b_installer.c src/apps/volumes/b_installer.c src/apps/volumes/b_drivesetup.c src/desktop/window/app_menu.c src/drivers/virtio/virtio_blk.c src/fs/blk_part.c src/fs/blk_mem.c src/fs/blk_file.c src/fs/blk_qcow2.c src/fs/vol.c src/kernel/libstr.c
+$(TEST_INSTALLER_BIN): verify/tests/test_b_installer.c src/apps/volumes/b_installer.c src/apps/volumes/b_drivesetup.c src/desktop/window/app_menu.c src/drivers/virtio/virtio_blk.c src/fs/blk_part.c src/fs/blk_mem.c src/fs/blk_file.c src/fs/blk_qcow2.c src/fs/vol.c src/fs/file.c src/kernel/libstr.c
 	$(CC) $(CFLAGS) -Isrc/apps/volumes $^ -o $@ $(LDFLAGS) -lm
 
 TEST_STORAGE_IMAGES_BIN = ./.build/test_storage_images
@@ -3415,7 +3420,7 @@ test-storage-images: $(TEST_STORAGE_IMAGES_BIN) storage-images
 	@echo "=========================================================="
 	@./$(TEST_STORAGE_IMAGES_BIN)
 
-$(TEST_STORAGE_IMAGES_BIN): verify/tests/test_storage_images.c src/fs/blk_file.c src/fs/blk_part.c src/fs/vol.c src/kernel/libstr.c
+$(TEST_STORAGE_IMAGES_BIN): verify/tests/test_storage_images.c src/fs/blk_file.c src/fs/blk_mem.c src/fs/blk_part.c src/fs/vol.c src/kernel/libstr.c
 	$(CC) $(CFLAGS) -Isrc/apps/volumes $^ -o $@ $(LDFLAGS) -lm
 
 # ═══════════════════════════════════════════════════════════════════
