@@ -125,11 +125,11 @@ typedef struct {
 4. `app->on_key()` → lets text/shell apps consume typing/Enter/Backspace before generic focus navigation.
 5. `segui_key(&g_app, key)` → standard `SegUI` autolayout focus/scroll/activate handling!
 
-### 4.3 Frozen PicoCalc App Suite — 6 Apps (3×2 Launcher Grid)
+### 4.3 Frozen PicoCalc App Suite — 8 Apps (4×2 Launcher Grid)
 
 Full specification: [doc/txt/PICO.txt](file:///Users/tonpa/depot/bitedits/btron/doc/txt/PICO.txt).
 
-**Launcher (`Home`)**: 6 `SEGUI_W_BUTTON` tiles auto-gridded by `resolve_body()` into a balanced **3×2 icon grid** (`1`–`6` hotkeys + arrow keys + `Enter`).
+**Launcher (`Home`)**: 8 `SEGUI_W_BUTTON` tiles auto-gridded by `resolve_body()` into a balanced **4×2 icon grid** (`1`–`8` hotkeys + arrow keys + `Enter`).
 
 | # | App | `SegUI` Widgets (Zero Coordinates) | Role & Footprint |
 | :-: | :--- | :--- | :--- |
@@ -137,12 +137,14 @@ Full specification: [doc/txt/PICO.txt](file:///Users/tonpa/depot/bitedits/btron/
 | **2** | **Editor** | `SEGUI_W_LABEL` + `SEGUI_W_TEXT` | Lightweight B-System text/TAD scratchpad editor (cursor, insert/BS/Enter, load/save RAM/SD). (~8 KiB Flash, 8 KiB doc SRAM) |
 | **3** | **Browser** | `SEGUI_W_LIST` + `SEGUI_W_TEXT` | Local TAD / Hypertext / Manual reader (browse embedded `/SYS` docs & saved files, `Enter` follow / `Esc` back). (~10 KiB Flash, 4 KiB SRAM) |
 | **4** | **Cabinet** | `SEGUI_W_LIST` | B-System VObj / Volume file manager (browse RAM `/SYS` & Phase 4 SD HFDS volumes, open in Editor/Browser). (~8 KiB Flash, 4 KiB SRAM) |
-| **5** | **GLGears** | `SEGUI_W_CANVAS` (320×16 RGB565 + **10 KiB banded 16-bit Z-buffer**) | Sole bonus app: 3-gear 3D Lambertian-shaded benchmark (**RP2350 FPv5-SP hardware FPU** / RP2040 Q16.16 fixed-point), live FPS & SPI1 telemetry in `SEG_STATUS`. (~10 KiB Flash, 10 KiB shared Z-band SRAM) |
-| **6** | **Preferences** | `SEGUI_W_LIST` (`HEADER` + `VALUE` + `TOGGLE` + `ARROW`) + Modal Alert | Custom PicoCalc SegUI Preference Window: **LCD Backlight** (`0x05`), **Key Backlight** (`0x0A`), **SegUI Theme** (`Handset`/`Retro`/`Appliance`), **Battery %** (`0x0B`), **CPU/SRAM/RTOS Telemetry**, **UART0 Mirror**, **Reboot to BOOTSEL**, and **Power-Off** (`0x0E` with confirm). (~6 KiB Flash, 2 KiB SRAM) |
+| **5** | **GLGears** | `SEGUI_W_CANVAS` (320×16 RGB565 + **10 KiB banded 16-bit Z-buffer**) | 3-gear 3D Lambertian-shaded benchmark (**RP2350 FPv5-SP hardware FPU** / RP2040 Q16.16 fixed-point), live FPS & SPI1 telemetry in `SEG_STATUS`. (~10 KiB Flash, 10 KiB shared Z-band SRAM) |
+| **6** | **Contacts** | `SEGUI_W_LIST` (`HEADER` + `PERSON` + `ARROW`) | Redesigned Palm-style Contacts / People directory (replaces legacy `segui_phone.c`); selecting a person switches directly to **Phone** with that peer active. (~4 KiB Flash, 1 KiB SRAM) |
+| **7** | **Phone** | `SEGUI_W_CHAT` + `SEGUI_W_LIST` (2-Form: Chat & Circles/Dial) | Redesigned Palm-style Phone / LoRa Chat & People communicator (replaces legacy `segui_phone.c`), with QWERTY quick-reply input. (~5 KiB Flash, 2 KiB SRAM) |
+| **8** | **Preferences** | `SEGUI_W_LIST` (`HEADER` + `VALUE` + `TOGGLE` + `ARROW`) + Modal Alert | Custom PicoCalc SegUI Preference Window: **LCD Backlight** (`0x05`), **Key Backlight** (`0x0A`), **SegUI Theme** (`Handset`/`Retro`/`Appliance`), **Battery %** (`0x0B`), **CPU/SRAM/RTOS Telemetry**, **UART0 Mirror**, **Reboot to BOOTSEL**, and **Power-Off** (`0x0E` with confirm). (~6 KiB Flash, 2 KiB SRAM) |
 
-#### Total Frozen Resource Budget (Kernel + Drivers + SegUI + Palm Shell + All 6 Apps + 8×16 Font)
-- **Flash**: **~110–130 KiB** total — **3.1%** of RP2350 (4 MiB) and **6.3%** of RP2040 (2 MiB).
-- **Static SRAM**: **~58 KiB** peak (20 KiB banded RGB565 + 10 KiB banded Z-buffer + 16 KiB RTOS/TCBs + 12 KiB Terminal/Editor buffers) — **11%** of RP2350 (520 KiB) and **22%** of RP2040 (264 KiB). Zero post-boot `malloc`.
+#### Total Frozen Resource Budget (Kernel + Drivers + SegUI + Palm Shell + All 8 Apps + 8×16 Font)
+- **Flash**: **~115–135 KiB** total (`-Os --gc-sections`) — **3.3%** of RP2350 (4 MiB) and **6.6%** of RP2040 (2 MiB).
+- **Static SRAM**: **~60 KiB** peak (20 KiB banded RGB565 + 10 KiB banded Z-buffer + 16 KiB RTOS/TCBs + 14 KiB app buffers) — **11.5%** of RP2350 (520 KiB) and **22.7%** of RP2040 (264 KiB). Zero post-boot `malloc`.
 
 ---
 

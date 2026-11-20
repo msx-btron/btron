@@ -98,12 +98,12 @@ Three core capabilities anchor the redesigned `segui.h` / `segui.c`:
   - form_w = 320, form_h = 320; exact auto-match in segui_profile_for(320,320)
   - bands: SEG_STATUS(20), SEG_TABBAR(22, auto-skipped if n_tab <= 1),
            SEG_BODY(0, stretch=TRUE), SEG_SOFTKEY(24)
-  - grid metrics: margin=4, pad=6, gap=6, btn_h=68, row_h=22,
-                  min_col_w=92, max_cols=3
+  - grid metrics: margin=4, pad=6, gap=6, btn_h=72, row_h=22,
+                  min_col_w=68, max_cols=4
     -> On 320x320: body_w = 320 - 2*(4+6) = 300 px.
-       3 columns = (300 - 2*6) / 3 = 96 px >= min_col_w(92).
-       6 Launcher tiles automatically arrange as a balanced 3x2 grid
-       (2 rows x 68 px + 6 px gap = 142 px, centered cleanly in 276 px).
+       4 columns = (300 - 3*6) / 4 = 70 px >= min_col_w(68).
+       8 Launcher tiles automatically arrange as a balanced 4x2 grid
+       (2 rows x 72 px + 6 px gap = 150 px, centered cleanly in 276 px).
 
 2.2 New Container Widget: SEGUI_W_TEXT
   - Added to is_container() alongside SEGUI_W_LIST and SEGUI_W_CHAT.
@@ -165,15 +165,15 @@ Every PicoCalc application is a static, read-only descriptor in Flash:
     6) segui_key():   Default SegUI autolayout focus/scroll/activate.
 
 
-4. Frozen 6-App Suite (3x2 Launcher Grid)
+4. Frozen 8-App Suite (4x2 Launcher Grid)
 -----------------------------------------
 
-Launcher (`Home`) renders 6 SEGUI_W_BUTTON tiles (hotkeys `1`..`6` or arrows
+Launcher (`Home`) renders 8 SEGUI_W_BUTTON tiles (hotkeys `1`..`8` or arrows
 + `Enter`):
 
   +------------------------------------------------------------------+
-  | [1] Terminal        | [2] Editor          | [3] Browser          |
-  | [4] Cabinet         | [5] GLGears         | [6] Preferences      |
+  | [1] Terminal  | [2] Editor    | [3] Browser   | [4] Cabinet      |
+  | [5] GLGears   | [6] Contacts  | [7] Phone     | [8] Preferences  |
   +------------------------------------------------------------------+
 
 4.1 [1] Terminal (B-System Interactive Shell)
@@ -215,7 +215,21 @@ Launcher (`Home`) renders 6 SEGUI_W_BUTTON tiles (hotkeys `1`..`6` or arrows
     printed in SEG_STATUS. Doubles as hardware DMA + CPU stress test.
   - Menu: [Pause/Resume] [Reset View] [Toggle Wire/Solid].
 
-4.6 [6] Preferences (Custom PicoCalc SegUI Preference Window)
+4.6 [6] Contacts (Redesigned Palm-Style Directory)
+  - Widgets: 1 SEGUI_W_LIST (`SEGUI_ROW_HEADER` + `SEGUI_ROW_PERSON` +
+             `SEGUI_ROW_ARROW`) — clean replacement of legacy segui_phone.c.
+  - Features: Grouped Favourites & All Contacts directory; pressing Enter on
+    a person switches directly to Phone with that peer loaded.
+  - Menu: [Call / Chat] [New Contact] [Circles].
+
+4.7 [7] Phone (Redesigned Palm-Style LoRa Chat & Communicator)
+  - Widgets: 2-Form app (`Chat` via SEGUI_W_CHAT + `People` via SEGUI_W_LIST)
+             — clean replacement of legacy segui_phone.c.
+  - Features: Message log with peer header, QWERTY quick-reply composer,
+    and Circles / Recently Seen tab.
+  - Menu: [Contacts] [Clear Thread] [Radio Status].
+
+4.8 [8] Preferences (Custom PicoCalc SegUI Preference Window)
   - Widgets: Multi-section SEGUI_W_LIST (`SEGUI_ROW_HEADER`, `SEGUI_ROW_VALUE`,
     `SEGUI_ROW_TOGGLE`, `SEGUI_ROW_ARROW`) — zero hardcoded coordinates,
     purpose-built for PicoCalc hardware:
