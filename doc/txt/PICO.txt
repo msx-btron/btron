@@ -165,15 +165,19 @@ Every PicoCalc application is a static, read-only descriptor in Flash:
     6) segui_key():   Default SegUI autolayout focus/scroll/activate.
 
 
-4. Frozen 8-App Suite (4x2 Launcher Grid)
------------------------------------------
+4. Frozen 9-App Suite (Symmetric 3x3 Palm OS Launcher Grid)
+-----------------------------------------------------------
 
-Launcher (`Home`) renders 8 SEGUI_W_BUTTON tiles (hotkeys `1`..`8` or arrows
-+ `Enter`):
+Launcher (`Home`) renders 9 SEGUI_W_BUTTON tiles with bespoke 12x12 pixel-art
+icons (hotkeys `1`..`9` or arrows + `Enter`), rendered with `segui_theme_palm`
+(Red Dot industrial retro: warm alabaster `#F4F2EC`, Deep Palm Cobalt `#1C437A`,
+brushed stone `#E8E4DA`, Red Dot vermilion `#D63B2F` focus pip, Palm title pill
++ 2 px rule, 1 px rounded cards with drop-shadow, silkscreen softkeys):
 
   +------------------------------------------------------------------+
-  | [1] Terminal  | [2] Editor    | [3] Browser   | [4] Cabinet      |
-  | [5] GLGears   | [6] Contacts  | [7] Phone     | [8] Preferences  |
+  | [1] Terminal        | [2] Editor          | [3] Browser          |
+  | [4] Cabinet         | [5] GLGears         | [6] Contacts         |
+  | [7] Phone           | [8] Chat            | [9] Preferences      |
   +------------------------------------------------------------------+
 
 4.1 [1] Terminal (B-System Interactive Shell)

@@ -52,7 +52,11 @@ enum {
 #define NORMAL_ARRAY 0x0004
 #define TEXCOORD_ARRAY 0x0008
 
+#if defined(PICO_REAL_HW)
+#define MAX_DISPLAY_LISTS 16
+#else
 #define MAX_DISPLAY_LISTS 16384
+#endif
 #define OP_BUFFER_MAX_SIZE 4096
 
 #define TGL_OFFSET_FILL 0x1
@@ -154,7 +158,11 @@ typedef struct GLImage {
 
 /* textures */
 
+#if defined(PICO_REAL_HW)
+#define TEXTURE_HASH_TABLE_SIZE 16
+#else
 #define TEXTURE_HASH_TABLE_SIZE 256
+#endif
 #define TEXTURE_HASH_TABLE_MASK 255
 typedef struct GLTexture {
 	GLImage images[MAX_TEXTURE_LEVELS];
@@ -163,7 +171,11 @@ typedef struct GLTexture {
 } GLTexture;
 
 /* buffers */
+#if defined(PICO_REAL_HW)
+#define MAX_BUFFERS 16
+#else
 #define MAX_BUFFERS 2048
+#endif
 typedef struct GLBuffer {
 	void* data;
 	GLuint size;

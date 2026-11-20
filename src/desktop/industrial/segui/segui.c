@@ -134,8 +134,39 @@ static void inset_rect(RECT *r, int dx, int dy)
 static void draw_text(GDEV *dev, H x, const RECT *r, const char *s,
                       COLOR fg, COLOR bg)
 {
-    drw_tc_string(dev, x, (H)(r->top + (rect_h(r) - SEGUI_FONT_H) / 2),
-                  s && s[0] ? s : " ", fg, bg);
+    H y = (H)(r->top + (rect_h(r) - SEGUI_FONT_H) / 2);
+    int max_w = (int)r->right - (int)x;
+    char clipped[128];
+    int len = 0;
+    if (!s || !s[0]) {
+        drw_tc_string(dev, x, y, " ", fg, bg);
+        return;
+    }
+    if (max_w <= 0) return;
+    if ((int)tc_calc_string_width(s, SEGUI_TEXT_MAX) <= max_w) {
+        drw_tc_string(dev, x, y, s, fg, bg);
+        return;
+    }
+    /* Strictly clip to [x, r->right) on UTF-8 character boundaries */
+    while (s[len] && len < (int)sizeof(clipped) - 5) {
+        unsigned char b = (unsigned char)s[len];
+        int clen = 1;
+        if ((b & 0xE0u) == 0xC0u) clen = 2;
+        else if ((b & 0xF0u) == 0xE0u) clen = 3;
+        else if ((b & 0xF8u) == 0xF0u) clen = 4;
+        for (int k = 0; k < clen && s[len + k]; k++) {
+            clipped[len + k] = s[len + k];
+        }
+        clipped[len + clen] = '\0';
+        if ((int)tc_calc_string_width(clipped, len + clen) > max_w) {
+            clipped[len] = '\0';
+            break;
+        }
+        len += clen;
+    }
+    if (len > 0) {
+        drw_tc_string(dev, x, y, clipped, fg, bg);
+    }
 }
 
 static H text_w(const char *s)
@@ -173,24 +204,66 @@ static const UB ICON_BITS[SEGUI_ICON_COUNT][8] = {
     /* INFO     */ { 0x18, 0x18, 0x00, 0x18, 0x18, 0x18, 0x18, 0x18 }
 };
 
+/* Crisp 12x12 Palm OS industrial pixel-art icons (16-bit rows, MSB = left) */
+static const uint16_t ICON_BITS_12[9][12] = {
+    /* TERMINAL: CRT bezel with >_ prompt */
+    { 0x7FE0, 0x8010, 0x8010, 0xA010, 0x9010, 0x8810, 0x9010, 0xA3D0, 0x8010, 0x7FE0, 0x1F80, 0x3FC0 },
+    /* EDITOR: ruled memo pad with folded top-right corner */
+    { 0x7F00, 0x4180, 0x4140, 0x41E0, 0x4020, 0x5FA0, 0x4020, 0x5FA0, 0x4020, 0x5E20, 0x4020, 0x7FE0 },
+    /* BROWSER: meridian globe */
+    { 0x1F80, 0x2640, 0x4920, 0x9990, 0xFFF0, 0x9990, 0x9990, 0xFFF0, 0x9990, 0x4920, 0x2640, 0x1F80 },
+    /* CABINET: classic file folder tab */
+    { 0x3E00, 0x4100, 0x7FF0, 0x8008, 0x8008, 0x9FC8, 0x8008, 0x8008, 0x8008, 0x8008, 0x7FF0, 0x0000 },
+    /* GEARS: precision 8-tooth gear wheel with hub */
+    { 0x0C00, 0x4C80, 0x7F80, 0x3F00, 0xF3C0, 0xE1C0, 0xE1C0, 0xF3C0, 0x3F00, 0x7F80, 0x4C80, 0x0C00 },
+    /* CONTACTS: Palm address book with side index tabs */
+    { 0x7FC0, 0x4060, 0x4650, 0x4960, 0x4640, 0x4060, 0x5F50, 0x4060, 0x5F40, 0x4060, 0x4050, 0x7FC0 },
+    /* PHONE: classic curved handset receiver */
+    { 0x3C00, 0x7E00, 0x7600, 0x6000, 0x6000, 0x7000, 0x3800, 0x1C00, 0x0E60, 0x07F0, 0x03F0, 0x01E0 },
+    /* CHAT: speech bubble with message lines */
+    { 0x3FC0, 0x4020, 0x8010, 0x9FD0, 0x8010, 0x9E10, 0x8010, 0x4020, 0x3F40, 0x0180, 0x0300, 0x0000 },
+    /* PREFS: precision industrial horizontal sliders */
+    { 0x0000, 0x1800, 0xFFD0, 0x1800, 0x0000, 0x00C0, 0xFFD0, 0x00C0, 0x0000, 0x0C00, 0xFFD0, 0x0C00 }
+};
+
 void segui_draw_icon(GDEV *dev, H x, H y, SEGUI_ICON icon, H size, COLOR col)
 {
-    const UB *bits;
-    H cell, row, bit;
-
     if (icon <= SEGUI_ICON_NONE || icon >= SEGUI_ICON_COUNT || size < 4) return;
-    bits = ICON_BITS[icon];
-    cell = (H)(size / 8);
-    if (cell < 1) cell = 1;
 
-    for (row = 0; row < 8; row++) {
-        if (!bits[row]) continue;
-        for (bit = 0; bit < 8; bit++) {
-            RECT px;
-            if (!(bits[row] & (UB)(0x80 >> bit))) continue;
-            px = (RECT){ (H)(x + bit * cell), (H)(y + row * cell),
-                         (H)(x + (bit + 1) * cell), (H)(y + (row + 1) * cell) };
-            fill_rect(dev, &px, col);
+    if (icon >= SEGUI_ICON_TERMINAL) {
+        const uint16_t *rows = ICON_BITS_12[icon - SEGUI_ICON_TERMINAL];
+        H cell = (H)(size / 12);
+        H row, bit;
+        if (cell < 1) cell = 1;
+        H ox = (H)(x + (size - 12 * cell) / 2);
+        H oy = (H)(y + (size - 12 * cell) / 2);
+        for (row = 0; row < 12; row++) {
+            uint16_t mask = rows[row];
+            if (!mask) continue;
+            for (bit = 0; bit < 12; bit++) {
+                if (mask & (uint16_t)(0x8000u >> bit)) {
+                    RECT px = { (H)(ox + bit * cell), (H)(oy + row * cell),
+                                (H)(ox + (bit + 1) * cell), (H)(oy + (row + 1) * cell) };
+                    fill_rect(dev, &px, col);
+                }
+            }
+        }
+        return;
+    }
+
+    {
+        const UB *bits = ICON_BITS[icon];
+        H cell = (H)(size / 8), row, bit;
+        if (cell < 1) cell = 1;
+        for (row = 0; row < 8; row++) {
+            if (!bits[row]) continue;
+            for (bit = 0; bit < 8; bit++) {
+                RECT px;
+                if (!(bits[row] & (UB)(0x80 >> bit))) continue;
+                px = (RECT){ (H)(x + bit * cell), (H)(y + row * cell),
+                             (H)(x + (bit + 1) * cell), (H)(y + (row + 1) * cell) };
+                fill_rect(dev, &px, col);
+            }
         }
     }
 }
@@ -252,6 +325,30 @@ const SEGUI_THEME segui_theme_appliance = {
     ARGB(0xFF, 0x8A, 0x96, 0xA2),
     ARGB(0xFF, 0x10, 0x16, 0x1C),
     ARGB(0xFF, 0x9F, 0xE0, 0x62)
+};
+
+/* Red Dot Industrial Retro Palm OS 5 HiRes Theme:
+ * Warm alabaster paper, Deep Palm Cobalt title pill, brushed stone chrome,
+ * ink charcoal typography, signal green toggles, and Red Dot vermilion pips. */
+#define SEGUI_RED_DOT  ARGB(0xFF, 0xD6, 0x3B, 0x2F)
+
+const SEGUI_THEME segui_theme_palm = {
+    "Palm Retro",
+    ARGB(0xFF, 0x26, 0x2A, 0x30),   /* machined dark bezel                   */
+    ARGB(0xFF, 0xF4, 0xF2, 0xEC),   /* warm alabaster e-ink paper            */
+    ARGB(0xFF, 0xFF, 0xFE, 0xFA),   /* crisp paper highlight                 */
+    ARGB(0xFF, 0x9C, 0x96, 0x89),   /* warm tactile shadow                   */
+    ARGB(0xFF, 0xE8, 0xE4, 0xDA),   /* brushed stone chrome band             */
+    ARGB(0xFF, 0x1A, 0x1E, 0x24),   /* ink charcoal on stone                 */
+    ARGB(0xFF, 0x1C, 0x43, 0x7A),   /* Deep Palm Cobalt                      */
+    ARGB(0xFF, 0xFB, 0xFA, 0xF6),   /* tactile off-white card face           */
+    ARGB(0xFF, 0x1A, 0x1E, 0x24),   /* ink charcoal                          */
+    ARGB(0xFF, 0x1C, 0x43, 0x7A),   /* Deep Palm Cobalt selection            */
+    ARGB(0xFF, 0xFF, 0xFF, 0xFF),   /* pure white on Cobalt                  */
+    ARGB(0xFF, 0x1A, 0x1E, 0x24),   /* body ink                              */
+    ARGB(0xFF, 0x68, 0x64, 0x5C),   /* muted slate                           */
+    ARGB(0xFF, 0xFF, 0xFE, 0xFA),   /* crisp field well                      */
+    ARGB(0xFF, 0x2B, 0x8A, 0x4E)    /* Braun signal green toggle             */
 };
 
 /* ── Profiles: the device classes SegUI ships with ────────────────────────
@@ -325,7 +422,32 @@ const SEGUI_PROFILE segui_profile_retro = {
     { "", "", "" }
 };
 
+/* ClockworkPi PicoCalc: 320x320 square IPS, Palm OS 5 HiRes industrial model.
+ * Single-form apps omit SEG_TABBAR automatically via SEGP_AUTO_TABBAR;
+ * 9 Launcher tiles auto-grid into a symmetric 3x3 (96px wide x 74px tall). */
+const SEGUI_PROFILE segui_profile_picocalc = {
+    "PicoCalc 320x320",
+    320, 320,
+    300, 300, 340, 340,
+    SEGP_TAB_BOX | SEGP_AUTO_TABBAR | SEGP_PALM_CHROME,
+    { { SEG_STATUS,  22, FALSE },
+      { SEG_TABBAR,  22, FALSE },
+      { SEG_BODY,     0, TRUE  },
+      { SEG_SOFTKEY, 26, FALSE } },
+    4,
+    2,      /* crisp 2 px machined outer bezel                             */
+    6,      /* 6 px body inset -> 304 px body width                        */
+    74,     /* 3x3 symmetric Launcher tile height                          */
+    22,     /* compact 22 px list rows                                     */
+    90,     /* 3 columns x 96 px + 2 x 8 px gaps = 304 px exact            */
+    3,
+    8,
+    &segui_theme_palm,
+    { "F1 Home", "F2 Menu", "OK / Esc" }
+};
+
 static const SEGUI_PROFILE *const PROFILES[] = {
+    &segui_profile_picocalc,
     &segui_profile_handset,
     &segui_profile_tft272,
     &segui_profile_retro
@@ -335,6 +457,7 @@ static const SEGUI_PROFILE *const PROFILES[] = {
 const SEGUI_PROFILE *segui_profile_for(H w, H h)
 {
     int i;
+    if (w == 320 && h == 320) return &segui_profile_picocalc;
     /* Orientation is part of eligibility: 640x480 sits inside the handset's
      * size box, and a phone layout on a desktop monitor is not a near miss.
      * With that test applied the windows are disjoint, so the first match is
@@ -342,6 +465,7 @@ const SEGUI_PROFILE *segui_profile_for(H w, H h)
     for (i = 0; i < N_PROFILES; i++) {
         const SEGUI_PROFILE *p = PROFILES[i];
         BOOL portrait = (h > w);
+        if (p == &segui_profile_picocalc) continue;
         if ((p->flags & SEGP_PORTRAIT) ? !portrait : portrait) continue;
         if (w >= p->min_w && w <= p->max_w && h >= p->min_h && h <= p->max_h)
             return p;
@@ -373,6 +497,7 @@ const SEGUI_PROFILE *segui_profile_named(const char *name)
 const SEGUI_THEME *segui_theme_named(const char *name)
 {
     if (!name || !name[0]) return NULL;
+    if (ci_prefix("Palm", name))        return &segui_theme_palm;
     if (ci_prefix("Handset", name))     return &segui_theme_handset;
     if (ci_prefix("Retro", name))       return &segui_theme_retro;
     if (ci_prefix("Appliance", name))   return &segui_theme_appliance;
@@ -516,6 +641,28 @@ SEGUI_CTRL *segui_add_chat(SEGUI_APP *app, int tab, SEGUI_MSG *msgs, int n_msg,
     return c;
 }
 
+SEGUI_CTRL *segui_add_text(SEGUI_APP *app, int tab, SEGUI_TEXT_DOC *doc)
+{
+    SEGUI_CTRL *c = add_ctrl(app, tab, SEGUI_W_TEXT, NULL, SEGUI_ICON_NONE, NULL);
+    if (!c) return NULL;
+    c->doc = doc;
+    return c;
+}
+
+SEGUI_CTRL *segui_add_canvas(SEGUI_APP *app, int tab, SEGUI_CANVAS_FN fn, void *ctx)
+{
+    SEGUI_CTRL *c = add_ctrl(app, tab, SEGUI_W_CANVAS, NULL, SEGUI_ICON_NONE, NULL);
+    if (!c) return NULL;
+    c->draw_canvas = fn;
+    c->canvas_ctx  = ctx;
+    return c;
+}
+
+const SEGUI_THEME *segui_active_theme(const SEGUI_APP *app)
+{
+    return theme_of(app);
+}
+
 /* ── Segment resolution ──────────────────────────────────────────────────
  * The fixed bands are paid for out of the screen height first and whatever is
  * left belongs to the stretch band.  When a panel is too short even for the
@@ -539,8 +686,11 @@ static void resolve_segments(SEGUI_APP *app, GDEV *dev)
         L->band[i] = (RECT){ 0, 0, 0, 0 };
     }
 
-    for (i = 0; i < p->n_bands; i++)
+    for (i = 0; i < p->n_bands; i++) {
+        if ((p->flags & SEGP_AUTO_TABBAR) && p->bands[i].id == SEG_TABBAR && app->n_tab <= 1)
+            continue;
         if (!p->bands[i].stretch) fixed_sum += p->bands[i].height;
+    }
 
     avail = rect_h(&L->outer);
 
@@ -550,6 +700,8 @@ static void resolve_segments(SEGUI_APP *app, GDEV *dev)
         int left = avail - (y - L->outer.top);
         int hgt  = p->bands[i].height;
 
+        if ((p->flags & SEGP_AUTO_TABBAR) && id == SEG_TABBAR && app->n_tab <= 1)
+            continue;
         if (left <= 0) break;
         if (p->bands[i].stretch) {
             hgt = avail - fixed_sum;
@@ -584,7 +736,8 @@ H segui_row_h(const SEGUI_APP *app)
 
 static BOOL is_container(const SEGUI_CTRL *c)
 {
-    return c->type == SEGUI_W_LIST || c->type == SEGUI_W_CHAT;
+    return c->type == SEGUI_W_LIST || c->type == SEGUI_W_CHAT ||
+           c->type == SEGUI_W_TEXT || c->type == SEGUI_W_CANVAS;
 }
 
 /* ── Body budget: labels, then a container or a grid plus stacked rows ───
@@ -740,12 +893,35 @@ void segui_draw_button(GDEV *dev, const RECT *r, const SEGUI_CTRL *c,
     int tw = text_w(c->label), x;
     RECT text_r;
 
-    fill_rect(dev, r, face);
-    /* A press sinks the bevel: the same two colors, exchanged. */
-    if (pressed || (is_on(c) && th->btn_sel_face != th->btn_face))
-        segui_draw_bevel(dev, r, th->frame_sh, th->frame_hi, depth);
-    else
-        segui_draw_bevel(dev, r, th->frame_hi, th->frame_sh, depth);
+    if (th == &segui_theme_palm) {
+        /* Authentic Palm OS 5 rounded 1px card + 1px bottom-right shadow */
+        RECT sh = { (H)(r->left + 2), (H)(r->top + 2), (H)(r->right + 1), (H)(r->bottom + 1) };
+        RECT in = { (H)(r->left + 1), (H)(r->top + 1), (H)(r->right - 1), (H)(r->bottom - 1) };
+        COLOR border = focused ? th->accent : th->frame_sh;
+        hline(dev, (H)(sh.left), (H)(sh.right - 2), (H)(sh.bottom - 1), th->frame_sh);
+        vline(dev, (H)(sh.right - 1), (H)(sh.top), (H)(sh.bottom - 2), th->frame_sh);
+        fill_rect(dev, &in, face);
+        hline(dev, (H)(r->left + 1), (H)(r->right - 2), r->top, border);
+        hline(dev, (H)(r->left + 1), (H)(r->right - 2), (H)(r->bottom - 1), border);
+        vline(dev, r->left, (H)(r->top + 1), (H)(r->bottom - 2), border);
+        vline(dev, (H)(r->right - 1), (H)(r->top + 1), (H)(r->bottom - 2), border);
+        if (focused) {
+            /* Second inner Cobalt ring + signature Red Dot vermilion pip */
+            outline(dev, &in, th->accent);
+            {
+                RECT pip = { (H)(r->right - 8), (H)(r->top + 4),
+                             (H)(r->right - 4), (H)(r->top + 8) };
+                fill_rect(dev, &pip, SEGUI_RED_DOT);
+            }
+        }
+    } else {
+        fill_rect(dev, r, face);
+        /* A press sinks the bevel: the same two colors, exchanged. */
+        if (pressed || (is_on(c) && th->btn_sel_face != th->btn_face))
+            segui_draw_bevel(dev, r, th->frame_sh, th->frame_hi, depth);
+        else
+            segui_draw_bevel(dev, r, th->frame_hi, th->frame_sh, depth);
+    }
 
     if (c->icon && rect_w(r) > SEGUI_FONT_W * 4) {
         /* Icon over caption: the tall touch button and the desktop shortcut
@@ -1035,6 +1211,54 @@ static void paint_status(SEGUI_APP *app, GDEV *dev, const SEGUI_THEME *th)
     H bh = 11, bw = 22, bx, by;
     RECT cell, cap;
 
+    if (app->prof->flags & SEGP_PALM_CHROME) {
+        /* Authentic Palm OS 5 HiRes header: warm paper band, left inverted
+         * rounded-top-right Cobalt title pill, iconic 2px full-width rule,
+         * and right-aligned clock + Red-Dot-aware battery meter. */
+        const char *ttl = app->title[0] ? app->title : app->radio;
+        int tw = text_w(ttl);
+        int pw = tw + 16;
+        RECT pill;
+        if (pw < 64) pw = 64;
+        if (pw > rect_w(b) - 96) pw = rect_w(b) - 96;
+        pill = (RECT){ b->left, (H)(b->top + 1), (H)(b->left + pw), (H)(b->bottom - 2) };
+
+        fill_rect(dev, b, th->panel_bg);
+        /* Rounded-top-right Palm title pill */
+        fill_rect(dev, &pill, th->accent);
+        dot(dev, (H)(pill.right - 1), pill.top, th->panel_bg);
+        dot(dev, (H)(pill.right - 2), pill.top, th->panel_bg);
+        dot(dev, (H)(pill.right - 1), (H)(pill.top + 1), th->panel_bg);
+        {
+            RECT tr = { (H)(pill.left + 8), pill.top, (H)(pill.right - 6), pill.bottom };
+            draw_text(dev, tr.left, &tr, ttl, th->btn_sel_fg, th->accent);
+        }
+        /* Iconic 2-pixel Palm OS horizontal rule across full width */
+        hline(dev, b->left, (H)(b->right - 1), (H)(b->bottom - 2), th->accent);
+        hline(dev, b->left, (H)(b->right - 1), (H)(b->bottom - 1), th->accent);
+
+        /* Right-aligned clock */
+        {
+            int cw = text_w(app->clock);
+            RECT cr = { (H)(b->right - 36 - cw), b->top, (H)(b->right - 36), (H)(b->bottom - 2) };
+            draw_text(dev, cr.left, &cr, app->clock, th->text, th->panel_bg);
+        }
+        /* Battery meter */
+        bx = (H)(b->right - 30);
+        by = (H)(b->top + (rect_h(b) - 2 - bh) / 2);
+        cell = (RECT){ bx, by, (H)(bx + bw), (H)(by + bh) };
+        cap  = (RECT){ cell.right, (H)(by + 3), (H)(cell.right + 2), (H)(by + bh - 3) };
+        fill_rect(dev, &cell, th->field_bg);
+        outline(dev, &cell, th->text);
+        fill_rect(dev, &cap, th->text);
+        for (i = 0; i < bars; i++) {
+            RECT seg = { (H)(cell.left + 2 + i * 5), (H)(cell.top + 2),
+                         (H)(cell.left + 6 + i * 5), (H)(cell.bottom - 2) };
+            fill_rect(dev, &seg, bars <= 1 ? SEGUI_RED_DOT : th->accent);
+        }
+        return;
+    }
+
     fill_rect(dev, b, th->band_bg);
     hline(dev, b->left, (H)(b->right - 1), (H)(b->bottom - 1), th->accent);
 
@@ -1143,8 +1367,34 @@ static void paint_title(SEGUI_APP *app, GDEV *dev, const SEGUI_THEME *th)
 static void paint_softkeys(SEGUI_APP *app, GDEV *dev, const SEGUI_THEME *th)
 {
     const RECT *b = &app->lay.band[SEG_SOFTKEY];
-    int i, gap = 4;
+    int i, gap = 6;
     int cell = (rect_w(b) - gap * (SEGUI_SOFTKEY_MAX + 1)) / SEGUI_SOFTKEY_MAX;
+
+    if (app->prof->flags & SEGP_PALM_CHROME) {
+        fill_rect(dev, b, th->band_bg);
+        hline(dev, b->left, (H)(b->right - 1), b->top, th->frame_sh);
+        for (i = 0; i < SEGUI_SOFTKEY_MAX; i++) {
+            RECT k = { (H)(b->left + gap + i * (cell + gap)), (H)(b->top + 4),
+                       (H)(b->left + gap + (i + 1) * cell + i * gap),
+                       (H)(b->bottom - 3) };
+            RECT in = { (H)(k.left + 1), (H)(k.top + 1), (H)(k.right - 1), (H)(k.bottom - 1) };
+            const char *lbl = app->prof->softkeys[i];
+            int lw = text_w(lbl);
+            /* 1px drop-shadow + 1px rounded silkscreen button */
+            hline(dev, (H)(k.left + 1), (H)(k.right - 1), k.bottom, th->frame_sh);
+            fill_rect(dev, &in, th->btn_face);
+            hline(dev, (H)(k.left + 1), (H)(k.right - 2), k.top, th->frame_sh);
+            hline(dev, (H)(k.left + 1), (H)(k.right - 2), (H)(k.bottom - 1), th->frame_sh);
+            vline(dev, k.left, (H)(k.top + 1), (H)(k.bottom - 2), th->frame_sh);
+            vline(dev, (H)(k.right - 1), (H)(k.top + 1), (H)(k.bottom - 2), th->frame_sh);
+            if (lbl && lbl[0]) {
+                RECT t = k;
+                draw_text(dev, (H)(k.left + (rect_w(&k) - lw) / 2), &t, lbl,
+                          th->btn_fg, th->btn_face);
+            }
+        }
+        return;
+    }
 
     hline(dev, b->left, (H)(b->right - 1), b->top, th->accent);
     for (i = 0; i < SEGUI_SOFTKEY_MAX; i++) {
@@ -1248,6 +1498,64 @@ void segui_paint_body(SEGUI_APP *app, GDEV *dev)
         }
         case SEGUI_W_CHAT:
             segui_draw_chat(dev, c, th);
+            break;
+        case SEGUI_W_TEXT: {
+            SEGUI_TEXT_DOC *doc = c->doc;
+            COLOR bg, fg;
+            int line_h = SEGUI_FONT_H + 4;
+            int vis, k;
+            if (!doc || !doc->lines || doc->line_stride <= 0) break;
+            bg = doc->monospace_bg ? ARGB(255, 16, 22, 28) : th->field_bg;
+            fg = doc->monospace_bg ? ARGB(255, 152, 240, 168) : th->text;
+            fill_rect(dev, &c->box, bg);
+            outline(dev, &c->box, th->frame_sh);
+            vis = (rect_h(&c->box) - 8) / line_h;
+            if (vis < 1) vis = 1;
+            for (k = 0; k < vis; k++) {
+                int li = doc->top_line + k;
+                RECT lr;
+                if (li >= doc->n_lines) break;
+                lr = (RECT){ (H)(c->box.left + 6),
+                             (H)(c->box.top + 4 + k * line_h),
+                             (H)(c->box.right - 10),
+                             (H)(c->box.top + 4 + (k + 1) * line_h) };
+                draw_text(dev, lr.left, &lr,
+                          doc->lines + (size_t)li * (size_t)doc->line_stride,
+                          fg, bg);
+                if (doc->editable && li == doc->cursor_line) {
+                    const char *ln = doc->lines + (size_t)li * (size_t)doc->line_stride;
+                    H cw = doc->cursor_col > 0
+                           ? tc_calc_string_width(ln, doc->cursor_col)
+                           : 0;
+                    H cx = (H)(lr.left + cw);
+                    if (cx + 2 < lr.right) {
+                        RECT cur = { cx, (H)(lr.top + 2), (H)(cx + 2), (H)(lr.bottom - 2) };
+                        fill_rect(dev, &cur, th->accent);
+                    }
+                }
+            }
+            if (doc->n_lines > vis) {
+                int track = rect_h(&c->box) - 2;
+                int thumb = track * vis / doc->n_lines;
+                int span  = doc->n_lines - vis;
+                int pos;
+                RECT gutter, bar;
+                if (thumb < 12) thumb = 12;
+                if (thumb > track) thumb = track;
+                pos = span > 0 ? (track - thumb) * doc->top_line / span : 0;
+                gutter = (RECT){ (H)(c->box.right - 5), (H)(c->box.top + 1),
+                                 (H)(c->box.right - 1), (H)(c->box.bottom - 1) };
+                fill_rect(dev, &gutter, th->band_bg);
+                bar = (RECT){ (H)(c->box.right - 5), (H)(c->box.top + 1 + pos),
+                              (H)(c->box.right - 1), (H)(c->box.top + 1 + pos + thumb) };
+                fill_rect(dev, &bar, th->accent);
+            }
+            break;
+        }
+        case SEGUI_W_CANVAS:
+            if (c->draw_canvas) {
+                c->draw_canvas(app, dev, &c->box, c->canvas_ctx);
+            }
             break;
         default:
             segui_draw_button(dev, &c->box, c, th, focused);

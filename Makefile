@@ -4122,14 +4122,22 @@ foma-screens: $(CAPTURE_FOMA_BIN)
 CAPTURE_SEGUI_BIN  = ./.build/capture_segui
 CAPTURE_SEGUI_SRCS = tools/capture_segui.c \
                      src/desktop/industrial/segui/segui.c \
-                     src/desktop/industrial/segui/segui_demo.c \
-                     src/desktop/industrial/segui/segui_phone.c \
+                     src/desktop/industrial/segui/segui_palm.c \
+                     src/media/sdk/glgears_segui.c \
+                     src/apps/cabinet/cabinet_core.c \
+                     src/apps/editor/teditor_core.c \
+                     src/apps/browser/tad_parser.c \
+                     src/apps/chat/chat_core.c \
+                     src/apps/terminal/shell_core.c \
+                     $(TINYGL_SRCS) \
                      src/desktop/graphics/dp_core.c \
                      src/desktop/font/troncode.c \
                      src/desktop/font/jis_fonts.c \
                      src/desktop/font/tibetan_fonts.c
 
 CAPTURE_SEGUI_OBJS = $(CAPTURE_SEGUI_SRCS:.c=.test.o)
+
+src/desktop/industrial/segui/segui_palm.test.o: CFLAGS += -DBTRON_SEGUI_TINYGL=1
 
 $(CAPTURE_SEGUI_BIN): $(CAPTURE_SEGUI_OBJS)
 	$(CC) $(CAPTURE_SEGUI_OBJS) -o $@ $(LDFLAGS) -lm
@@ -4201,3 +4209,333 @@ test-compositor:
 	$(CC) -std=gnu11 -Wall -Wextra -O2 -Iinclude verify/tests/test_compositor.c -o ./.build/test_compositor
 	@./.build/test_compositor
 .PHONY: test-compositor
+
+# ===================================================================
+# Raw Pico Series QEMU Kernel (RP2350 default | PICO_BOARD=rp2040)
+#   make pico        — build freestanding Cortex-M QEMU ELF
+#   make run-pico    — boot interactive btron-pico# in QEMU
+#   make test-pico   — headless CI gate (both RP2350 & RP2040 profiles)
+# ===================================================================
+PICO_BOARD ?= rp2350
+
+ifeq ($(PICO_BOARD),rp2040)
+    PICO_ARCH_FLAGS := --target=thumbv6m-none-eabi -mcpu=cortex-m0plus -mthumb -DPICO_BOARD_RP2040
+    PICO_QEMU_MACH  := mps2-an385
+    PICO_QEMU_LD    := src/drivers/pico/link_pico_qemu.ld
+else
+    PICO_ARCH_FLAGS := --target=thumbv8m.main-none-eabi -mcpu=cortex-m33 -mthumb -mfpu=fpv5-sp-d16 -mfloat-abi=hard -DPICO_BOARD_RP2350
+    PICO_QEMU_MACH  := mps2-an521
+    PICO_QEMU_LD    := src/drivers/pico/link_pico_qemu_rp2350.ld
+endif
+
+PICO_CC     = $(LLVM_CLANG) $(PICO_ARCH_FLAGS) -ffreestanding -nostdlib
+PICO_CFLAGS = -Os -std=c99 -Wall -Wextra -Werror \
+              -ffunction-sections -fdata-sections \
+              -Iinclude -Isrc/drivers/pico
+PICO_LDFLAGS = $(ARM_LLD_FLAG) -Wl,--gc-sections -Wl,--build-id=none
+
+PICO_QEMU_BUILD := .build/pico-qemu-$(PICO_BOARD)
+PICO_QEMU_ELF   := $(PICO_QEMU_BUILD)/btron-pico-$(PICO_BOARD)-qemu.elf
+
+$(PICO_QEMU_ELF): src/drivers/pico/startup_pico.S \
+                  src/drivers/pico/hal_qemu_mps2.c \
+                  src/drivers/pico/pico_aeabi.c \
+                  src/cores/core_pico.c \
+                  src/drivers/pico/pico_hal.h \
+                  include/btron/pico_rtos.h \
+                  $(PICO_QEMU_LD)
+	@mkdir -p $(PICO_QEMU_BUILD)
+	$(PICO_CC) $(PICO_CFLAGS) -c src/drivers/pico/startup_pico.S -o $(PICO_QEMU_BUILD)/startup_pico.o
+	$(PICO_CC) $(PICO_CFLAGS) -c src/drivers/pico/hal_qemu_mps2.c -o $(PICO_QEMU_BUILD)/hal_qemu_mps2.o
+	$(PICO_CC) $(PICO_CFLAGS) -c src/drivers/pico/pico_aeabi.c -o $(PICO_QEMU_BUILD)/pico_aeabi.o
+	$(PICO_CC) $(PICO_CFLAGS) -c src/cores/core_pico.c -o $(PICO_QEMU_BUILD)/core_pico.o
+	$(PICO_CC) $(PICO_LDFLAGS) -Wl,-T,$(PICO_QEMU_LD) \
+	    $(PICO_QEMU_BUILD)/startup_pico.o \
+	    $(PICO_QEMU_BUILD)/hal_qemu_mps2.o \
+	    $(PICO_QEMU_BUILD)/pico_aeabi.o \
+	    $(PICO_QEMU_BUILD)/core_pico.o -o $@
+	@echo "[PICO-QEMU] Built ($@)"
+	@llvm-size $@ 2>/dev/null || /opt/homebrew/opt/llvm/bin/llvm-size $@ 2>/dev/null || true
+
+pico: $(PICO_QEMU_ELF)
+
+run-pico: $(PICO_QEMU_ELF)
+	@echo "=========================================================="
+	@echo " Launching B-System Raw Pico Series RTOS in QEMU"
+	@echo " Board   : $(PICO_BOARD) (override: PICO_BOARD=rp2040)"
+	@echo " Machine : $(PICO_QEMU_MACH)  |  ELF: $(PICO_QEMU_ELF)"
+	@echo " Exit    : Ctrl-A X"
+	@echo "=========================================================="
+	$(QEMU_ARM) -M $(PICO_QEMU_MACH) -nographic -serial mon:stdio -kernel $(PICO_QEMU_ELF)
+
+test-pico:
+	@bash scripts/test_pico.sh
+
+.PHONY: pico run-pico test-pico
+
+# ===================================================================
+# ClockworkPi PicoCalc Real Hardware (RP2350 Default | PICO_BOARD=rp2040)
+#   make picocalc        — build UF2 + SD-boot .bin for $(PICO_BOARD)
+#   make picocalc-all    — build all 4 binaries (RP2350 + RP2040 x UF2/SD)
+#   make flash-picocalc  — auto-detect /Volumes/RP2350 or /Volumes/RPI-RP2
+#                          (or PICOCALC_MODE=sdboot|uf2loader for SD card)
+#   make test-picocalc   — build & verify all 4 real-hardware artifacts
+# ===================================================================
+PICOCALC_BUILD      := .build/picocalc-$(PICO_BOARD)
+PICOCALC_UF2_ELF    := $(PICOCALC_BUILD)/btron-picocalc-$(PICO_BOARD).elf
+PICOCALC_UF2_BIN    := $(PICOCALC_BUILD)/btron-picocalc-$(PICO_BOARD).bin
+PICOCALC_UF2        := btron-picocalc-$(PICO_BOARD).uf2
+PICOCALC_SDBOOT_ELF := $(PICOCALC_BUILD)/btron-picocalc-$(PICO_BOARD)-sdboot.elf
+PICOCALC_SDBOOT_BIN := btron-picocalc-$(PICO_BOARD)-sdboot.bin
+PICOCALC_LD         := src/drivers/pico/link_picocalc.ld
+
+ifeq ($(PICO_BOARD),rp2040)
+    PICOCALC_RAM_LEN   := 262144
+    PICOCALC_BOOT_SRC  := src/drivers/pico/boot2_rp2040.S
+    PICOCALC_UF2_FLAGS := --patch-boot2
+    PICOCALC_BOOT_VOL  := /Volumes/RPI-RP2
+    PICOCALC_SD_DIR    := pico1-apps
+else
+    PICOCALC_RAM_LEN   := 524288
+    PICOCALC_BOOT_SRC  := src/drivers/pico/picobin_rp2350.S
+    PICOCALC_UF2_FLAGS :=
+    PICOCALC_BOOT_VOL  := /Volumes/RP2350
+    PICOCALC_SD_DIR    := pico2-apps
+endif
+
+PICOCALC_CFLAGS := $(PICO_CFLAGS) -DPICO_REAL_HW -DBTRON_SEGUI_COMPACT=1 \
+                   $(if $(PICOCALC_LCD_RGB666),-DPICOCALC_LCD_RGB666=1,)
+
+PICOCALC_COMMON_C := src/drivers/pico/hal_rp2xxx.c \
+                     src/drivers/pico/st7365p_spi.c \
+                     src/drivers/pico/i2ckbd_stm32.c \
+                     src/drivers/pico/dp_pico.c \
+                     src/drivers/pico/pico_aeabi.c \
+                     src/drivers/pico/pico_tinygl_rt.c \
+                     src/cores/core_pico.c \
+                     src/cores/core_segui.c \
+                     src/desktop/industrial/segui/segui.c \
+                     src/desktop/industrial/segui/segui_palm.c \
+                     src/apps/cabinet/cabinet_core.c \
+                     src/apps/editor/teditor_core.c \
+                     src/apps/browser/tad_parser.c \
+                     src/apps/chat/chat_core.c \
+                     src/apps/terminal/shell_core.c \
+                     src/media/sdk/glgears_segui.c
+
+PICOCALC_TGL_C := src/desktop/graphics/tinygl/api.c \
+                  src/desktop/graphics/tinygl/arrays.c \
+                  src/desktop/graphics/tinygl/clear.c \
+                  src/desktop/graphics/tinygl/clip.c \
+                  src/desktop/graphics/tinygl/get.c \
+                  src/desktop/graphics/tinygl/image_util.c \
+                  src/desktop/graphics/tinygl/init.c \
+                  src/desktop/graphics/tinygl/light.c \
+                  src/desktop/graphics/tinygl/list.c \
+                  src/desktop/graphics/tinygl/matrix.c \
+                  src/desktop/graphics/tinygl/memory.c \
+                  src/desktop/graphics/tinygl/misc.c \
+                  src/desktop/graphics/tinygl/msghandling.c \
+                  src/desktop/graphics/tinygl/select.c \
+                  src/desktop/graphics/tinygl/specbuf.c \
+                  src/desktop/graphics/tinygl/texture.c \
+                  src/desktop/graphics/tinygl/vertex.c \
+                  src/desktop/graphics/tinygl/vertex_stage.c \
+                  src/desktop/graphics/tinygl/zbuffer.c \
+                  src/desktop/graphics/tinygl/zline.c \
+                  src/desktop/graphics/tinygl/zmath.c \
+                  src/desktop/graphics/tinygl/ztriangle.c \
+                  src/desktop/graphics/tinygl/accum.c \
+                  src/desktop/graphics/tinygl/zpostprocess.c \
+                  src/desktop/graphics/tinygl/zraster.c \
+                  src/desktop/graphics/tinygl/ztext.c
+
+PICOCALC_TGL_OBJS := $(patsubst %.c,$(PICOCALC_BUILD)/tgl_%.o,$(notdir $(PICOCALC_TGL_C)))
+PICOCALC_TGL_CFLAGS := $(PICOCALC_CFLAGS) -O2 -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/tinygl -Wno-error -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types-discards-qualifiers
+
+PICOCALC_COMMON_OBJS := $(PICOCALC_BUILD)/startup_pico.o \
+                        $(patsubst %.c,$(PICOCALC_BUILD)/%.o,$(notdir $(PICOCALC_COMMON_C))) \
+                        $(PICOCALC_TGL_OBJS)
+
+$(PICOCALC_BUILD)/startup_pico.o: src/drivers/pico/startup_pico.S
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/boot_hdr.o: $(PICOCALC_BOOT_SRC)
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/hal_rp2xxx.o: src/drivers/pico/hal_rp2xxx.c src/drivers/pico/pico_regs.h src/drivers/pico/pico_hal.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/st7365p_spi.o: src/drivers/pico/st7365p_spi.c src/drivers/pico/pico_regs.h src/drivers/pico/pico_hal.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/i2ckbd_stm32.o: src/drivers/pico/i2ckbd_stm32.c src/drivers/pico/pico_regs.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/dp_pico.o: src/drivers/pico/dp_pico.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -c $< -o $@
+
+$(PICOCALC_BUILD)/pico_aeabi.o: src/drivers/pico/pico_aeabi.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/pico_tinygl_rt.o: src/drivers/pico/pico_tinygl_rt.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/glgears_segui.o: src/media/sdk/glgears_segui.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -Wno-unused-function -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/tinygl -c $< -o $@
+
+$(PICOCALC_BUILD)/tgl_%.o: src/desktop/graphics/tinygl/%.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_TGL_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/core_pico.o: src/cores/core_pico.c include/btron/pico_rtos.h src/drivers/pico/pico_hal.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/core_segui.o: src/cores/core_segui.c include/btron/segui_palm.h include/btron/pico_rtos.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/segui.o: src/desktop/industrial/segui/segui.c include/btron/segui.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -Wno-unused-function -c $< -o $@
+
+$(PICOCALC_BUILD)/segui_palm.o: src/desktop/industrial/segui/segui_palm.c include/btron/segui_palm.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/cabinet_core.o: src/apps/cabinet/cabinet_core.c src/apps/cabinet/cabinet_core.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/teditor_core.o: src/apps/editor/teditor_core.c src/apps/editor/teditor_core.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/tad_parser.o: src/apps/browser/tad_parser.c src/apps/browser/tad_parser.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/chat_core.o: src/apps/chat/chat_core.c src/apps/chat/chat_core.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/shell_core.o: src/apps/terminal/shell_core.c src/apps/terminal/shell_core.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_UF2): $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) $(PICOCALC_LD) scripts/tool_mk_uf2.py
+	$(PICO_CC) $(PICO_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
+	    -Wl,--defsym=BTRON_FLASH_ORIGIN=0x10000000 \
+	    -Wl,--defsym=BTRON_RAM_LENGTH=$(PICOCALC_RAM_LEN) \
+	    $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) -o $(PICOCALC_UF2_ELF)
+	$(LLVM_OBJCOPY) -O binary $(PICOCALC_UF2_ELF) $(PICOCALC_UF2_BIN)
+	python3 scripts/tool_mk_uf2.py --board $(PICO_BOARD) $(PICOCALC_UF2_FLAGS) \
+	    $(PICOCALC_UF2_BIN) $@
+	@ln -sf $@ btron-picocalc.uf2
+	@llvm-size $(PICOCALC_UF2_ELF) 2>/dev/null || /opt/homebrew/opt/llvm/bin/llvm-size $(PICOCALC_UF2_ELF) 2>/dev/null || true
+
+$(PICOCALC_SDBOOT_BIN): $(PICOCALC_COMMON_OBJS) $(PICOCALC_LD)
+	$(PICO_CC) $(PICO_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
+	    -Wl,--defsym=BTRON_FLASH_ORIGIN=0x10032000 \
+	    -Wl,--defsym=BTRON_RAM_LENGTH=$(PICOCALC_RAM_LEN) \
+	    $(PICOCALC_COMMON_OBJS) -o $(PICOCALC_SDBOOT_ELF)
+	$(LLVM_OBJCOPY) -O binary $(PICOCALC_SDBOOT_ELF) $@
+	@SZ=$$(wc -c < $@ | tr -d ' '); echo "  [SDBOOT] $@ ($$SZ bytes, linked @ 0x10032000)"
+
+picocalc: src/apps/cabinet/picocalc_fs_image.h $(PICOCALC_UF2) $(PICOCALC_SDBOOT_BIN)
+	@echo "=========================================================="
+	@echo " PicoCalc Real-Hardware Build Ready (PICO_BOARD=$(PICO_BOARD))"
+	@echo "   UF2    : $(PICOCALC_UF2)  (USB BOOTSEL & uf2loader)"
+	@echo "   SDBOOT : $(PICOCALC_SDBOOT_BIN)  (pico_multi_booter +200 KiB)"
+	@echo "   Flash  : make flash-picocalc"
+	@echo "=========================================================="
+
+picocalc-all:
+	@$(MAKE) PICO_BOARD=rp2350 picocalc
+	@$(MAKE) PICO_BOARD=rp2040 picocalc
+
+PICOCALC_MODE ?= uf2
+PICOCALC_VOL  ?= $(PICOCALC_BOOT_VOL)
+
+flash-picocalc: picocalc
+	@echo "=========================================================="
+	@echo " BTRON PicoCalc — Flash ($(PICO_BOARD), mode=$(PICOCALC_MODE))"
+	@echo "=========================================================="
+	@if [ "$(PICOCALC_MODE)" = "sdboot" ]; then \
+	    if [ ! -d "$(PICOCALC_VOL)" ]; then \
+	        echo "[ERROR] SD volume '$(PICOCALC_VOL)' not mounted."; \
+	        echo "  Usage: make flash-picocalc PICOCALC_MODE=sdboot PICOCALC_VOL=/Volumes/PICOCALC"; \
+	        exit 1; \
+	    fi; \
+	    mkdir -p "$(PICOCALC_VOL)/firmware"; \
+	    cp -X $(PICOCALC_SDBOOT_BIN) "$(PICOCALC_VOL)/firmware/btron-$(PICO_BOARD).bin"; \
+	    sync; \
+	    echo "[FLASH] Copied $(PICOCALC_SDBOOT_BIN) -> $(PICOCALC_VOL)/firmware/btron-$(PICO_BOARD).bin"; \
+	elif [ "$(PICOCALC_MODE)" = "uf2loader" ]; then \
+	    if [ ! -d "$(PICOCALC_VOL)" ]; then \
+	        echo "[ERROR] SD volume '$(PICOCALC_VOL)' not mounted."; \
+	        echo "  Usage: make flash-picocalc PICOCALC_MODE=uf2loader PICOCALC_VOL=/Volumes/PICOCALC"; \
+	        exit 1; \
+	    fi; \
+	    mkdir -p "$(PICOCALC_VOL)/$(PICOCALC_SD_DIR)"; \
+	    cp -X $(PICOCALC_UF2) "$(PICOCALC_VOL)/$(PICOCALC_SD_DIR)/btron.uf2"; \
+	    sync; \
+	    echo "[FLASH] Copied $(PICOCALC_UF2) -> $(PICOCALC_VOL)/$(PICOCALC_SD_DIR)/btron.uf2"; \
+	else \
+	    VOL="$(PICOCALC_VOL)"; \
+	    if [ ! -d "$$VOL" ]; then \
+	        if [ -d "/Volumes/RP2350" ]; then VOL="/Volumes/RP2350"; \
+	        elif [ -d "/Volumes/RPI-RP2" ]; then VOL="/Volumes/RPI-RP2"; fi; \
+	    fi; \
+	    if [ ! -d "$$VOL" ]; then \
+	        echo "[ERROR] Pico BOOTSEL drive not found (/Volumes/RP2350 or /Volumes/RPI-RP2)."; \
+	        echo "  Hold BOOTSEL while plugging PicoCalc USB-C, or use:"; \
+	        echo "    make flash-picocalc PICOCALC_MODE=sdboot PICOCALC_VOL=/Volumes/<SD>"; \
+	        exit 1; \
+	    fi; \
+	    echo "[FLASH] Copying $(PICOCALC_UF2) -> $$VOL/"; \
+	    cp $(PICOCALC_UF2) "$$VOL/"; \
+	    sync; \
+	    echo "[FLASH] Done! PicoCalc will reboot into B-System immediately."; \
+	fi
+
+PICOCALC_FS_SOURCES := assets/texts/BTRON3_Report.txt tad_bin/osal/index.tad assets/texts/Heart_Sutra_Tibetan.txt doc/txt/PICO.txt
+src/apps/cabinet/picocalc_fs_image.h: scripts/mk_picocalc_fs.py $(PICOCALC_FS_SOURCES)
+	@python3 scripts/mk_picocalc_fs.py .build/picocalc_fs.img $@
+
+test-picocalc: src/apps/cabinet/picocalc_fs_image.h
+	@bash scripts/test_picocalc_build.sh
+
+test-segui-cores: src/apps/cabinet/picocalc_fs_image.h
+	@mkdir -p ./.build
+	$(CC) -std=c99 -Wall -Wextra -Werror -O2 -Iinclude \
+	    verify/tests/test_segui_cores.c \
+	    src/apps/cabinet/cabinet_core.c \
+	    src/apps/editor/teditor_core.c \
+	    src/apps/browser/tad_parser.c \
+	    src/apps/chat/chat_core.c \
+	    src/apps/terminal/shell_core.c \
+	    -o ./.build/test_segui_cores
+	@./.build/test_segui_cores
+
+serial-picocalc:
+	@PORT=$$(ls /dev/cu.usbserial-* /dev/cu.usbmodem* 2>/dev/null | head -n 1); \
+	if [ -z "$$PORT" ]; then \
+	    echo "[ERROR] No USB-UART serial device found (/dev/cu.usbserial-* or /dev/cu.usbmodem*)."; \
+	    echo "  Connect USB-TTL adapter to PicoCalc UART0 (GP0 TX / GP1 RX / GND) at 115200 8N1."; \
+	    exit 1; \
+	fi; \
+	echo "[SERIAL] Attaching to $$PORT @ 115200 8N1 (Ctrl-A then K to exit)..."; \
+	screen "$$PORT" 115200
+
+.PHONY: picocalc picocalc-all flash-picocalc test-picocalc test-segui-cores serial-picocalc

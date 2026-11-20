@@ -35,7 +35,7 @@ extern "C" {
 
 /* ── Fixed capacity: the whole toolkit's footprint is these six numbers ── */
 #define SEGUI_LABEL_MAX    32   /* caption / label bytes incl. NUL          */
-#define SEGUI_CTRL_MAX      8   /* widgets per tab segment                  */
+#define SEGUI_CTRL_MAX     16   /* widgets per tab segment (3x3 / 3x4 pad)  */
 #define SEGUI_TAB_MAX       6   /* tabs (the horizontal segment selector)   */
 #define SEGUI_BAND_MAX      5   /* segments per profile                     */
 #define SEGUI_SOFTKEY_MAX   3   /* soft keys / window caption buttons       */
@@ -81,6 +81,13 @@ typedef struct {
                                   * enough: 640x480 sits inside a 240..720 x
                                   * 400..1400 box, so orientation is part of
                                   * what makes a profile match one device.    */
+#define SEGP_AUTO_TABBAR 0x0010u /* omit SEG_TABBAR when app->n_tab <= 1 so
+                                  * single-form Palm-style apps claim the
+                                  * full SEG_BODY height automatically.       */
+#define SEGP_PALM_CHROME 0x0020u /* Palm OS 5 HiRes industrial retro chrome:
+                                  * left inverted title pill + 2px rule,
+                                  * 1px rounded cards with drop shadow,
+                                  * dotted list rules, Red Dot focus pip.     */
 
 /* ── Theme: a color table, so a look is data too ── */
 typedef struct {
@@ -105,6 +112,7 @@ typedef struct {
 extern const SEGUI_THEME segui_theme_handset;
 extern const SEGUI_THEME segui_theme_retro;
 extern const SEGUI_THEME segui_theme_appliance;
+extern const SEGUI_THEME segui_theme_palm;
 
 /* ── Profile: one device class, described entirely as numbers ── */
 typedef struct {
@@ -132,6 +140,8 @@ extern const SEGUI_PROFILE segui_profile_handset;
 extern const SEGUI_PROFILE segui_profile_tft272;
 /* Retro desktop: 640x480, windowed, no tab or status segment. */
 extern const SEGUI_PROFILE segui_profile_retro;
+/* ClockworkPi PicoCalc: 320x320 square IPS, Palm OS 5 HiRes form model. */
+extern const SEGUI_PROFILE segui_profile_picocalc;
 
 /* ── Widgets ── */
 typedef enum {
@@ -140,7 +150,9 @@ typedef enum {
     SEGUI_W_TOGGLE,      /* switch: a labelled boolean drawn as a pill    */
     SEGUI_W_LABEL,       /* text only; never focusable, never hit-tested  */
     SEGUI_W_LIST,        /* scrollable row list: the phone screen workhorse */
-    SEGUI_W_CHAT         /* message log with left/right bubbles           */
+    SEGUI_W_CHAT,        /* message log with left/right bubbles           */
+    SEGUI_W_TEXT,        /* scrollable text/console/editor container      */
+    SEGUI_W_CANVAS       /* band-aware custom drawing container (GLGears) */
 } SEGUI_WTYPE;
 
 /* Widget captions may carry a small vector icon.  SegUI owns its glyph bitmaps
@@ -152,6 +164,15 @@ typedef enum {
     SEGUI_ICON_SCALABLE, /* numeral grid                               */
     SEGUI_ICON_WINDOW,   /* kiosk / app tile                           */
     SEGUI_ICON_INFO,     /* lower case i in a disc                     */
+    SEGUI_ICON_TERMINAL, /* CRT bezel with >_ prompt                   */
+    SEGUI_ICON_EDITOR,   /* ruled memo page with folded corner         */
+    SEGUI_ICON_BROWSER,  /* meridian globe                             */
+    SEGUI_ICON_CABINET,  /* classic folder tab                         */
+    SEGUI_ICON_GEARS,    /* precision gear wheel                       */
+    SEGUI_ICON_CONTACTS, /* Palm address book with side tabs           */
+    SEGUI_ICON_PHONE,    /* classic handset receiver                   */
+    SEGUI_ICON_CHAT,     /* speech bubble                              */
+    SEGUI_ICON_PREFS,    /* industrial control sliders                 */
     SEGUI_ICON_COUNT
 } SEGUI_ICON;
 
@@ -203,6 +224,22 @@ typedef struct SEGUI_MSG {
     char text[SEGUI_TEXT_MAX];
 } SEGUI_MSG;
 
+/* Caller-owned static text buffer backing SEGUI_W_TEXT (Terminal/Editor/Browser) */
+typedef struct SEGUI_TEXT_DOC {
+    char  *lines;        /* flat [max_lines * line_stride] static char array */
+    int    line_stride;  /* bytes per line incl. NUL (e.g. 40)               */
+    int    max_lines;
+    int    n_lines;
+    int    top_line;     /* first visible line (scroll position)             */
+    int    cursor_line;  /* active cursor line (when editable)               */
+    int    cursor_col;   /* active cursor column                             */
+    BOOL   editable;
+    BOOL   monospace_bg; /* TRUE = dark terminal well, FALSE = paper well    */
+} SEGUI_TEXT_DOC;
+
+typedef void (*SEGUI_CANVAS_FN)(struct SEGUI_APP *app, GDEV *dev,
+                                const RECT *bounds, void *ctx);
+
 typedef struct SEGUI_CTRL {
     SEGUI_WTYPE type;
     char     label[SEGUI_LABEL_MAX];
@@ -212,13 +249,16 @@ typedef struct SEGUI_CTRL {
     void   (*on_activate)(struct SEGUI_APP *app, struct SEGUI_CTRL *ctrl);
 
     /* Container payload: caller-owned static tables, never copied. */
-    SEGUI_ROW *rows;       /* SEGUI_W_LIST                              */
-    int        n_row;
-    int        row_top;    /* first visible row (scroll position)       */
-    int        row_focus;  /* current row within the visible window     */
-    SEGUI_MSG *msgs;       /* SEGUI_W_CHAT                              */
-    int        n_msg;
-    char       peer[SEGUI_LABEL_MAX];   /* chat header / list footer     */
+    SEGUI_ROW      *rows;       /* SEGUI_W_LIST                              */
+    int             n_row;
+    int             row_top;    /* first visible row (scroll position)       */
+    int             row_focus;  /* current row within the visible window     */
+    SEGUI_MSG      *msgs;       /* SEGUI_W_CHAT                              */
+    int             n_msg;
+    char            peer[SEGUI_LABEL_MAX]; /* chat header / list footer      */
+    SEGUI_TEXT_DOC *doc;        /* SEGUI_W_TEXT                              */
+    SEGUI_CANVAS_FN draw_canvas;/* SEGUI_W_CANVAS                            */
+    void           *canvas_ctx;
 } SEGUI_CTRL;
 
 /* ── A tab is one view of the body segment ── */
@@ -284,6 +324,8 @@ SEGUI_CTRL  *segui_add_label(SEGUI_APP *app, int tab, const char *caption);
 SEGUI_CTRL  *segui_add_list(SEGUI_APP *app, int tab, SEGUI_ROW *rows, int n_row);
 SEGUI_CTRL  *segui_add_chat(SEGUI_APP *app, int tab, SEGUI_MSG *msgs, int n_msg,
                             const char *peer);
+SEGUI_CTRL  *segui_add_text(SEGUI_APP *app, int tab, SEGUI_TEXT_DOC *doc);
+SEGUI_CTRL  *segui_add_canvas(SEGUI_APP *app, int tab, SEGUI_CANVAS_FN fn, void *ctx);
 void         segui_list_move(SEGUI_APP *app, int delta);
 SEGUI_ROW   *segui_list_focused(SEGUI_APP *app, int *out_index);
 SEGUI_CTRL  *segui_list_of(SEGUI_APP *app);        /* active tab's list, or NULL */
@@ -337,29 +379,10 @@ BOOL        segui_event(SEGUI_APP *app, GDEV *dev, const EVT *ev);
  * SegUI never touches an event queue or a timer, so it composites into any
  * host loop (POSIX/SDL, FOMA keypad, PS2, an appliance front panel). */
 
-/* ── Reference applications shipped with the toolkit ─────────────────────
- * Both are pure data + callbacks: neither one names a pixel, so either can be
- * hosted on any profile.  A host calls the builder, then segui_layout() and
- * segui_paint() with its own GDEV, and feeds events to segui_event().
- */
-void        segui_demo_build(SEGUI_APP *app, const SEGUI_PROFILE *prof);
-SEGUI_APP  *segui_demo_app(const SEGUI_PROFILE *prof);
-
-typedef enum {
-    SEGUI_SCREEN_CONTACTS = 0,
-    SEGUI_SCREEN_CHAT,
-    SEGUI_SCREEN_PEOPLE,
-    SEGUI_SCREEN_SETTINGS
-} SEGUI_PHONE_SCREEN;
-
-void        segui_phone_build(SEGUI_APP *app, const SEGUI_PROFILE *prof);
-SEGUI_APP  *segui_phone_app(const SEGUI_PROFILE *prof);
-void        segui_phone_show(SEGUI_APP *app, int screen);
-int         segui_phone_screen(void);
-
 /* ── Introspection for tests and headless capture ── */
 const char *segui_segment_name(SEG_ID id);
 int         segui_battery_bars(int pct);
+const SEGUI_THEME *segui_active_theme(const SEGUI_APP *app);
 
 #ifdef __cplusplus
 }
