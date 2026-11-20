@@ -226,15 +226,17 @@ typedef struct SEGUI_MSG {
 
 /* Caller-owned static text buffer backing SEGUI_W_TEXT (Terminal/Editor/Browser) */
 typedef struct SEGUI_TEXT_DOC {
-    char  *lines;        /* flat [max_lines * line_stride] static char array */
-    int    line_stride;  /* bytes per line incl. NUL (e.g. 40)               */
-    int    max_lines;
-    int    n_lines;
-    int    top_line;     /* first visible line (scroll position)             */
-    int    cursor_line;  /* active cursor line (when editable)               */
-    int    cursor_col;   /* active cursor column                             */
-    BOOL   editable;
-    BOOL   monospace_bg; /* TRUE = dark terminal well, FALSE = paper well    */
+    char     *lines;        /* flat [max_lines * line_stride] static char array */
+    int       line_stride;  /* bytes per line incl. NUL (e.g. 40)               */
+    int       max_lines;
+    int       n_lines;
+    int       top_line;     /* first visible line (scroll position)             */
+    int       cursor_line;  /* active cursor line (when editable)               */
+    int       cursor_col;   /* active cursor column                             */
+    BOOL      editable;
+    BOOL      monospace_bg; /* TRUE = dark terminal well, FALSE = paper well    */
+    uint32_t  link_mask[2]; /* bitmask of lines 0..63 that are TAD links        */
+    int       active_line;  /* focused link line index (-1 if none)             */
 } SEGUI_TEXT_DOC;
 
 typedef void (*SEGUI_CANVAS_FN)(struct SEGUI_APP *app, GDEV *dev,

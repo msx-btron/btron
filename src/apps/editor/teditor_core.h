@@ -29,6 +29,7 @@ void     ted_core_load(TEditorCore *ed, const char *text);
 uint32_t ted_core_save(const TEditorCore *ed, char *out, uint32_t cap);
 void     ted_core_clear(TEditorCore *ed);
 int      ted_core_insert_char(TEditorCore *ed, char ch);
+int      ted_core_insert_utf8(TEditorCore *ed, const char *utf8);
 int      ted_core_backspace(TEditorCore *ed);
 int      ted_core_newline(TEditorCore *ed);
 int      ted_core_move(TEditorCore *ed, int dline, int dcol, int vis_lines);

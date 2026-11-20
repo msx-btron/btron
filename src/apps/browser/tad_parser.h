@@ -13,7 +13,7 @@
 
 #include <stdint.h>
 
-#define TAD_MAX_LINKS    8
+#define TAD_MAX_LINKS   24
 #define TAD_LINK_MAX    24
 
 typedef struct {

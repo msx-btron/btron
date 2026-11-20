@@ -123,9 +123,10 @@ int main(void)
     segui_palm_handle_key(PALM_KEY_ENTER, dev);
     errors += snap(dev, "picocalc_terminal", "1. Terminal (ls + df)");
 
-    /* 3. Browser: opens real compiled OSAL_BOOK.TAD by default */
+    /* 3. Browser: opens real compiled OSAL_BOOK.TAD and walks onto active link */
     segui_palm_switch(PALM_APP_BROWSER);
     segui_palm_layout(dev);
+    segui_palm_handle_key(PALM_KEY_DOWN, dev);
     errors += snap(dev, "picocalc_browser", "3. Browser (OSAL_BOOK.TAD)");
 
     /* 4. Cabinet: shows updated NOTE.TAD byte size after Editor save */

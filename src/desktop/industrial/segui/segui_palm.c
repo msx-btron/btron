@@ -20,6 +20,9 @@
 #include <btron/segui_palm.h>
 #include <btron/ui_mode.h>
 #include <btron/troncode.h>
+#include <btron/tip.h>
+#include <btron/mozc_engine.h>
+#include <btron/wylie.h>
 #include "../../../apps/cabinet/cabinet_core.h"
 #include "../../../apps/editor/teditor_core.h"
 #include "../../../apps/browser/tad_parser.h"
@@ -120,12 +123,22 @@ static char           s_edit_name[CAB_NAME_MAX] = "NORTIA.TAD";
 static char           s_edit_hdr[SEGUI_LABEL_MAX];
 static char           s_edit_save_tmp[CAB_RW_BUF_CAP];
 
-#define BROWSE_LINES  40
+#define BROWSE_LINES  64
 #define BROWSE_STRIDE 108
 static char           s_browse_buf[BROWSE_LINES * BROWSE_STRIDE];
 static TAD_VIEW       s_tad_view;
 static SEGUI_TEXT_DOC s_browse_doc;
 static int            s_browse_file_idx = -1; /* defaults to OSAL_BOOK.TAD */
+static int            s_browse_link_idx = -1; /* active walkable TAD link  */
+
+/* Editor /tip/ IME state (0=EN, 1=JP Mozc KKC, 2=BO Wylie Tibetan) */
+static int            s_tip_mode = 0;
+static char           s_tip_raw[24];
+static int            s_tip_len  = 0;
+static char           s_tip_out[48];
+static TIP_CANDIDATE  s_tip_cands[6];
+static int            s_tip_ncands = 0;
+static int            s_tip_cand_i = 0;
 
 /* ── 1. Terminal App ───────────────────────────────────────────────────── */
 
@@ -260,6 +273,38 @@ static BOOL key_terminal(int key)
 
 /* ── 2. Editor App (Backed by Real Shared teditor_core.c + cabinet_core) ─ */
 
+static void tip_update_preedit(void)
+{
+    s_tip_out[0] = '\0';
+    s_tip_ncands = 0;
+    s_tip_cand_i = 0;
+    if (s_tip_len <= 0) return;
+    if (s_tip_mode == 1) {
+        mozc_romaji_to_hiragana(s_tip_raw, s_tip_out, (int)sizeof(s_tip_out));
+        s_tip_ncands = mozc_get_candidates(s_tip_out, s_tip_cands, 6);
+    } else if (s_tip_mode == 2) {
+        wylie_to_tibetan(s_tip_raw, s_tip_out, sizeof(s_tip_out));
+    }
+}
+
+static void tip_commit(void)
+{
+    const char *txt = s_tip_out;
+    if (s_tip_mode == 1 && s_tip_ncands > 0 && s_tip_cand_i < s_tip_ncands) {
+        txt = s_tip_cands[s_tip_cand_i].value;
+    }
+    if (txt && txt[0]) {
+        ted_core_insert_utf8(&s_ed_core, txt);
+    } else if (s_tip_len > 0) {
+        ted_core_insert_utf8(&s_ed_core, s_tip_raw);
+    }
+    s_tip_len = 0;
+    s_tip_raw[0] = '\0';
+    s_tip_out[0] = '\0';
+    s_tip_ncands = 0;
+    s_tip_cand_i = 0;
+}
+
 static void edit_sync_doc(void)
 {
     char num[12];
@@ -268,16 +313,34 @@ static void edit_sync_doc(void)
     s_edit_doc.cursor_line = s_ed_core.cursor_line;
     s_edit_doc.cursor_col  = s_ed_core.cursor_col;
 
-    p_strlcpy(s_edit_hdr, (int)sizeof(s_edit_hdr), s_edit_name);
-    p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), s_ed_core.dirty ? " * L" : "   L");
-    p_u32_dec((uint32_t)(s_ed_core.cursor_line + 1), num, (int)sizeof(num));
-    p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), num);
-    p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), ":C");
-    p_u32_dec((uint32_t)(s_ed_core.cursor_col + 1), num, (int)sizeof(num));
-    p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), num);
+    if (s_tip_mode > 0 && s_tip_len > 0) {
+        const char *preview = (s_tip_mode == 1 && s_tip_ncands > 0 && s_tip_cand_i < s_tip_ncands)
+                              ? s_tip_cands[s_tip_cand_i].value : s_tip_out;
+        p_strlcpy(s_edit_hdr, (int)sizeof(s_edit_hdr), s_tip_mode == 1 ? "[日] " : "[བོད] ");
+        p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), s_tip_raw);
+        p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), ">");
+        p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), preview);
+    } else {
+        p_strlcpy(s_edit_hdr, (int)sizeof(s_edit_hdr), s_edit_name);
+        p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), s_ed_core.dirty ? "*" : " ");
+        p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr),
+                  s_tip_mode == 1 ? "[日] L" : (s_tip_mode == 2 ? "[བོད] L" : "[EN] L"));
+        p_u32_dec((uint32_t)(s_ed_core.cursor_line + 1), num, (int)sizeof(num));
+        p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), num);
+        p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), ":C");
+        p_u32_dec((uint32_t)(s_ed_core.cursor_col + 1), num, (int)sizeof(num));
+        p_strlcat(s_edit_hdr, (int)sizeof(s_edit_hdr), num);
+    }
     if (s_active_id == PALM_APP_EDITOR && s_app.n_tab > 0 && s_app.tabs[0].n_ctrl > 0) {
         p_strlcpy(s_app.tabs[0].ctrl[0].label, SEGUI_LABEL_MAX, s_edit_hdr);
     }
+}
+
+static void edit_cycle_tip(void)
+{
+    if (s_tip_len > 0) tip_commit();
+    s_tip_mode = (s_tip_mode + 1) % 3;
+    edit_sync_doc();
 }
 
 static void edit_open_file(const char *name)
@@ -318,12 +381,6 @@ static void edit_menu_save(void)
     }
 }
 
-static void edit_menu_clear(void)
-{
-    ted_core_clear(&s_ed_core);
-    edit_sync_doc();
-}
-
 static void build_editor(SEGUI_APP *app, const SEGUI_PROFILE *prof)
 {
     int tab;
@@ -338,10 +395,55 @@ static void build_editor(SEGUI_APP *app, const SEGUI_PROFILE *prof)
 static BOOL key_editor(int key)
 {
     int changed = 0;
-    if (key == PALM_KEY_UP)    changed = ted_core_move(&s_ed_core, -1,  0, 12);
-    else if (key == PALM_KEY_DOWN)  changed = ted_core_move(&s_ed_core, +1,  0, 12);
-    else if (key == PALM_KEY_LEFT)  changed = ted_core_move(&s_ed_core,  0, -1, 12);
-    else if (key == PALM_KEY_RIGHT) changed = ted_core_move(&s_ed_core,  0, +1, 12);
+    if (key == PALM_KEY_TAB) {
+        edit_cycle_tip();
+        return TRUE;
+    }
+    /* Active /tip/ preedit handling (Japanese Mozc KKC / Tibetan Wylie) */
+    if (s_tip_mode > 0) {
+        if (key == PALM_KEY_ESC && s_tip_len > 0) {
+            s_tip_len = 0; s_tip_raw[0] = '\0'; s_tip_out[0] = '\0';
+            s_tip_ncands = 0; s_tip_cand_i = 0;
+            edit_sync_doc();
+            return TRUE;
+        }
+        if (key == PALM_KEY_BS && s_tip_len > 0) {
+            s_tip_raw[--s_tip_len] = '\0';
+            tip_update_preedit();
+            edit_sync_doc();
+            return TRUE;
+        }
+        if (key == ' ' && s_tip_len > 0) {
+            if (s_tip_mode == 1 && s_tip_ncands > 1) {
+                s_tip_cand_i = (s_tip_cand_i + 1) % s_tip_ncands;
+            } else {
+                tip_commit();
+                if (s_tip_mode == 2) ted_core_insert_utf8(&s_ed_core, "\xE0\xBC\x8B"); /* Tibetan Tsheg */
+            }
+            edit_sync_doc();
+            return TRUE;
+        }
+        if (key == PALM_KEY_ENTER && s_tip_len > 0) {
+            tip_commit();
+            edit_sync_doc();
+            return TRUE;
+        }
+        if ((key >= 'a' && key <= 'z') || (key >= 'A' && key <= 'Z') ||
+            key == '\'' || key == '-' || key == '+') {
+            if (s_tip_len < (int)sizeof(s_tip_raw) - 1) {
+                s_tip_raw[s_tip_len++] = (char)key;
+                s_tip_raw[s_tip_len]   = '\0';
+                tip_update_preedit();
+                edit_sync_doc();
+                return TRUE;
+            }
+        }
+    }
+
+    if (key == PALM_KEY_UP)    changed = ted_core_move(&s_ed_core, -1,  0, 10);
+    else if (key == PALM_KEY_DOWN)  changed = ted_core_move(&s_ed_core, +1,  0, 10);
+    else if (key == PALM_KEY_LEFT)  changed = ted_core_move(&s_ed_core,  0, -1, 10);
+    else if (key == PALM_KEY_RIGHT) changed = ted_core_move(&s_ed_core,  0, +1, 10);
     else if (key == PALM_KEY_ENTER) changed = ted_core_newline(&s_ed_core);
     else if (key == PALM_KEY_BS)    changed = ted_core_backspace(&s_ed_core);
     else if (key >= 0x20 && key < 0x7F) changed = ted_core_insert_char(&s_ed_core, (char)key);
@@ -352,12 +454,28 @@ static BOOL key_editor(int key)
     return FALSE;
 }
 
-/* ── 3. Browser App (Real tad_parser.c + cabinet_core /SYS Reader) ─────── */
+/* ── 3. Browser App (Real tad_parser.c + Walkable TAD Hypertext Links) ─── */
+
+static void browse_sync_link_scroll(void)
+{
+    if (s_browse_link_idx >= 0 && s_browse_link_idx < s_tad_view.n_links) {
+        int ln = s_tad_view.links[s_browse_link_idx].line_idx;
+        s_browse_doc.active_line = ln;
+        if (ln < s_browse_doc.top_line) {
+            s_browse_doc.top_line = ln;
+        } else if (ln >= s_browse_doc.top_line + 10) {
+            s_browse_doc.top_line = ln - 9;
+        }
+    } else {
+        s_browse_doc.active_line = -1;
+    }
+}
 
 static void browse_load_doc(int cab_idx)
 {
     const char *raw;
     uint32_t sz = 0;
+    int i;
     cabinet_core_init();
     if (cab_idx < 0) cab_idx = cabinet_core_find("OSAL_BOOK.TAD");
     if (cab_idx < 0 || cab_idx >= cabinet_core_count()) cab_idx = 0;
@@ -367,7 +485,7 @@ static void browse_load_doc(int cab_idx)
     s_tad_view.lines     = s_browse_buf;
     s_tad_view.stride    = BROWSE_STRIDE;
     s_tad_view.max_lines = BROWSE_LINES;
-    tad_parse_stream(&s_tad_view, (const uint8_t *)raw, sz, 36);
+    tad_parse_stream(&s_tad_view, (const uint8_t *)raw, sz, 34);
 
     s_browse_doc.lines        = s_browse_buf;
     s_browse_doc.line_stride  = BROWSE_STRIDE;
@@ -376,6 +494,16 @@ static void browse_load_doc(int cab_idx)
     s_browse_doc.top_line     = 0;
     s_browse_doc.editable     = FALSE;
     s_browse_doc.monospace_bg = FALSE;
+    s_browse_doc.link_mask[0] = 0UL;
+    s_browse_doc.link_mask[1] = 0UL;
+    for (i = 0; i < s_tad_view.n_links; i++) {
+        int ln = s_tad_view.links[i].line_idx;
+        if (ln >= 0 && ln < 64) {
+            s_browse_doc.link_mask[ln >> 5] |= (1UL << (ln & 31));
+        }
+    }
+    s_browse_link_idx = (s_tad_view.n_links > 0) ? 0 : -1;
+    s_browse_doc.active_line = (s_browse_link_idx >= 0) ? s_tad_view.links[0].line_idx : -1;
 }
 
 static void browser_open_row(SEGUI_APP *app, SEGUI_CTRL *list, int row)
@@ -424,24 +552,46 @@ static BOOL key_browser(int key)
 {
     if (s_app.active_tab == 1) {
         if (key == PALM_KEY_ESC || key == PALM_KEY_BS) {
-            segui_select_tab(&s_app, 0);
+            int osal = cabinet_core_find("OSAL_BOOK.TAD");
+            if (osal >= 0 && s_browse_file_idx != osal) {
+                browse_load_doc(osal);
+            } else {
+                segui_select_tab(&s_app, 0);
+            }
             return TRUE;
         }
-        if (key == PALM_KEY_ENTER && s_tad_view.n_links > 0) {
-            /* Follow first extracted [TARGET] link in real TAD document */
-            int target = cabinet_core_find(s_tad_view.links[0].target);
+        if (key == PALM_KEY_ENTER && s_browse_link_idx >= 0 &&
+            s_browse_link_idx < s_tad_view.n_links) {
+            const char *tgt = s_tad_view.links[s_browse_link_idx].target;
+            int target = cabinet_core_find(tgt);
             if (target >= 0) {
                 browse_load_doc(target);
+            } else {
+                segui_palm_alert("TAD Link", "Chapter on SD (Phase 4):", NULL);
+            }
+            return TRUE;
+        }
+        if (key == PALM_KEY_RIGHT || key == PALM_KEY_DOWN) {
+            if (s_tad_view.n_links > 0 && s_browse_link_idx + 1 < s_tad_view.n_links) {
+                s_browse_link_idx++;
+                browse_sync_link_scroll();
+                return TRUE;
+            }
+            if (s_browse_doc.top_line + 1 < s_browse_doc.n_lines) {
+                s_browse_doc.top_line++;
                 return TRUE;
             }
         }
-        if (key == PALM_KEY_UP && s_browse_doc.top_line > 0) {
-            s_browse_doc.top_line--;
-            return TRUE;
-        }
-        if (key == PALM_KEY_DOWN && s_browse_doc.top_line + 1 < s_browse_doc.n_lines) {
-            s_browse_doc.top_line++;
-            return TRUE;
+        if (key == PALM_KEY_LEFT || key == PALM_KEY_UP) {
+            if (s_tad_view.n_links > 0 && s_browse_link_idx > 0) {
+                s_browse_link_idx--;
+                browse_sync_link_scroll();
+                return TRUE;
+            }
+            if (s_browse_doc.top_line > 0) {
+                s_browse_doc.top_line--;
+                return TRUE;
+            }
         }
     }
     return FALSE;
@@ -865,11 +1015,11 @@ static const SEGUI_PALM_MENU_ITEM s_menu_term[] = {
     { "Home Launcher (F1)", menu_go_home    }
 };
 static const SEGUI_PALM_MENU_ITEM s_menu_edit[] = {
-    { "Save File",          edit_menu_save   },
-    { "Open NORTIA.TAD",    menu_edit_nortia },
-    { "Open HEART_SUTRA",   menu_edit_heart  },
-    { "Clear Buffer",       edit_menu_clear  },
-    { "Home Launcher (F1)", menu_go_home     }
+    { "Cycle TIP (EN/日/བོད)", edit_cycle_tip   },
+    { "Save File",             edit_menu_save   },
+    { "Open NORTIA.TAD",       menu_edit_nortia },
+    { "Open HEART_SUTRA",      menu_edit_heart  },
+    { "Home Launcher (F1)",    menu_go_home     }
 };
 static const SEGUI_PALM_MENU_ITEM s_menu_browser[] = {
     { "Read OSAL_BOOK",     menu_browse_osal   },

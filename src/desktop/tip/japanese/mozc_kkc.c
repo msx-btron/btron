@@ -505,7 +505,11 @@ static const RawDictEntry g_system_dictionary[] = {
 };
 
 /* Dynamic User Dictionary (Real Body backing) */
+#if defined(PICO_REAL_HW)
+#define MAX_USER_ENTRIES 8
+#else
 #define MAX_USER_ENTRIES 128
+#endif
 static MozcEntry g_user_dictionary[MAX_USER_ENTRIES];
 static int g_num_user_entries = 0;
 

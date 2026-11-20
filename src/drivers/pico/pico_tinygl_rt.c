@@ -101,6 +101,71 @@ int strcmp(const char *a, const char *b)
     return (int)(uint8_t)*a - (int)(uint8_t)*b;
 }
 
+int strncmp(const char *a, const char *b, size_t n)
+{
+    while (n && *a && (*a == *b)) { a++; b++; n--; }
+    return n ? ((int)(uint8_t)*a - (int)(uint8_t)*b) : 0;
+}
+
+char *strcpy(char *dst, const char *src)
+{
+    char *d = dst;
+    while ((*d++ = *src++) != '\0') { }
+    return dst;
+}
+
+char *strncpy(char *dst, const char *src, size_t n)
+{
+    size_t i = 0;
+    for (; i < n && src[i]; i++) dst[i] = src[i];
+    for (; i < n; i++) dst[i] = '\0';
+    return dst;
+}
+
+char *strcat(char *dst, const char *src)
+{
+    char *d = dst;
+    while (*d) d++;
+    while ((*d++ = *src++) != '\0') { }
+    return dst;
+}
+
+char *strncat(char *dst, const char *src, size_t n)
+{
+    char *d = dst;
+    while (*d) d++;
+    while (n-- && *src) *d++ = *src++;
+    *d = '\0';
+    return dst;
+}
+
+char *strstr(const char *hay, const char *ndl)
+{
+    if (!*ndl) return (char *)hay;
+    for (; *hay; hay++) {
+        const char *h = hay, *n = ndl;
+        while (*h && *n && *h == *n) { h++; n++; }
+        if (!*n) return (char *)hay;
+    }
+    return NULL;
+}
+
+char *strchr(const char *s, int c)
+{
+    while (*s) {
+        if (*s == (char)c) return (char *)s;
+        s++;
+    }
+    return (c == 0) ? (char *)s : NULL;
+}
+
+int snprintf(char *buf, size_t cap, const char *fmt, ...)
+{
+    (void)fmt;
+    if (buf && cap > 0) buf[0] = '\0';
+    return 0;
+}
+
 /* ── Portable IEEE-754 Single-Precision Soft-Float for Cortex-M0+ (RP2040) ─ */
 
 #if defined(PICO_BOARD_RP2040)

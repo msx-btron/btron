@@ -1514,16 +1514,32 @@ void segui_paint_body(SEGUI_APP *app, GDEV *dev)
             for (k = 0; k < vis; k++) {
                 int li = doc->top_line + k;
                 RECT lr;
+                BOOL is_link = FALSE, is_active = FALSE;
+                COLOR line_fg = fg, line_bg = bg;
+                const char *ln;
                 if (li >= doc->n_lines) break;
+                ln = doc->lines + (size_t)li * (size_t)doc->line_stride;
                 lr = (RECT){ (H)(c->box.left + 6),
                              (H)(c->box.top + 4 + k * line_h),
                              (H)(c->box.right - 10),
                              (H)(c->box.top + 4 + (k + 1) * line_h) };
-                draw_text(dev, lr.left, &lr,
-                          doc->lines + (size_t)li * (size_t)doc->line_stride,
-                          fg, bg);
+                if (li >= 0 && li < 64 && (doc->link_mask[li >> 5] & (1UL << (li & 31)))) {
+                    is_link   = TRUE;
+                    is_active = (doc->active_line == li);
+                    if (is_active) {
+                        RECT pill = { (H)(lr.left - 2), lr.top, (H)(lr.right + 2), (H)(lr.bottom - 1) };
+                        fill_rect(dev, &pill, th->accent);
+                        line_fg = COLOR_WHITE;
+                        line_bg = th->accent;
+                    } else {
+                        line_fg = th->accent;
+                    }
+                }
+                draw_text(dev, lr.left, &lr, ln, line_fg, line_bg);
+                if (is_link && !is_active) {
+                    hline(dev, lr.left, lr.right, (H)(lr.bottom - 2), th->accent);
+                }
                 if (doc->editable && li == doc->cursor_line) {
-                    const char *ln = doc->lines + (size_t)li * (size_t)doc->line_stride;
                     H cw = doc->cursor_col > 0
                            ? tc_calc_string_width(ln, doc->cursor_col)
                            : 0;

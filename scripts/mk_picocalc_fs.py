@@ -17,10 +17,13 @@ VERSION = 1
 
 # (volume_name, repo_relative_path, flags: bit0=is_tad, bit1=editable_copy)
 MANIFEST = [
-    ("NORTIA.TAD",      "assets/texts/BTRON3_Report.txt",      0x03),
-    ("OSAL_BOOK.TAD",   "tad_bin/osal/index.tad",              0x01),
+    ("NORTIA.TAD",      "assets/texts/BTRON3_Report.txt",       0x03),
+    ("OSAL_BOOK.TAD",   "tad_bin/osal/index.tad",               0x01),
+    ("SMON_LAM.TAD",    "tad_bin/osal/smon_lam.tad",            0x01),
+    ("KHRUS.TAD",       "tad_bin/osal/khrus.tad",               0x01),
+    ("DGE_BSNGO.TAD",   "tad_bin/osal/dge_bsngo.tad",           0x01),
     ("HEART_SUTRA.TAD", "assets/texts/Heart_Sutra_Tibetan.txt", 0x01),
-    ("PICO.TXT",        "doc/txt/PICO.txt",                    0x00),
+    ("PICO.TXT",        "doc/txt/PICO.txt",                     0x00),
 ]
 
 

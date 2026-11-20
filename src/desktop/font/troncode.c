@@ -1279,8 +1279,16 @@ H tc_calc_string_width(const char *utf8_text, int max_bytes) {
     return total_w;
 }
 
+#if defined(PICO_REAL_HW)
+extern uint16_t dp_pico_color565(COLOR c);
+extern void     dp_pico_put_pixel(H x, H y, uint16_t rgb565_be);
+#endif
+
 static ER render_tc_string(GDEV *dev, H x, H y, const char *text, COLOR fg_col, COLOR bg_col, BOOL is_underlined, BOOL is_dotted) {
-    if (!dev || !text || !dev->pixels) return E_PAR;
+    if (!dev || !text) return E_PAR;
+#if !defined(PICO_REAL_HW)
+    if (!dev->pixels) return E_PAR;
+#endif
 
     H cur_x = x;
     H cur_y = y;
@@ -1294,6 +1302,17 @@ static ER render_tc_string(GDEV *dev, H x, H y, const char *text, COLOR fg_col, 
      * exchange is done once per string instead of once per glyph pixel. */
     const COLOR fb_fg = BTRON_PIXEL_FB(fg_col);
     const COLOR fb_bg = BTRON_PIXEL_FB(bg_col);
+#if defined(PICO_REAL_HW)
+    const uint16_t fg565 = dp_pico_color565(fg_col);
+    const uint16_t bg565 = dp_pico_color565(bg_col);
+    /* Fast vertical reject outside active 16-line band when single-line */
+    if (!pix && (y + 18 <= dev->clip.top || y >= dev->clip.bottom)) {
+        const char *nl = text;
+        int has_nl = 0;
+        while (*nl) { if (*nl++ == '\n') { has_nl = 1; break; } }
+        if (!has_nl) return E_OK;
+    }
+#endif
 
     while (*p) {
         if (*p == '\n') {
@@ -1353,8 +1372,14 @@ static ER render_tc_string(GDEV *dev, H x, H y, const char *text, COLOR fg_col, 
                     H px = render_x + col;
                     if (px >= dev->clip.left && px < dev->clip.right) {
                         if (line & (0x80 >> col)) {
+#if defined(PICO_REAL_HW)
+                            if (!pix) dp_pico_put_pixel(px, py, fg565); else
+#endif
                             pix[py * width + px] = fb_fg;
                         } else if (bg_col != 0x00000000 && !is_combining) {
+#if defined(PICO_REAL_HW)
+                            if (!pix) dp_pico_put_pixel(px, py, bg565); else
+#endif
                             pix[py * width + px] = fb_bg;
                         }
                     }
@@ -1371,8 +1396,14 @@ static ER render_tc_string(GDEV *dev, H x, H y, const char *text, COLOR fg_col, 
                     if (px >= dev->clip.left && px < dev->clip.right) {
                         UB bit = (col < 8) ? (b0 & (0x80 >> col)) : (b1 & (0x80 >> (col - 8)));
                         if (bit) {
+#if defined(PICO_REAL_HW)
+                            if (!pix) dp_pico_put_pixel(px, py, fg565); else
+#endif
                             pix[py * width + px] = fb_fg;
                         } else if (bg_col != 0x00000000 && !is_combining) {
+#if defined(PICO_REAL_HW)
+                            if (!pix) dp_pico_put_pixel(px, py, bg565); else
+#endif
                             pix[py * width + px] = fb_bg;
                         }
                     }
@@ -1388,6 +1419,9 @@ static ER render_tc_string(GDEV *dev, H x, H y, const char *text, COLOR fg_col, 
                     H px = render_x + col;
                     if (px >= dev->clip.left && px < dev->clip.right) {
                         if (!is_dotted || (col % 2 == 0)) {
+#if defined(PICO_REAL_HW)
+                            if (!pix) dp_pico_put_pixel(px, underline_y, fg565); else
+#endif
                             pix[underline_y * width + px] = fb_fg;
                         }
                     }

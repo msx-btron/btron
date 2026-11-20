@@ -16,7 +16,7 @@
 #include <stdint.h>
 #include <stddef.h>
 
-#define CAB_MAX_FILES      8
+#define CAB_MAX_FILES     12
 #define CAB_NAME_MAX      24
 #define CAB_RW_BUF_CAP  3072
 #define CAB_BOOTLOG_CAP 2048

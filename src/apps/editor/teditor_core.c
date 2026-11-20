@@ -125,6 +125,22 @@ int ted_core_insert_char(TEditorCore *ed, char ch)
     return 1;
 }
 
+int ted_core_insert_utf8(TEditorCore *ed, const char *utf8)
+{
+    char *ln;
+    int len, ulen, i;
+    if (!ed || !ed->lines || !utf8 || !utf8[0]) return 0;
+    ln   = line_ptr(ed, ed->cursor_line);
+    len  = t_strlen(ln);
+    ulen = t_strlen(utf8);
+    if (len + ulen >= ed->stride) return 0;
+    for (i = len; i >= ed->cursor_col; i--) ln[i + ulen] = ln[i];
+    for (i = 0; i < ulen; i++) ln[ed->cursor_col + i] = utf8[i];
+    ed->cursor_col += ulen;
+    ed->dirty = 1;
+    return 1;
+}
+
 int ted_core_backspace(TEditorCore *ed)
 {
     char *ln;

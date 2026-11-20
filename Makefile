@@ -4133,7 +4133,9 @@ CAPTURE_SEGUI_SRCS = tools/capture_segui.c \
                      src/desktop/graphics/dp_core.c \
                      src/desktop/font/troncode.c \
                      src/desktop/font/jis_fonts.c \
-                     src/desktop/font/tibetan_fonts.c
+                     src/desktop/font/tibetan_fonts.c \
+                     src/desktop/tip/japanese/mozc_kkc.c \
+                     src/desktop/tip/tibetan/wylie.c
 
 CAPTURE_SEGUI_OBJS = $(CAPTURE_SEGUI_SRCS:.c=.test.o)
 
@@ -4321,7 +4323,12 @@ PICOCALC_COMMON_C := src/drivers/pico/hal_rp2xxx.c \
                      src/apps/browser/tad_parser.c \
                      src/apps/chat/chat_core.c \
                      src/apps/terminal/shell_core.c \
-                     src/media/sdk/glgears_segui.c
+                     src/media/sdk/glgears_segui.c \
+                     src/desktop/font/troncode.c \
+                     src/desktop/font/jis_fonts.c \
+                     src/desktop/font/tibetan_fonts.c \
+                     src/desktop/tip/japanese/mozc_kkc.c \
+                     src/desktop/tip/tibetan/wylie.c
 
 PICOCALC_TGL_C := src/desktop/graphics/tinygl/api.c \
                   src/desktop/graphics/tinygl/arrays.c \
@@ -4391,7 +4398,27 @@ $(PICOCALC_BUILD)/pico_tinygl_rt.o: src/drivers/pico/pico_tinygl_rt.c
 
 $(PICOCALC_BUILD)/glgears_segui.o: src/media/sdk/glgears_segui.c
 	@mkdir -p $(PICOCALC_BUILD)
-	$(PICO_CC) $(PICOCALC_CFLAGS) -Wno-unused-function -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/tinygl -c $< -o $@
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Wno-unused-function -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/tinygl -c $< -o $@
+
+$(PICOCALC_BUILD)/troncode.o: src/desktop/font/troncode.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) -Isrc/drivers/pico/libc_shim $(PICOCALC_CFLAGS) -O2 -Wno-error -Wno-unused-function -Wno-unused-variable -Wno-sign-compare -c $< -o $@
+
+$(PICOCALC_BUILD)/jis_fonts.o: src/desktop/font/jis_fonts.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) -Isrc/drivers/pico/libc_shim $(PICOCALC_CFLAGS) -Wno-error -c $< -o $@
+
+$(PICOCALC_BUILD)/tibetan_fonts.o: src/desktop/font/tibetan_fonts.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) -Isrc/drivers/pico/libc_shim $(PICOCALC_CFLAGS) -Wno-error -c $< -o $@
+
+$(PICOCALC_BUILD)/mozc_kkc.o: src/desktop/tip/japanese/mozc_kkc.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) -Isrc/drivers/pico/libc_shim $(PICOCALC_CFLAGS) -Wno-error -Wno-unused-function -Wno-unused-variable -Wno-sign-compare -c $< -o $@
+
+$(PICOCALC_BUILD)/wylie.o: src/desktop/tip/tibetan/wylie.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) -Isrc/drivers/pico/libc_shim $(PICOCALC_CFLAGS) -Wno-error -Wno-unused-function -Wno-unused-variable -Wno-sign-compare -c $< -o $@
 
 $(PICOCALC_BUILD)/tgl_%.o: src/desktop/graphics/tinygl/%.c
 	@mkdir -p $(PICOCALC_BUILD)
@@ -4509,7 +4536,7 @@ flash-picocalc: picocalc
 	    echo "[FLASH] Done! PicoCalc will reboot into B-System immediately."; \
 	fi
 
-PICOCALC_FS_SOURCES := assets/texts/BTRON3_Report.txt tad_bin/osal/index.tad assets/texts/Heart_Sutra_Tibetan.txt doc/txt/PICO.txt
+PICOCALC_FS_SOURCES := assets/texts/BTRON3_Report.txt tad_bin/osal/index.tad tad_bin/osal/smon_lam.tad tad_bin/osal/khrus.tad tad_bin/osal/dge_bsngo.tad assets/texts/Heart_Sutra_Tibetan.txt doc/txt/PICO.txt
 src/apps/cabinet/picocalc_fs_image.h: scripts/mk_picocalc_fs.py $(PICOCALC_FS_SOURCES)
 	@python3 scripts/mk_picocalc_fs.py .build/picocalc_fs.img $@
 
