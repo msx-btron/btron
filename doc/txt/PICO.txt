@@ -5,10 +5,11 @@ B-System (BTRON 3.20)
 Target: ClockworkPi PicoCalc (RP2350 default, RP2040 via PICO_BOARD=rp2040)
 Related: ASYNC.txt, RENDER.txt, STRUCTURE.txt, include/btron/segui.h
 
-Status: Architectural Proposal (Rev 5 — App Suite Frozen)
-Policy: NASA JPL Rule 3 compliant (zero post-boot heap, bounded static state).
-        Zero pixel coordinates in any application.
-        Single foreground Form + Launcher (Palm OS 5 HiRes 320x320 model).
+Status: Architectural Proposal (Rev 7 — Spec-Driven, Battery-Optimized & Gap-Audited)
+Policy: Minimal, spec-driven clean code (-Os --gc-sections -Wall -Wextra -Werror).
+        NASA JPL Rule 3 compliant (zero post-boot heap, bounded static state).
+        Battery-first execution (WFI idle, 0 FPS static dirty-band, peripheral gating).
+        Zero pixel coordinates in any application; legacy segui_demo/segui_phone removed.
 
 
 0. Scope & Design Invariants
@@ -80,12 +81,18 @@ auto-centered framed dialog overlays L->body. Neither reserves permanent
 screen height.
 
 
-2. Minimal Coordinate-Free Extensions to SegUI
-----------------------------------------------
+2. Clean-Slate Coordinate-Free SegUI Core Redesign
+--------------------------------------------------
 
-Existing profiles (segui_profile_handset, segui_profile_tft272,
-segui_profile_retro) and existing apps (segui_demo, segui_phone) remain 100%
-unchanged. Only three backwards-compatible additions are made to segui.h/c:
+Legacy demo files (`segui_demo.c`, `segui_phone.c` — Contacts/Phone demos)
+are REMOVED and fully replaced by the Palm OS-like SegUI system. No
+backwards compatibility with legacy demo layouts is required; `segui.h` /
+`segui.c` are streamlined directly around the 320x320 PicoCalc Palm Form
+model (while preserving coordinate-free autolayout for any screen size), and
+`tools/capture_segui.c` (`make segui-screens`) is updated to render the new
+320x320 PicoCalc screens.
+
+Three core capabilities anchor the redesigned `segui.h` / `segui.c`:
 
 2.1 New Profile: segui_profile_picocalc (320x320)
   - form_w = 320, form_h = 320; exact auto-match in segui_profile_for(320,320)
@@ -302,11 +309,76 @@ Critical RP2350 Bring-Up Invariant:
   GP10-12, LCD CS/DC/RST GP13-15) before peripheral traffic begins.
 
 
-8. Static Resource Budget & CI Verification Gates
--------------------------------------------------
+8. Battery & Power-Efficiency Architecture
+------------------------------------------
+
+PicoCalc runs on dual 18650 cells; every subsystem must earn its milliwatts:
+
+  P1. Event-Driven WFI Idle Sleep:
+      No `while(1)` busy-wait loops anywhere in kernel or UI. Idle task
+      executes `wfi`; Core 1 remains parked in bootrom/deep `wfe` (saves
+      ~30-40% core dynamic power).
+  P2. Demand-Driven Dirty-Band Rendering (0 FPS When Static):
+      A 20-bit `dirty_bands` mask tracks modified 320x16 strips. When
+      `dirty_bands == 0` (idle Launcher, Terminal, Editor, Browser, Cabinet,
+      Preferences), 0 SPI1 clocks and 0 DMA bursts occur. Only GLGears runs
+      continuously (and pauses on Space or inactivity timeout).
+  P3. Smart Backlight & ST7365P Sleep:
+      - Keyboard backlight (STM32 0x0A) defaults to 0 (OFF) at boot.
+      - Configurable inactivity timer (Preferences): 60 s -> dim LCD
+        backlight (0x05) to 20%; 5 min -> ST7365P DISPOFF (0x28) + SLPIN
+        (0x10) + backlight 0; any key wakes via SLPOUT (0x11) + DISPON (0x29).
+  P4. Adaptive I2C1 Polling Cadence:
+      Poll STM32 REG_ID_FIF (0x09) at 50 Hz (20 ms) while active, stepping
+      down to 10 Hz (100 ms) after 3 s idle. Poll REG_ID_BAT (0x0B) once
+      every 15 s (never per frame).
+  P5. Peripheral Clock & Reset Gating:
+      Keep unused peripherals held in RESETS (ADC, PWM, PIO, SPI0 when SD
+      idle, I2C0, UART1, USBCTRL, HSTX, TRNG). Only un-reset IO_BANK0,
+      PADS_BANK0, UART0, SPI1, I2C1, DMA, TIMER0.
+  P6. Minimal, Spec-Driven Code Discipline:
+      All Pico/SegUI sources compile with `-Os -ffunction-sections
+      -fdata-sections -Wl,--gc-sections -Wall -Wextra -Werror`. Every
+      register offset, bitfield, and init sequence cites its hardware spec
+      (RP2350 DS, RP2040 DS, ST7365P V1.0, STM32 i2ckbd, ARMv8-M/v6-M ARM).
+
+
+9. Silicon Bring-Up Safeguards & Gap Analysis
+---------------------------------------------
+
+Six real-hardware failure modes explicitly mitigated by design:
+
+  G1. RP2350 TICKS Generator (0x40108000):
+      Unlike RP2040 (WATCHDOG_TICK), RP2350 gates TIMER0 and PROC0 SysTick
+      ref clocks via the dedicated TICKS peripheral. hal_rp2xxx.c MUST
+      program TICKS_TIMER0_CYCLES=12, TICKS_TIMER0_CTRL=1 (1 MHz) and
+      TICKS_PROC0_CTRL=1 before enabling SysTick or delays.
+  G2. RP2350 Pad Isolation (PADS_BANK0 bit 8 ISO=1):
+      RP2350 resets all GPIO pads isolated. hal_rp2xxx.c MUST clear ISO=0
+      on every configured pin (GP0/1, GP6/7, GP10-15) before I/O.
+  G3. I2C1 Stuck-Low SDA Recovery:
+      If MCU resets mid-I2C transaction, STM32 can hold GP6 (SDA) LOW.
+      i2ckbd_init() checks GP6; if LOW, bit-bangs 9 SCL pulses on GP7 +
+      STOP condition before switching GP6/GP7 to I2C1 function.
+  G4. HardFault Diagnostics on Real Silicon:
+      HardFault_Handler dumps PC/LR/PSR/CFSR/HFSR to UART0 AND draws a
+      minimal raw-SPI1 (blocking, no DMA/RTOS) red fault banner on ST7365P.
+  G5. SD-Boot (+200 KiB) Relocated Handoff:
+      When launched by pico_multi_booter at 0x10032000, Reset_Handler runs
+      `cpsid i`, explicitly writes SCB->VTOR = __vectors_start__, and
+      resets SPI1/I2C1/DMA so no stale bootloader IRQ or DMA channel fires.
+  G6. Clean Legacy Removal Blast Radius:
+      Verified grep across repo: only Makefile (CAPTURE_SEGUI_SRCS),
+      include/btron/segui.h, tools/capture_segui.c, and
+      scripts/screen_update_segui.py reference segui_demo/segui_phone.
+      All four will be updated atomically when removing the legacy files.
+
+
+10. Static Resource Budget & CI Verification Gates
+--------------------------------------------------
 
 Projected Footprint (All 6 Frozen Apps + Kernel + Drivers + 8x16 Flash Font):
-  - Flash:       ~110–130 KiB (3.1% of RP2350 4 MiB; 6.3% of RP2040 2 MiB)
+  - Flash:       ~105–125 KiB (-Os --gc-sections; 3.0% RP2350, 6.1% RP2040)
   - Static SRAM: ~58 KiB peak (11% of RP2350 520 KiB; 22% of RP2040 264 KiB)
       * Banded RGB565 ping-pong strips:   20 KiB
       * Banded 16-bit Z-buffer (GLGears): 10 KiB
@@ -318,7 +390,7 @@ Mandatory Verification Gates (Zero-Broken-Build Contract):
   1) `make test-pico`     — Headless QEMU Cortex-M33 (`mps2-an521`) AND
                             Cortex-M3 (`mps2-an385`): verifies boot banner,
                             1 kHz SysTick, PendSV task preemption, semaphores,
-                            eventflags, and `btron-pico#` shell commands.
+                            eventflags, WFI idle, and `btron-pico#` shell.
   2) `make segui-screens` — Host headless 320x320 golden capture of Launcher,
                             Terminal, Editor, Browser, Cabinet, GLGears, and
                             Preferences (0 px overflow assertion).

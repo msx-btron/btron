@@ -27,7 +27,7 @@ By layering the **Palm OS 5 HiRes (`320 × 320`) application model** directly on
    - **Launcher (`Home`)** is just a `SEGUI_APP` with 6–8 `SEGUI_W_BUTTON` tiles (`Shell`, `Memo`, `Calc`, `SysMon`, `Prefs`, `Demo`). `resolve_body()` automatically lays them out as a crisp 3×2 or 2×3 icon grid on `320×320`!
    - Switching apps calls `cur->on_close()`, rebuilds the single static `SEGUI_APP` via `next->build(&g_app, &segui_profile_picocalc)` (zero heap), runs `segui_layout()`, and repaints.
    - Pressing `F1` (`Home`) switches back to Launcher; pressing `F2` (`Menu`) toggles an auto-sized pull-down action list; `segui_palm_alert()` shows an auto-centered modal alert inside `L->body`.
-4. **100% Backwards-Compatible**: Existing `segui.c` profiles (`handset`, `tft272`, `retro`) and `segui_demo` / `segui_phone` remain completely untouched.
+4. **Clean-Slate Replacement (No Legacy Baggage)**: Legacy `segui_demo.c` and `segui_phone.c` (Contacts/Phone demos) are **removed and fully replaced** by the new Palm OS-like `SegUI` runtime and the frozen 6 PicoCalc apps. `segui.h` / `segui.c` are streamlined around the Palm Form/Launcher/Menu/Alert architecture with zero dead demo code, and `tools/capture_segui.c` (`make segui-screens`) is updated to capture the new 320×320 PicoCalc screen set.
 
 ---
 
@@ -168,8 +168,9 @@ src/drivers/pico/
   link_picocalc.ld            # Parameterized RP2350/RP2040 linker script (UF2 @ 0x10000000 & SD-Boot @ +200 KiB)
 
 src/desktop/industrial/segui/
-  segui.c / include/btron/segui.h       # Add segui_profile_picocalc (320x320)
-  segui_palm.c / include/btron/segui_palm.h  # Palm OS App Launcher, Form/Menu/Alert dispatch, built-in apps
+  segui.c / include/btron/segui.h       # Streamlined coordinate-free SegUI core (320x320 PicoCalc + TEXT/CANVAS)
+  segui_palm.c / include/btron/segui_palm.h  # Palm OS App Launcher, Form/Menu/Alert dispatch, 6 frozen apps
+  (REMOVED: legacy segui_demo.c, segui_phone.c — fully replaced by Palm/SegUI suite)
 
 scripts/
   tool_mk_uf2.py              # Zero-dep Python UF2 generator (RP2350 0xE48BFF59 + RP2040 0xE48BFF56 + boot2 CRC32)
@@ -193,7 +194,34 @@ scripts/
 
 ---
 
-## 7. Phased Delivery & Verification Gates
+## 7. Battery & Power-Efficiency Architecture + Spec-Driven Discipline
+
+1. **Minimal, Spec-Driven Clean Code**:
+   - Compiled with `-Os -ffunction-sections -fdata-sections -Wl,--gc-sections -Wall -Wextra -Werror` on all new Pico/SegUI sources; NASA JPL Rule 3 compliant (zero post-boot `malloc`, bounded loops, static buffers).
+   - Every register address, bitfield, and init command cites its primary spec (RP2350 DS, RP2040 DS, ST7365P V1.0, STM32 `i2ckbd`, ARMv8-M/v6-M ARM).
+2. **Battery Optimization (18650 Handheld Discipline)**:
+   - **Zero Busy-Wait (`WFI` Idle + Core 1 Parked)**: Idle task executes `wfi`; Core 1 remains parked in bootrom/deep `wfe` (~30–40% core dynamic power savings).
+   - **0 FPS Static Rendering (20-Bit `dirty_bands` Mask)**: Zero SPI1 clocks and zero DMA bursts when screen is static; only **GLGears** ticks continuously (pauses on `Space`/idle).
+   - **Smart Backlight & ST7365P Sleep**: Keyboard backlight (`0x0A`) defaults **OFF** at boot; inactivity dims LCD (`0x05`) at 60 s and enters `DISPOFF (0x28)` + `SLPIN (0x10)` at 5 min (instant wake on any key).
+   - **Adaptive I2C1 Polling**: Key FIFO (`0x09`) polled at 50 Hz while active → steps down to 10 Hz after 3 s idle; Battery (`0x0B`) polled every 15 s.
+   - **Unused Peripheral Gating**: Keep ADC, PWM, PIO, SPI0 (when SD idle), I2C0, UART1, USBCTRL, HSTX, TRNG held in `RESETS`.
+
+---
+
+## 8. Gap Analysis & Silicon Bring-Up Safeguards
+
+| # | Real-Hardware Risk | Mitigation Built into Plan |
+| :-: | :--- | :--- |
+| **G1** | **RP2350 `TICKS` Block (`0x40108000`)** — `TIMER0` & `PROC0` SysTick ref stay frozen at 0 if `TICKS` is not enabled | `hal_rp2xxx.c` programs `TICKS_TIMER0_CYCLES=12`, `TICKS_TIMER0_CTRL=1` (1 MHz) and `TICKS_PROC0_CTRL=1` before enabling SysTick |
+| **G2** | **RP2350 Pad Isolation (`PADS_BANK0` bit 8 `ISO=1`)** — GPIO outputs stay dead after reset | `hal_rp2xxx.c` clears `ISO=0` on every configured GPIO (`GP0/1`, `GP6/7`, `GP10-15`) |
+| **G3** | **I2C1 Stuck-Low `SDA`** — MCU reset mid-transaction can leave STM32 holding `GP6` LOW | `i2ckbd_init()` checks `GP6`; if LOW, bit-bangs 9 `SCL` pulses (`GP7`) + STOP before enabling `I2C1` |
+| **G4** | **Silent Crash on Blank Screen** | `HardFault_Handler` dumps `PC/LR/PSR/CFSR/HFSR` to `UART0` + paints a blocking raw-SPI1 red panic banner on ST7365P |
+| **G5** | **SD-Boot (`+200 KiB`) Dirty State** — `pico_multi_booter` may leave IRQs/DMA active | `Reset_Handler` starts with `cpsid i`, explicitly sets `SCB->VTOR = __vectors_start__`, and resets `SPI1`/`I2C1`/`DMA` |
+| **G6** | **Legacy Removal Blast Radius** — deleting `segui_demo.c` / `segui_phone.c` | Verified via repo-wide grep: only `Makefile` (`CAPTURE_SEGUI_SRCS`), `include/btron/segui.h`, `tools/capture_segui.c`, and `scripts/screen_update_segui.py` reference them — updated atomically in Phase 2 |
+
+---
+
+## 9. Phased Delivery & Verification Gates
 
 1. **Phase 1 — Raw Pico Series QEMU Kernel (`make pico`, `make run-pico`, `make test-pico`)**:
    - `startup_pico.S` (ARMv8-M + ARMv6-M), `hal_qemu_mps2.c`, `core_pico.c` (1 kHz SysTick, PendSV preemptive context switch, static T-Kernel tasks/semaphores/eventflags, `btron-pico#` shell), `scripts/test_pico.sh`.
@@ -206,3 +234,4 @@ scripts/
    - **Gate**: `make picocalc-all && make test-picocalc` passes every static/binary/UF2/SD-boot/CRC32/PICOBIN/SRAM gate and is ready for immediate `make flash-picocalc`.
 4. **Phase 4 — Hardware Bring-Up & Optional SD HFDS**:
    - First-boot hardware checklist (UART0 log → ST7365P color bar → Palm Launcher → I2C1 keys/battery/backlight), followed by optional SPI0 SD card HFDS mount.
+
