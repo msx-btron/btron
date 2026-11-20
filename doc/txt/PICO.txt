@@ -1,0 +1,328 @@
+PICO.txt — Palm OS-Like SegUI Architecture for ClockworkPi PicoCalc
+====================================================================
+
+B-System (BTRON 3.20)
+Target: ClockworkPi PicoCalc (RP2350 default, RP2040 via PICO_BOARD=rp2040)
+Related: ASYNC.txt, RENDER.txt, STRUCTURE.txt, include/btron/segui.h
+
+Status: Architectural Proposal (Rev 5 — App Suite Frozen)
+Policy: NASA JPL Rule 3 compliant (zero post-boot heap, bounded static state).
+        Zero pixel coordinates in any application.
+        Single foreground Form + Launcher (Palm OS 5 HiRes 320x320 model).
+
+
+0. Scope & Design Invariants
+----------------------------
+
+ClockworkPi PicoCalc is a Tier-1 Embedded MCU pocket computer with:
+  - CPU (Default): Raspberry Pi Pico 2 — RP2350, Dual Cortex-M33 (ARMv8-M
+    Mainline + FPv5-SP FPU), 150 MHz, 520 KiB SRAM, 4 MiB XIP Flash.
+  - CPU (Option):  Raspberry Pi Pico 1 — RP2040, Dual Cortex-M0+ (ARMv6-M),
+    125 MHz, 264 KiB SRAM, 2 MiB XIP Flash (PICO_BOARD=rp2040).
+  - Display:       4.0" 320x320 IPS TFT, Sitronix ST7365P on SPI1 (25 MHz).
+  - Input / PMU:   QWERTY keyboard + AXP2101 PMU via STM32 on I2C1 (0x1F).
+
+Five hard invariants govern the PicoCalc UI architecture:
+
+  I1. Zero overlapping desktop windows. A 320x320 keyboard-driven pocket
+      screen has no mouse and cannot pay for z-ordered window backing stores.
+  I2. Zero pixel coordinates in applications. Every app declares widgets only;
+      SegUI's resolve_segments() and resolve_body() compute all geometry.
+  I3. Zero post-boot malloc(). All apps, forms, menus, dialogs, and display
+      strip buffers live in static BSS/DATA checked at link time.
+  I4. Banded 320x16 RGB565 rendering (20 KiB double-buffered SRAM) is unified
+      across both RP2350 and RP2040 so the same UI binary model runs on both
+      chips with >450 KiB (RP2350) / >200 KiB (RP2040) SRAM headroom.
+  I5. Strict core layering: core_pico.c is the pure non-UI Cortex-M RTOS core
+      (verified in QEMU via `make run-pico` / `make test-pico`); core_segui.c
+      layers the 320x320 Palm/SegUI hardware shell on top (analogous to
+      core_arm64.c on Pi 400).
+
+
+1. Why Palm OS 5 HiRes (320x320) + SegUI Autolayout
+---------------------------------------------------
+
+Palm OS 5 HiRes (Tungsten / Treo) solved the exact 320x320 pocket-computer
+problem with four primitives:
+
+  1) Home Launcher      — one icon grid that launches any installed app.
+  2) Single Active Form — one full-screen app owns the body segment at a time.
+  3) Pull-Down Menu Bar — hidden until invoked (0 px vertical cost at rest).
+  4) Modal Alert Dialog — transient confirmation / status box over the form.
+
+B-System's existing SegUI toolkit (src/desktop/industrial/segui/segui.c)
+already separates device geometry (SEGUI_PROFILE) from layout arithmetic
+(resolve_segments / resolve_body) and widget painting:
+
+  +------------------------------------------------------------------+
+  | SEG_STATUS   20 px   [App Title Pill]     12:04  BAT 86%  BL 80% |
+  +------------------------------------------------------------------+
+  | SEG_TABBAR    0 px   (auto-hidden when active app has 1 Form;    |
+  |              22 px    auto-shown when app declares >1 Forms)     |
+  +------------------------------------------------------------------+
+  |                                                                  |
+  | SEG_BODY    276 px   stretch = TRUE                              |
+  |                      (or 254 px when SEG_TABBAR is visible)      |
+  |                                                                  |
+  |   * Launcher:   6 SEGUI_W_BUTTON tiles -> auto 3x2 grid          |
+  |   * List apps:  1 SEGUI_W_LIST -> auto full-body scrolling list  |
+  |   * Text apps:  1 SEGUI_W_TEXT -> auto full-body console/editor  |
+  |   * 3D app:     1 SEGUI_W_CANVAS -> auto full-body banded canvas |
+  |                                                                  |
+  +------------------------------------------------------------------+
+  | SEG_SOFTKEY  24 px   [F1 Home]   [F2 Menu]   [Enter OK]   [Esc]  |
+  +------------------------------------------------------------------+
+                         Total = 20 + 0 + 276 + 24 = 320 px exact.
+
+When `F2` (Menu) is pressed, a 1-column SEGUI_ROW dropdown overlays the top
+of SEG_BODY (auto-sized via segui_row_h()). When a modal alert is active, an
+auto-centered framed dialog overlays L->body. Neither reserves permanent
+screen height.
+
+
+2. Minimal Coordinate-Free Extensions to SegUI
+----------------------------------------------
+
+Existing profiles (segui_profile_handset, segui_profile_tft272,
+segui_profile_retro) and existing apps (segui_demo, segui_phone) remain 100%
+unchanged. Only three backwards-compatible additions are made to segui.h/c:
+
+2.1 New Profile: segui_profile_picocalc (320x320)
+  - form_w = 320, form_h = 320; exact auto-match in segui_profile_for(320,320)
+  - bands: SEG_STATUS(20), SEG_TABBAR(22, auto-skipped if n_tab <= 1),
+           SEG_BODY(0, stretch=TRUE), SEG_SOFTKEY(24)
+  - grid metrics: margin=4, pad=6, gap=6, btn_h=68, row_h=22,
+                  min_col_w=92, max_cols=3
+    -> On 320x320: body_w = 320 - 2*(4+6) = 300 px.
+       3 columns = (300 - 2*6) / 3 = 96 px >= min_col_w(92).
+       6 Launcher tiles automatically arrange as a balanced 3x2 grid
+       (2 rows x 68 px + 6 px gap = 142 px, centered cleanly in 276 px).
+
+2.2 New Container Widget: SEGUI_W_TEXT
+  - Added to is_container() alongside SEGUI_W_LIST and SEGUI_W_CHAT.
+  - resolve_body() automatically assigns it the full remaining L->body below
+    any top SEGUI_W_LABEL.
+  - Backed by a caller-owned static ring/line buffer (zero heap):
+      * Read-only / append mode: powers Terminal (scrollback + prompt line)
+        and Browser (wrapped hypertext/TAD document view).
+      * Editable mode: powers Editor (cursor row/col, insert, backspace,
+        newline, vertical auto-scroll).
+
+2.3 New Container Widget: SEGUI_W_CANVAS
+  - Added to is_container() alongside SEGUI_W_LIST / SEGUI_W_CHAT / SEGUI_W_TEXT.
+  - resolve_body() assigns it the full remaining L->body RECT.
+  - Calls a registered band-aware paint callback:
+      void (*draw_band)(SEGUI_APP *app, GDEV *dev, const RECT *bounds);
+    where dev->clip is the active 320x16 strip. Used exclusively by GLGears
+    so 3D rasterization fits inside the same 20 KiB display strip + 10 KiB
+    banded 16-bit Z-buffer with zero full-frame allocation.
+
+
+3. Palm OS Application Runtime (segui_palm.h / segui_palm.c)
+------------------------------------------------------------
+
+Every PicoCalc application is a static, read-only descriptor in Flash:
+
+  typedef struct SEGUI_PALM_MENU_ITEM {
+      const char *label;
+      void (*action)(SEGUI_APP *app);
+  } SEGUI_PALM_MENU_ITEM;
+
+  typedef struct SEGUI_PALM_APP {
+      const char *id;                  /* "terminal", "editor", ...        */
+      const char *title;               /* Launcher tile & status title     */
+      SEGUI_ICON  icon;                /* Built-in SegUI vector glyph      */
+      void (*build)(SEGUI_APP *app, const SEGUI_PROFILE *prof);
+      BOOL (*on_key)(SEGUI_APP *app, int key);
+      void (*on_tick)(SEGUI_APP *app, uint32_t now_ms);
+      void (*on_close)(SEGUI_APP *app);
+      const SEGUI_PALM_MENU_ITEM *menu;
+      int n_menu;
+  } SEGUI_PALM_APP;
+
+3.1 Application Switch (Palm SysUIAppSwitch Equivalent)
+  A single static `SEGUI_APP g_palm_app` exists in SRAM. Switching apps:
+    1) Dismisses any open menu/alert overlay.
+    2) Calls `cur_app->on_close(&g_palm_app)` if non-NULL.
+    3) Resets `g_palm_app` and invokes `next_app->build(&g_palm_app, prof)`.
+    4) Runs `segui_layout(&g_palm_app, &g_dev)` and marks all bands dirty.
+  RAM cost does NOT grow with the number of installed apps.
+
+3.2 Deterministic Event Loop (Palm AppEventLoop Equivalent)
+  On every key event from I2C1 (0x1F) or UART0 mirror:
+    1) F1 (Home):     Switch to Launcher (no-op if already on Launcher).
+    2) Modal Alert:   If open, consumes Enter (confirm) / Esc (cancel).
+    3) F2 (Menu):     Toggles pull-down menu overlay for current app.
+    4) Menu Open:     Consumes Up/Down/Enter/Esc; executes item->action().
+    5) app->on_key(): App-specific typing/command/scroll handling.
+    6) segui_key():   Default SegUI autolayout focus/scroll/activate.
+
+
+4. Frozen 6-App Suite (3x2 Launcher Grid)
+-----------------------------------------
+
+Launcher (`Home`) renders 6 SEGUI_W_BUTTON tiles (hotkeys `1`..`6` or arrows
++ `Enter`):
+
+  +------------------------------------------------------------------+
+  | [1] Terminal        | [2] Editor          | [3] Browser          |
+  | [4] Cabinet         | [5] GLGears         | [6] Preferences      |
+  +------------------------------------------------------------------+
+
+4.1 [1] Terminal (B-System Interactive Shell)
+  - Widgets: 1 SEGUI_W_TEXT (console ring, 4 KiB static buffer).
+  - Features: Interactive `btron-pico#` shell (`help`, `ver`, `mem`, `ps`,
+    `ls`, `cat`, `bat`, `bkl <0-255>`, `kbkl <0-255>`, `lcd`, `reboot`),
+    mirrored bidirectionally to PL011 UART0 for host debugging.
+  - Menu: [Clear] [SysInfo] [Reboot].
+
+4.2 [2] Editor (PicoCalc Text / TAD Scratchpad)
+  - Widgets: 1 SEGUI_W_LABEL (filename + cursor row:col + dirty flag) +
+             1 SEGUI_W_TEXT (editable, 8 KiB static document buffer).
+  - Features: Full QWERTY input, Backspace, Enter, arrow cursor movement,
+    load/save against RAM `/SYS` volume (and SD card in Phase 4).
+  - Menu: [New] [Save] [Word Count] [Open in Browser].
+
+4.3 [3] Browser (Local TAD / Hypertext Manual Reader)
+  - Widgets: 2-form or list+reader view using SEGUI_W_LIST (document index /
+    links) and SEGUI_W_TEXT (wrapped reader pane).
+  - Features: Reads embedded `/SYS` B-System manuals, release notes, and
+    saved Editor TAD/text documents; `Enter` follows links, `Esc` goes back.
+  - Menu: [Index] [Back] [Edit Source].
+
+4.4 [4] Cabinet (B-System VObj / Volume Manager)
+  - Widgets: 1 SEGUI_W_LIST (`SEGUI_ROW_HEADER` per volume + `SEGUI_ROW_ARROW`
+    / `SEGUI_ROW_VALUE` per file showing name and byte size).
+  - Features: Browses embedded RAM `/SYS` volume (and Phase 4 SD HFDS volume);
+    selecting an entry opens it in Browser (read) or Editor (edit).
+  - Menu: [Refresh] [New File] [Volume Info].
+
+4.5 [5] GLGears (3D Banded-Z Benchmark — Sole Bonus App)
+  - Widgets: 1 SEGUI_W_CANVAS (full 300x276 body, band-rendered).
+  - Pipeline: Classic 3-gear interlocking 3D scene (Red/Green/Blue involute
+    gears, Lambertian directional shading, back-face culling) rasterized into
+    the active 320x16 RGB565 strip + a shared **10 KiB 320x16 16-bit Z-band**.
+  - Math: Hardware single-precision FPU (`FPv5-SP`) on RP2350 Cortex-M33;
+    Q16.16 fixed-point on RP2040 Cortex-M0+.
+  - Controls: Arrow keys rotate camera; Space pauses; live FPS & SPI1 ms
+    printed in SEG_STATUS. Doubles as hardware DMA + CPU stress test.
+  - Menu: [Pause/Resume] [Reset View] [Toggle Wire/Solid].
+
+4.6 [6] Preferences (Custom PicoCalc SegUI Preference Window)
+  - Widgets: Multi-section SEGUI_W_LIST (`SEGUI_ROW_HEADER`, `SEGUI_ROW_VALUE`,
+    `SEGUI_ROW_TOGGLE`, `SEGUI_ROW_ARROW`) — zero hardcoded coordinates,
+    purpose-built for PicoCalc hardware:
+      * [DISPLAY]
+          - LCD Backlight     : 0..255 (steps of 16 via Left/Right/Enter -> STM32 0x05)
+          - Theme             : Handset / Retro / Appliance (live SegUI theme switch)
+          - Color Format      : RGB565 (16-bit) / RGB666 (status)
+      * [KEYBOARD & POWER]
+          - Key Backlight     : 0..255 (steps of 16 -> STM32 0x0A)
+          - Battery           : Live % + charging state (STM32 0x0B)
+          - Power Off...      : Opens Modal Alert confirm -> STM32 0x0E
+      * [SYSTEM & HARDWARE]
+          - Board / CPU       : RP2350 Cortex-M33 150 MHz | RP2040 Cortex-M0+ 125 MHz
+          - SRAM Used / Free  : Live static + headroom readout
+          - RTOS Uptime       : Live SysTick seconds & active task count
+          - UART0 Mirror      : On / Off toggle
+  - Menu: [Defaults] [Reboot to BOOTSEL] [About B-System].
+
+
+5. Banded 320x16 RGB565 Display Pipeline (dp_pico.c + st7365p_spi.c)
+--------------------------------------------------------------------
+
+Why banded rendering:
+  - 320x320x32-bpp ARGB = 409,600 B (exceeds RP2040 264 KiB SRAM).
+  - 320x320x16-bpp RGB565 = 204,800 B (leaves <60 KiB on RP2040).
+  - 2 x (320x16x2 B) ping-pong strips = **20,480 B (20 KiB)** total SRAM!
+
+Per-frame / dirty-band loop:
+  For each dirty band b in 0..19 (y = b*16 .. b*16+15):
+    1) Set GDEV clip = { 0, y, 320, y+16 }, target = strip_buf[b & 1].
+    2) Run segui_paint(&g_palm_app, &g_dev) (+ menu/alert overlay if open).
+       Primitives outside [y, y+16) are rejected in O(1); inside pixels are
+       converted 0xAARRGGBB -> big-endian RGB565 directly into strip_buf.
+    3) Wait for prior SPI1 DMA completion, issue ST7365P CASET(0..319) +
+       RASET(y..y+15) + RAMWR(0x2C), start DMA Channel 0 -> SPI1 TX FIFO.
+    4) Immediately compute band b+1 into strip_buf[(b+1) & 1].
+
+Timing @ 25 MHz SPI1 (RGB565):
+  - Single 320x16 band = 10,240 B = 81,920 bits -> ~3.3 ms.
+  - Full 320x320 frame (20 bands) -> ~65 ms (~15 FPS; ~25 FPS @ 40 MHz).
+  - Partial keystroke/focus redraw (1–2 bands) -> 3.3–6.6 ms.
+  - Compile-time fallback PICOCALC_LCD_RGB666=1 converts strip pixels to
+    3-byte RGB666 (`COLMOD 0x66`) if any panel revision requires it.
+
+
+6. Keyboard & Southbridge Input Map (i2ckbd_stm32.c)
+----------------------------------------------------
+
+I2C1 (GP6 SDA, GP7 SCL, pull-ups enabled, 10 kHz, addr 0x1F):
+  - Poll REG_ID_FIF (0x09) at 20–50 Hz (16-bit word: lo=state, hi=code).
+  - State 1 = key press, 2 = hold/ctrl-down (0x7E02), 3 = release (0x7E03).
+
+  STM32 Code   Physical Key    Palm/SegUI Action
+  ----------   ------------    -----------------------------------------
+  0xB5         Arrow Up        Move focus / scroll up / GLGears pitch
+  0xB6         Arrow Down      Move focus / scroll down / GLGears pitch
+  0xB4         Arrow Left      Prev col / Prefs dec / GLGears yaw
+  0xB7         Arrow Right     Next col / Prefs inc / GLGears yaw
+  0x0A / 0x0D  Enter           Activate / Open / Confirm alert
+  0x08 / 0x7F  Backspace       Delete char / Browser Back
+  0x09         Tab             Cycle focus / next tab
+  0x1B         Esc             Close menu/alert / Back
+  0x81 (F1)    F1              Palm HOME (switch to Launcher)
+  0x82 (F2)    F2              Palm MENU (toggle app dropdown menu)
+  0x20..0x7E   ASCII           Direct text input (Terminal/Editor/Search)
+
+
+7. Layered Cores & Dual Bootloader Support
+------------------------------------------
+
+  Layer               File(s)                         Targets
+  -----               -------                         -------
+  Pure RTOS Kernel    src/cores/core_pico.c           run-pico, test-pico,
+                      src/drivers/pico/startup_pico.S picocalc (both chips)
+  QEMU HAL            src/drivers/pico/hal_qemu_mps2.c run-pico, test-pico
+  Real Silicon HAL    src/drivers/pico/hal_rp2xxx.c   picocalc (RP2350/RP2040)
+  Hardware UI Core    src/cores/core_segui.c          picocalc (RP2350/RP2040)
+  Palm/SegUI Layer    src/desktop/industrial/segui/   picocalc + host capture
+
+Bootloader Matrix (all 4 artifacts built by `make picocalc-all`):
+  1) btron-picocalc-rp2350.uf2         — 0x10000000, PICOBIN ARM-S, family 0xE48BFF59
+                                         (USB BOOTSEL + SD `uf2loader` /pico2-apps/)
+  2) btron-picocalc-rp2350-sdboot.bin  — 0x10032000 (+200 KiB), `pico_multi_booter`
+  3) btron-picocalc-rp2040.uf2         — 0x10000000, CRC32 boot2, family 0xE48BFF56
+                                         (USB BOOTSEL + SD `uf2loader` /pico1-apps/)
+  4) btron-picocalc-rp2040-sdboot.bin  — 0x10032000 (+200 KiB), `pico_multi_booter`
+
+Critical RP2350 Bring-Up Invariant:
+  RP2350 resets all PADS_BANK0_GPIOx registers with bit 8 (ISO=1). hal_rp2xxx.c
+  MUST clear ISO=0 on every configured GPIO (UART0 GP0/1, I2C1 GP6/7, SPI1
+  GP10-12, LCD CS/DC/RST GP13-15) before peripheral traffic begins.
+
+
+8. Static Resource Budget & CI Verification Gates
+-------------------------------------------------
+
+Projected Footprint (All 6 Frozen Apps + Kernel + Drivers + 8x16 Flash Font):
+  - Flash:       ~110–130 KiB (3.1% of RP2350 4 MiB; 6.3% of RP2040 2 MiB)
+  - Static SRAM: ~58 KiB peak (11% of RP2350 520 KiB; 22% of RP2040 264 KiB)
+      * Banded RGB565 ping-pong strips:   20 KiB
+      * Banded 16-bit Z-buffer (GLGears): 10 KiB
+      * RTOS TCBs + 8 x 2 KiB stacks:     16 KiB
+      * Terminal (4K) + Editor (8K):      12 KiB
+      * Core 0/1 MSP stacks:               8 KiB (SCRATCH_X + SCRATCH_Y)
+
+Mandatory Verification Gates (Zero-Broken-Build Contract):
+  1) `make test-pico`     — Headless QEMU Cortex-M33 (`mps2-an521`) AND
+                            Cortex-M3 (`mps2-an385`): verifies boot banner,
+                            1 kHz SysTick, PendSV task preemption, semaphores,
+                            eventflags, and `btron-pico#` shell commands.
+  2) `make segui-screens` — Host headless 320x320 golden capture of Launcher,
+                            Terminal, Editor, Browser, Cabinet, GLGears, and
+                            Preferences (0 px overflow assertion).
+  3) `make test-picocalc` — Builds all 4 hardware binaries (RP2350/RP2040 x
+                            UF2/SD-boot), verifies PICOBIN markers, RP2040
+                            boot2 MPEG-2 CRC32, UF2 family IDs/block counts,
+                            +200 KiB VTOR entry, and SRAM < 64 KiB link gate.
