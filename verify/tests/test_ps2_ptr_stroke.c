@@ -37,7 +37,7 @@
 
 /* The header itself, not a copy of its arithmetic: the identical translation unit
  * is what core_ps2.c compiles into btron-ps2.elf. */
-#include "../../src/cores/ps2_ptr_stroke.h"
+#include "ps2_ptr_stroke.h"
 
 static int s_checks, s_failures;
 
