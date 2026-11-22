@@ -1,12 +1,12 @@
-QUAKE.txt — Implementation Plan & Status for vkQuake on B-System
+QUAKE.txt — Implementation Plan & Status for Quake on B-System
 =============================================================================
 
 B-System / BTRON 3.20
 Subsystem : Tier-1 3D Application Subsystem (src/quake/)
-Engine    : vkQuake Cleanroom Port — Dual-Backend Pipeline (GLES 1.1 + Vulkan)
+Engine    : Quake Cleanroom Port — Dual-Backend Pipeline (GLES 1.1 + Vulkan)
 Status    : Active Development — Phases 1–5 Completed
 Author    : Synrc Research Center / B-System Core Engineering
-License   : GPL-2.0 / MIT Bridge
+License   : MIT License
 
 =============================================================================
 0. ARCHITECTURAL TENETS

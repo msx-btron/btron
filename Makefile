@@ -821,13 +821,13 @@ FS_OBJS  = $(FS_SRCS:.c=.host.o) src/kernel/libstr.host.o
 
 # Host tools need tkl_strscpy / tkl_strpad. The full libstr heap is the image
 # allocator; this object only has to export the string functions.
-src/kernel/libstr.host.o: src/kernel/libstr.c include/libstr.h
+src/kernel/libstr.host.o: src/kernel/libstr.c include/rt/libstr.h
 	$(CC) $(CFLAGS) -DBTRON_TARGET=0 -DBTRON_LIBSTR_NO_HEAP -MMD -MP -c $< -o $@
 
-src/kernel/libstr.test.o: src/kernel/libstr.c include/libstr.h
+src/kernel/libstr.test.o: src/kernel/libstr.c include/rt/libstr.h
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DBTRON_LIBSTR_NO_HEAP -MMD -MP -c $< -o $@
 
-src/kernel/libstr.tgl.o: src/kernel/libstr.c include/libstr.h
+src/kernel/libstr.tgl.o: src/kernel/libstr.c include/rt/libstr.h
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DBTRON_LIBSTR_NO_HEAP -DBTRON_GL_BACKEND_TINYGL \
 	      -DXMB_OUT_DIR='"./.build/tgl/"' -MMD -MP -c $< -o $@
 
@@ -1910,7 +1910,7 @@ test-printf-float: $(TEST_PRINTFF_BIN)
 	@echo "=========================================================="
 	@./$(TEST_PRINTFF_BIN)
 
-$(TEST_PRINTFF_BIN): $(TEST_PRINTFF_OBJS) src/kernel/libstr.c include/libstr.h
+$(TEST_PRINTFF_BIN): $(TEST_PRINTFF_OBJS) src/kernel/libstr.c include/rt/libstr.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_PRINTFF_OBJS) -o $@ $(LDFLAGS)
 
@@ -1942,7 +1942,7 @@ test-kcopy: $(TEST_KCOPY_BIN)
 	@echo "=========================================================="
 	@./$(TEST_KCOPY_BIN)
 
-$(TEST_KCOPY_BIN): $(TEST_KCOPY_SRC) $(TEST_KCOPY_OBJS) include/libstr.h
+$(TEST_KCOPY_BIN): $(TEST_KCOPY_SRC) $(TEST_KCOPY_OBJS) include/rt/libstr.h
 	@mkdir -p ./.build
 	$(CC) -std=c99 -Wall -Wextra -Wformat=2 -O1 -g -fsanitize=address,undefined \
 		-fno-omit-frame-pointer -DBTRON_LIBSTR_NO_HEAP $(CFLAGS) \
@@ -1969,12 +1969,12 @@ $(TEST_LIBSTR_PROBE): $(TEST_LIBSTR_SRC) include/rt/assert.h
 	$(CC) -std=c99 -Wall -Wextra -ffreestanding -DBTRON_ASSERT_RT_PROBE \
 		$(TEST_LIBSTR_INCLUDES) -c $(TEST_LIBSTR_SRC) -o $@
 
-$(TEST_LIBSTR_BIN): $(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) src/kernel/libstr.c include/libstr.h
+$(TEST_LIBSTR_BIN): $(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) src/kernel/libstr.c include/rt/libstr.h
 	@mkdir -p ./.build
 	$(CC) -std=c99 -Wall -Wextra -Wformat=2 -O2 $(TEST_LIBSTR_INCLUDES) \
 		$(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) -o $@
 
-$(TEST_LIBSTR_ASAN): $(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) src/kernel/libstr.c include/libstr.h
+$(TEST_LIBSTR_ASAN): $(TEST_LIBSTR_SRC) $(TEST_LIBSTR_PROBE) src/kernel/libstr.c include/rt/libstr.h
 	@mkdir -p ./.build
 	$(CC) -std=c99 -Wall -Wextra -Wformat=2 -O1 -g -fsanitize=address,undefined \
 		-fno-omit-frame-pointer $(TEST_LIBSTR_INCLUDES) \
