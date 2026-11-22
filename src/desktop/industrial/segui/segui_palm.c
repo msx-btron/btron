@@ -100,7 +100,8 @@ static BOOL                     s_menu_open = FALSE;
 static int                      s_menu_focus = 0;
 static BOOL                     s_alert_open = FALSE;
 static char                     s_alert_title[32];
-static char                     s_alert_msg[64];
+/* menu_about is six lines, 125 bytes plus a NUL. */
+static char                     s_alert_msg[128];
 static void                   (*s_alert_confirm)(void) = NULL;
 
 /* Hardware preference state */
@@ -1226,7 +1227,13 @@ static void build_launcher(SEGUI_APP *app, const SEGUI_PROFILE *prof)
 
 static void menu_about(void)
 {
-    segui_palm_alert("B-System 3.20", "PicoCalc Palm SegUI (Zero-Heap)", NULL);
+    segui_palm_alert("B-System (BTRON 3.20)", "Chip: MCU RP2040\n"
+                                              "Kernel: InterCore Nexus\n"
+                                              "Spec: BTRON 3.20\n"
+                                              "Screen: 320x320 ST7365P\n"
+                                              "Video: OpenGL ES\n"
+                                              "Keyboard: Backlit 67-keys\n"
+                                              , NULL);
 }
 
 static void menu_go_home(void)
@@ -1400,6 +1407,111 @@ void segui_palm_layout(GDEV *dev)
 
 /* ── Palm Overlay Painting (Menu Dropdown & Modal Alert) ───────────────── */
 
+/* One source line, newline not stored. A line longer than cap-1 is cut
+ * in the buffer and still consumed, so the next call starts at the next line. */
+static int alert_take_line(const char *s, char *dst, int cap)
+{
+    int i = 0;
+    int n = 0;
+    if (!s) s = "";
+    if (!dst || cap <= 0) return 0;
+    while (s[i] && s[i] != '\n') {
+        if (n < cap - 1) dst[n++] = s[i];
+        i++;
+    }
+    dst[n] = '\0';
+    if (s[i] == '\n') i++;
+    return i;
+}
+
+/* Longest source line in pixels, before the body caps the box. */
+static int alert_widest(const char *s)
+{
+    int best = 0;
+    if (!s) return 0;
+    while (*s) {
+        char line[64];
+        int adv = alert_take_line(s, line, (int)sizeof(line));
+        int w;
+        if (adv <= 0) break;
+        w = (int)tc_calc_string_width(line, 63);
+        if (w > best) best = w;
+        s += adv;
+    }
+    return best;
+}
+
+/* Prefix of s that fits max_w and does not cross a newline.
+ * A newline that ends the fitted prefix is consumed. A prefix cut for
+ * width leaves the rest for the next row. */
+static int alert_fit_prefix(const char *s, int max_w, char *dst, int cap)
+{
+    int i = 0;
+    int n = 0;
+    int fit;
+    int k;
+    if (!s || !dst || cap <= 1) return 0;
+    if (s[0] == '\n') {
+        dst[0] = '\0';
+        return 1;
+    }
+    while (s[i] && s[i] != '\n' && n < cap - 1 && n < 63) {
+        dst[n++] = s[i++];
+    }
+    dst[n] = '\0';
+    fit = n;
+    while (fit > 1 && max_w >= 8 &&
+           (int)tc_calc_string_width(dst, fit) > max_w) {
+        fit--;
+        dst[fit] = '\0';
+    }
+    if (fit < 1) return 0;
+    if (fit == n && s[i] == '\n') return i + 1;
+    if (fit < n) {
+        /* The measured prefix is shorter than what was copied. */
+        for (k = fit; k < n; k++) dst[k] = '\0';
+        return fit;
+    }
+    return i;
+}
+
+static int alert_rows(const char *s, int max_w)
+{
+    int rows = 0;
+    char line[64];
+    if (!s || !s[0]) return 1;
+    while (*s && rows < 12) {
+        int adv = alert_fit_prefix(s, max_w, line, (int)sizeof(line));
+        if (adv <= 0) break;
+        s += adv;
+        rows++;
+    }
+    return rows < 1 ? 1 : rows;
+}
+
+static void alert_draw_lines(GDEV *dev, const RECT *r, const char *msg,
+                             COLOR fg, COLOR bg)
+{
+    const char *p = msg ? msg : "";
+    int line_h = 16;
+    int max_w = (int)r->right - (int)r->left - 4;
+    int room = (int)r->bottom - (int)r->top;
+    int lines = alert_rows(p, max_w);
+    int block = lines * line_h;
+    int y = (int)r->top;
+    if (room < line_h || max_w < 8) return;
+    if (block < room) y += (room - block) / 2;
+    while (*p && y + line_h <= (int)r->bottom) {
+        char line[64];
+        int adv = alert_fit_prefix(p, max_w, line, (int)sizeof(line));
+        if (adv <= 0) break;
+        if (line[0])
+            drw_tc_string(dev, (H)(r->left + 2), (H)y, line, fg, bg);
+        p += adv;
+        y += line_h;
+    }
+}
+
 static void paint_overlays(GDEV *dev)
 {
     const SEGUI_THEME *th = segui_active_theme(&s_app);
@@ -1429,15 +1541,33 @@ static void paint_overlays(GDEV *dev)
     if (s_alert_open) {
         int bw = s_app.lay.body.right - s_app.lay.body.left;
         int bh = s_app.lay.body.bottom - s_app.lay.body.top;
-        RECT ar = { (H)(s_app.lay.body.left + (bw - 248) / 2),
-                    (H)(s_app.lay.body.top  + (bh - 92)  / 2),
-                    (H)(s_app.lay.body.left + (bw + 248) / 2),
-                    (H)(s_app.lay.body.top  + (bh + 92)  / 2) };
-        RECT hdr = { (H)(ar.left + 2), (H)(ar.top + 2), (H)(ar.right - 2), (H)(ar.top + 24) };
-        RECT r_msg = { (H)(ar.left + 8), (H)(ar.top + 32), (H)(ar.right - 8), (H)(ar.top + 56) };
-        RECT r_ftr = { (H)(ar.left + 8), (H)(ar.bottom - 24), (H)(ar.right - 8), (H)(ar.bottom - 4) };
+        int box_w = alert_widest(s_alert_msg) + 24;
+        int max_w;
+        int lines;
+        int box_h;
+        RECT ar, hdr, r_msg, r_ftr;
         SEGUI_CTRL tmp;
         SEGUI_THEME hdr_th = *th;
+        if (box_w < 248) box_w = 248;
+        if (bw > 8 && box_w > bw - 8) box_w = bw - 8;
+        /* Message rect is inset 8 and the glyphs start 2 px in, so the
+         * fit width is box_w - 20. alert_draw_lines uses the same inset. */
+        max_w = box_w - 20;
+        if (max_w < 8) max_w = 8;
+        lines = alert_rows(s_alert_msg, max_w);
+        box_h = 32 + lines * 16 + 28;
+        if (box_h < 92) box_h = 92;
+        if (bh > 4 && box_h > bh - 4) box_h = bh - 4;
+        ar.left   = (H)(s_app.lay.body.left + (bw - box_w) / 2);
+        ar.top    = (H)(s_app.lay.body.top  + (bh - box_h) / 2);
+        ar.right  = (H)(ar.left + box_w);
+        ar.bottom = (H)(ar.top + box_h);
+        hdr.left = (H)(ar.left + 2); hdr.top = (H)(ar.top + 2);
+        hdr.right = (H)(ar.right - 2); hdr.bottom = (H)(ar.top + 24);
+        r_msg.left = (H)(ar.left + 8); r_msg.top = (H)(ar.top + 32);
+        r_msg.right = (H)(ar.right - 8); r_msg.bottom = (H)(ar.bottom - 28);
+        r_ftr.left = (H)(ar.left + 8); r_ftr.top = (H)(ar.bottom - 24);
+        r_ftr.right = (H)(ar.right - 8); r_ftr.bottom = (H)(ar.bottom - 4);
         hdr_th.text = th->btn_sel_fg;
         hdr_th.panel_bg = th->accent;
         fill_rec(dev, &ar, th->panel_bg);
@@ -1446,8 +1576,7 @@ static void paint_overlays(GDEV *dev)
         tmp.type = SEGUI_W_LABEL;
         p_strlcpy(tmp.label, SEGUI_LABEL_MAX, s_alert_title);
         segui_draw_label_text(dev, &hdr, &tmp, &hdr_th);
-        p_strlcpy(tmp.label, SEGUI_LABEL_MAX, s_alert_msg);
-        segui_draw_label_text(dev, &r_msg, &tmp, th);
+        alert_draw_lines(dev, &r_msg, s_alert_msg, th->text_dim, th->panel_bg);
         p_strlcpy(tmp.label, SEGUI_LABEL_MAX, "[Enter] OK   [Esc] Cancel");
         segui_draw_label_text(dev, &r_ftr, &tmp, th);
     }
