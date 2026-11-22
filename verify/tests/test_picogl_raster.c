@@ -291,6 +291,69 @@ static int screen_tri_matches(void)
     return mismatches == 0 && pico_core1_state() != 0;
 }
 
+/* Two bands of the same list. Resume must match a fresh divide on
+ * every row, including a sealed edge, a horizontal edge, and a view
+ * that does not start on a band. */
+static int resume_matches(void)
+{
+    picogl_tri_t tris[3];
+    enum { W = 80, BANDS = 4, BH = 16, H = BANDS * BH };
+    uint16_t *fresh;
+    uint16_t *kept;
+    int32_t *iz;
+    int q[8 * 3];
+    int r[8 * 3];
+    int16_t ey[8];
+    int cover, oy, band, i, bad;
+    memset(tris, 0, sizeof tris);
+    tris[0].x0 = 2;  tris[0].y0 = 0;
+    tris[0].x1 = 70; tris[0].y1 = 0;
+    tris[0].x2 = 20; tris[0].y2 = 50;
+    tris[0].iz = 40; tris[0].rgb = 0xF800; tris[0].flags = (uint8_t)PICOGL_SEAL;
+    tris[1].x0 = 8;  tris[1].y0 = 18;
+    tris[1].x1 = 40; tris[1].y1 = 22;
+    tris[1].x2 = 12; tris[1].y2 = 48;
+    tris[1].iz = 20; tris[1].rgb = 0x07E0; tris[1].flags = (uint8_t)PICOGL_FLAT;
+    tris[2].x0 = 30; tris[2].y0 = 4;
+    tris[2].x1 = 60; tris[2].y1 = 30;
+    tris[2].x2 = 28; tris[2].y2 = 36;
+    tris[2].iz = 10; tris[2].rgb = 0x001F; tris[2].flags = (uint8_t)PICOGL_SEAL;
+    fresh = (uint16_t *)calloc((size_t)H * W, sizeof(uint16_t));
+    kept = (uint16_t *)calloc((size_t)H * W, sizeof(uint16_t));
+    iz = (int32_t *)calloc((size_t)BH * W, sizeof(int32_t));
+    if (!fresh || !kept || !iz) return 0;
+    bad = 0;
+    picogl_set_depth(1);
+    for (cover = 0; cover < 2; cover++) {
+        for (oy = 0; oy <= 8; oy += 8) {
+            picogl_set_cover(cover);
+            picogl_set_edge_resume(0, 0, 0, 0);
+            for (band = 0; band < BANDS; band++) {
+                memset(iz, 0, (size_t)BH * W * sizeof(int32_t));
+                picogl_paint_band(tris, 3, fresh + band * BH * W, W,
+                                  band * BH, BH, 0, oy, W, H, iz, 0x0000);
+            }
+            memset(ey, 0xff, sizeof ey);
+            picogl_set_edge_resume(q, r, ey, 8);
+            for (band = 0; band < BANDS; band++) {
+                memset(iz, 0, (size_t)BH * W * sizeof(int32_t));
+                picogl_paint_band(tris, 3, kept + band * BH * W, W,
+                                  band * BH, BH, 0, oy, W, H, iz, 0x0000);
+            }
+            for (i = 0; i < H * W; i++) {
+                if (fresh[i] != kept[i]) bad++;
+            }
+        }
+    }
+    picogl_set_edge_resume(0, 0, 0, 0);
+    picogl_set_cover(0);
+    free(fresh);
+    free(kept);
+    free(iz);
+    check("a resumed edge matches a fresh divide", bad == 0);
+    return bad == 0;
+}
+
 int main(void)
 {
     printf("==========================================================\n");
@@ -300,6 +363,7 @@ int main(void)
     door_cull_and_depth();
     queue_does_not_drop();
     screen_tri_matches();
+    resume_matches();
     printf("  checks=%d failures=%d\n", s_checks, s_fail);
     if (s_fail == 0) {
         printf("[CI-TEST] SUCCESS - the depth winner matches the software band\n");

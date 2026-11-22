@@ -4,8 +4,10 @@
  * The fill walks pixel centers with an integer edge test. A larger iz wins.
  * Core 1 runs the same fill when a target is bound. The host test calls
  * picogl_raster_band on this core. The edge divide stays in software.
- * The SIO divider result is undefined until 8 cycles after the divisor
- * write, and reading it early tore the spans.
+ * A captured list can keep each edge's remainder, so a later band steps
+ * it instead of dividing again. The SIO divider result is undefined
+ * until 8 cycles after the divisor write, and reading it early tore
+ * the spans.
  */
 #include "picogl.h"
 
@@ -72,6 +74,12 @@ static volatile uint32_t s_span_done;
  * is set, and only for a band no wider than 320. */
 static int s_cover;
 static uint32_t s_cov[16][10];
+/* Quake keeps these. Gears leave them unset, so a gear triangle still
+ * divides at the row it starts on. y < 0 means that slot has no remainder. */
+static int *s_edge_q;
+static int *s_edge_r;
+static int16_t *s_edge_y;
+static int s_edge_n;
 
 static void mat_ident(float *m)
 {
@@ -254,7 +262,11 @@ typedef struct {
     int ky, dx;
 } span_edge_t;
 
-static void edge_init(span_edge_t *e, int ax, int ay, int bx, int by, int py)
+/* have = 0 divides. have = 1 installs the remainder saved at this py.
+ * That remainder is what edge_init would produce, so the half-planes
+ * do not move. A horizontal edge recomputes ky and ignores q, r. */
+static void edge_at(span_edge_t *e, int ax, int ay, int bx, int by, int py,
+                    int have, int sq, int sr)
 {
     int dx = bx - ax;
     int dy = by - ay;
@@ -269,23 +281,38 @@ static void edge_init(span_edge_t *e, int ax, int ay, int bx, int by, int py)
     }
     if (dy > 0) {
         int d = dy << 1;
-        int q = floor_div_pos(ky, d);
         e->kind = 1;
-        e->q = q;
-        e->r = ky - q * d;
         e->d = d;
         e->step = dx << 1;
+        if (have) {
+            e->q = sq;
+            e->r = sr;
+        } else {
+            int q = floor_div_pos(ky, d);
+            e->q = q;
+            e->r = ky - q * d;
+        }
     } else {
         int n = -ky;
         int d = (-dy) << 1;
         int m = n + d - 1;
-        int q = floor_div_pos(m, d);
         e->kind = 2;
-        e->q = q;
-        e->r = m - q * d;
         e->d = d;
         e->step = -(dx << 1);
+        if (have) {
+            e->q = sq;
+            e->r = sr;
+        } else {
+            int q = floor_div_pos(m, d);
+            e->q = q;
+            e->r = m - q * d;
+        }
     }
+}
+
+static void edge_init(span_edge_t *e, int ax, int ay, int bx, int by, int py)
+{
+    edge_at(e, ax, ay, bx, by, py, 0, 0, 0);
 }
 
 static void edge_advance(span_edge_t *e)
@@ -488,9 +515,9 @@ static void paint_span_lift(uint16_t *row, int lo, int hi, uint16_t lift)
     if (wrote) s_spans++;
 }
 
-static void paint_tri_target(const picogl_tri_t *t)
+static void paint_tri_target(const picogl_tri_t *t, int slot)
 {
-    int y, ymin, ymax, py, area;
+    int y, ymin, ymax, py, area, have;
     int x0, y0, x1, y1, x2, y2;
     int view_w, view_h, xoff, yoff, dest_w, dest_h, stride, swap;
     uint16_t *rgb;
@@ -565,14 +592,25 @@ static void paint_tri_target(const picogl_tri_t *t)
     area = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
     if (area == 0) return;
     py = ymin * 2 + 1;
+    /* The saved remainder is the state edge_init would compute at ymin.
+     * Bands run downward, so the next band of this triangle steps it. */
+    have = 0;
+    if (slot >= 0 && s_edge_y && s_edge_y[slot] == (int16_t)ymin)
+        have = 1;
     if (area > 0) {
-        edge_init(&e0, x0, y0, x1, y1, py);
-        edge_init(&e1, x1, y1, x2, y2, py);
-        edge_init(&e2, x2, y2, x0, y0, py);
+        edge_at(&e0, x0, y0, x1, y1, py, have,
+                have ? s_edge_q[slot * 3] : 0, have ? s_edge_r[slot * 3] : 0);
+        edge_at(&e1, x1, y1, x2, y2, py, have,
+                have ? s_edge_q[slot * 3 + 1] : 0, have ? s_edge_r[slot * 3 + 1] : 0);
+        edge_at(&e2, x2, y2, x0, y0, py, have,
+                have ? s_edge_q[slot * 3 + 2] : 0, have ? s_edge_r[slot * 3 + 2] : 0);
     } else {
-        edge_init(&e0, x1, y1, x0, y0, py);
-        edge_init(&e1, x2, y2, x1, y1, py);
-        edge_init(&e2, x0, y0, x2, y2, py);
+        edge_at(&e0, x1, y1, x0, y0, py, have,
+                have ? s_edge_q[slot * 3] : 0, have ? s_edge_r[slot * 3] : 0);
+        edge_at(&e1, x2, y2, x1, y1, py, have,
+                have ? s_edge_q[slot * 3 + 1] : 0, have ? s_edge_r[slot * 3 + 1] : 0);
+        edge_at(&e2, x0, y0, x2, y2, py, have,
+                have ? s_edge_q[slot * 3 + 2] : 0, have ? s_edge_r[slot * 3 + 2] : 0);
     }
     for (y = ymin; y <= ymax; y++) {
         int lo = t->x0;
@@ -613,6 +651,15 @@ static void paint_tri_target(const picogl_tri_t *t)
         edge_advance(&e1);
         edge_advance(&e2);
     }
+    if (slot >= 0 && s_edge_q && s_edge_r && s_edge_y) {
+        s_edge_q[slot * 3] = e0.q;
+        s_edge_r[slot * 3] = e0.r;
+        s_edge_q[slot * 3 + 1] = e1.q;
+        s_edge_r[slot * 3 + 1] = e1.r;
+        s_edge_q[slot * 3 + 2] = e2.q;
+        s_edge_r[slot * 3 + 2] = e2.r;
+        s_edge_y[slot] = (int16_t)(ymax + 1);
+    }
 }
 
 void picogl_span_drain(void)
@@ -627,7 +674,7 @@ void picogl_span_drain(void)
         if (t == h) return;
         NEXUS_BARRIER();
         tri = &s_span_ring.slot[t & (PICOGL_SPAN_SLOTS - 1)];
-        paint_tri_target(tri);
+        paint_tri_target(tri, -1);
         NEXUS_BARRIER();
         s_span_ring.tail = t + 1u;
         s_span_done = t + 1u;
@@ -689,7 +736,7 @@ static void post_target(const picogl_tri_t *tri)
             return;
         }
     }
-    paint_tri_target(tri);
+    paint_tri_target(tri, -1);
 }
 
 void picogl_flush_target_now(void)
@@ -1050,8 +1097,17 @@ static int cw_project(const cw_t *v, int *sx, int *sy, int *iz)
     ny = ((int64_t)w - v->y) * s_vp_h;
     if (nx >= 0) nx += den >> 1; else nx -= den >> 1;
     if (ny >= 0) ny += den >> 1; else ny -= den >> 1;
-    *sx = (int)(nx / den);
-    *sy = (int)(ny / den);
+    /* Same nearest quotient. A numerator that fits in int32 takes the
+     * 32-bit divide. cw_lerp is a different rounding site and stays. */
+    if (den <= 2147483647LL &&
+        nx <= 2147483647LL && nx >= (-2147483647LL - 1) &&
+        ny <= 2147483647LL && ny >= (-2147483647LL - 1)) {
+        *sx = (int)((int32_t)nx / (int32_t)den);
+        *sy = (int)((int32_t)ny / (int32_t)den);
+    } else {
+        *sx = (int)(nx / den);
+        *sy = (int)(ny / den);
+    }
     if (w >= PICOGL_Q10) *iz = 1;
     else *iz = PICOGL_Q10 / w;
     if (*iz < 1) *iz = 1;
@@ -1158,6 +1214,14 @@ void picogl_set_cover(int on)
     s_cover = on ? 1 : 0;
 }
 
+void picogl_set_edge_resume(int *q, int *r, int16_t *y, int n)
+{
+    s_edge_q = (q && r && y && n > 0) ? q : 0;
+    s_edge_r = s_edge_q ? r : 0;
+    s_edge_y = s_edge_q ? y : 0;
+    s_edge_n = s_edge_q ? n : 0;
+}
+
 void picogl_paint_band(const picogl_tri_t *tris, int ntri,
                        uint16_t *be, int stride,
                        int band_y, int band_h,
@@ -1208,7 +1272,8 @@ void picogl_paint_band(const picogl_tri_t *tris, int ntri,
         if (tris[i].y2 > ymax) ymax = tris[i].y2;
         if (ymax < 0 || ymin >= vh) continue;
         if (oy + ymax < band_y || oy + ymin >= band_y + band_h) continue;
-        paint_tri_target(&tris[i]);
+        paint_tri_target(&tris[i],
+                         (s_edge_q && s_edge_y && i < s_edge_n) ? i : -1);
     }
     if (cover_on) {
         for (y = 0; y < band_h; y++) {

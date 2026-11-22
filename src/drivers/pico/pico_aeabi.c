@@ -5,7 +5,11 @@
  * lacks hardware UDIV/SDIV and has only a 32×32→32 multiply) and for
  * compiler-generated calls. memcpy and memset are B-RT on RP2040.
  * 64-bit products are four 16×16
- * multiplies. 64-bit division is restoring division on 32-bit limbs.
+ * multiplies. Division is restoring division that shifts one bit at a
+ * time. A variable shift on this core costs a cycle per bit, and the
+ * old 32-step form paid that on every edge and every projection.
+ * Quotients match the truncating EABI divide, including a zero divisor.
+ * This is not the SIO divider.
  * __aeabi_ldivmod / __aeabi_uldivmod return the quotient in r0:r1 and the
  * remainder in r2:r3; clang reads r2:r3 for the `%` operator.
  *
@@ -20,17 +24,38 @@ typedef struct {
     uint32_t rem;
 } udivmod_t;
 
+/* One-bit shifts only. The quotient's high bit is aligned by walking the
+ * divisor up, then each later bit is one compare. n < d is the common
+ * reject and does not enter that walk. */
 static udivmod_t udivmod32(uint32_t n, uint32_t d)
 {
-    udivmod_t r = { 0u, 0u };
+    udivmod_t r;
+    uint32_t bit, q;
+    r.quot = 0u;
+    r.rem = 0u;
     if (d == 0u) return r;
-    for (int i = 31; i >= 0; i--) {
-        r.rem = (r.rem << 1u) | ((n >> (uint32_t)i) & 1u);
-        if (r.rem >= d) {
-            r.rem -= d;
-            r.quot |= (1u << (uint32_t)i);
-        }
+    if (n < d) {
+        r.rem = n;
+        return r;
     }
+    bit = 1u;
+    while ((d & 0x80000000u) == 0u) {
+        uint32_t nxt = d << 1;
+        if (nxt > n) break;
+        d = nxt;
+        bit <<= 1;
+    }
+    q = 0u;
+    while (bit != 0u) {
+        if (n >= d) {
+            n -= d;
+            q |= bit;
+        }
+        d >>= 1;
+        bit >>= 1;
+    }
+    r.quot = q;
+    r.rem = n;
     return r;
 }
 
@@ -118,19 +143,23 @@ static void limb_sub(uint32_t *h, uint32_t *l, uint32_t bh, uint32_t bl)
     *h -= bh + borrow;
 }
 
-/* (nh:nl) / d with nh < d, so the quotient fits in 32 bits. */
+/* (nh:nl) / d with nh < d, so the quotient fits in 32 bits.
+ * Bits come off the top of nl. A set carry is the 2^32 place the
+ * 32-bit remainder cannot hold, and the subtract wraps it back. */
 static void div64_32(uint32_t nh, uint32_t nl, uint32_t d, uint32_t *q, uint32_t *r)
 {
     uint32_t rem = nh;
     uint32_t quot = 0;
     int i;
-    for (i = 31; i >= 0; i--) {
-        uint32_t bit = (nl >> (uint32_t)i) & 1u;
+    for (i = 0; i < 32; i++) {
+        uint32_t bit = nl >> 31;
         uint32_t carry = rem >> 31;
         rem = (rem << 1) | bit;
+        nl <<= 1;
+        quot <<= 1;
         if (carry || rem >= d) {
             rem -= d;
-            quot |= 1u << (uint32_t)i;
+            quot |= 1u;
         }
     }
     *q = quot;
@@ -163,16 +192,20 @@ static void udivmod64(uint32_t nl, uint32_t nh, uint32_t dl, uint32_t dh,
         *rh = 0;
         return;
     }
-    for (i = 63; i >= 0; i--) {
-        uint32_t bit = (i >= 32) ? ((nh >> (uint32_t)(i - 32)) & 1u)
-                                 : ((nl >> (uint32_t)i) & 1u);
+    /* Same restoring step as udivmod32, across both limbs. The dividend
+     * is shifted up into the remainder, so no step shifts by a variable. */
+    for (i = 0; i < 64; i++) {
+        uint32_t bit = nh >> 31;
         uint32_t top = rr_h >> 31;
         rr_h = (rr_h << 1) | (rr_l >> 31);
         rr_l = (rr_l << 1) | bit;
+        nh = (nh << 1) | (nl >> 31);
+        nl <<= 1;
+        rq_h = (rq_h << 1) | (rq_l >> 31);
+        rq_l <<= 1;
         if (top || limb_ge(rr_h, rr_l, dh, dl)) {
             limb_sub(&rr_h, &rr_l, dh, dl);
-            if (i >= 32) rq_h |= 1u << (uint32_t)(i - 32);
-            else         rq_l |= 1u << (uint32_t)i;
+            rq_l |= 1u;
         }
     }
     *ql = rq_l;

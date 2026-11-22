@@ -79,6 +79,13 @@ void picogl_paint_band(const picogl_tri_t *tris, int ntri,
  * iz ties. 0 is the default. Gears and picogl_raster_band leave it off. */
 void picogl_set_cover(int on);
 
+/* q and r are n*3 ints, one remainder per edge. y is one int16 per
+ * triangle: the next source row that remainder is ready for, or < 0
+ * when the slot is cold. Null pointers divide every band, which is
+ * what gears and the host raster test do. The caller clears y after
+ * the triangle list changes. Bands must be painted downward. */
+void picogl_set_edge_resume(int *q, int *r, int16_t *y, int n);
+
 void picogl_bind_target(uint16_t *rgb, int32_t *iz, int w, int h, int stride);
 void picogl_clear_target(int color, int depth, uint16_t rgb);
 

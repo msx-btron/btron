@@ -93,6 +93,11 @@ static picogl_tri_t s_cap_tri[CAP_TRI];
 static int      s_cap_n;
 static uint16_t s_ord[CAP_TRI];
 static uint16_t s_ord_tmp[CAP_TRI];
+/* Edge remainder for the next source row. Three edges per triangle.
+ * Cleared every frame so a reused slot cannot keep the previous face. */
+static int      s_edge_q[CAP_TRI * 3];
+static int      s_edge_r[CAP_TRI * 3];
+static int16_t  s_edge_y[CAP_TRI];
 static int32_t  s_band_iz[320 * 16];
 /* One band of a picture that is not already the destination. 320x16
  * RGB565. A matching size paints the strip and skips this. */
@@ -2359,6 +2364,10 @@ void start_sim_render(void)
     s_cap_n = picogl_captured();
     picogl_capture(0, 0);
     sort_near();
+    /* Cold remainders. The next paint of each triangle divides once,
+     * then each later band of this frame steps that edge. */
+    memset(s_edge_y, 0xff, sizeof s_edge_y);
+    picogl_set_edge_resume(s_edge_q, s_edge_r, s_edge_y, CAP_TRI);
     s_lit = 0;
 #else
     /* The host gate counts lit pixels. The device scan walked every
