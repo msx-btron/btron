@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>µBTRON SDK — Tactical Communicators | B-System</title>
-    <meta name="description" content="The µBTRON SDK for tactical communicators. One kit draws five shells: DESKTOP for the command post, HANDHELD for the two-hand set, POCKET under 320×320, BAND under 128×160, and CALC under 100×100.">
+    <meta name="description" content="The µBTRON SDK for tactical communicators. One kit draws five shells: LAPTOP for the command post, HANDHELD for the two-hand set, POCKET under 320×320, BAND under 128×160, and CALC under 100×100.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
@@ -302,10 +302,10 @@
 
             <div class="hero-lead-box">
                 <p>
-                    µBTRON SDK は、戦術通信機の五つのシェルを一つのキットで描く。指令卓と車載席は DESKTOP。800×600 から 1280×1024 まで、窓を重ねて地図と記録を置く。両手で持つ通信機は HANDHELD。基準は 640×480、公開画面は 480×640 の縦位置である。掌は POCKET（&lt;320×320）、帯は BAND（&lt;128×160）、鍵は CALC（&lt;100×100）。同じ実身と文書を、そのシェルの解像度で描く。
+                    µBTRON SDK は、戦術通信機の五つのシェルを一つのキットで描く。指令卓と車載席は LAPTOP。800×600 から 1280×1024 まで、窓を重ねて地図と記録を置く。両手で持つ通信機は HANDHELD。基準は 640×480、公開画面は 480×640 の縦位置である。掌は POCKET（&lt;320×320）、帯は BAND（&lt;128×160）、鍵は CALC（&lt;100×100）。同じ実身と文書を、そのシェルの解像度で描く。
                 </p>
                 <p>
-                    <span style="font-size:0.9em; opacity:0.85;">The µBTRON SDK draws five shells for a tactical communicator from one kit. The command post and the vehicle mount are DESKTOP, from 800×600 through 1280×1024, with maps and logs in overlapping windows. The set held in two hands is HANDHELD: 640×480 is the reference, and the published frames are the 480×640 portrait. The one-hand set is POCKET, under 320×320. The strap is BAND, under 128×160. The key panel is CALC, under 100×100. The same real objects and the same documents are drawn at that shell’s resolution.</span>
+                    <span style="font-size:0.9em; opacity:0.85;">The µBTRON SDK draws five shells for a tactical communicator from one kit. The command post and the vehicle mount are LAPTOP, from 800×600 through 1280×1024, with maps and logs in overlapping windows. The set held in two hands is HANDHELD: 640×480 is the reference, and the published frames are the 480×640 portrait. The one-hand set is POCKET, under 320×320. The strap is BAND, under 128×160. The key panel is CALC, under 100×100. The same real objects and the same documents are drawn at that shell’s resolution.</span>
                 </p>
             </div>
         </div>
@@ -314,7 +314,7 @@
     <main style="max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem 4rem 1.5rem;">
 
         <nav class="desk-nav" aria-label="µBTRON SDK shells">
-            <a href="#desk-desktop">DESKTOP</a>
+            <a href="#desk-desktop">LAPTOP</a>
             <a href="#desk-foma">HANDHELD</a>
             <a href="#segui-screens">POCKET</a>
             <a href="#tier-band">BAND</a>
@@ -325,20 +325,20 @@
         <section class="audit-card" id="resolutions">
             <h3><span>要求解像度 (Requested resolutions)</span></h3>
             <p>
-                シェルは要求値 <code class="mono">BTRON_RES</code> で決まり、画面の幅からは推測しない。<code class="mono">btron_desk_for_res()</code> が DESKTOP、HANDHELD、POCKET、BAND、CALC を返す。320×320 より下は、128×160 に収まるものを BAND、両辺が 100 より小さいものを CALC、残りを POCKET とする。戦術通信機の旧パネルのうち一覧に無かった 240×345、240×400、240×432、480×690、480×854、480×864 は HANDHELD である。240×320 は既にある 320×240 の縦位置で、POCKET のままである。名前の基は <code class="mono">doc/txt/PICO.txt</code>。定義は <code class="mono">include/btron/desktop_res.h</code>。
+                シェルは要求値 <code class="mono">BTRON_RES</code> で決まり、画面の幅からは推測しない。<code class="mono">btron_desk_for_res()</code> が LAPTOP、HANDHELD、POCKET、BAND、CALC を返す。320×320 より下は、128×160 に収まるものを BAND、両辺が 100 より小さいものを CALC、残りを POCKET とする。戦術通信機の旧パネルのうち一覧に無かった 240×345、240×400、240×432、480×690、480×854、480×864 は HANDHELD である。240×320 は既にある 320×240 の縦位置で、POCKET のままである。名前の基は <code class="mono">doc/txt/PICO.txt</code>。定義は <code class="mono">include/btron/desktop_res.h</code>。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                The shell is the requested <code class="mono">BTRON_RES</code>. <code class="mono">btron_desk_for_res()</code> returns DESKTOP, HANDHELD, POCKET, BAND, or CALC. Under the 320×320 square, a mode that fits in 128×160 is BAND, a mode with both sides under 100 is CALC, and the remainder is POCKET. The older tactical-set panels missing from that list — 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864 — are HANDHELD. 240×320 is the portrait of the existing 320×240 mode and stays POCKET. The names begin from <code class="mono">doc/txt/PICO.txt</code>. The enum is <code class="mono">include/btron/desktop_res.h</code>.
+                The shell is the requested <code class="mono">BTRON_RES</code>. <code class="mono">btron_desk_for_res()</code> returns LAPTOP, HANDHELD, POCKET, BAND, or CALC. Under the 320×320 square, a mode that fits in 128×160 is BAND, a mode with both sides under 100 is CALC, and the remainder is POCKET. The older tactical-set panels missing from that list — 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864 — are HANDHELD. 240×320 is the portrait of the existing 320×240 mode and stays POCKET. The names begin from <code class="mono">doc/txt/PICO.txt</code>. The enum is <code class="mono">include/btron/desktop_res.h</code>.
             </p>
             <table class="conformance-table">
                 <thead>
                     <tr><th>BTRON_RES</th><th>Pixels</th><th>Name</th><th>Engine</th></tr>
                 </thead>
                 <tbody>
-                    <tr class="row-group"><th colspan="4">DESKTOP — command post, 800×600 and larger</th></tr>
-                    <tr><td class="mono">BTRON_RES_VESA_1280X1024</td><td>1280×1024</td><td>VESA Desktop</td><td class="res-desktop">DESKTOP</td></tr>
-                    <tr><td class="mono">BTRON_RES_WORK_1024X768</td><td>1024×768</td><td>Workspace Desktop</td><td class="res-desktop">DESKTOP</td></tr>
-                    <tr><td class="mono">BTRON_RES_WS_800X600</td><td>800×600</td><td>Workstation Desktop</td><td class="res-desktop">DESKTOP</td></tr>
+                    <tr class="row-group"><th colspan="4">LAPTOP — command post, 800×600 and larger</th></tr>
+                    <tr><td class="mono">BTRON_RES_VESA_1280X1024</td><td>1280×1024</td><td>VESA Desktop</td><td class="res-desktop">LAPTOP</td></tr>
+                    <tr><td class="mono">BTRON_RES_WORK_1024X768</td><td>1024×768</td><td>Workspace Desktop</td><td class="res-desktop">LAPTOP</td></tr>
+                    <tr><td class="mono">BTRON_RES_WS_800X600</td><td>800×600</td><td>Workstation Desktop</td><td class="res-desktop">LAPTOP</td></tr>
                     <tr class="row-group"><th colspan="4">HANDHELD — two-hand tactical set</th></tr>
                     <tr><td class="mono">BTRON_RES_SVGA_640X480</td><td>640×480</td><td>SVGA Desktop</td><td class="res-handheld">HANDHELD</td></tr>
                     <tr><td class="mono">BTRON_RES_FWVGA_480X864</td><td>480×864</td><td>Full Wide VGA</td><td class="res-handheld">HANDHELD</td></tr>
@@ -383,7 +383,7 @@
                 <thead>
                     <tr>
                         <th>コントロール (Control)</th>
-                        <th>DESKTOP</th>
+                        <th>LAPTOP</th>
                         <th>HANDHELD</th>
                         <th>POCKET</th>
                     </tr>
@@ -454,10 +454,10 @@
 
             <h3><span>計器コントロール (Instrument controls)</span></h3>
             <p>
-                計器一式は DESKTOP の指令卓と Pi 400 に載る。車載席も同じシェルである。ワークステーション画像、HANDHELD、POCKET には入らない。
+                計器一式は LAPTOP の指令卓と Pi 400 に載る。車載席も同じシェルである。ワークステーション画像、HANDHELD、POCKET には入らない。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                The instrument set ships on the DESKTOP command post and on Pi 400. The vehicle mount is the same shell. It is not in the workstation image, on HANDHELD, or on POCKET.
+                The instrument set ships on the LAPTOP command post and on Pi 400. The vehicle mount is the same shell. It is not in the workstation image, on HANDHELD, or on POCKET.
             </p>
             <table class="conformance-table ctl-table">
                 <thead>
@@ -471,74 +471,74 @@
                     <tr>
                         <td class="ctl-name">押しボタン<small>Push switch</small></td>
                         <td>押している間だけオン</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">トグル<small>Toggle switch</small></td>
                         <td>状態を保持する</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">三点スイッチ<small>Standard triad</small></td>
                         <td>三位置</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">上下セレクタ<small>Up/down selector</small></td>
                         <td>一段ずつ送る</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">ラジオセレクタ<small>Radio selector</small></td>
                         <td>一つを選ぶ</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">ロータリ<small>Rotary selector</small></td>
                         <td>停止位置まで回す</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">スライダー<small>Slider volume</small></td>
                         <td>直線の量</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">ダイヤル<small>Dial volume</small></td>
                         <td>回転の量</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">バーメーター<small>Bar meter</small></td>
                         <td>量の表示</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">状態ランプ<small>Status lamp</small></td>
                         <td>点灯と消灯</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">数値表示<small>Digital display</small></td>
                         <td>数値の読取り</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                     <tr>
                         <td class="ctl-name">方向パッド<small>Universal pad</small></td>
                         <td>上下左右</td>
-                        <td><span class="badge-pass">DESKTOP</span></td>
+                        <td><span class="badge-pass">LAPTOP</span></td>
                     </tr>
                 </tbody>
             </table>
         </section>
 
         <section class="audit-card" id="desk-desktop">
-            <h3><span>DESKTOP — 指令卓と車載席</span></h3>
+            <h3><span>LAPTOP — 指令卓と車載席</span></h3>
             <p>
-                800×600、1024×768、1280×1024 は同じシェルである。窓を重ねるコンポジタ <code class="mono">BTRON_UI_DESKTOP</code> が地図と記録を描く。このページに新しい指令卓の写真は置かない。
+                800×600、1024×768、1280×1024 は同じシェルである。窓を重ねるコンポジタ <code class="mono">BTRON_UI_LAPTOP</code> が地図と記録を描く。このページに新しい指令卓の写真は置かない。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                800×600, 1024×768, and 1280×1024 are one shell. The window compositor <code class="mono">BTRON_UI_DESKTOP</code> draws the maps and the logs. This page does not add a command-post screenshot set.
+                800×600, 1024×768, and 1280×1024 are one shell. The window compositor <code class="mono">BTRON_UI_LAPTOP</code> draws the maps and the logs. This page does not add a command-post screenshot set.
             </p>
         </section>
 
@@ -1439,7 +1439,7 @@
         <section class="audit-card">
             <h3><span>通信機の履歴 (History of the communicators)</span></h3>
             <p>
-                通信機は指令卓の窓から始まる。800×600 から 1280×1024 まで、地図と記録を重ねて置く。これが DESKTOP であり、車載席も同じシェルである。
+                通信機は指令卓の窓から始まる。800×600 から 1280×1024 まで、地図と記録を重ねて置く。これが LAPTOP であり、車載席も同じシェルである。
             </p>
             <p>
                 次いで通信機は両手に移った。2004–2009 年の国内端末は、その世代の記録である。プロセッサは TI OMAP の ARM と、ルネサス SH-Mobile の SuperH に分かれ、後者の一部は ARM を併せ持った。画面は 240×320 の掌サイズから、240×345、240×400、240×432 を経て、480×690、480×854、480×864 の縦長なパネルへ広がった。SDK が公開する両手の画面は 480×640 の縦位置である。これらの要求値は HANDHELD である。240×320 は 320×240 の縦位置として POCKET に残る。
@@ -1451,7 +1451,7 @@
                 upstream QEMU が実用になるのは ARM コアを持つ機種である。純 SuperH の LCDC、キーマトリクス、モデムは未実装のままなので、その構成はキットの外に置く。µBTRON SDK は、この履歴を五つのシェルとして一つのコードに残す。要求した解像度が、操作者の手元のシェルを選ぶ。実身と文書は、その解像度で描かれる。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.8rem;">
-                The communicator begins as a window on the command post. From 800×600 through 1280×1024, maps and logs sit in overlapping windows. That shell is DESKTOP, and the vehicle mount is the same shell.
+                The communicator begins as a window on the command post. From 800×600 through 1280×1024, maps and logs sit in overlapping windows. That shell is LAPTOP, and the vehicle mount is the same shell.
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
                 The set then moved into two hands. The 2004–2009 domestic handsets are the record of that generation. The processors split into TI OMAP on ARM and Renesas SH-Mobile on SuperH, some of the latter beside an ARM core. Panels grew from the 240×320 pocket face through 240×345, 240×400, and 240×432, and on to the tall panels at 480×690, 480×854, and 480×864. The two-hand frame the SDK publishes is the 480×640 portrait. Those requested sizes are HANDHELD. 240×320 remains POCKET, as the portrait of 320×240.

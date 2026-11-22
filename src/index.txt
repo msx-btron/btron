@@ -8,7 +8,9 @@ src/
 │   ├── m68k/
 │   ├── mips/
 │   ├── pc98/
+│   ├── pico/
 │   ├── playstation2/
+│   ├── playstation3/
 │   ├── uefi/
 │   ├── vesa/
 │   └── virtio/
