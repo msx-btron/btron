@@ -598,23 +598,52 @@ split because it keeps the full-height edge setup.
 A window whose present is only the body (about 17 bands, 44.6 ms) raises
 the ceiling from 19 toward 22. It does not turn 160x160 into 80 FPS.
 
-11.6 15 FPS at 320x320
+11.6 15 FPS at a real 320x320
 
 15 FPS is a 66.7 ms frame. The panel already costs 52.4 ms, so the CPU
 term has to land at or under about 66 ms. With T_fixed and T_edge left
 at 10 and 20, T_pix has to fall from 220 ms to about 36 ms, roughly a
-6x cut of the shaded pixels. Front-to-back coverage is that attempt:
-the captured triangles are sorted once per frame by descending iz
-(stable on ties), and a band then skips a span a nearer triangle already
-filled. It is armed only on the Quake image, after that sort. Gears and
-make test-picogl-raster leave it off, so their pixels stay bit-identical.
+6x cut of the shaded pixels. The render size stays 320x320. This is not
+a smaller picture scaled up, and fullscreen is the check that holds the
+panel term fixed.
 
-Coverage can only skip overdraw. If the visible surface is about a
-quarter of the shaded pixels, T_pix falls toward 55 ms and the frame
-toward 85 ms, about 12 FPS, still short of 15. A 6x overdraw cut would
-reach 15. That ratio is not known until the board is flashed. This link
-does not claim 15 FPS, and it does not claim any rate other than the
-user's 4 FPS at 320x320.
+The Quake image arms coverage only after the nearer-first sort. The
+span then does four things the per-pixel cover walk did not:
+
+  - Flat iz is the sort key, and a tie keeps the earlier triangle, which
+    is the same rule as a strict greater-than test. The cover path does
+    not load or store iz. A later triangle cannot win a pixel an earlier
+    one wrote.
+  - A 32-pixel word that is already full is one compare. A word that is
+    entirely free is halfword stores. Only a word that is partly full
+    walks bits. The second scan that used to reject a span before that
+    walk is gone.
+  - The band is not cleared to sky first. After the triangles, one sky
+    span fills the bits that are still clear, so a covered pixel is
+    written once.
+
+The edge divide is the software floor divide again. A device build that
+fed the SIO unsigned divider read DIV_QUOTIENT on the next instruction.
+That register is undefined until 8 cycles after the divisor write, so
+the edge positions were garbage. The repair loop then ran out its 48
+steps on every row and divided again into the same register. The picture
+tore, and every r_mode landed near 5 FPS because that loop does not
+shrink with the render size. The span does not touch the SIO divider.
+
+Gears never call picogl_set_cover. make test-picogl-raster still paints
+through paint_span_write, so those pixels stay bit-identical. A host
+comparison of the same nearer-first triangles, cover against the z-test,
+matched inside the view, including each 32-pixel residue and a window
+that does not start at the origin. An unsorted pair diverged, which is
+what the sort invariant requires.
+
+This link does not claim 15 FPS. The 220 ms term was one split of the
+user's 4 FPS measurement, not a cycle count of this filler. The visible
+surface, the edge setup, and the BSP still have to fit in about 66 ms,
+and only the pill can say whether they do. The only recorded device
+rate remains that 4 FPS at 320x320. Flash
+btron-picocalc-quake-rp2040.uf2 by hand and read the pill at fullscreen
+320x320.
 
 Core 1 is not given Quake spans. The strip is also SegUI's. A row split
 would race that strip and, at best, approach 2x, which is still under
@@ -627,26 +656,28 @@ picture does not fit: after this link Quake has 35028 bytes free under
 Gate: __sram_used__ <= 215040. Scratch X is 4 KiB at 0x20040000.
 Core 1 stack top is 0x20041400.
 
-  Quake RP2040, after the resolution table and the coverage mask.
+  Quake RP2040, after the word-skip filler. The SIO edge divide is gone.
   Not flashed. Not a measured frame rate.
-    text 823688   data 2892   bss 177120
+    text 825760   data 2892   bss 177120
     __sram_used__ 0x2bf2c = 180012, free 35028
     __bss_end__ 0x2002bf30
-    UF2 btron-picocalc-quake-rp2040.uf2 1653248 bytes, 3229 blocks
-    SD-boot bin 826324 bytes at 0x10032000
-    scratch X ends 0x200403c4 (964 bytes): paint_span_lift,
-    paint_span_write, and paint_span_cover
-    Added over the previous Quake link: 320x16 scale color (5120),
-    the stable sort index (3584), the 16x320 coverage bits (640)
+    UF2 btron-picocalc-quake-rp2040.uf2 1657344 bytes, 3237 blocks
+    SD-boot bin 828396 bytes at 0x10032000
+    scratch X ends 0x20040564 (1380 bytes): paint_span_cover,
+    paint_span_lift, and paint_span_write
+    SRAM is the same 180012 as the coverage-mask link. The filler did
+    not add a buffer. Scratch grew by the wider cover function.
 
   Gears / XMB RP2040, relinked because picogl_span.c is shared.
   Not flashed.
-    text 462248   data 2896   bss 188532
+    text 464132   data 2896   bss 188532
     __sram_used__ 0x2ebc4 = 191428, free 23612
-    UF2 btron-picocalc-rp2040.uf2 930304 bytes, 1817 blocks
+    UF2 btron-picocalc-rp2040.uf2 934400 bytes, 1825 blocks
+    SD-boot bin 466772 bytes at 0x10032000
     The coverage mask is in this image too. Coverage stays off, so
-    gears do not take the new span. Gears color stays two 112x96
-    RGB565 buffers plus one int32 iz. The gear resolution is unchanged.
+    gears do not take the new span. The span divide is software on both
+    cores. Gears color stays two 112x96 RGB565 buffers plus one int32 iz.
+    The gear resolution is unchanged.
 
 Phase 1 had measured data 3268 + bss 198924 = 202192, free 12848, and
 chose one bucket set of 16 triangles a band (7680 bytes) with iz on the
@@ -664,7 +695,8 @@ paint_one_row is unchanged. RP2350 was not relinked.
   2 Transform   one camera matrix, then an integer clip and divide
   3 Bin         gears and XMB post to the span ring; Quake captures
   core 0, each dirty band (Quake spans are not posted to core 1)
-  4 Raster      edge walk, strict iz test (larger iz wins), seal
+  4 Raster      edge walk, seal. Coverage skips a filled word.
+                    Otherwise a strict iz test (larger iz wins)
   5 Cover       system-font menu, HUD, status bar
   6 Scan        DMA channel 0
 

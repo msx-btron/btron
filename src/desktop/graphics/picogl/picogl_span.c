@@ -3,7 +3,9 @@
  *
  * The fill walks pixel centers with an integer edge test. A larger iz wins.
  * Core 1 runs the same fill when a target is bound. The host test calls
- * picogl_raster_band on this core.
+ * picogl_raster_band on this core. The edge divide stays in software.
+ * The SIO divider result is undefined until 8 cycles after the divisor
+ * write, and reading it early tore the spans.
  */
 #include "picogl.h"
 
@@ -390,25 +392,69 @@ static void paint_span_write(uint16_t *row, int32_t *iz, int lo, int hi,
 #if defined(PICO_REAL_HW)
 __attribute__((section(".scratch_x"), noinline))
 #endif
+/* Front-to-back. The caller sorted by descending flat iz and kept
+ * earlier triangles on a tie, which is the same rule as a strict iz
+ * test (a later triangle cannot win a pixel an earlier one wrote).
+ * A full covered word is one compare. A fully free word is halfword
+ * stores, not a uint32 alias of the row. A mixed word walks bits.
+ * The bit is set only for a pixel this call writes. LIFT does not
+ * come here. iz is not loaded or stored. */
 static void paint_span_cover(uint16_t *row, int32_t *iz, int lo, int hi,
                              int32_t izv, uint16_t rgb, int swap, int dy)
 {
     int x, wrote = 0;
     uint16_t pix = swap ? (uint16_t)((rgb >> 8) | (rgb << 8)) : rgb;
     uint32_t *bits;
-    if ((unsigned)dy >= 16u) return;
+    (void)iz;
+    (void)izv;
+    if ((unsigned)dy >= 16u || lo > hi) return;
     bits = s_cov[dy];
-    for (x = lo; x <= hi; x++) {
-        uint32_t mask = 1u << (x & 31);
-        uint32_t *word = bits + (x >> 5);
-        if (*word & mask) continue;
-        if (s_depth) {
-            if (!iz || !(izv > iz[x])) continue;
-            iz[x] = izv;
+    x = lo;
+    while (x <= hi) {
+        int bit = x & 31;
+        int n = 32 - bit;
+        uint32_t *wordp;
+        uint32_t word, mask;
+        if (x + n - 1 > hi) n = hi - x + 1;
+        wordp = bits + (x >> 5);
+        word = *wordp;
+        mask = (n == 32) ? 0xffffffffu : (((1u << n) - 1u) << bit);
+        if ((word & mask) == mask) {
+            x += n;
+            continue;
         }
-        row[x] = pix;
-        *word |= mask;
-        wrote = 1;
+        if ((word & mask) == 0) {
+            uint16_t *p = row + x;
+            int i = n;
+            if (n == 32) {
+                do {
+                    p[0] = pix; p[1] = pix; p[2] = pix; p[3] = pix;
+                    p += 4;
+                    i -= 4;
+                } while (i);
+            } else {
+                do { *p++ = pix; } while (--i);
+            }
+            *wordp = word | mask;
+            wrote = 1;
+            x += n;
+            continue;
+        }
+        {
+            int i;
+            uint32_t dirty = 0;
+            for (i = 0; i < n; i++) {
+                uint32_t m = 1u << (bit + i);
+                if (word & m) continue;
+                row[x + i] = pix;
+                dirty |= m;
+            }
+            if (dirty) {
+                *wordp = word | dirty;
+                wrote = 1;
+            }
+            x += n;
+        }
     }
     if (wrote) s_spans++;
 }
@@ -560,7 +606,7 @@ static void paint_tri_target(const picogl_tri_t *t)
                 paint_span_lift(row, lo, hi, t->rgb);
             else if (!cover_live())
                 paint_span_write(row, iz, lo, hi, t->iz, t->rgb, swap);
-            else if (!span_full(dy, lo, hi))
+            else
                 paint_span_cover(row, iz, lo, hi, t->iz, t->rgb, swap, dy);
         }
         edge_advance(&e0);
@@ -1119,20 +1165,26 @@ void picogl_paint_band(const picogl_tri_t *tris, int ntri,
                        int32_t *iz, uint16_t clear_rgb)
 {
     int y, x, i;
-    uint16_t sky;
+    int cover_on;
     (void)band_y;
     if (!be || !iz || stride <= 0 || band_h <= 0 || vw <= 0 || vh <= 0) return;
-    sky = (uint16_t)((clear_rgb >> 8) | (clear_rgb << 8));
-    for (y = 0; y < band_h; y++) {
-        int sy = band_y + y;
-        uint16_t *row;
-        if (sy < oy || sy >= oy + vh) continue;
-        row = be + y * stride;
-        for (x = 0; x < vw; x++) {
-            int sx = ox + x;
-            if ((unsigned)sx >= (unsigned)stride) continue;
-            row[sx] = sky;
-            iz[y * stride + sx] = 0;
+    /* Coverage is the depth test. Skip the sky and iz clear: each covered
+     * pixel is written once by its nearest triangle, and the pass below
+     * fills the holes. The z-test path still clears both. */
+    cover_on = s_cover && band_h <= 16 && stride <= 320;
+    if (!cover_on) {
+        uint16_t sky = (uint16_t)((clear_rgb >> 8) | (clear_rgb << 8));
+        for (y = 0; y < band_h; y++) {
+            int sy = band_y + y;
+            uint16_t *row;
+            if (sy < oy || sy >= oy + vh) continue;
+            row = be + y * stride;
+            for (x = 0; x < vw; x++) {
+                int sx = ox + x;
+                if ((unsigned)sx >= (unsigned)stride) continue;
+                row[sx] = sky;
+                iz[y * stride + sx] = 0;
+            }
         }
     }
     s_out_rgb = be;
@@ -1157,6 +1209,19 @@ void picogl_paint_band(const picogl_tri_t *tris, int ntri,
         if (ymax < 0 || ymin >= vh) continue;
         if (oy + ymax < band_y || oy + ymin >= band_y + band_h) continue;
         paint_tri_target(&tris[i]);
+    }
+    if (cover_on) {
+        for (y = 0; y < band_h; y++) {
+            int sy = band_y + y;
+            int lo, hi;
+            if (sy < oy || sy >= oy + vh) continue;
+            lo = ox;
+            hi = ox + vw - 1;
+            if (lo < 0) lo = 0;
+            if (hi >= stride) hi = stride - 1;
+            if (lo <= hi)
+                paint_span_cover(be + y * stride, 0, lo, hi, 1, clear_rgb, 1, y);
+        }
     }
     s_out_rgb = 0;
     s_out_swap = 0;

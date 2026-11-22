@@ -63,8 +63,11 @@ void picogl_capture(picogl_tri_t *dst, int cap);
 int  picogl_captured(void);
 
 /* Paint captured view-space triangles into one panel band, 1:1.
- * be is big-endian RGB565. iz is one band, stride ints wide, and is
- * cleared on the view rectangle. clear_rgb is native RGB565. */
+ * be is big-endian RGB565. iz is one band, stride ints wide. clear_rgb
+ * is native RGB565. With coverage off, the view rectangle is cleared
+ * to that sky and iz is zeroed. With coverage on, the caller has sorted
+ * nearer triangles first, iz is left alone, and sky is written only
+ * into pixels no triangle filled. */
 void picogl_paint_band(const picogl_tri_t *tris, int ntri,
                        uint16_t *be, int stride,
                        int band_y, int band_h,
