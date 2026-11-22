@@ -25,9 +25,11 @@ extern uint16_t *dp_pico_band_row(int y);
 extern uint16_t *dp_pico_band_row(int y);
 #endif
 
-#define GLbyte signed char
-#include "../../desktop/graphics/tinygl/font8x8_basic.h"
-#undef GLbyte
+/* Same glyphs as the SegUI window titles (troncode + JIS). The anchor
+ * test does not paint, so it does not pull the font in. */
+#if !defined(XMB_PICO_TEST)
+#include <btron/troncode.h>
+#endif
 
 #define INK_R 31
 #define INK_G 62
@@ -46,13 +48,14 @@ typedef struct {
     int n;
 } xmb_cat_t;
 
+/* Same strings as the SegUI window titles in segui_palm.c. */
 static const xmb_item_t s_items_apps[] = {
-    { IC_APP_TERM,   "Terminal", XMB_GO_TERMINAL },
-    { IC_APP_EDITOR, "Editor",   XMB_GO_EDITOR },
-    { IC_APP_TAD,    "Browser",  XMB_GO_BROWSER },
-    { IC_APP_DRIVE,  "Cabinet",  XMB_GO_CABINET },
-    { IC_GEAR,       "GLGears",  XMB_GO_GEARS },
-    { IC_APP_CHAT,   "Chat",     XMB_GO_CHAT }
+    { IC_APP_TERM,   "端末 (Terminal)", XMB_GO_TERMINAL },
+    { IC_APP_EDITOR, "文書 (Editor)",   XMB_GO_EDITOR },
+    { IC_APP_TAD,    "閲覧 (Browser)",  XMB_GO_BROWSER },
+    { IC_APP_DRIVE,  "書庫 (Cabinet)",  XMB_GO_CABINET },
+    { IC_GEAR,       "歯車 (GLGears)",  XMB_GO_GEARS },
+    { IC_APP_CHAT,   "対話 (Chat)",     XMB_GO_CHAT }
 };
 
 static const xmb_item_t s_items_settings[] = {
@@ -171,14 +174,6 @@ static void host_flush(int left, int top, int right, int bottom)
 }
 #endif
 
-static int slen(const char *s)
-{
-    int n = 0;
-    if (!s) return 0;
-    while (s[n]) n++;
-    return n;
-}
-
 /* xb_gradient() deep blue, corners BL BR TL TR, drawn as TL TR BR BL.
  * Channels are RGB565. Red quantizes to 0. */
 static void fill_gradient(int left, int top, int right, int bottom)
@@ -244,30 +239,62 @@ static void blit_cell(int cell, int x, int y, int size, int alpha_q8)
     }
 }
 
-/* Left edge at x, same 8px font. alpha_q8 fades the 1-bit pen in two steps. */
+/* Left edge at x. ASCII is 8×16 and kanji is 16×16, the window-title
+ * cell. Only the ink bits are written, so the wave shows through.
+ * alpha_q8 fades the pen in two steps. Rows outside this band are skipped. */
 static void label_at(int x, int y, const char *s, int alpha_q8)
 {
-    int n = slen(s);
-    int i;
+#if defined(XMB_PICO_TEST)
+    (void)x;
+    (void)y;
+    (void)s;
+    (void)alpha_q8;
+#else
     uint16_t pen;
-    if (n <= 0 || alpha_q8 < 64) return;
+    TC prev = 0;
+    if (!s || !s[0] || alpha_q8 < 64) return;
     pen = alpha_q8 >= 220 ? pack_be(INK_R, INK_G, INK_B) : pack_be(18, 40, 18);
-    for (i = 0; i < n; i++) {
-        unsigned char ch = (unsigned char)s[i];
-        int r;
-        for (r = 0; r < 8; r++) {
-            uint16_t *row = dp_pico_band_row(y + r);
-            unsigned bits;
-            int col;
-            if (!row) continue;
-            bits = (unsigned)(unsigned char)font8x8_basic[ch][r];
-            for (col = 0; col < 8; col++) {
-                int dx = x + i * 8 + col;
+    while (*s) {
+        int consumed = 0;
+        int row, gw, gh, adv;
+        TC code = utf8_to_tc(s, &consumed);
+        H w = 8, h = 16;
+        const unsigned char *bmp;
+        if (consumed < 1) consumed = 1;
+        s += consumed;
+        bmp = get_glyph_bitmap(code, &w, &h);
+        gw = (int)w;
+        gh = (int)h;
+        if (gh > 16) gh = 16;
+        if (!bmp || gw < 1 || gh < 1) {
+            prev = code;
+            continue;
+        }
+        adv = (int)tc_get_char_advance(code, prev);
+        if (adv < 1) adv = gw > 8 ? 16 : 8;
+        for (row = 0; row < gh; row++) {
+            uint16_t *dst = dp_pico_band_row(y + row);
+            int col, cols;
+            if (!dst) continue;
+            cols = gw > 8 ? 16 : 8;
+            for (col = 0; col < cols; col++) {
+                unsigned bit;
+                int dx;
+                if (gw <= 8)
+                    bit = (unsigned)bmp[row] & (0x80u >> col);
+                else
+                    bit = (unsigned)bmp[row * 2 + (col >> 3)]
+                        & (0x80u >> (col & 7));
+                if (!bit) continue;
+                dx = x + col;
                 if (dx < 0 || dx >= 320) continue;
-                if (bits & (1u << col)) row[dx] = pen;
+                dst[dx] = pen;
             }
         }
+        x += adv;
+        prev = code;
     }
+#endif
 }
 
 /* xb_layout(): PS3 metrics, scale = body width / 1920.
@@ -722,7 +749,10 @@ void xmb_pico_paint(int left, int top, int right, int bottom)
     width = right - left;
     xmb_metrics(left, top, width, &icon, &sph, &spv, &cx, &cy);
     mt = xmb_sc(272, width);
-    ll = xmb_sc(85, width);
+    /* xb_layout's label_left is 85*sf, measured from the icon center.
+     * The drawn icon is twice 128*sf, so the offset is doubled too.
+     * That leaves the original gap, also doubled, past the glyph. */
+    ll = xmb_sc(85, width) * 2;
 
     if (!s_follow) follow_boot();
     fill_gradient(left, top, right, bottom);
@@ -730,16 +760,20 @@ void xmb_pico_paint(int left, int top, int right, int bottom)
      * Icons are drawn after the join so they sit on the wave. */
     wave_surface(left, top, right, bottom);
 
-    /* Categories share cy. The row slides in Q8 (s_vis_cat) and zoom
-     * follows the distance, the same motion as s_band_x plus n->zoom.
-     * Smaller icons are drawn first. The row does not wrap on screen. */
+    /* Categories share cy. The row slides in Q8 (s_vis_cat).
+     * xmb.c keeps the pinned category at zoom 1 while depth is 1, and
+     * a nested list (depth > 1) slides that row aside without changing
+     * the zoom. This screen has no nested page: the item column is the
+     * open submenu, so the whole category row draws at the passive
+     * zoom (0.5). Alpha still marks the pinned category. The selected
+     * item below stays full size. The row does not wrap on screen. */
     for (pass = 0; pass < 2; pass++) {
         for (i = 0; i < nc; i++) {
             int dist = i * 256 - s_vis_cat;
             int z, aq, size, x, y;
             if (dist < 0) dist = -dist;
             if (dist > 256) dist = 256;
-            z = 256 - ((dist * 128) >> 8);
+            z = 128;
             if ((pass == 0 && z >= 200) || (pass == 1 && z < 200)) continue;
             aq = 256 - ((dist * 64) >> 8);
             size = (icon * z) >> 8;
@@ -776,9 +810,11 @@ void xmb_pico_paint(int left, int top, int right, int bottom)
         }
         for (i = 0; i < cat->n; i++) {
             int yoff = (s_k[i] * spv) / 256;
-            int ty = top + mt + yoff + 2;
+            /* 16px cell, centred on the icon. The icon center is
+             * top + mt + yoff + icon/2, same point blit_cell uses. */
+            int ty = top + mt + yoff + icon / 2 - 8;
             int aq = (128 + (s_z[i] >> 1)) * s_col / 256;
-            if (ty + 8 < top || ty >= bottom) continue;
+            if (ty + 16 < top || ty >= bottom) continue;
             label_at(cx + slide + ll, ty, cat->items[i].label, aq);
         }
     }

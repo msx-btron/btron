@@ -4288,10 +4288,12 @@ segui-screens: $(CAPTURE_SEGUI_BIN)
 	@echo " Generating SegUI 320x320 Screen Set..."
 	@echo "=========================================================="
 	@mkdir -p /tmp/segui_raw_screens
-	@rm -f /tmp/segui_raw_screens/picocalc_launcher_xmb.raw
+	@rm -f /tmp/segui_raw_screens/picocalc_launcher_xmb.raw \
+		/tmp/segui_raw_screens/picocalc_xmb_walk.raw
 	@./$(CAPTURE_SEGUI_BIN)
 	@python3 scripts/screen_update_segui.py
-	@rm -f b-system/img/segui/picocalc_launcher_xmb.png
+	@rm -f b-system/img/segui/picocalc_launcher_xmb.png \
+		b-system/img/segui/picocalc_xmb_walk.png
 
 # ===================================================================
 # Quake Automated Screenshot Pipeline — 21:9 (672×288) ARGB frames

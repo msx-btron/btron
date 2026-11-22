@@ -153,16 +153,13 @@ int main(void)
     segui_palm_switch(PALM_APP_PREFS);
     errors += snap(dev, "picocalc_prefs", "9. Preferences");
 
-    /* Opened XMB, settled, then one tick into a category walk. */
+    /* Opened XMB, settled on Applications. */
     segui_palm_switch(PALM_APP_XMB);
     {
         int tick;
         for (tick = 0; tick < 12; tick++) segui_palm_tick(0);
     }
     errors += snap(dev, "picocalc_xmb", "XMB (opened)");
-    segui_palm_handle_key(PALM_KEY_RIGHT, dev);
-    segui_palm_tick(0);
-    errors += snap(dev, "picocalc_xmb_walk", "XMB (category walk)");
 
     /* Pico quake app: start_sim renders e1m1 into the shell. */
     segui_palm_switch(PALM_APP_QUAKE_PREVIEW);
