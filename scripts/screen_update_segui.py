@@ -132,9 +132,10 @@ def convert_all(raw_dir=RAW_DIR, out_dir=IMG_OUT_DIR):
 
 
 BAND_CHIPS = [
-    ("TABBAR", "24 px", "5 tabs, one line each"),
-    ("BODY", "218 px", "the only stretchable band"),
-    ("SOFTKEY", "30 px", "3 caption buttons"),
+    ("STATUS", "22 px", "clock and battery"),
+    ("TABBAR", "22 px", "omitted when the form has one tab"),
+    ("BODY", "stretch", "the only stretchable band"),
+    ("SOFTKEY", "26 px", "three captions"),
 ]
 
 
@@ -147,7 +148,7 @@ def _card(i, entry):
                     <div class="segui-frame">
                         <img src="b-system/img/segui/{fname}.png"
                              alt="{n}. {jp_title} ({tab})"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -170,15 +171,12 @@ def generate_segui_screens_html():
     return f"""
         {MARKER}
         <section class="audit-card" id="segui-screens">
-            <h3><span>µBTRON-SEGUI セグメンテーション UI ギャラリー (Segmentation UI Showcase)</span></h3>
+            <h3><span>POCKET · BAND · CALC — sub-pico</span></h3>
             <p>
-                以下の画面は、新規 UI ツールキット <b>µBTRON-SEGUI (SegUI / Segmentation UI)</b> を、実機と同一の描画経路でヘッドレスレンダリングした成果物である。解像度は 480×272 の横長 TFT パネル。埋め込み機器・家電・キオスク・レトロ機を想定した軽量モジュール UI ツールキットで、起動後にヒープを確保しない。
-            </p>
-            <p>
-                SegUI の前提は「画面とは名前付きの水平帯（セグメント）の予算である」。STATUS・TABBAR・TITLE・BODY・SOFTKEY の各帯が幅と高さを決め、このパネルでは TABBAR 24px・BODY 218px・SOFTKEY 30px、つまり chrome は 272px 中 54px（19%）を消費する。帯のうち <b>伸長を許されるのは 1 つだけ</b>で、それは BODY である。フォームファクタの違いはすべてこのテーブルの値の違いで表現され、<code class="mono">#ifdef</code> による分岐は存在しない。
+                320×320 の正方形より下は一つの帯レイアウトで描く。POCKET は掌、BAND は 128×160 より小さい帯、CALC は 100×100 より小さい鍵。下の画面は掌の基準パネル、PicoCalc の 320×320 である。320×320 自体は要求一覧に無い。帯の値は <code class="mono">segui_profile_picocalc</code>。伸長できる帯は BODY だけ。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.6rem;">
-                The screens below are produced by µBTRON-SEGUI, a lightweight, modular and scalable UI toolkit for embedded systems, home appliances, kiosks and retro machines, driven through the exact same drawing path the target uses. A SegUI screen is a budget of named horizontal bands; on this panel the chrome costs 54 of 272 pixels (TABBAR 24 + SOFTKEY 30) and leaves BODY 218. Exactly one band may stretch, and form factors differ by table values rather than by conditional compilation. This is the smallest budget SegUI ships on, and therefore the only frame that can prove a segment table is honest - the 480×640 portrait handset above is µBTRON-FOMA's territory.
+                Below a 320×320 square, one band shell draws three tiers. POCKET is the one-hand panel, BAND fits in 128×160, and CALC has both sides under 100. The frames are the pocket reference, the PicoCalc 320×320 panel. 320×320 itself is not a requested mode. Band sizes are <code class="mono">segui_profile_picocalc</code>. Only BODY may stretch.
             </p>
 
             <style>
@@ -214,7 +212,7 @@ def generate_segui_screens_html():
                 }}
                 .segui-gallery-grid {{
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
                     gap: 1.8rem;
                     margin-top: 1.8rem;
                 }}
@@ -244,7 +242,7 @@ def generate_segui_screens_html():
                 }}
                 .segui-img {{
                     width: 100%;
-                    max-width: 480px;
+                    max-width: 320px;
                     height: auto;
                     display: block;
                     image-rendering: pixelated;
@@ -309,14 +307,15 @@ def update_mobile_html():
 
     new_section = generate_segui_screens_html().strip()
 
-    # The FOMA injector stops where this one starts, so re-running either
-    # script can never eat the other's section.
+    # Replace only this showcase. The FOMA injector stops at MARKER.
+    # Anything between this section and TAIL_MARKER, including the FOMA
+    # legacy card, stays where the page put it.
     pattern = re.compile(
-        re.escape(MARKER) + r".*?" + re.escape(TAIL_MARKER), flags=re.DOTALL
+        re.escape(MARKER) + r".*?</section>", flags=re.DOTALL
     )
     if pattern.search(content):
         updated = pattern.sub(
-            lambda m: new_section + "\n\n        " + TAIL_MARKER, content, count=1
+            lambda m: new_section, content, count=1
         )
     elif TAIL_MARKER in content:
         updated = content.replace(

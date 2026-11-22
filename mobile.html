@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FOMA – Japanese Mobile Architecture &amp; QEMU Fitness | B-System Technical Note</title>
-    <meta name="description" content="Formal evaluation of 2004–2009 FOMA handset SoCs (ARM9/ARM11/SuperH) against upstream QEMU machine models for cleanroom BTRON multi-architecture testing.">
+    <title>µBTRON Tiers — Desktop, Handheld, Pocket, Band, Calc | B-System</title>
+    <meta name="description" content="One µBTRON fitted to the appliance: DESKTOP from 800×600, HANDHELD at 640×480, and sub-pico POCKET under 320×320, BAND under 128×160, CALC under 100×100.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
@@ -202,6 +202,62 @@
             font-size: 0.86em;
         }
 
+        .desk-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.55rem;
+            margin: 0 0 1.2rem 0;
+        }
+
+        .desk-nav a {
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.86rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 999px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            color: #003366;
+        }
+
+        .res-desktop  { color: #0057b7; font-weight: 700; }
+        .res-handheld { color: #9d174d; font-weight: 700; }
+        .res-pocket   { color: #0f766e; font-weight: 700; }
+        .res-band     { color: #7c3aed; font-weight: 700; }
+        .res-calc     { color: #b45309; font-weight: 700; }
+
+        tr.row-group th {
+            background: #003366;
+            color: #f8fafc;
+            letter-spacing: 0.03em;
+        }
+
+        td.yes { color: #166534; font-weight: 700; }
+        td.no  { color: #94a3b8; font-weight: 600; }
+
+        .ctl-table th:not(:first-child),
+        .ctl-table td:not(:first-child) {
+            text-align: center;
+        }
+
+        .ctl-name {
+            font-weight: 600;
+            color: #003366;
+        }
+
+        .ctl-name small {
+            display: block;
+            margin-top: 0.15rem;
+            font-weight: 500;
+            color: #64748b;
+            letter-spacing: 0;
+        }
+
+        .ctl-off {
+            color: #cbd5e1;
+            font-weight: 600;
+        }
+
         @media (max-width: 640px) {
             .conformance-table {
                 font-size: 0.85rem;
@@ -227,7 +283,7 @@
         <li><a href="b-book/index.html">B-Book</a></li>
         <li><a href="conformance.html">B-Spec</a></li>
         <li><a href="virtio.html">VirtIO</a></li>
-        <li><a href="mobile.html" class="active">FOMA</a></li>
+        <li><a href="mobile.html" class="active">Tiers</a></li>
         <li><a href="releases.html">Releases</a></li>
         <li><a href="https://github.com/bitedits/btron">GitHub</a></li>
       </ul>
@@ -238,18 +294,18 @@
         <div class="hero-content">
             <br>
             <div class="hero-banner-tag">
-                <span>📱</span> FOMA 2004–2009 · ARM / SuperH Architecture Matrix
+                <span>▣</span> µBTRON · DESKTOP · HANDHELD · POCKET · BAND · CALC
             </div>
-            <h1 class="jp-title">FOMA 端末アーキテクチャと QEMU 適合性</h1>
-            <p class="hero-subtitle">2004–2009 年 FOMA 端末の SoC / 命令セットと upstream QEMU マシンモデルの対応評価<br>
-            <span style="font-size:0.92em; opacity:0.9;">Formal mapping of FOMA handset SoCs to QEMU CPU models for multi-architecture BTRON testing</span></p>
+            <h1 class="jp-title">µBTRON、五つの器</h1>
+            <p class="hero-subtitle">机と車載計器、両手の通信機、掌のパネル、帯、鍵。要求した解像度が器を選ぶ。<br>
+            <span style="font-size:0.92em; opacity:0.9;">One system for the appliance in front of the operator. The requested resolution selects the tier.</span></p>
 
             <div class="hero-lead-box">
                 <p>
-                    本技術ノートは、NTTドコモ FOMA シリーズ（2004–2009）の主要端末群について、搭載 SoC・命令セット・QEMU 適合度を体系的に整理したものである。B-System のマルチアーキテクチャ検証環境（VirtIO / bare-metal ARM）において、歴史的モバイル SoC の再現可能性を客観的に評価する。
+                    µBTRON は家電と計器のための一つのシステムである。机、キオスク、車の計器クラスタは DESKTOP。800×600 のワークステーションから 1280×1024 まで、窓を重ねて描く。両手で持つ通信機は HANDHELD。640×480。320×320 の正方形より下は sub-pico として三つに割る。POCKET (&lt;320×320) は掌のパネル、BAND (&lt;128×160) は帯、CALC (&lt;100×100) は鍵と計器盤。同じ実身と文書が、その器の解像度で描かれる。
                 </p>
                 <p>
-                    <span style="font-size:0.9em; opacity:0.85;">This note enumerates FOMA handset SoCs of the 2004–2009 period, their ISA characteristics, and the practical fitness of each against current upstream QEMU machine models. The evaluation supports cleanroom multi-architecture testing within the B-System / VirtIO environment.</span>
+                    <span style="font-size:0.9em; opacity:0.85;">µBTRON is one system for appliances and instruments. The desk, the kiosk, and the vehicle cluster are DESKTOP, from the 800×600 workstation through 1280×1024, drawn as overlapping windows. The communicator held in two hands is HANDHELD, at 640×480. Below a 320×320 square the range is segmented as sub-pico: POCKET for a one-hand panel, BAND under 128×160, and CALC under 100×100. The same real objects and the same documents are drawn at the resolution of that tier.</span>
                 </p>
             </div>
         </div>
@@ -257,195 +313,253 @@
 
     <main style="max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem 4rem 1.5rem;">
 
-        <!-- Overview -->
-        <section class="audit-card">
-            <h3><span>概要 (Overview)</span></h3>
-            <p>
-                FOMA 端末は、当時の日本国内向け第3世代携帯電話規格に準拠した端末群である。搭載プロセッサは主に Texas Instruments OMAP 系列（ARM9 / ARM11）とルネサス SH-Mobile 系列（SuperH + 一部 ARM 共存）に二分される。QEMU の実用的なエミュレーション対象となるのは ARM コアを持つ機種に限られ、純 SuperH 構成は現時点の upstream では実質的に再現不能である。
-            </p>
-            <p style="font-size:0.9em; opacity:0.85; margin-top:0.8rem;">
-                FOMA handsets of this era fall into two principal SoC families: TI OMAP (ARMv5 / ARMv6) and Renesas SH-Mobile (SuperH, occasionally dual-core with ARM). Only the ARM cores possess practical upstream QEMU coverage; pure SuperH designs remain unsupported.
-            </p>
+        <nav class="desk-nav" aria-label="µBTRON tiers">
+            <a href="#desk-desktop">DESKTOP</a>
+            <a href="#desk-foma">HANDHELD</a>
+            <a href="#segui-screens">POCKET</a>
+            <a href="#tier-band">BAND</a>
+            <a href="#tier-calc">CALC</a>
+            <a href="#controls">Controls</a>
+        </nav>
 
-            <div class="quote-box">
-                <b>評価原則：</b> 「Excellent / Good / Medium / Poor」の4段階は、QEMU の公式マシンモデル（<code class="mono">-M virt</code> およびレガシー ARM ボード）に対する命令セット一致度と、現実的なユーザーランド起動可能性を基準とする。SuperH のみの構成は常に Poor と判定する。
-            </div>
+        <section class="audit-card" id="resolutions">
+            <h3><span>要求解像度 (Requested resolutions)</span></h3>
+            <p>
+                器は要求値 <code class="mono">BTRON_RES</code> で決まり、画面の幅からは推測しない。<code class="mono">btron_desk_for_res()</code> が DESKTOP、HANDHELD、POCKET、BAND、CALC を返す。320×320 より下は、128×160 に収まるものを BAND、両辺が 100 より小さいものを CALC、残りを POCKET とする。FOMA の遺産にあって一覧に無かった 240×345、240×400、240×432、480×690、480×854、480×864 は HANDHELD である。240×320 は既にある 320×240 の縦位置で、POCKET のままである。名前の基は <code class="mono">doc/txt/PICO.txt</code>。定義は <code class="mono">include/btron/desktop_res.h</code>。
+            </p>
+            <p style="font-size:0.9em; opacity:0.85;">
+                The tier is the requested <code class="mono">BTRON_RES</code>. <code class="mono">btron_desk_for_res()</code> returns DESKTOP, HANDHELD, POCKET, BAND, or CALC. Under the 320×320 square, a mode that fits in 128×160 is BAND, a mode with both sides under 100 is CALC, and the remainder is POCKET. The FOMA panels missing from that list — 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864 — are HANDHELD. 240×320 is the portrait of the existing 320×240 mode and stays POCKET. The names begin from <code class="mono">doc/txt/PICO.txt</code>. The enum is <code class="mono">include/btron/desktop_res.h</code>.
+            </p>
+            <table class="conformance-table">
+                <thead>
+                    <tr><th>BTRON_RES</th><th>Pixels</th><th>Name</th><th>Engine</th></tr>
+                </thead>
+                <tbody>
+                    <tr class="row-group"><th colspan="4">DESKTOP — 800×600 and larger</th></tr>
+                    <tr><td class="mono">BTRON_RES_VESA_1280X1024</td><td>1280×1024</td><td>VESA Desktop</td><td class="res-desktop">DESKTOP</td></tr>
+                    <tr><td class="mono">BTRON_RES_WORK_1024X768</td><td>1024×768</td><td>Workspace Desktop</td><td class="res-desktop">DESKTOP</td></tr>
+                    <tr><td class="mono">BTRON_RES_WS_800X600</td><td>800×600</td><td>Workstation Desktop</td><td class="res-desktop">DESKTOP</td></tr>
+                    <tr class="row-group"><th colspan="4">HANDHELD — two-hand communicator</th></tr>
+                    <tr><td class="mono">BTRON_RES_SVGA_640X480</td><td>640×480</td><td>SVGA Desktop</td><td class="res-handheld">HANDHELD</td></tr>
+                    <tr><td class="mono">BTRON_RES_FWVGA_480X864</td><td>480×864</td><td>Full Wide VGA</td><td class="res-handheld">HANDHELD</td></tr>
+                    <tr><td class="mono">BTRON_RES_FWVGA_480X854</td><td>480×854</td><td>Full Wide VGA</td><td class="res-handheld">HANDHELD</td></tr>
+                    <tr><td class="mono">BTRON_RES_VGAPLUS_480X690</td><td>480×690</td><td>VGA+</td><td class="res-handheld">HANDHELD</td></tr>
+                    <tr><td class="mono">BTRON_RES_WQVGA_240X432</td><td>240×432</td><td>Wide QVGA</td><td class="res-handheld">HANDHELD</td></tr>
+                    <tr><td class="mono">BTRON_RES_WQVGA_240X400</td><td>240×400</td><td>Wide QVGA</td><td class="res-handheld">HANDHELD</td></tr>
+                    <tr><td class="mono">BTRON_RES_QVGAPLUS_240X345</td><td>240×345</td><td>QVGA+</td><td class="res-handheld">HANDHELD</td></tr>
+                    <tr class="row-group"><th colspan="4">POCKET — &lt;320×320</th></tr>
+                    <tr><td class="mono">BTRON_RES_VGA_320X240</td><td>320×240</td><td>VGA Desktop</td><td class="res-pocket">POCKET</td></tr>
+                    <tr><td class="mono">BTRON_RES_HQVGA_240X160</td><td>240×160</td><td>HQVGA</td><td class="res-pocket">POCKET</td></tr>
+                    <tr><td class="mono">BTRON_RES_S40_208X208</td><td>208×208</td><td>Series 40</td><td class="res-pocket">POCKET</td></tr>
+                    <tr><td class="mono">BTRON_RES_S60_176X208</td><td>176×208</td><td>Series 60</td><td class="res-pocket">POCKET</td></tr>
+                    <tr><td class="mono">BTRON_RES_QCIF_176X144</td><td>176×144</td><td>QCIF</td><td class="res-pocket">POCKET</td></tr>
+                    <tr><td class="mono">BTRON_RES_GB_160X144</td><td>160×144</td><td>Game Boy</td><td class="res-pocket">POCKET</td></tr>
+                    <tr class="row-group" id="tier-band"><th colspan="4">BAND — &lt;128×160</th></tr>
+                    <tr><td class="mono">BTRON_RES_S30_128X160</td><td>128×160</td><td>Series 30, Nokia 2630, 3500, 6650</td><td class="res-band">BAND</td></tr>
+                    <tr><td class="mono">BTRON_RES_QQVGA_160X120</td><td>160×120</td><td>QQVGA</td><td class="res-band">BAND</td></tr>
+                    <tr><td class="mono">BTRON_RES_SQVGA_128X128</td><td>128×128</td><td>SQVGA</td><td class="res-band">BAND</td></tr>
+                    <tr><td class="mono">BTRON_RES_SQCIF_128X96</td><td>128×96</td><td>SQCIF</td><td class="res-band">BAND</td></tr>
+                    <tr><td class="mono">BTRON_RES_ARDUBOY_128X64</td><td>128×64</td><td>Arduboy</td><td class="res-band">BAND</td></tr>
+                    <tr class="row-group" id="tier-calc"><th colspan="4">CALC — &lt;100×100</th></tr>
+                    <tr><td class="mono">BTRON_RES_N7110_96X60</td><td>96×60</td><td>Nokia 7110</td><td class="res-calc">CALC</td></tr>
+                    <tr><td class="mono">BTRON_RES_N1100_96X64</td><td>96×64</td><td>TI-81, Nokia 1100, 3410, 3510i, 6310i</td><td class="res-calc">CALC</td></tr>
+                    <tr><td class="mono">BTRON_RES_N1280_96X68</td><td>96×68</td><td>Nokia 1280, 1600, 2600</td><td class="res-calc">CALC</td></tr>
+                    <tr><td class="mono">BTRON_RES_QQCIF_88X72</td><td>88×72</td><td>QQCIF</td><td class="res-calc">CALC</td></tr>
+                    <tr><td class="mono">BTRON_RES_N5110I_84X84</td><td>84×84</td><td>Nokia 5110i</td><td class="res-calc">CALC</td></tr>
+                    <tr><td class="mono">BTRON_RES_N3310_84X48</td><td>84×48</td><td>Nokia 3310, 3330, 5110, 8210</td><td class="res-calc">CALC</td></tr>
+                </tbody>
+            </table>
         </section>
 
-        <!-- Main Matrix -->
-        <section class="audit-card" id="matrix">
-            <h3><span>端末グループ別 SoC / アーキテクチャ / QEMU 適合度一覧</span></h3>
+        <section class="audit-card" id="controls">
+            <h3><span>共通コントロール (Common controls)</span></h3>
             <p>
-                下表は、代表的な FOMA 端末グループについて、SoC 名、命令セット、および QEMU 適合度を整理したものである。適合度の判定根拠は後続の凡例に示す。
+                同じ文書を、器ごとに載っているコントロールで操作する。下の表は、その器の画面が今描くものだけを示す。BAND と CALC は POCKET と同じ画面である。
             </p>
-            <p style="font-size:0.9em; opacity:0.85; margin-top:0.6rem;">
-                The matrix below lists representative FOMA model groups, their SoCs, ISAs, and QEMU fitness ratings. Rating criteria appear in the legend that follows.
+            <p style="font-size:0.9em; opacity:0.85;">
+                The same documents are operated with the controls that ship on that tier. The tables list only what that tier's screen draws today. BAND and CALC use the POCKET screen.
             </p>
-
-            <table class="conformance-table device-table">
+            <table class="conformance-table ctl-table">
                 <thead>
                     <tr>
-                        <th>端末グループ (Model Group)</th>
-                        <th>SoC / CPU</th>
-                        <th>アーキテクチャ (Architecture)</th>
-                        <th style="text-align:center;">QEMU 適合度</th>
+                        <th>コントロール (Control)</th>
+                        <th>DESKTOP</th>
+                        <th>HANDHELD</th>
+                        <th>POCKET</th>
                     </tr>
                 </thead>
                 <tbody>
                     <tr>
-                        <td class="model">Fujitsu F900i / F900iT</td>
-                        <td>TI OMAP (161x)</td>
-                        <td>ARM9 (ARMv5)</td>
-                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td>
+                        <td class="ctl-name">チェックボックス<small>Checkbox</small></td>
+                        <td><span class="badge-pass">設定</span></td>
+                        <td><span class="badge-pass">端末設定</span></td>
+                        <td><span class="badge-pass">チェック</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Fujitsu F901iC</td>
-                        <td>SH-Mobile3</td>
-                        <td>SuperH SH-3</td>
-                        <td style="text-align:center;"><span class="badge-fail">Poor</span> <span class="poor">(no SH)</span></td>
+                        <td class="ctl-name">ラジオボタン<small>Radio button</small></td>
+                        <td><span class="badge-pass">設定</span></td>
+                        <td><span class="badge-pass">端末設定</span></td>
+                        <td><span class="ctl-off">—</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Fujitsu F902i</td>
-                        <td>SH-Mobile</td>
-                        <td>SuperH</td>
-                        <td style="text-align:center;"><span class="badge-fail">Poor</span></td>
+                        <td class="ctl-name">プログレス<small>Progress</small></td>
+                        <td><span class="badge-pass">インストーラ</span></td>
+                        <td><span class="ctl-off">—</span></td>
+                        <td><span class="ctl-off">—</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Fujitsu F903i</td>
-                        <td>SH-Mobile G1</td>
-                        <td>SuperH + ARM</td>
-                        <td style="text-align:center;"><span class="badge-partial">Medium</span> <span class="medium">(arm1136)</span></td>
+                        <td class="ctl-name">スクロールバー<small>Scrollbar</small></td>
+                        <td><span class="badge-pass">窓</span></td>
+                        <td><span class="badge-pass">一覧</span></td>
+                        <td><span class="badge-partial">行送り</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Fujitsu F905i</td>
-                        <td>SH-Mobile G2</td>
-                        <td>ARM1136 + SHX2</td>
-                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td>
+                        <td class="ctl-name">グループ<small>Group</small></td>
+                        <td><span class="badge-pass">設定節</span></td>
+                        <td><span class="badge-pass">見出し</span></td>
+                        <td><span class="badge-pass">見出し</span></td>
                     </tr>
                     <tr>
-                        <td class="model">NEC N900i / N901iC</td>
-                        <td>TI OMAP1610</td>
-                        <td>ARM9 (ARMv5)</td>
-                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td>
+                        <td class="ctl-name">ラベル<small>Label</small></td>
+                        <td><span class="badge-pass">文字</span></td>
+                        <td><span class="badge-pass">文字</span></td>
+                        <td><span class="badge-pass">文字</span></td>
                     </tr>
                     <tr>
-                        <td class="model">NEC N902i</td>
-                        <td>TI OMAP</td>
-                        <td>ARM9</td>
-                        <td style="text-align:center;"><span class="badge-pass">Good</span></td>
+                        <td class="ctl-name">テキストボックス<small>Text field</small></td>
+                        <td><span class="ctl-off">—</span></td>
+                        <td><span class="badge-pass">一行</span></td>
+                        <td><span class="ctl-off">—</span></td>
                     </tr>
                     <tr>
-                        <td class="model">NEC N903i</td>
-                        <td>TI OMAP2430</td>
-                        <td>ARM1136 (ARMv6)</td>
-                        <td style="text-align:center;"><span class="badge-pass">Excellent</span> <span class="excellent">(arm1136)</span></td>
+                        <td class="ctl-name">テキストエリア<small>Text area</small></td>
+                        <td><span class="badge-pass">文書</span></td>
+                        <td><span class="badge-pass">文書</span></td>
+                        <td><span class="badge-pass">テキスト</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Panasonic P900i–P903i</td>
-                        <td>TI OMAP (shared)</td>
-                        <td>ARM9 / ARM11</td>
-                        <td style="text-align:center;"><span class="badge-pass">Good–Excellent</span></td>
+                        <td class="ctl-name">コンボボックス<small>Combobox</small></td>
+                        <td><span class="badge-pass">インストーラ</span></td>
+                        <td><span class="ctl-off">—</span></td>
+                        <td><span class="ctl-off">—</span></td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="font-size:0.9em; opacity:0.85;">
+                設定と計器は机と Pi 400 にある。インストーラの進捗とコンボボックスはワークステーション画像にも入る。掌のスクロールは行送りで、つまみは無い。
+            </p>
+            <p style="font-size:0.9em; opacity:0.85;">
+                Settings and the instrument set are on the desk and on Pi 400. The installer's progress bar and combobox are also on the workstation image. Pocket scrolling moves by rows and has no thumb.
+            </p>
+
+            <h3><span>計器コントロール (Instrument controls)</span></h3>
+            <p>
+                計器一式は DESKTOP の机と Pi 400 に載る。車載クラスタも同じ器である。ワークステーション画像、HANDHELD、POCKET には入らない。
+            </p>
+            <p style="font-size:0.9em; opacity:0.85;">
+                The instrument set ships on the DESKTOP desk and on Pi 400. The vehicle cluster is the same tier. It is not in the workstation image, on HANDHELD, or on POCKET.
+            </p>
+            <table class="conformance-table ctl-table">
+                <thead>
+                    <tr>
+                        <th>コントロール (Control)</th>
+                        <th>役割 (Role)</th>
+                        <th>器 (Tier)</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="ctl-name">押しボタン<small>Push switch</small></td>
+                        <td>押している間だけオン</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Sharp SH900i</td>
-                        <td>TI OMAP1610</td>
-                        <td>ARM9</td>
-                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td>
+                        <td class="ctl-name">トグル<small>Toggle switch</small></td>
+                        <td>状態を保持する</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Sharp SH903i</td>
-                        <td>TI OMAP2430</td>
-                        <td>ARM1136</td>
-                        <td style="text-align:center;"><span class="badge-pass">Excellent</span></td>
+                        <td class="ctl-name">三点スイッチ<small>Standard triad</small></td>
+                        <td>三位置</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Sharp SH903iTV / SH905i / SH-01A</td>
-                        <td>SH-Mobile G1/G2/G3</td>
-                        <td>ARM1136 + SuperH</td>
-                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td>
+                        <td class="ctl-name">上下セレクタ<small>Up/down selector</small></td>
+                        <td>一段ずつ送る</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
                     </tr>
                     <tr>
-                        <td class="model">905SH / 911SH</td>
-                        <td>Proprietary multimedia</td>
-                        <td>Mixed</td>
-                        <td style="text-align:center;"><span class="badge-partial">Medium</span></td>
+                        <td class="ctl-name">ラジオセレクタ<small>Radio selector</small></td>
+                        <td>一つを選ぶ</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Raku-Raku F880iES / F883i / F884i</td>
-                        <td>SH-Mobile G1</td>
-                        <td>ARM + SuperH</td>
-                        <td style="text-align:center;"><span class="badge-partial">Medium–Good</span></td>
+                        <td class="ctl-name">ロータリ<small>Rotary selector</small></td>
+                        <td>停止位置まで回す</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
                     </tr>
                     <tr>
-                        <td class="model">Raku-Raku F-01A</td>
-                        <td>SH-Mobile G series</td>
-                        <td>ARM1136 + SuperH</td>
-                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td>
+                        <td class="ctl-name">スライダー<small>Slider volume</small></td>
+                        <td>直線の量</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
+                    </tr>
+                    <tr>
+                        <td class="ctl-name">ダイヤル<small>Dial volume</small></td>
+                        <td>回転の量</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
+                    </tr>
+                    <tr>
+                        <td class="ctl-name">バーメーター<small>Bar meter</small></td>
+                        <td>量の表示</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
+                    </tr>
+                    <tr>
+                        <td class="ctl-name">状態ランプ<small>Status lamp</small></td>
+                        <td>点灯と消灯</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
+                    </tr>
+                    <tr>
+                        <td class="ctl-name">数値表示<small>Digital display</small></td>
+                        <td>数値の読取り</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
+                    </tr>
+                    <tr>
+                        <td class="ctl-name">方向パッド<small>Universal pad</small></td>
+                        <td>上下左右</td>
+                        <td><span class="badge-pass">DESKTOP</span></td>
                     </tr>
                 </tbody>
             </table>
         </section>
 
-        <!-- Legend -->
-        <section class="audit-card">
-            <h3><span>適合度判定基準 (Fitness Legend)</span></h3>
-            <div class="legend-grid">
-                <div class="legend-item">
-                    <strong class="excellent">Excellent</strong>
-                    <code>-M virt -cpu arm1136</code> と高い命令セット一致を示し、実用的なユーザーランド起動が期待できる。
-                    <br><span style="font-size:0.88em; opacity:0.85;">Close match with upstream <code>arm1136</code>; practical userland boot feasible.</span>
-                </div>
-                <div class="legend-item">
-                    <strong class="good">Good</strong>
-                    <code>arm926</code> または <code>arm1136</code> で利用可能。周辺チップセットの完全再現は不要な場合に適する。
-                    <br><span style="font-size:0.88em; opacity:0.85;">Usable with <code>arm926</code> or <code>arm1136</code>; peripheral fidelity secondary.</span>
-                </div>
-                <div class="legend-item">
-                    <strong class="medium">Medium</strong>
-                    ARM コアは利用可能だが SuperH 副コアは未対応。デュアルコア端末では機能が制限される。
-                    <br><span style="font-size:0.88em; opacity:0.85;">ARM core usable; SuperH companion core unsupported.</span>
-                </div>
-                <div class="legend-item">
-                    <strong class="poor">Poor</strong>
-                    純 SuperH 構成。現時点の upstream QEMU に実用的なマシンモデルが存在しない。
-                    <br><span style="font-size:0.88em; opacity:0.85;">Pure SuperH → no practical upstream QEMU support.</span>
-                </div>
-            </div>
+        <section class="audit-card" id="desk-desktop">
+            <h3><span>DESKTOP — 机、キオスク、車載計器</span></h3>
+            <p>
+                800×600 のワークステーション、1024×768、1280×1024 は同じ器である。窓を重ねるコンポジタ <code class="mono">BTRON_UI_DESKTOP</code> が描く。このページに新しい机上の写真は置かない。
+            </p>
+            <p style="font-size:0.9em; opacity:0.85;">
+                The 800×600 workstation, 1024×768, and 1280×1024 are one tier. The window compositor <code class="mono">BTRON_UI_DESKTOP</code> draws them. This page does not add a desk screenshot set.
+            </p>
         </section>
 
-        <!-- Technical Notes -->
-        <section class="audit-card">
-            <h3><span>技術的補足 (Technical Notes)</span></h3>
+        <section class="audit-card" id="desk-foma">
+            <h3><span>HANDHELD — 両手の通信機、640×480</span></h3>
             <p>
-                <b>ARM9 (ARMv5) 系統：</b> OMAP1610 / 161x 系は QEMU の <code class="mono">arm926</code> モデルで概ね再現可能である。キャッシュ・MMU 挙動は近似であり、厳密なサイクル正確性は保証されない。
+                要求値が 640×480、または FOMA の 240×345、240×400、240×432、480×690、480×854、480×864 のとき器は HANDHELD である。µBTRON の公開画面は 480×640 の縦位置である。2004–2009 年の FOMA 端末の記録は、掌・帯・鍵の画面の後にある。
             </p>
-            <p style="font-size:0.9em; opacity:0.85; margin:0.6rem 0 1.2rem 0;">
-                ARM9 (ARMv5) devices map acceptably to QEMU’s <code class="mono">arm926</code>. Cache and MMU behaviour are approximate; cycle-accurate timing is not claimed.
-            </p>
-
-            <p>
-                <b>ARM1136 (ARMv6) 系統：</b> OMAP2430 および SH-Mobile G2/G3 の ARM コアは <code class="mono">-cpu arm1136</code> との親和性が高い。B-System の AArch32 テストターゲットとして有用である。
-            </p>
-            <p style="font-size:0.9em; opacity:0.85; margin:0.6rem 0 1.2rem 0;">
-                ARM1136 (ARMv6) cores (OMAP2430, SH-Mobile G2/G3 ARM side) align well with <code class="mono">-cpu arm1136</code> and serve as useful AArch32 test targets for B-System.
-            </p>
-
-            <p>
-                <b>SuperH の制限：</b> QEMU には歴史的に SuperH サポートが存在するが、SH-Mobile 特有の周辺装置（LCDC、キーマトリクス、FOMA モデム）は実装されておらず、実用的な FOMA 端末エミュレーションには至らない。
-            </p>
-            <p style="font-size:0.9em; opacity:0.85; margin:0.6rem 0 0 0;">
-                Although QEMU retains residual SuperH code, SH-Mobile-specific peripherals (LCDC, key matrix, FOMA modem) remain unimplemented; pure SuperH FOMA handsets are therefore rated Poor.
+            <p style="font-size:0.9em; opacity:0.85;">
+                640×480, and the FOMA panels 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864, select HANDHELD. The published µBTRON frames are the 480×640 portrait. The 2004–2009 FOMA record follows the pocket, band, and key frames.
             </p>
         </section>
 
         <!-- µBTRON-FOMA Mobile UI Showcase -->
         <section class="audit-card" id="foma-screens">
-            <h3><span>µBTRON-FOMA モバイル UI 画面ギャラリー (Mobile UI Showcase)</span></h3>
+            <h3><span>HANDHELD — 640×480 の画面</span></h3>
             <p>
-                以下の画面は、実機描画エンジン（C99 Headless Framebuffer Compositor）によりピクセル単位で正確に生成された µBTRON-FOMA の画面群である。480×640 VGA 縦画面（Portrait）、5方向キーによるフォーカス遷移、3ソフトキー操作体系、および実身・仮身（Fusen）ハイパーメディアモデルを忠実に再現している。
+                以下の画面は、実機描画エンジン（C99 Headless Framebuffer Compositor）によりピクセル単位で正確に生成された HANDHELD の画面群である。480×640 VGA 縦画面（Portrait）、5方向キーによるフォーカス遷移、3ソフトキー操作体系、および実身・仮身（Fusen）ハイパーメディアモデルを忠実に再現している。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.6rem;">
-                The screenshots below are natively rendered from the C99 framebuffer compositor for µBTRON-FOMA on a 480×640 VGA vertical viewport. They demonstrate keypad-driven focus navigation, context-sensitive soft keys, and the authentic Real Body / Virtual Body (実身・仮身) hypermedia environment.
+                The screenshots below are natively rendered from the C99 framebuffer compositor for the HANDHELD tier on a 480×640 VGA vertical viewport. They demonstrate keypad-driven focus navigation, context-sensitive soft keys, and the authentic Real Body / Virtual Body (実身・仮身) hypermedia environment.
             </p>
 
             <style>
@@ -826,15 +940,12 @@
 
         <!-- µBTRON-SEGUI Toolkit UI Showcase -->
         <section class="audit-card" id="segui-screens">
-            <h3><span>µBTRON-SEGUI セグメンテーション UI ギャラリー (Segmentation UI Showcase)</span></h3>
+            <h3><span>POCKET · BAND · CALC — sub-pico</span></h3>
             <p>
-                以下の画面は、新規 UI ツールキット <b>µBTRON-SEGUI (SegUI / Segmentation UI)</b> を、実機と同一の描画経路でヘッドレスレンダリングした成果物である。解像度は 480×272 の横長 TFT パネル。埋め込み機器・家電・キオスク・レトロ機を想定した軽量モジュール UI ツールキットで、起動後にヒープを確保しない。
-            </p>
-            <p>
-                SegUI の前提は「画面とは名前付きの水平帯（セグメント）の予算である」。STATUS・TABBAR・TITLE・BODY・SOFTKEY の各帯が幅と高さを決め、このパネルでは TABBAR 24px・BODY 218px・SOFTKEY 30px、つまり chrome は 272px 中 54px（19%）を消費する。帯のうち <b>伸長を許されるのは 1 つだけ</b>で、それは BODY である。フォームファクタの違いはすべてこのテーブルの値の違いで表現され、<code class="mono">#ifdef</code> による分岐は存在しない。
+                320×320 の正方形より下は一つの帯レイアウトで描く。POCKET は掌、BAND は 128×160 より小さい帯、CALC は 100×100 より小さい鍵。下の画面は掌の基準パネル、PicoCalc の 320×320 である。320×320 自体は要求一覧に無い。帯の値は <code class="mono">segui_profile_picocalc</code>。伸長できる帯は BODY だけ。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.6rem;">
-                The screens below are produced by µBTRON-SEGUI, a lightweight, modular and scalable UI toolkit for embedded systems, home appliances, kiosks and retro machines, driven through the exact same drawing path the target uses. A SegUI screen is a budget of named horizontal bands; on this panel the chrome costs 54 of 272 pixels (TABBAR 24 + SOFTKEY 30) and leaves BODY 218. Exactly one band may stretch, and form factors differ by table values rather than by conditional compilation. This is the smallest budget SegUI ships on, and therefore the only frame that can prove a segment table is honest - the 480×640 portrait handset above is µBTRON-FOMA's territory.
+                Below a 320×320 square, one band shell draws three tiers. POCKET is the one-hand panel, BAND fits in 128×160, and CALC has both sides under 100. The frames are the pocket reference, the PicoCalc 320×320 panel. 320×320 itself is not a requested mode. Band sizes are <code class="mono">segui_profile_picocalc</code>. Only BODY may stretch.
             </p>
 
             <style>
@@ -870,7 +981,7 @@
                 }
                 .segui-gallery-grid {
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
                     gap: 1.8rem;
                     margin-top: 1.8rem;
                 }
@@ -900,7 +1011,7 @@
                 }
                 .segui-img {
                     width: 100%;
-                    max-width: 480px;
+                    max-width: 320px;
                     height: auto;
                     display: block;
                     image-rendering: pixelated;
@@ -944,9 +1055,10 @@
             </style>
 
             <ul class="segui-band-list">
-                    <li><b>TABBAR</b><span>24 px</span><em>5 tabs, one line each</em></li>
-                    <li><b>BODY</b><span>218 px</span><em>the only stretchable band</em></li>
-                    <li><b>SOFTKEY</b><span>30 px</span><em>3 caption buttons</em></li>
+                    <li><b>STATUS</b><span>22 px</span><em>clock and battery</em></li>
+                    <li><b>TABBAR</b><span>22 px</span><em>omitted when the form has one tab</em></li>
+                    <li><b>BODY</b><span>stretch</span><em>the only stretchable band</em></li>
+                    <li><b>SOFTKEY</b><span>26 px</span><em>three captions</em></li>
             </ul>
 
             <div class="segui-gallery-grid">
@@ -956,7 +1068,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_launcher.png"
                              alt="1. PicoCalc Palm OS Launcher (Home / Launcher)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -973,7 +1085,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_terminal.png"
                              alt="2. B-System Terminal (1. Terminal)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -990,7 +1102,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_editor.png"
                              alt="3. B-System Editor (2. Editor)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1007,7 +1119,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_browser.png"
                              alt="4. TAD / Manual Browser (3. Browser)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1024,7 +1136,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_cabinet.png"
                              alt="5. Real-Object Cabinet (4. Cabinet)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1041,7 +1153,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_glgears.png"
                              alt="6. GLGears 3D Benchmark (5. GLGears)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1058,7 +1170,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_contacts.png"
                              alt="7. Contacts (6. Contacts)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1075,7 +1187,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_phone.png"
                              alt="8. Phone Dialer & Recents (7. Phone)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1092,7 +1204,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_chat.png"
                              alt="9. LoRa Mesh Chat (8. Chat)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1109,7 +1221,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_prefs.png"
                              alt="10. PicoCalc Preferences (9. Preferences)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1126,7 +1238,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_xmb.png"
                              alt="11. XMB (XMB)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1143,7 +1255,7 @@
                     <div class="segui-frame">
                         <img src="b-system/img/segui/picocalc_quake.png"
                              alt="12. Quake e1m1 (Quake)"
-                             class="segui-img" width="480" height="272">
+                             class="segui-img" width="320" height="320">
                     </div>
                     <div class="segui-card-info">
                         <div class="segui-card-title">
@@ -1158,14 +1270,179 @@
             </div>
         </section>
 
+        <section class="audit-card" id="matrix">
+            <h3><span>FOMA の遺産 (FOMA legacy, 2004–2009)</span></h3>
+            <p>
+                FOMA は当時の国内向け第3世代通信機である。プロセッサは Texas Instruments OMAP（ARM9 / ARM11）とルネサス SH-Mobile（SuperH、一部は ARM と共存）に分かれる。upstream QEMU で実用になるのは ARM コアを持つ機種で、純 SuperH は対象外である。適合度は公式マシンモデル（<code class="mono">-M virt</code> とレガシー ARM ボード）への命令セットの一致と、ユーザーランドを起動できる見込みで四段階に分ける。メイン画面のドット数は各機種の公表仕様で、一つの行に二つあるときはそのグループの中で画面が分かれている。
+            </p>
+            <p style="font-size:0.9em; opacity:0.85;">
+                FOMA was the domestic third-generation communicator of that period. The processors split into TI OMAP (ARM9 / ARM11) and Renesas SH-Mobile (SuperH, sometimes beside an ARM core). Upstream QEMU is practical only where an ARM core is present. A pure SuperH handset stays out of reach. The four grades follow the instruction-set match to an upstream machine model, <code class="mono">-M virt</code> or a legacy ARM board, and whether a userland boot is realistic. Main-panel sizes are the published figures. Two sizes in one row mean the models in that group differ.
+            </p>
+
+            <table class="conformance-table device-table">
+                <thead>
+                    <tr>
+                        <th>端末グループ (Model Group)</th>
+                        <th>メイン画面 (Main panel)</th>
+                        <th>SoC / CPU</th>
+                        <th>アーキテクチャ (Architecture)</th>
+                        <th style="text-align:center;">QEMU 適合度</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="model">Fujitsu F900i / F900iT</td>
+                        <td class="mono">240×320</td>
+                        <td>TI OMAP (161x)</td>
+                        <td>ARM9 (ARMv5)</td>
+                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Fujitsu F901iC</td>
+                        <td class="mono">240×320</td>
+                        <td>SH-Mobile3</td>
+                        <td>SuperH SH-3</td>
+                        <td style="text-align:center;"><span class="badge-fail">Poor</span> <span class="poor">(no SH)</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Fujitsu F902i</td>
+                        <td class="mono">240×320</td>
+                        <td>SH-Mobile</td>
+                        <td>SuperH</td>
+                        <td style="text-align:center;"><span class="badge-fail">Poor</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Fujitsu F903i</td>
+                        <td class="mono">240×320</td>
+                        <td>SH-Mobile G1</td>
+                        <td>SuperH + ARM</td>
+                        <td style="text-align:center;"><span class="badge-partial">Medium</span> <span class="medium">(arm1136)</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Fujitsu F905i</td>
+                        <td class="mono">480×864</td>
+                        <td>SH-Mobile G2</td>
+                        <td>ARM1136 + SHX2</td>
+                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">NEC N900i / N901iC</td>
+                        <td class="mono">240×320 / 240×345</td>
+                        <td>TI OMAP1610</td>
+                        <td>ARM9 (ARMv5)</td>
+                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">NEC N902i</td>
+                        <td class="mono">240×345</td>
+                        <td>TI OMAP</td>
+                        <td>ARM9</td>
+                        <td style="text-align:center;"><span class="badge-pass">Good</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">NEC N903i</td>
+                        <td class="mono">480×690</td>
+                        <td>TI OMAP2430</td>
+                        <td>ARM1136 (ARMv6)</td>
+                        <td style="text-align:center;"><span class="badge-pass">Excellent</span> <span class="excellent">(arm1136)</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Panasonic P900i–P903i</td>
+                        <td class="mono">240×320</td>
+                        <td>TI OMAP (shared)</td>
+                        <td>ARM9 / ARM11</td>
+                        <td style="text-align:center;"><span class="badge-pass">Good–Excellent</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Sharp SH900i</td>
+                        <td class="mono">240×320</td>
+                        <td>TI OMAP1610</td>
+                        <td>ARM9</td>
+                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Sharp SH903i</td>
+                        <td class="mono">240×400</td>
+                        <td>TI OMAP2430</td>
+                        <td>ARM1136</td>
+                        <td style="text-align:center;"><span class="badge-pass">Excellent</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Sharp SH903iTV / SH905i / SH-01A</td>
+                        <td class="mono">240×400 / 480×854</td>
+                        <td>SH-Mobile G1/G2/G3</td>
+                        <td>ARM1136 + SuperH</td>
+                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">905SH / 911SH</td>
+                        <td class="mono">240×400</td>
+                        <td>Proprietary multimedia</td>
+                        <td>Mixed</td>
+                        <td style="text-align:center;"><span class="badge-partial">Medium</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Raku-Raku F880iES / F883i / F884i</td>
+                        <td class="mono">240×320 / 240×432</td>
+                        <td>SH-Mobile G1</td>
+                        <td>ARM + SuperH</td>
+                        <td style="text-align:center;"><span class="badge-partial">Medium–Good</span></td>
+                    </tr>
+                    <tr>
+                        <td class="model">Raku-Raku F-01A</td>
+                        <td class="mono">480×864</td>
+                        <td>SH-Mobile G series</td>
+                        <td>ARM1136 + SuperH</td>
+                        <td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td>
+                    </tr>
+                </tbody>
+            </table>
+
+            <div class="legend-grid">
+                <div class="legend-item">
+                    <strong class="excellent">Excellent</strong>
+                    <code>-M virt -cpu arm1136</code> と高い命令セット一致を示し、実用的なユーザーランド起動が期待できる。
+                    <br><span style="font-size:0.88em; opacity:0.85;">Close match with upstream <code>arm1136</code>; practical userland boot feasible.</span>
+                </div>
+                <div class="legend-item">
+                    <strong class="good">Good</strong>
+                    <code>arm926</code> または <code>arm1136</code> で利用可能。周辺チップセットの完全再現は不要な場合に適する。
+                    <br><span style="font-size:0.88em; opacity:0.85;">Usable with <code>arm926</code> or <code>arm1136</code>; peripheral fidelity secondary.</span>
+                </div>
+                <div class="legend-item">
+                    <strong class="medium">Medium</strong>
+                    ARM コアは利用可能だが SuperH 副コアは未対応。デュアルコア端末では機能が制限される。
+                    <br><span style="font-size:0.88em; opacity:0.85;">ARM core usable; SuperH companion core unsupported.</span>
+                </div>
+                <div class="legend-item">
+                    <strong class="poor">Poor</strong>
+                    純 SuperH 構成。現時点の upstream QEMU に実用的なマシンモデルが存在しない。
+                    <br><span style="font-size:0.88em; opacity:0.85;">Pure SuperH → no practical upstream QEMU support.</span>
+                </div>
+            </div>
+
+            <p style="margin-top:1.4rem;">
+                <b>ARM9 (ARMv5)：</b> OMAP1610 / 161x は QEMU の <code class="mono">arm926</code> で概ね再現できる。キャッシュと MMU は近似で、サイクル正確性は主張しない。
+                <span style="display:block; font-size:0.9em; opacity:0.85; margin-top:0.25rem;">OMAP1610 / 161x map to <code class="mono">arm926</code>. Cache and MMU behaviour are approximate.</span>
+            </p>
+            <p>
+                <b>ARM1136 (ARMv6)：</b> OMAP2430 と SH-Mobile G2/G3 の ARM 側は <code class="mono">-cpu arm1136</code> に近く、B-System の AArch32 試験に使える。
+                <span style="display:block; font-size:0.9em; opacity:0.85; margin-top:0.25rem;">OMAP2430 and the ARM side of SH-Mobile G2/G3 align with <code class="mono">-cpu arm1136</code> and are useful AArch32 test targets.</span>
+            </p>
+            <p>
+                <b>SuperH：</b> QEMU に SuperH の残滓はあるが、SH-Mobile の LCDC、キーマトリクス、FOMA モデムは未実装である。純 SuperH の端末は Poor とする。
+                <span style="display:block; font-size:0.9em; opacity:0.85; margin-top:0.25rem;">Residual SuperH code does not include the SH-Mobile LCDC, key matrix, or FOMA modem. A pure SuperH handset is rated Poor.</span>
+            </p>
+        </section>
+
         <!-- Relation to B-System -->
         <section class="audit-card">
             <h3><span>B-System マルチアーキテクチャ検証との関係</span></h3>
             <p>
-                B-System は既に Raspberry Pi 2B/3B/4B（ARM）、x86_64 UEFI、NEC PC-98、MIPS などのターゲットを単一コードベースでサポートしている。本 FOMA 適合性表は、将来的にモバイル系 ARMv5/v6 ターゲットを追加する際の参照資料として位置付けられる。SuperH 純正構成は現状スコープ外とする。
+                B-System は机上、ワークステーション、HANDHELD の通信機、そして sub-pico の掌・帯・鍵を一つのコードで描く。要求解像度が DESKTOP / HANDHELD / POCKET / BAND / CALC を選ぶ。上の適合性表は HANDHELD の資料である。SuperH 純正構成は現状スコープ外とする。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.8rem;">
-                B-System already unifies Raspberry Pi (ARM), x86_64 UEFI, NEC PC-98 and MIPS targets under a single tree. This FOMA matrix supplies reference data should mobile ARMv5/v6 targets be added; pure SuperH configurations remain outside current scope.
+                B-System draws the desk, the workstation, the HANDHELD communicator, and the sub-pico pocket, band, and key panel from one tree. The requested resolution selects DESKTOP, HANDHELD, POCKET, BAND, or CALC. The fitness table above is the HANDHELD note. Pure SuperH configurations remain outside current scope.
             </p>
         </section>
 
