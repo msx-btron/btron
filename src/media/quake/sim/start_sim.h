@@ -1,0 +1,56 @@
+#ifndef START_SIM_H
+#define START_SIM_H
+
+#include <stdint.h>
+
+#define START_KEY_FIRE 0x7E
+#define START_W_AXE  0
+#define START_W_SHOT 1
+#define START_W_SSG  2
+#define START_W_NAIL 3
+#define START_W_SNAIL 4
+#define START_W_GL   5
+#define START_W_RL   6
+#define START_W_LG   7
+
+void start_sim_init(void);
+void start_sim_key(int key, int down);
+void start_sim_tick(uint32_t now_ms);
+void start_sim_render(void);
+
+const uint16_t *start_sim_pixels(void);
+int  start_sim_view_w(void);
+int  start_sim_view_h(void);
+int  start_sim_lit(void);
+
+const float *start_sim_origin(void);
+int  start_sim_health(void);
+int  start_sim_armor(void);
+int  start_sim_weapon(void);
+int  start_sim_ammo(void);
+int  start_sim_onground(void);
+int  start_sim_has_weapon(int weapon);
+int  start_sim_solid(float x, float y, float z);
+
+int   start_sim_n_zombie(void);
+int   start_sim_zombie_health(int i);
+const float *start_sim_zombie_origin(int i);
+
+int   start_sim_n_door(void);
+float start_sim_door_pos(int i);
+void  start_sim_door_bounds(int i, float mins[3], float maxs[3]);
+
+int  start_sim_n_pickup(void);
+void start_sim_pickup(int i, float org[3], int *kind);
+
+int  start_sim_n_trig(void);
+void start_sim_trig(int i, float mins[3], float maxs[3], int *kind);
+
+int  start_sim_projectiles(void);
+int  start_sim_slipped(void);
+const char *start_sim_message(void);
+
+void start_sim_set_origin(float x, float y, float z);
+void start_sim_set_yaw(float yaw);
+
+#endif

@@ -32,13 +32,20 @@ int quake_is_running(void) { return 0; }
 ER   inval_wnd(WND *w){(void)w;return 0;}
 WND *wnd_gl_scope_owner(void){return 0;}
 void wnd_set_gl_bind(WndGLBind b){(void)b;}
+WND *wnd_gl_layer(void){ return 0; }
 int  wnd_gl_layer_claim(WND *w){ if (w) w->gl_layer = 1; return 1; }
 void wnd_gl_layer_release(WND *w){ if (w) w->gl_layer = 0; }
 ER   wnd_set_title(WND *w,const char*t){(void)w;(void)t;return 0;}
 
 
-#define SW 672
-#define SH 288
+#ifndef QUAKE_CAP_W
+#define QUAKE_CAP_W 672
+#endif
+#ifndef QUAKE_CAP_H
+#define QUAKE_CAP_H 288
+#endif
+#define SW QUAKE_CAP_W
+#define SH QUAKE_CAP_H
 static uint32_t s_fb[SW*SH];
 
 static void dump_raw(const char*path){
@@ -383,6 +390,41 @@ static void capture_model(const char*mdl_path,int frame,float yaw,const char*raw
     dump_raw(raw_out);
 }
 
+#ifdef QUAKE_CAP_START_ONLY
+/* One frame of maps/start.bsp for the SegUI host preview. Same eye as the
+ * first row of the full pipeline: spawn, then +20 forward, +8 up, +22 eye. */
+int main(int argc, char **argv)
+{
+    const char *out = (argc > 1 && argv[1] && argv[1][0]) ? argv[1]
+                      : "/tmp/quake_segui_body.raw";
+    FILE *fp;
+    float sp_yaw, rad, eye[3];
+    if (!FS_Init()) { printf("pak0.pak not found\n"); return 1; }
+    gl_init(GL_BACKEND_VIRGL, SW, SH, s_fb);
+    if (!g_gl) { printf("no GL backend\n"); return 1; }
+    TEX_LoadPalette("gfx/palette.lmp");
+    UI_Init();
+    printf("=== Quake start hall for SegUI (%dx%d) ===\n", SW, SH);
+    if (!World_ChangeMap("maps/start.bsp")) {
+        printf("  [SKIP] maps/start.bsp\n");
+        return 1;
+    }
+    sp_yaw = g_world.spawn_angle;
+    rad = sp_yaw * (3.14159265f / 180.0f);
+    eye[0] = g_world.spawn_origin[0] + 20.0f * cosf(rad);
+    eye[1] = g_world.spawn_origin[1] + 20.0f * sinf(rad);
+    eye[2] = g_world.spawn_origin[2] + 30.0f;
+    capture_level("maps/start.bsp", eye, sp_yaw, out);
+    fp = fopen(out, "rb");
+    if (!fp) {
+        fprintf(stderr, "start hall was not written: %s\n", out);
+        return 1;
+    }
+    fclose(fp);
+    gl_shutdown();
+    return 0;
+}
+#else
 int main(void){
     if(!FS_Init()){printf("pak0.pak not found\n");return 1;}
     gl_init(GL_BACKEND_VIRGL,SW,SH,s_fb);
@@ -475,3 +517,4 @@ int main(void){
     printf("=== Done ===\n");
     gl_shutdown(); return 0;
 }
+#endif

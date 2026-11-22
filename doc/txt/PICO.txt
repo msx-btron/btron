@@ -2,7 +2,7 @@ PICO.txt — Palm OS-Like SegUI Architecture for ClockworkPi PicoCalc
 ====================================================================
 
 B-System (BTRON 3.20)
-Target: ClockworkPi PicoCalc (RP2350 default, RP2040 via PICO_BOARD=rp2040)
+Target: ClockworkPi PicoCalc (RP2040 default, RP2350 via PICO_BOARD=rp2350)
 Related: ASYNC.txt, RENDER.txt, STRUCTURE.txt, include/btron/segui.h
 
 Status: Architectural Proposal (Rev 7 — Spec-Driven, Battery-Optimized & Gap-Audited)
@@ -16,10 +16,11 @@ Policy: Minimal, spec-driven clean code (-Os --gc-sections -Wall -Wextra -Werror
 ----------------------------
 
 ClockworkPi PicoCalc is a Tier-1 Embedded MCU pocket computer with:
-  - CPU (Default): Raspberry Pi Pico 2 — RP2350, Dual Cortex-M33 (ARMv8-M
-    Mainline + FPv5-SP FPU), 150 MHz, 520 KiB SRAM, 4 MiB XIP Flash.
-  - CPU (Option):  Raspberry Pi Pico 1 — RP2040, Dual Cortex-M0+ (ARMv6-M),
-    125 MHz, 264 KiB SRAM, 2 MiB XIP Flash (PICO_BOARD=rp2040).
+  - CPU (Default): Raspberry Pi Pico 1 — RP2040, Dual Cortex-M0+ (ARMv6-M),
+    125 MHz, 264 KiB SRAM, 2 MiB XIP Flash.
+  - CPU (Option):  Raspberry Pi Pico 2 — RP2350, Dual Cortex-M33 (ARMv8-M
+    Mainline + FPv5-SP FPU), 150 MHz, 520 KiB SRAM, 4 MiB XIP Flash
+    (PICO_BOARD=rp2350).
   - Display:       4.0" 320x320 IPS TFT, Sitronix ST7365P on SPI1 (25 MHz).
   - Input / PMU:   QWERTY keyboard + AXP2101 PMU via STM32 on I2C1 (0x1F).
 

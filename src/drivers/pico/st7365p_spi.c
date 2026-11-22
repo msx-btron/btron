@@ -169,6 +169,8 @@ void st7365p_flush_band_dma(uint16_t y0, uint16_t h, const uint16_t *rgb565_be)
 {
     uint32_t nbytes = (uint32_t)320u * (uint32_t)h * 2u;
 
+    /* The caller paints the idle strip first. This wait is the previous band.
+     * SPI is one bus, so the window cannot be programmed while pixels clock. */
     st7365p_dma_wait();
     st7365p_set_window(0, y0, 319, (uint16_t)(y0 + h - 1u));
 

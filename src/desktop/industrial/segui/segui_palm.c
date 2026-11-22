@@ -28,6 +28,10 @@
 #include "../../../apps/browser/tad_parser.h"
 #include "../../../apps/chat/chat_core.h"
 #include "../../../apps/terminal/shell_core.h"
+#if (defined(PICO_REAL_HW) && !defined(PICOCALC_APP_QUAKE)) || defined(SEGUI_HOST_XMB)
+#include "../../../media/xmb/xmb_pico.h"
+#define SEGUI_HAVE_XMB 1
+#endif
 
 #if !defined(BTRON_SEGUI_COMPACT)
 BTRON_UI_MODE g_btron_ui_mode = BTRON_UI_SEGUI;
@@ -667,8 +671,43 @@ static void build_cabinet(SEGUI_APP *app, const SEGUI_PROFILE *prof)
     if (lst) { lst->row_focus = 1; lst->row_top = 0; }
 }
 
-/* ── 5. GLGears App (Real OpenGL ES 1.1 / TinyGL Backend) ──────────────── */
+/* ── 5. Center tile. GLGears on make picocalc. Quake on make picocalc-quake. */
 
+#if defined(PICOCALC_APP_QUAKE)
+#include "start_sim.h"
+extern void dp_pico_blit_rgb565(const RECT *dst, const uint16_t *src, int src_w, int src_h);
+
+static void draw_quake_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, void *ctx)
+{
+    (void)app;
+    (void)ctx;
+    if (!bounds) return;
+    start_sim_render();
+#if defined(PICO_REAL_HW)
+    (void)dev;
+    dp_pico_blit_rgb565(bounds, start_sim_pixels(),
+                        start_sim_view_w(), start_sim_view_h());
+#else
+    (void)dev;
+#endif
+}
+
+static BOOL key_quake(int key)
+{
+    if (key == PALM_KEY_ESC) return FALSE;
+    start_sim_key(key, 1);
+    return TRUE;
+}
+
+static void build_quake(SEGUI_APP *app, const SEGUI_PROFILE *prof)
+{
+    int tab;
+    start_sim_init();
+    segui_app_init(app, "Quake", prof);
+    tab = segui_add_tab(app, "Start", FALSE);
+    segui_add_canvas(app, tab, draw_quake_canvas, NULL);
+}
+#else
 static int32_t s_gear_angle = 18;
 static int32_t s_gear_yaw   = 22;
 static BOOL    s_gear_paused = FALSE;
@@ -701,6 +740,82 @@ static BOOL key_glgears(int key)
     if (key == PALM_KEY_RIGHT) { s_gear_yaw = (s_gear_yaw + 8) & 255; return TRUE; }
     return FALSE;
 }
+#endif
+
+#if defined(SEGUI_HAVE_XMB)
+static void draw_xmb_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, void *ctx)
+{
+    (void)app; (void)ctx;
+    if (!bounds) return;
+#if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
+    xmb_pico_host_bind(dev ? (void *)dev->pixels : 0,
+                       dev ? (int)dev->width : 0,
+                       dev ? (int)dev->height : 0);
+#else
+    (void)dev;
+#endif
+    xmb_pico_paint((int)bounds->left, (int)bounds->top,
+                   (int)bounds->right, (int)bounds->bottom);
+}
+
+static SEGUI_PALM_APP_ID xmb_go_palm(int go)
+{
+    switch (go) {
+    case XMB_GO_TERMINAL: return PALM_APP_TERMINAL;
+    case XMB_GO_EDITOR:   return PALM_APP_EDITOR;
+    case XMB_GO_BROWSER:  return PALM_APP_BROWSER;
+    case XMB_GO_CABINET:  return PALM_APP_CABINET;
+    case XMB_GO_GEARS:    return PALM_APP_GLGEARS;
+    case XMB_GO_CHAT:     return PALM_APP_CHAT;
+    case XMB_GO_PREFS:    return PALM_APP_PREFS;
+    default:              return PALM_APP_LAUNCHER;
+    }
+}
+
+static void build_xmb(SEGUI_APP *app, const SEGUI_PROFILE *prof)
+{
+    int tab;
+    segui_app_init(app, "XMB", prof);
+    tab = segui_add_tab(app, "Bar", FALSE);
+    segui_add_canvas(app, tab, draw_xmb_canvas, NULL);
+}
+
+static BOOL key_xmb(int key)
+{
+    int go;
+    if (key == PALM_KEY_LEFT)  { xmb_pico_move(0, -1); return TRUE; }
+    if (key == PALM_KEY_RIGHT) { xmb_pico_move(0, +1); return TRUE; }
+    if (key == PALM_KEY_UP)    { xmb_pico_move(-1, 0); return TRUE; }
+    if (key == PALM_KEY_DOWN)  { xmb_pico_move(+1, 0); return TRUE; }
+    if (key == PALM_KEY_ENTER) {
+        go = xmb_pico_go();
+        if (go != XMB_GO_NONE) segui_palm_switch(xmb_go_palm(go));
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
+#if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
+/* Host screenshot only. The picocalc elf does not have this app.
+ * tools/capture_segui.c paints the start hall into the canvas. */
+extern void segui_host_quake_paint(GDEV *dev, const RECT *bounds);
+
+static void draw_quake_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, void *ctx)
+{
+    (void)app; (void)ctx;
+    if (!bounds || !dev) return;
+    segui_host_quake_paint(dev, bounds);
+}
+
+static void build_quake_preview(SEGUI_APP *app, const SEGUI_PROFILE *prof)
+{
+    int tab;
+    segui_app_init(app, "Quake", prof);
+    tab = segui_add_tab(app, "Start", FALSE);
+    segui_add_canvas(app, tab, draw_quake_canvas, NULL);
+}
+#endif
 
 /* ── 6, 7 & 8. Contacts, Phone & Chat (Backed by Real Shared chat_core.c) ─ */
 
@@ -959,16 +1074,37 @@ static void launch_cb_phone(SEGUI_APP *a, SEGUI_CTRL *c)    { (void)a;(void)c; s
 static void launch_cb_chat(SEGUI_APP *a, SEGUI_CTRL *c)     { (void)a;(void)c; segui_palm_switch(PALM_APP_CHAT);     }
 static void launch_cb_prefs(SEGUI_APP *a, SEGUI_CTRL *c)    { (void)a;(void)c; segui_palm_switch(PALM_APP_PREFS);    }
 
+#if defined(SEGUI_HAVE_XMB)
+static int s_launch_page; /* 0 = the nine apps, 1 = the XMB tile */
+
+static void launch_cb_xmb(SEGUI_APP *a, SEGUI_CTRL *c)
+{
+    (void)a; (void)c;
+    segui_palm_switch(PALM_APP_XMB);
+}
+#endif
+
 static void build_launcher(SEGUI_APP *app, const SEGUI_PROFILE *prof)
 {
     int tab;
     segui_app_init(app, "B-System", prof);
+#if defined(SEGUI_HAVE_XMB)
+    if (s_launch_page) {
+        tab = segui_add_tab(app, "XMB", TRUE);
+        segui_add_button(app, tab, "XMB", SEGUI_ICON_WINDOW, launch_cb_xmb);
+        return;
+    }
+#endif
     tab = segui_add_tab(app, "Apps", TRUE);
     segui_add_button(app, tab, "Terminal", SEGUI_ICON_TERMINAL, launch_cb_term);
     segui_add_button(app, tab, "Editor",   SEGUI_ICON_EDITOR,   launch_cb_edit);
     segui_add_button(app, tab, "Browser",  SEGUI_ICON_BROWSER,  launch_cb_browse);
     segui_add_button(app, tab, "Cabinet",  SEGUI_ICON_CABINET,  launch_cb_cab);
+#if defined(PICOCALC_APP_QUAKE)
+    segui_add_button(app, tab, "Quake",    SEGUI_ICON_BOLT,     launch_cb_gears);
+#else
     segui_add_button(app, tab, "GLGears",  SEGUI_ICON_GEARS,    launch_cb_gears);
+#endif
     segui_add_button(app, tab, "Contacts", SEGUI_ICON_CONTACTS, launch_cb_contacts);
     segui_add_button(app, tab, "Phone",    SEGUI_ICON_PHONE,    launch_cb_phone);
     segui_add_button(app, tab, "Chat",     SEGUI_ICON_CHAT,     launch_cb_chat);
@@ -1032,11 +1168,13 @@ static const SEGUI_PALM_MENU_ITEM s_menu_cabinet[] = {
     { "Volume Info",        menu_cab_df  },
     { "Home Launcher (F1)", menu_go_home }
 };
+#if !defined(PICOCALC_APP_QUAKE)
 static const SEGUI_PALM_MENU_ITEM s_menu_gears[] = {
     { "Pause / Resume",     gears_menu_pause },
     { "Reset Camera",       gears_menu_reset },
     { "Home Launcher (F1)", menu_go_home     }
 };
+#endif
 static const SEGUI_PALM_MENU_ITEM s_menu_contacts[] = {
     { "Open Chat",          menu_open_chat  },
     { "Open Phone",         menu_open_phone },
@@ -1073,11 +1211,21 @@ static const PALM_DESC s_apps[PALM_APP_COUNT] = {
     { "Editor",      "Editor",  build_editor,   key_editor,   s_menu_edit,     5 },
     { "Browser",     "Browse",  build_browser,  key_browser,  s_menu_browser,  5 },
     { "Cabinet",     "Cabinet", build_cabinet,  NULL,         s_menu_cabinet,  2 },
+#if defined(PICOCALC_APP_QUAKE)
+    { "Quake",       "Start",   build_quake,    key_quake,    s_menu_default,  2 },
+#else
     { "GLGears",     "GLGears", build_glgears,  key_glgears,  s_menu_gears,    3 },
+#endif
     { "Contacts",    "Contact", build_contacts, NULL,         s_menu_contacts, 3 },
     { "Phone",       "Phone",   build_phone,    NULL,         s_menu_phone,    3 },
     { "Chat",        "Chat",    build_chat,     NULL,         s_menu_chat,     3 },
     { "Preferences", "Prefs",   build_prefs,    NULL,         s_menu_prefs,    3 }
+#if defined(SEGUI_HAVE_XMB)
+    ,{ "XMB",        "XMB",     build_xmb,      key_xmb,      s_menu_default,  2 }
+#endif
+#if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
+    ,{ "Quake",      "Start",   build_quake_preview, NULL,    s_menu_default,  2 }
+#endif
 };
 
 /* ── Public Runtime API ────────────────────────────────────────────────── */
@@ -1111,7 +1259,18 @@ const char *segui_palm_app_name(SEGUI_PALM_APP_ID id)
     return (id >= 0 && id < PALM_APP_COUNT) ? s_apps[id].name : "Unknown";
 }
 SEGUI_APP *segui_palm_app(void) { return &s_app; }
-BOOL segui_palm_is_animated(void) { return s_active_id == PALM_APP_GLGEARS && !s_gear_paused; }
+BOOL segui_palm_is_animated(void)
+{
+#if defined(PICOCALC_APP_QUAKE)
+    if (s_active_id == PALM_APP_GLGEARS) return TRUE;
+#else
+    if (s_active_id == PALM_APP_GLGEARS && !s_gear_paused) return TRUE;
+#endif
+#if defined(SEGUI_HAVE_XMB)
+    if (s_active_id == PALM_APP_XMB) return TRUE;
+#endif
+    return FALSE;
+}
 
 void segui_palm_alert(const char *title, const char *msg, void (*on_confirm)(void))
 {
@@ -1245,15 +1404,34 @@ BOOL segui_palm_handle_key(int key, GDEV *dev)
         return FALSE;
     }
 
-    /* 5. Launcher direct hotkeys 1..9 */
+    /* 5. Launcher direct hotkeys 1..9. These stay the page-1 apps. */
     if (s_active_id == PALM_APP_LAUNCHER && key >= '1' && key <= '9') {
         segui_palm_switch((SEGUI_PALM_APP_ID)(PALM_APP_TERMINAL + (key - '1')));
         segui_palm_layout(dev);
         return TRUE;
     }
 
+#if defined(SEGUI_HAVE_XMB)
+    /* Left/Right on the launcher switches pages. Up/Down still walks the grid.
+     * GLGears keeps its own yaw keys; this runs only while the launcher is up. */
+    if (s_active_id == PALM_APP_LAUNCHER &&
+        (key == PALM_KEY_LEFT || key == PALM_KEY_RIGHT)) {
+        int page = (key == PALM_KEY_RIGHT) ? 1 : 0;
+        if (page != s_launch_page) {
+            s_launch_page = page;
+            segui_palm_switch(PALM_APP_LAUNCHER);
+            segui_palm_layout(dev);
+        }
+        return TRUE;
+    }
+#endif
+
     /* 6. App-specific key handler */
     if (d->on_key && d->on_key(key)) {
+#if defined(SEGUI_HAVE_XMB)
+        if (key == PALM_KEY_ENTER)
+            segui_palm_layout(dev);
+#endif
         return TRUE;
     }
 
@@ -1291,10 +1469,23 @@ BOOL segui_palm_handle_key(int key, GDEV *dev)
 
 BOOL segui_palm_tick(uint32_t now_ms)
 {
+#if defined(PICOCALC_APP_QUAKE)
+    if (s_active_id == PALM_APP_GLGEARS) {
+        start_sim_tick(now_ms);
+        return TRUE;
+    }
+#else
     (void)now_ms;
     if (s_active_id == PALM_APP_GLGEARS && !s_gear_paused) {
         s_gear_angle = (s_gear_angle + 4) & 255;
         return TRUE;
     }
+#endif
+#if defined(SEGUI_HAVE_XMB)
+    if (s_active_id == PALM_APP_XMB) {
+        xmb_pico_tick();
+        return TRUE;
+    }
+#endif
     return FALSE;
 }

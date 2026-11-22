@@ -2,8 +2,8 @@
 #
 # scripts/test_pico.sh — Automated Headless QEMU CI Gate for Raw Pico Series
 #
-# Verifies BOTH Cortex-M33 (RP2350 default, mps2-an521) AND
-# Cortex-M0+ Thumb-1 (RP2040, mps2-an385):
+# Verifies BOTH Cortex-M0+ Thumb-1 (RP2040 default, mps2-an385) AND
+# Cortex-M33 (RP2350, mps2-an521):
 #   - Clean zero-warning build (-Os -Wall -Wextra -Werror)
 #   - Boot banner & zero-heap static SRAM accounting
 #   - 1 kHz SysTick monotonic advance

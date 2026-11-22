@@ -32,7 +32,16 @@ SECTIONS
         . = ALIGN(4);
     }
 
-    __data_load__ = .;
+    /* Scratch bank X. VMA is the 4 KB past the striped SRAM. The span kernel
+     * is copied there from flash. It is outside the 210 KB assert. */
+    __scratch_load__ = .;
+    .scratch_x (0x20000000 + BTRON_RAM_LENGTH) : AT(__scratch_load__) {
+        __scratch_x_start__ = .;
+        *(.scratch_x*)
+        . = ALIGN(4);
+        __scratch_x_end__ = .;
+    }
+    __data_load__ = __scratch_load__ + (__scratch_x_end__ - __scratch_x_start__);
     .data 0x20000000 : AT(__data_load__) {
         . = ALIGN(4);
         __data_start__ = .;
@@ -51,9 +60,12 @@ SECTIONS
     }
 
     __stack_top__ = 0x20000000 + BTRON_RAM_LENGTH;
+    /* Core 1 stack is 1 KB at the bottom of scratch bank Y. */
+    __core1_stack_top__ = 0x20000000 + BTRON_RAM_LENGTH + 4096 + 1024;
     __sram_used__ = (__data_end__ - __data_start__) + (__bss_end__ - __bss_start__);
     ASSERT(__sram_used__ <= 215040, "PicoCalc SRAM budget exceeded (> 210 KiB)!")
     ASSERT(__bss_end__ <= (__stack_top__ - 4096), "SRAM overflow into MSP stack!")
+    ASSERT((__scratch_x_end__ - __scratch_x_start__) <= 4096, "scratch_x exceeds 4 KiB")
 
     /DISCARD/ : {
         *(.ARM.exidx*)

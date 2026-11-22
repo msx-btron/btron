@@ -21,6 +21,9 @@
 #include <btron/segui_palm.h>
 #include "../apps/cabinet/cabinet_core.h"
 #include "pico_hal.h"
+#include "pico_regs.h"
+
+extern void picogl_log_frame(const char *client, uint32_t ms, int bands);
 
 static void pico_log(const char *s)
 {
@@ -33,6 +36,10 @@ extern void st7365p_init(void);
 extern void st7365p_sleep(int sleep_on);
 extern void i2ckbd_init(void);
 extern int  i2ckbd_poll_key(void);
+extern int  i2ckbd_poll_event(int *down);
+#if defined(PICOCALC_APP_QUAKE)
+#include "start_sim.h"
+#endif
 extern int  i2ckbd_read_battery(void);
 extern void i2ckbd_set_lcd_backlight(uint8_t level);
 extern void i2ckbd_set_kbd_backlight(uint8_t level);
@@ -125,7 +132,11 @@ static void segui_task(void *arg)
     last_bat_ms   = last_input_ms;
 
     pico_log("[FS  ] /SYS BROM mounted (OSAL_BOOK + NORTIA + HEART_SUTRA + PICO.TXT + BOOT.LOG)\n");
-    pico_log("[SEGUI] Palm OS 320x320 UI active (9 apps, 20 KiB banded DMA)\n");
+#if defined(PICOCALC_APP_QUAKE)
+    pico_log("[SEGUI] Palm OS 320x320 UI active (center is Quake)\n");
+#else
+    pico_log("[SEGUI] Palm OS 320x320 UI active (page 1 is 9 apps, page 2 is XMB)\n");
+#endif
 
     for (;;) {
         uint32_t now = pico_ticks_ms();
@@ -133,7 +144,33 @@ static void segui_task(void *arg)
         /* During 3D animation, poll I2C1 every 60 ms to avoid 1.5 ms busy stall/frame */
         if (!segui_palm_is_animated() || (uint32_t)(now - last_key_ms) >= 60u) {
             last_key_ms = now;
+#if defined(PICOCALC_APP_QUAKE)
+            {
+                int down = 1;
+                key = i2ckbd_poll_event(&down);
+                if (key >= 0) {
+                    last_input_ms = now;
+                    if (lcd_asleep) {
+                        st7365p_sleep(0);
+                        i2ckbd_set_lcd_backlight(s_user_lcd_bkl);
+                        lcd_asleep = 0;
+                        lcd_dimmed = 0;
+                        dirty = ALL_BANDS_DIRTY;
+                        key = -1;
+                    } else if (lcd_dimmed) {
+                        i2ckbd_set_lcd_backlight(s_user_lcd_bkl);
+                        lcd_dimmed = 0;
+                    }
+                    if (key >= 0 && segui_palm_active_id() == PALM_APP_GLGEARS &&
+                        (key == START_KEY_FIRE || !down)) {
+                        start_sim_key(key, down);
+                        key = -1;
+                    }
+                }
+            }
+#else
             key = i2ckbd_poll_key();
+#endif
         }
 
         if (key >= 0) {
@@ -181,7 +218,27 @@ static void segui_task(void *arg)
         }
 
         if (!lcd_asleep && dirty != 0u) {
-            dp_pico_present(&s_screen, dirty, segui_palm_paint);
+            if (segui_palm_is_animated()) {
+                uint32_t t0 = TIMER0_TIMERAWL;
+                uint32_t mask = dirty;
+                int bands = 0;
+                dp_pico_present(&s_screen, dirty, segui_palm_paint);
+                while (mask) {
+                    bands += (int)(mask & 1u);
+                    mask >>= 1;
+                }
+                {
+#if defined(PICOCALC_APP_QUAKE)
+                    const char *client = "quake";
+#else
+                    const char *client = "gears";
+                    if (segui_palm_active_id() == PALM_APP_XMB) client = "xmb";
+#endif
+                    picogl_log_frame(client, (TIMER0_TIMERAWL - t0) / 1000u, bands);
+                }
+            } else {
+                dp_pico_present(&s_screen, dirty, segui_palm_paint);
+            }
             dirty = 0u;
         }
 

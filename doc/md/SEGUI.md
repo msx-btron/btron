@@ -2,7 +2,7 @@
 
 > [!IMPORTANT]
 > **Locked Requirements (Rev 2)**
-> 1. **Default Board**: **RP2350 (Pico 2, Dual Cortex-M33, 520 KiB SRAM, 4 MiB Flash)**, switchable via `PICO_BOARD=rp2040` (**Pico 1, Dual Cortex-M0+, 264 KiB SRAM, 2 MiB Flash**).
+> 1. **Default Board**: **RP2040 (Pico 1, Dual Cortex-M0+, 264 KiB SRAM, 2 MiB Flash)**, switchable via `PICO_BOARD=rp2350` (**Pico 2, Dual Cortex-M33, 520 KiB SRAM, 4 MiB Flash**).
 > 2. **Dual Packaging for Both Chips**: `make picocalc` emits **both** standard **`.uf2`** (works for USB `BOOTSEL` **and** SD-card `uf2loader`) **and** `+200 KiB` offset **`-sdboot.bin`** (for `pico_multi_booter` / `sd_boot`) for **both RP2350 and RP2040**.
 > 3. **Zero External SDK**: Pure LLVM `/opt/homebrew/opt/llvm/bin/clang` + `ld.lld` + `llvm-objcopy` + Python `scripts/tool_mk_uf2.py`. Both `thumbv8m.main-none-eabi` (RP2350) and `thumbv6m-none-eabi` (RP2040) are verified on host.
 
@@ -31,7 +31,7 @@ By layering the **Palm OS 5 HiRes (`320 × 320`) application model** directly on
 
 ---
 
-## 2. Verified Hardware Specification (RP2350 Default + RP2040)
+## 2. Verified Hardware Specification (RP2040 Default + RP2350)
 
 ### 2.1 ClockworkPi PicoCalc Peripherals (Identical Pinout on Pico 2 & Pico 1)
 
@@ -44,7 +44,7 @@ By layering the **Palm OS 5 HiRes (`320 × 320`) application model** directly on
 
 ### 2.2 RP2350 vs RP2040 Hardware Delta (Handled Cleanly in `pico_regs.h` + `hal_rp2xxx.c`)
 
-| Feature | **RP2350 (Default, Pico 2)** | **RP2040 (`PICO_BOARD=rp2040`, Pico 1)** |
+| Feature | **RP2350 (`PICO_BOARD=rp2350`, Pico 2)** | **RP2040 (Default, Pico 1)** |
 | :--- | :--- | :--- |
 | **Clang Target** | `--target=thumbv8m.main-none-eabi -mcpu=cortex-m33 -mthumb` | `--target=thumbv6m-none-eabi -mcpu=cortex-m0plus -mthumb` |
 | **QEMU Machine (`run-pico`)** | **`-M mps2-an521`** (Dual Cortex-M33 — exact ISA match) | **`-M mps2-an385`** (Cortex-M3 — ARMv6-M superset) |
@@ -67,7 +67,7 @@ flowchart TD
         Q_HAL --> CORE_PICO
     end
 
-    subgraph HW["make picocalc / make flash-picocalc (RP2350 Default | RP2040)"]
+    subgraph HW["make picocalc / make flash-picocalc (RP2040 Default | PICO_BOARD=rp2350)"]
         HW_BOOT["startup_pico.S + picobin_rp2350.S / boot2_rp2040.S"]
         HW_HAL["hal_rp2xxx.c (XOSC->PLL, RESETS, PADS ISO=0, GPIO, UART0, DMA)"]
         LCD["st7365p_spi.c + dp_pico.c (320x16 Banded RGB565 DMA = 20 KiB SRAM)"]
@@ -184,15 +184,15 @@ scripts/
 
 ## 6. Makefile Targets
 
-| Command | Default (`PICO_BOARD=rp2350`) | With `PICO_BOARD=rp2040` |
+| Command | Default (`PICO_BOARD=rp2040`) | With `PICO_BOARD=rp2350` |
 | :--- | :--- | :--- |
-| `make pico` | `.build/btron-pico-rp2350-qemu.elf` (Cortex-M33) | `.build/btron-pico-rp2040-qemu.elf` (Cortex-M0+) |
-| `make run-pico` | `qemu-system-arm -M mps2-an521 -nographic -serial stdio` | `qemu-system-arm -M mps2-an385 -nographic -serial stdio` |
-| `make test-pico` | Runs `scripts/test_pico.sh` on **both** `mps2-an521` & `mps2-an385` | Same |
-| `make picocalc` | Emits `btron-picocalc-rp2350.uf2` **+** `btron-picocalc-rp2350-sdboot.bin` (and symlinks `btron-picocalc.uf2`) | Emits `btron-picocalc-rp2040.uf2` **+** `btron-picocalc-rp2040-sdboot.bin` |
-| `make picocalc-all` | Builds **all 4 real-hardware artifacts** (RP2350 UF2 + SD-bin, RP2040 UF2 + SD-bin) | Same |
-| `make flash-picocalc` | Auto-detects `/Volumes/RP2350` (or `/Volumes/RPI-RP2`) for UF2; or `PICOCALC_MODE=sdboot` copies to SD `/firmware/btron.bin` (or `PICOCALC_MODE=uf2loader` copies `.uf2` to SD `/pico2-apps/` or `/pico1-apps/`) | Auto-selects RP2040 artifact |
-| `make test-picocalc` | Builds & validates **all 4 binaries** (PICOBIN markers, RP2040 boot2 CRC32, UF2 family IDs/checksums, SRAM < 64 KiB gate, 320×320 Palm/SegUI golden screens) | Same |
+| `make pico` | `.build/pico-qemu-rp2040/btron-pico-rp2040-qemu.elf` (Cortex-M0+) | `.build/pico-qemu-rp2350/btron-pico-rp2350-qemu.elf` (Cortex-M33) |
+| `make run-pico` | `qemu-system-arm -M mps2-an385 -nographic -serial stdio` | `qemu-system-arm -M mps2-an521 -nographic -serial stdio` |
+| `make test-pico` | Runs `scripts/test_pico.sh` on **both** `mps2-an385` & `mps2-an521` | Same |
+| `make picocalc` | Emits `btron-picocalc-rp2040.uf2` **+** `btron-picocalc-rp2040-sdboot.bin` (and symlinks `btron-picocalc.uf2`) | Emits `btron-picocalc-rp2350.uf2` **+** `btron-picocalc-rp2350-sdboot.bin` |
+| `make picocalc-all` | Builds **all 4 real-hardware artifacts** (RP2040 UF2 + SD-bin, RP2350 UF2 + SD-bin) | Same |
+| `make flash-picocalc` | Builds the RP2040 UF2. Volume detection still accepts `/Volumes/RPI-RP2` or `/Volumes/RP2350` | Builds the RP2350 UF2. Volume detection is the same |
+| `make test-picocalc` | Builds both images on both boards and rejects `ztriangle`, `e1m1`, and `progs.dat` | Same |
 
 ---
 

@@ -1,6 +1,6 @@
 # PicoGL
 
-Architecture and implementation plan for the PicoCalc 3D pipeline. This document is the plan. It does not start the code.
+Architecture and implementation plan for the PicoCalc 3D pipeline. Phases 1 and 5 meet their Done-when lines. Phases 2, 3, and 4 are in the tree. Their UART frame-rate lines are not measured. A phase is finished only when its "Done when" line is true.
 
 PicoGL is the 3D pipeline for the Clockwork PicoCalc. Two RP2040 cores, no framebuffer, the ST7365P that `make picocalc` already drives. Core 1 rasters. Core 0 runs SegUI, the submit, and the SPI DMA.
 
@@ -20,7 +20,7 @@ Five phases, in order. A phase is done only when its deliverable exists and its 
 
 **Deliverable.** `GL_BACKEND_PICOGL = 5`. On `PICO_REAL_HW` the seven calls in `r_eegs.h` transform and bin. The raster is empty. A host test feeds one fan and checks the bins. The PS2 implementation stays behind `BTRON_PS2_TARGET`.
 
-**Also in this phase.** Measure `__sram_used__` on the current picocalc elf and record the choice from the open question on depth and buckets: a 10 KB depth picture or depth stored in each span, and one bucket set or two.
+**Also in this phase.** Measured `.build/picocalc-rp2040/btron-picocalc-rp2040.elf` on 2026-11-22: data 3,268 + bss 198,924 = 202,192. The assert is 215,040, so 12,848 bytes were free beside SegUI. The 10 KB depth picture and a second bucket set do not fit. Neither does a 48-wide bin (23,040). The choice recorded in `picogl.h` is one bucket set, depth stored on the triangle (`iz`), and 16 triangles a band (16 × 20 × 24 = 7,680).
 
 **Done when.** The host fan matches the expected bins and `drop` is 0. Desktop, virgl, V3D, and TinyGL still take the `glBegin` path.
 
@@ -30,11 +30,23 @@ Five phases, in order. A phase is done only when its deliverable exists and its 
 
 **Done when.** On hardware, UART prints `picogl gears` at 20 fps or better for the 17 bands in mask `0x0007FFFC`. The SRAM assert holds. A host test still rasters one band on one core, so the reference does not need the FIFO, and the depth winner matches a software band.
 
+**Status, 2026-11-22.** The host test passes. `make PICO_BOARD=rp2040 picocalc` links both the UF2 elf and the SD-boot elf. `__sram_used__` is 207,364 (data 2,804 + bss 204,560), so 7,676 bytes are free under 215,040. `.scratch_x` is `paint_row`, 452 bytes, at `0x20040000`. Core 1's stack top is `0x20041400`. The 20 fps line is not measured. There is no board in this run.
+
+GLGears on that image calls the GLES door by name (`picogl_gl_*`). The image does not go through `g_gl`. At the end of phase 2, TinyGL was still linked and the 112×96 color and iz came out of the 96 KB arena. Phase 3 moves those buffers to static BSS and drops the arena. A bound target queues 16 triangles and flushes them, so a gear strip does not drop. With no target, a full band still counts as a drop.
+
+Core 0 transforms, then waits while core 1 runs the integer span. That span does not divide, so it does not take the hardware divider. A cold boot leaves core 1 in the bootrom. `pico_core1_launch` sends `0, 0, 1, VTOR, SP, entry`, and the bootrom echoes each word. If core 1 has already entered `Reset_Handler`, the park there accepts one thumb pointer in flash or SRAM and ignores the bootrom words. If the wake fails, core 0 paints the same span.
+
+`dp_pico_present` paints a strip, then calls `st7365p_flush_band_dma`. The wait at the start of that call is the previous band. The new transfer is not waited out. SPI is one bus, so the window is programmed only while the bus is idle. The `ms` in the UART line is the whole animated present.
+
 ### Phase 3 — `make picocalc`
 
 **Deliverable.** The existing `make picocalc` image. Page 1 of the launcher is unchanged and GLGears is still the center. Page 2, reached with Left/Right, is XMB (`xmb_pico.c`, 32×32 P8 cells). `PICOCALC_TGL_C` is not in the link.
 
 **Done when.** GLGears and XMB both launch. UART `picogl xmb` is 12 fps or better. Terminal and Cabinet still open. `ztriangle` is absent from the elf.
+
+**Status, 2026-11-22.** `make PICO_BOARD=rp2040 picocalc` links. `PICOCALC_TGL_C` is not on that link. `llvm-nm` has no `ztriangle`, `glInit`, or `ZB_` symbol, and the elf has no `ztriangle` string. `build_terminal`, `build_cabinet`, `build_glgears`, and `build_xmb` are in the elf. Page 1 is still the nine apps with GLGears in the center. Left/Right on the launcher switches pages. Page 2 is one XMB tile. Keys 1–9 still open Terminal through Prefs. The XMB app paints a gradient, a `DST_COLOR_ONE` ribbon, one category row, one icon row of 32×32 P8 cells, and A1 labels. Enter on Terminal, Editor, Browser, Cabinet, GLGears, Chat, or Prefs opens that app.
+
+`__sram_used__` on the RP2040 elf is 173,588 (data 2,804 + bss 170,784), so 41,452 bytes are free under 215,040. The RP2350 elf is 173,580. The 96 KB arena is gone. Gears color is `glgears_segui_render.s_rgb` (21,504) and iz is `s_iz` (43,008), both static BSS. `.scratch_x` is still `paint_row`, 452 bytes, at `0x20040000`. On RP2350, `.scratch_x` is at `0x20080000` and core 1's stack top is `0x20081400`. The host bin and raster tests pass. UART `picogl xmb <ms> tri= span= drop= bands=` is compiled. The 12 fps line is not measured. There is no board in this run. This link has no `gl_dispatch`, so the GLES door stays the `picogl_gl_*` names. `pico_tinygl_rt.c` stays for `sinf` and `sqrtf`.
 
 ### Phase 4 — `make picocalc-quake`
 
@@ -42,11 +54,19 @@ Five phases, in order. A phase is done only when its deliverable exists and its 
 
 **Done when.** From the center tile you can walk the hall, open a door, kill a zombie, and fire a weapon you picked up. A changelevel shows the slipgate line and does not load another map. UART `picogl quake` is 12 fps or better while standing still, and `drop` is printed if a band overflows. `e1m1` and `progs.dat` are absent.
 
+**Status, 2026-11-22.** `make PICO_BOARD=rp2040 picocalc-quake` links `.build/picocalc-quake-rp2040/btron-picocalc-quake-rp2040.elf`. text 792,000, data 2,692, bss 182,524. `__sram_used__` is 185,216 (`0x2d380`), so 29,824 bytes are free under 215,040. `__bss_end__` is `0x2002d384`, which is under `__stack_top__` (`0x20040000`) minus the 4 KB guard. `.scratch_x` is still `paint_row`, 452 bytes, at `0x20040000`. The view is 128×96 and flat shaded: `s_rgb` is 24,576 bytes, `s_iz` is 49,152, the hull walk `s_hull_fr` is 4,096, and the node walk `s_node_fr` is 1,536. The cook stores each face's palette-average color. The sim submits that color with `tex = -1` through `picogl_tris`. The cooked blob is `.rodata`. UF2 `btron-picocalc-quake-rp2040.uf2` is 1,589,760 bytes. The payload bin is 794,692 bytes at `0x10000000`, under the 2 MB flash. The SD-boot bin is 794,436 bytes at `0x10032000`, under the 1,892,352-byte window. `PICO_BOARD` defaults to `rp2040`. `PICO_BOARD=rp2350` also links: text 792,924, data 2,692, bss 182,516, `__sram_used__` 185,208. Its UF2 is 1,591,296 bytes and its SD-boot bin is 795,596 bytes.
+
+`glgears_segui.c` and `xmb_pico.c` are out of `PICOCALC_COMMON_C`. `llvm-nm` has `build_quake`, `start_sim_init`, `start_sim_tick`, `start_sim_render`, and the eight shell builders. It has no `build_glgears`, `build_xmb`, `xmb_pico`, `build_quake_preview`, or `ztriangle`. The elf has no `e1m1`, `progs.dat`, or `player.mdl` string. `r_brush.c` and `r_alias.c` are not on this link. A `GLGears` string remains from `doc/txt/PICO.txt` in the cabinet image. That is help text, not the renderer. The center slot keeps the `PALM_APP_GLGEARS` index. Inside the app, keys `1`–`8` select a carried weapon and `e` cycles. Ctrl (`0x7E`) fires. Launcher keys `1`–`9` still open apps only while the launcher is up. F1 stays Home.
+
+`make test-start-sim` passed on the host. The spawn is not solid. A yaw-90 walk moves. Door 0 opens from 0 to 54. The supershotgun drops zombie 8 from 60 to 4. The rocket launcher leaves one projectile in flight. The slipgate keeps the hall and shows `Walk into the Slipgate to start playing Quake!`. One 128×96 frame lit 4,547 of 12,288 pixels and submitted 104 triangles. The hall has no shotgun pickup. The picked-up weapons in that test are the supershotgun and the rocket launcher. The 12 fps line is not measured. There is no board in this run. Nothing was flashed. `make flash-picocalc` still builds the gears/XMB UF2. The eight shell apps stayed. `make test-picocalc` relinked that gears image in the same run.
+
 ### Phase 5 — Gates
 
 **Deliverable.** `scripts/test_picocalc_build.sh` builds `make picocalc` and `make picocalc-quake` for the boards it already covers, and checks the SRAM assert, the UF2, and boot2.
 
 **Done when.** The script fails if either elf contains `ztriangle`, the string `e1m1`, or `progs.dat`. The existing picocalc checks still pass.
+
+**Status, 2026-11-22.** `make test-picocalc` runs `scripts/test_picocalc_build.sh` and passed. It builds both images for RP2040 and RP2350. UF2 family IDs match (`0xE48BFF56` / `0xE48BFF59`), the RP2040 boot2 CRC is `0xC0278CA8`, and each SD-boot image has the right MSP and a Thumb reset handler. `__sram_used__` is 173,588 and 173,580 on the gears elfs, and 185,216 and 185,208 on the quake elfs, all under 215,040. The RP2040 payloads fit in 2 MiB and in the SD-boot window. A file that contains `ztriangle`, `e1m1`, or `progs.dat` is rejected, and none of the four elfs contain those strings or a `ztriangle` symbol. The gears elfs have `build_glgears`, `build_xmb`, `build_terminal`, and `build_cabinet`. The quake elfs have `build_quake` and `start_sim_render`, and they do not have `build_glgears` or `build_xmb`. `PICO_BOARD` defaults to `rp2040`, so unqualified `make picocalc` and `make picocalc-quake` are the RP2040 images.
 
 ## 1. What ships
 
@@ -66,6 +86,8 @@ Phone      Chat      Prefs
 | `make picocalc-quake` | Quake | The same nine-app shell. The center slot is the start level, and it is playable. Gears and XMB are not on this image |
 
 `PALM_APP_GLGEARS` stays the slot index so page 1 does not renumber. The Quake image changes that slot's build function and menu. Page 2 exists only on `make picocalc`.
+
+The 2026-11-22 quake link is that sim: a flat-shaded hall, host-tested, not flashed. 12 fps is not measured. XMB is off that elf because page 2 belongs to `make picocalc`. GLGears is off because its 64 KB of color and iz is the SRAM the level needs.
 
 ## 2. The start level is playable
 
@@ -132,7 +154,7 @@ Cooked models, few frames, one skin, submitted as `R_EEGS_Tris`:
 
 `player.mdl` (191,852 bytes) is not shipped. The view is first person. A death is the gib models and a respawn at `info_player_start`.
 
-Alias draws on Pico. The PS2 EEGS path still returns immediately from alias and particles, because that is the 30 fps slice on the GS. The Pico Quake image links `r_alias.c` and, when `GL_BACKEND_PICOGL` is live, emits `R_EEGS_Tris` for the cooked frames. Particles that are not a projectile are a small `R_EEGS_Fill` or are omitted.
+Alias draws on Pico from the cooked frames in the blob. `start_sim.c` submits them with `picogl_tris`, which is what `R_EEGS_Tris` forwards to on Pico. `r_alias.c` and `r_brush.c` are not on this link. The PS2 EEGS path still returns immediately from alias and particles, because that is the 30 fps slice on the GS. Particles that are not a projectile are omitted.
 
 Flash, RP2040, 2 MB: shell about 495 KB minus TinyGL, BSP about 625 KB, models at the 256 KB cap, PicoGL and the sim well under 150 KB of code. The image stays under 2 MB with margin for the +200 KB SD-boot origin. The blob is not copied into SRAM.
 
@@ -162,7 +184,7 @@ The bar is [Pico3D](https://github.com/bernhardstrobl/Pico3D): core 1 rasters, Q
 
 The 19 fps ceiling is the wire. Missing the 2.62 ms window on core 1 drops the frame rate into the teens. Thirty fps needs a smaller window or a faster SPI clock, which is a driver change.
 
-`st7365p_flush_band_dma` currently waits before returning. Core 1 fills strip B while DMA sends strip A, and waits only when the strip it wants is still in flight. Core 0 is the only core that programs SPI and DMA.
+`dp_pico_present` paints the idle strip, then starts `st7365p_flush_band_dma`. The wait at the start of that call is the previous band. Core 0 is the only core that programs SPI and DMA. Phase 2 does not hide the span behind that DMA: core 0 waits while core 1 paints the gears target, then core 0 blits and kicks the wire.
 
 ### Stages
 
@@ -206,7 +228,7 @@ void R_EEGS_String(int x, int y, const char *str,
 | `Tris` | A triangle list, same shade and texture. World faces, cooked alias frames, projectiles |
 | `Fill`, `String` | HUD. Screen pixels. No depth |
 
-`GL_BACKEND_PICOGL = 5`. `gl_backend_default()` returns it under `PICO_REAL_HW`. `g_picogl_ops` is the GLES door: `glBegin` records ≤ 32 verts, `glEnd` emits the same triangles as `R_EEGS_Tris`. GLGears is this door. The subset is ES 1.1 common-lite. Outside it, `GL_INVALID_ENUM` and a no-op.
+`GL_BACKEND_PICOGL = 5`. `g_picogl_ops` is the GLES door: `glBegin` records ≤ 32 verts, `glEnd` emits the same triangles as `R_EEGS_Tris`. GLGears is this door. The PicoCalc image calls the door by name. That link has no `gl_dispatch` and no TinyGL, so there is no TinyGL default left in the elf. Host builds still default to TinyGL. The subset is ES 1.1 common-lite. Outside it, `GL_INVALID_ENUM` and a no-op.
 
 | In | Out |
 |---|---|
@@ -224,9 +246,9 @@ void R_EEGS_String(int x, int y, const char *str,
 
 **Stage 3.** Sutherland–Hodgman on the six planes, the same rule as `eegs_geom.c`: a vertex with w near 0 never reaches the raster. Near 8, far 1024, in Q10. The EEGS 0.1 / 1000 frustum does not fit a 16-bit band Z.
 
-**Stage 4.** A triangle is 24 bytes: y0, y1, edge steps, 1/z, RGB565 or UV, texture id, flags (`FLAT`, `TEX`, `ADD`, `ALPHA`). Twenty bands, 48 triangles each. Overflow increments `drop` and is a failed frame. 48 × 20 × 24 = 23,040 bytes.
+**Stage 4.** A triangle is 24 bytes: y0, y1, edge steps, 1/z, RGB565 or UV, texture id, flags (`FLAT`, `TEX`, `ADD`, `ALPHA`). Twenty bands, 16 triangles each. Overflow increments `drop` and is a failed frame. 16 × 20 × 24 = 7,680 bytes. That is the size that fits in the 12,848 bytes Phase 1 measured free.
 
-**Stage 5, core 1.** Opaque spans keep the nearer 1/z. ADD and ALPHA blend after that. U and V step on the per-core interpolator. Edges longer than 16 pixels are split at submit, so the span stays affine and does not divide per pixel. The span kernel sits in the 4 KB scratch bank. The hardware divider is used only from core 1, and only after core 0 has finished clipping.
+**Stage 5, core 1.** Opaque spans keep the nearer 1/z. ADD and ALPHA blend after that. U and V step on the per-core interpolator. Edges longer than 16 pixels are split at submit, so the span stays affine and does not divide per pixel. The span kernel sits in the 4 KB scratch bank. The hardware divider is used only from core 1, and only after core 0 has finished clipping. Phase 2's span is the integer edge test in `paint_row` (452 bytes at `0x20040000`). It does not sample a texture and it does not divide. Core 0 waits for it.
 
 **Stage 6, core 0.** HUD and XMB over the finished band. Rectangles do not become triangles.
 
@@ -239,9 +261,9 @@ void R_EEGS_String(int x, int y, const char *str,
 | Work | SegUI, keys, the sim, stages 1–4, stage 6, DMA kick | Stage 5 |
 | Handshake | Pushes a frame token on the SIO FIFO when the bins are sealed. Starts DMA when core 1 pushes a band index | Rasters into the strip that is not on the wire. Pushes frame-done at the end |
 
-Launch is bare-metal in `pico_core1.c`. The bootrom parks core 1. Core 0 sends the stack and the entry through the FIFO. Core 1's stack is 1 KB in the link script. There is no Pico SDK here.
+Launch is bare-metal in `pico_core1.c`. The bootrom parks core 1. Core 0 sends `0, 0, 1, VTOR, SP, entry` through the FIFO, and the bootrom echoes each word. Core 1's stack is 1 KB at `0x20041400`, in scratch bank Y. There is no Pico SDK here. The per-frame job is a flag in SRAM, not another FIFO word. Core 0 waits until core 1 sets it done.
 
-Bins are double-buffered when the assert allows a second 23 KB. Core 0 then builds frame N+1 while core 1 rasters frame N. One bin set still overlaps the shell with the raster: core 0 runs SegUI during stage 5 and transforms the next view after frame-done.
+One bucket set is what fits. Core 0 runs SegUI during stage 5 and transforms the next view after frame-done. A second set would be another 7,680 bytes and the measured image does not have them.
 
 XMB is mostly stage 6, on core 0. Core 1 still clears the bands so the shell and the DMA wait are not the same core.
 
@@ -282,7 +304,7 @@ Quake's world is drawn at internal 160×160 and stored 2× into the 320 strip. S
 picogl <client> <ms> tri=<n> span=<n> drop=<n> bands=<n>
 ```
 
-`ms` is core 1's raster plus the DMA wait. SPI stays 31.25 MHz.
+`ms` is the whole animated present: the span, the blits, and the DMA. SPI stays 31.25 MHz. Phase 2 prints this from `core_segui.c` with `TIMER0_TIMERAWL` while GLGears is moving.
 
 | Client | Target |
 |---|---|
@@ -296,16 +318,16 @@ picogl <client> <ms> tri=<n> span=<n> drop=<n> bands=<n>
 | Object | Bytes |
 |---|---|
 | Strips | 20,480, already in `dp_pico` |
-| Bins | 23,040, plus another 23,040 if the assert holds |
-| Span pool | 4,096 |
-| Depth picture for one band | 10,240, or none if depth lives in each span and the assert is tight |
+| Bins | 7,680. One set, 16 triangles a band |
+| Span pool | 4,096, phase 2, and only if the assert still holds |
+| Depth | On the triangle (`iz`). No 10 KB depth picture |
 | Texture arena | 8,192 |
 | Core 1 stack | 1,024 |
 | Context | ~2 KB |
 | Start-level slots | < 4 KB |
-| Total | ~48 KB with one bucket set, or ~71 KB with two. `__sram_used__` stays ≤ 215,040 |
+| Total beside the shell, phase 1 bins | 7,680. Later rows have to share the 12,848 bytes that were free. `__sram_used__` stays ≤ 215,040 |
 
-No 96 KB bump arena. No 112×96 RGBA buffer. `pico_tinygl_rt.c` stays for `sinf`.
+Phase 3 dropped the 96 KB arena with TinyGL. Gears color and iz are static BSS: 112×96 RGB565 (21,504) plus int32 iz (43,008). `pico_tinygl_rt.c` stays for `sinf` and `sqrtf`. There is no 112×96 RGBA buffer. On the 2026-11-22 rp2040 elf, `__sram_used__` is 173,580, so 41,460 bytes are free under 215,040.
 
 ## 4. Files
 
@@ -328,7 +350,7 @@ Desktop, virgl, EEGS, and V3D do not compile the PicoGL files.
 
 XMB paint, inside the band: gradient fill, ribbon as `DST_COLOR_ONE`, 32² P8 cells as `SRC_OVER`, A1 labels. One category row and one icon row. Cells come from the names in `xmb_icons.h`, regenerated at 32², and only the cells this page draws are in the header.
 
-`make picocalc-quake` is a sibling target. Same linker script, elf `btron-picocalc-quake-$(PICO_BOARD)`, flag `-DPICOCALC_APP_QUAKE`. It adds the blob, `start_sim.c`, and the Quake render files the scene calls need (`r_brush.c`, the Pico body of the scene API, `r_alias.c` for cooked frames, HUD fill and string). It does not add the progs VM, the server, or the Quake menu.
+`make picocalc-quake` is a sibling target. Same linker script, elf `btron-picocalc-quake-$(PICO_BOARD)`, flag `-DPICOCALC_APP_QUAKE`. It adds the blob and `start_sim.c`. The sim calls `picogl_tris` directly. It does not add `r_brush.c`, `r_alias.c`, the progs VM, the server, or the Quake menu.
 
 ## 5. Decisions
 
@@ -348,11 +370,5 @@ XMB paint, inside the band: gradient fill, ribbon as `DST_COLOR_ONE`, 32² P8 ce
 
 ## 6. Open questions
 
-1. Weapon switch is the number row if those keys exist on the PicoCalc matrix, otherwise one cycle key. The matrix in `i2ckbd_stm32.c` decides this in Phase 4, not a second control scheme.
-2. How the depth test and the triangle buckets sit in SRAM. This is not a product choice. Phase 1 measures the current PicoCalc elf and keeps the richest pair that still links under 210 KB.
-
-   Depth, for the 16 lines on screen right now. Either a small depth picture, 320×16×2 bytes = 10 KB, one number per pixel, or no picture at all: each horizontal run of a triangle carries its own depth and the rasterizer compares runs. The picture is the simpler test. The runs save 10 KB.
-
-   Buckets, the 20 per-band lists of triangles waiting to be drawn. One set is 23 KB. Core 1 has to finish the frame before core 0 can refill it. Two sets are 46 KB. Core 0 fills the next frame while core 1 draws the current one.
-
-   Preferred, if the assert holds: the 10 KB depth picture and two bucket sets. Fallback: depth stored in the runs, and one bucket set. The frame looks the same either way. The fallback gives up the overlap of "build next frame" with "draw this frame".
+1. Settled in Phase 4. Inside the Quake app, keys `1`–`8` select a carried weapon and `e` cycles. Ctrl (`0x7E`) or `f` fires. Launcher keys `1`–`9` still open apps only while the launcher is up. F1 stays Home.
+2. Depth and buckets are settled by the Phase 1 measurement, not left open. `.build/picocalc-rp2040/btron-picocalc-rp2040.elf` was data 3,268 + bss 198,924 = 202,192, against an assert of 215,040. Free: 12,848. Depth stays on the triangle. One bucket set, 16 triangles a band, 7,680 bytes. A per-pixel depth picture and a second bucket set do not fit beside SegUI. Core 0 refills the bins after core 1 finishes the frame.

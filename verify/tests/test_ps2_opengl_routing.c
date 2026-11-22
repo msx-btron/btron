@@ -77,6 +77,8 @@ const char *gl_backend_name(GL_BACKEND b)
     case GL_BACKEND_TINYGL: return "tinygl";
     case GL_BACKEND_VIRGL:  return "virgl";
     case GL_BACKEND_I915:   return "i915";
+    case GL_BACKEND_PICOGL: return "picogl";
+    case GL_BACKEND_V3D:    return "v3d";
     default:                return "unknown";
     }
 }

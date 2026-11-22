@@ -20,6 +20,7 @@ typedef enum {
     GL_BACKEND_I915   = 2,    /* Awe Morris i915 zero-cost proxy (Ph.3)   */
     GL_BACKEND_EEGS   = 3,    /* PlayStation 2 Emotion Engine Graphics Synthesizer */
     GL_BACKEND_V3D    = 4,    /* VideoCore VI (V3D 4.2) BCM2711 Hardware Pipeline */
+    GL_BACKEND_PICOGL = 5,    /* PicoCalc RP2040 band pipeline (src/desktop/graphics/picogl/) */
 } GL_BACKEND;
 
 /* The image's one microsecond, reached through the surface layer rather than included

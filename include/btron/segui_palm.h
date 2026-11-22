@@ -32,6 +32,12 @@ typedef enum {
     PALM_APP_PHONE,
     PALM_APP_CHAT,
     PALM_APP_PREFS,
+#if (defined(PICO_REAL_HW) && !defined(PICOCALC_APP_QUAKE)) || defined(SEGUI_HOST_XMB)
+    PALM_APP_XMB,          /* page 2 of make picocalc; not on the quake image */
+#endif
+#if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
+    PALM_APP_QUAKE_PREVIEW, /* host screenshot of the start hall; not in the picocalc elf */
+#endif
     PALM_APP_COUNT
 } SEGUI_PALM_APP_ID;
 

@@ -38,6 +38,14 @@ uint16_t dp_pico_color565(COLOR c)
     return (uint16_t)((v >> 8) | (v << 8));
 }
 
+/* Current band row, big-endian RGB565, or NULL when y is outside the band. */
+uint16_t *dp_pico_band_row(int y)
+{
+    int ry = y - s_band_y0;
+    if (ry < 0 || ry >= DP_BAND_H) return NULL;
+    return s_strip[s_active_buf] + ry * DP_W;
+}
+
 void dp_pico_put_pixel(H x, H y, uint16_t rgb565_be)
 {
     int ry = (int)y - s_band_y0;
@@ -118,6 +126,48 @@ void dp_pico_blit_rgba_2x(const RECT *dst_rect, const uint32_t *src, int src_w, 
         uint32_t sx_fp = sx_start;
         for (x = x0; x < x1; x++) {
             drow[x] = dp_pico_color565((COLOR)srow[sx_fp >> 16]);
+            sx_fp += step_x;
+        }
+        sy_fp += step_y;
+    }
+}
+
+/* Native RGB565 (r<<11|g<<5|b) into the strip. The panel DMA is byte-swapped.
+ * The DDA matches dp_pico_blit_rgba_2x. */
+void dp_pico_blit_rgb565(const RECT *dst_rect, const uint16_t *src, int src_w, int src_h)
+{
+    int x0, y0, x1, y1, by0, by1, y, x, dst_w, dst_h;
+    uint32_t step_x, step_y, sy_fp, sx_start;
+    uint16_t *strip;
+    if (!dst_rect || !src || src_w <= 0 || src_h <= 0) return;
+
+    x0 = dst_rect->left;  if (x0 < 0) x0 = 0;
+    x1 = dst_rect->right; if (x1 > DP_W) x1 = DP_W;
+    y0 = dst_rect->top;   if (y0 < 0) y0 = 0;
+    y1 = dst_rect->bottom;if (y1 > DP_H) y1 = DP_H;
+    if (x0 >= x1 || y0 >= y1) return;
+
+    by0 = y0 > s_band_y0 ? y0 : s_band_y0;
+    by1 = y1 < (s_band_y0 + DP_BAND_H) ? y1 : (s_band_y0 + DP_BAND_H);
+    if (by0 >= by1) return;
+
+    dst_w = dst_rect->right - dst_rect->left;
+    dst_h = dst_rect->bottom - dst_rect->top;
+    if (dst_w <= 0 || dst_h <= 0) return;
+
+    step_x   = ((uint32_t)src_w << 16) / (uint32_t)dst_w;
+    step_y   = ((uint32_t)src_h << 16) / (uint32_t)dst_h;
+    sx_start = (uint32_t)(x0 - dst_rect->left) * step_x;
+    sy_fp    = (uint32_t)(by0 - dst_rect->top) * step_y;
+
+    strip = s_strip[s_active_buf];
+    for (y = by0; y < by1; y++) {
+        const uint16_t *srow = src + (sy_fp >> 16) * src_w;
+        uint16_t *drow = strip + (y - s_band_y0) * DP_W;
+        uint32_t sx_fp = sx_start;
+        for (x = x0; x < x1; x++) {
+            uint16_t c = srow[sx_fp >> 16];
+            drow[x] = (uint16_t)((c >> 8) | (c << 8));
             sx_fp += step_x;
         }
         sy_fp += step_y;

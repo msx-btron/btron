@@ -22,12 +22,44 @@ int R_EEGS_Live(void)
 {
 #if defined(BTRON_PS2_TARGET)
     return gl_active_backend() == GL_BACKEND_EEGS;
+#elif defined(PICO_REAL_HW)
+    return gl_active_backend() == GL_BACKEND_PICOGL;
 #else
     return 0;
 #endif
 }
 
-#if !defined(BTRON_PS2_TARGET)
+#if defined(PICO_REAL_HW) && !defined(BTRON_PS2_TARGET)
+#include "../../../desktop/graphics/picogl/picogl.h"
+
+void R_EEGS_BeginFrame(int width, int height)
+{
+    picogl_begin_frame(width, height);
+}
+void R_EEGS_SetCamera(const float org[3], const float ang[3], int width, int height)
+{
+    picogl_set_camera(org, ang, width, height);
+}
+void R_EEGS_Poly(const float *xyz, const float *st, int nverts,
+                 uint32_t rgba, int gl_tex_idx)
+{
+    picogl_poly(xyz, st, nverts, rgba, gl_tex_idx);
+}
+void R_EEGS_Tris(const float *xyz, const float *st, int ntris,
+                 uint32_t rgba, int gl_tex_idx)
+{
+    picogl_tris(xyz, st, ntris, rgba, gl_tex_idx);
+}
+void R_EEGS_Fill(int x, int y, int w, int h, uint32_t color)
+{
+    picogl_fill(x, y, w, h, color);
+}
+void R_EEGS_String(int x, int y, const char *str, const uint8_t font[96][8])
+{
+    picogl_string(x, y, str, font);
+}
+
+#elif !defined(BTRON_PS2_TARGET)
 
 void R_EEGS_BeginFrame(int width, int height) { (void)width; (void)height; }
 void R_EEGS_SetCamera(const float org[3], const float ang[3], int width, int height)

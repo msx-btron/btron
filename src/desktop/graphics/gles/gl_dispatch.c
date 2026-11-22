@@ -77,6 +77,7 @@ const char *gl_backend_name(GL_BACKEND b)
     case GL_BACKEND_TINYGL: return "tinygl";
     case GL_BACKEND_VIRGL:  return "virgl";
     case GL_BACKEND_I915:   return "i915";
+    case GL_BACKEND_PICOGL: return "picogl";
     }
     return "unknown";
 }
@@ -135,6 +136,17 @@ void gl_init(GL_BACKEND backend, int width, int height, void *pixel_buf) {
         virgl_backend_init(width, height, pixel_buf);
         g_gl = &g_virgl_ops;
         s_active_backend = GL_BACKEND_VIRGL;
+        break;
+
+    case GL_BACKEND_PICOGL:
+        /* Scene submit (picogl_span.c) does not go through g_gl. Immediate
+         * mode is the phase 2 door, and the image default stays TinyGL until
+         * that door draws, so this case must not quietly become virgl. */
+        uart_puts_raw("[GL] PicoGL scene submit\n");
+        s_active_backend = GL_BACKEND_PICOGL;
+        (void)width;
+        (void)height;
+        (void)pixel_buf;
         break;
 
     default:

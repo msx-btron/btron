@@ -79,15 +79,47 @@ Reset_Handler:
     isb
 
 #if defined(PICO_REAL_HW)
-    /* Park Core 1 in low-power WFE loop (SIO_CPUID @ 0xD0000000) */
-    ldr r0, =0xD0000000
+    /* Core 1 normally stays in the bootrom until pico_core1.c sends the
+     * 6-word launch. This path runs only if core 1 entered Reset_Handler.
+     * A thumb pointer in flash or SRAM is the entry. Anything else is dropped
+     * so a bootrom 0,0,1 sequence cannot blx to address 1. IRQs stay off. */
+    ldr r0, =0xD0000000          /* SIO_CPUID */
     ldr r0, [r0]
     cmp r0, #0
-    beq 1f
-.core1_park:
+    beq .core0_cont
+.core1_fifo:
+    ldr r0, =0xD0000050          /* FIFO_ST */
+    ldr r0, [r0]
+    movs r1, #1                  /* VLD */
+    tst r0, r1
+    bne .core1_got
     wfe
-    b .core1_park
-1:
+    b .core1_fifo
+.core1_got:
+    ldr r0, =0xD0000058          /* FIFO_RD */
+    ldr r0, [r0]
+    movs r1, #1
+    tst r0, r1
+    beq .core1_fifo              /* even word: not a thumb entry */
+    lsrs r1, r0, #28
+    cmp r1, #1
+    beq .core1_go                /* 0x1....... flash */
+    cmp r1, #2
+    beq .core1_go                /* 0x2....... SRAM */
+    b .core1_fifo
+.core1_go:
+    ldr r1, =__core1_stack_top__
+    msr msp, r1
+    ldr r1, =0xE000ED08          /* VTOR */
+    ldr r2, =__vectors_start__
+    str r2, [r1]
+    dsb
+    isb
+    blx r0
+.core1_spin:
+    wfe
+    b .core1_spin
+.core0_cont:
 #endif
 
     /* Set MSP explicitly (required when launched from pico_multi_booter) */
@@ -109,6 +141,22 @@ Reset_Handler:
     str r1, [r0]
     dsb
     isb
+#endif
+
+#if defined(PICO_REAL_HW)
+    /* Copy .scratch_x from flash into scratch bank X. Core 1 never reaches here. */
+    ldr r0, =__scratch_x_start__
+    ldr r1, =__scratch_x_end__
+    ldr r2, =__scratch_load__
+.copy_scratch:
+    cmp r0, r1
+    bhs .copy_scratch_done
+    ldr r3, [r2]
+    str r3, [r0]
+    adds r0, r0, #4
+    adds r2, r2, #4
+    b .copy_scratch
+.copy_scratch_done:
 #endif
 
     /* Copy .data from Flash (__data_load__) to SRAM (__data_start__..__data_end__) */

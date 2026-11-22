@@ -320,6 +320,7 @@ static float xb_droplet_cov(float x, float y)
     return v * v;
 }
 
+#ifndef XMB_PICO32
 /* One texel, exactly as xb_bake_cell() used to compute it: the same sample
  * positions, the same coverage, and the same rule that an uncovered texel is left
  * alone rather than drawn with zero ink.  A texel the bake *did* write can still
@@ -341,7 +342,9 @@ static unsigned char xb_texel_alpha(int cell, int px, int py)
     a = (unsigned char)(cov * 255.0f);
     return a ? a : 1;
 }
+#endif
 
+#ifndef XMB_PICO32
 int main(void)
 {
     static const char head[] =
@@ -385,3 +388,87 @@ int main(void)
      * is short: say so instead of writing a truncated array. */
     return col ? 1 : 0;
 }
+#else
+/* 32² P8 for the PicoCalc page. Same coverage rule as xb_texel_alpha, on a
+ * 32-wide grid instead of XB_ICON_CELL. Only the cells that page draws. */
+static unsigned char xb_texel_alpha_n(int cell, int px, int py, int n)
+{
+    const float x = (float)px / (float)(n - 1) - 0.5f;
+    const float y = (float)py / (float)(n - 1) - 0.5f;
+    const float cov = (cell == IC_DROPLET) ? xb_droplet_cov(x, y)
+                                            : xb_icon_cov(cell, x, y);
+    unsigned char a;
+
+    if (cov <= 0.0f)
+        return 0;
+    a = (unsigned char)(cov * 255.0f);
+    return a ? a : 1;
+}
+
+int main(void)
+{
+    static const struct { int cell; const char *name; } cells[] = {
+        { IC_CAT_APPS,     "IC_CAT_APPS" },
+        { IC_CAT_SETTINGS, "IC_CAT_SETTINGS" },
+        { IC_CAT_GAMES,    "IC_CAT_GAMES" },
+        { IC_CAT_COMMANDS, "IC_CAT_COMMANDS" },
+        { IC_APP_TERM,     "IC_APP_TERM" },
+        { IC_APP_EDITOR,   "IC_APP_EDITOR" },
+        { IC_APP_TAD,      "IC_APP_TAD" },
+        { IC_APP_DRIVE,    "IC_APP_DRIVE" },
+        { IC_GEAR,         "IC_GEAR" },
+        { IC_APP_CHAT,     "IC_APP_CHAT" },
+        { IC_SLIDER,       "IC_SLIDER" },
+        { IC_INFO,         "IC_INFO" },
+        { IC_PROMPT,       "IC_PROMPT" },
+        { IC_APP_QUAKE,    "IC_APP_QUAKE" }
+    };
+    const int ncell = (int)(sizeof cells / sizeof cells[0]);
+    const int n = 32;
+    int c, i, col;
+
+    fputs("/*\n"
+          " * src/media/xmb/xmb_pico_icons.h -- GENERATED, do not edit.\n"
+          " *\n"
+          " * 32x32 P8 cells for the PicoCalc XMB page. Produced by\n"
+          " * verify/tests/gen_xmb_atlas.c -DXMB_PICO32 from the same glyph\n"
+          " * geometry as the 64px atlas. Index 0 is clear. Any other index is\n"
+          " * ink coverage. This is not the 384px atlas.\n"
+          " */\n"
+          "#ifndef XMB_PICO_ICONS_H\n"
+          "#define XMB_PICO_ICONS_H\n"
+          "#include \"xmb_icons.h\"\n"
+          "#define XMB_PICO_CELL 32\n\n", stdout);
+
+    for (c = 0; c < ncell; c++) {
+        fprintf(stdout, "static const unsigned char xmb_p8_%s[%d] = {\n",
+                cells[c].name, n * n);
+        col = 0;
+        for (i = 0; i < n * n; i++) {
+            fprintf(stdout, "0x%02x,",
+                    xb_texel_alpha_n(cells[c].cell, i % n, i / n, n));
+            if (++col == 16) {
+                fputc('\n', stdout);
+                col = 0;
+            }
+        }
+        fputs("};\n\n", stdout);
+    }
+
+    fputs("typedef struct { int cell; const unsigned char *px; } xmb_p8_ref_t;\n"
+          "static const xmb_p8_ref_t xmb_p8_refs[] = {\n", stdout);
+    for (c = 0; c < ncell; c++)
+        fprintf(stdout, "    { %s, xmb_p8_%s },\n", cells[c].name, cells[c].name);
+    fputs("};\n"
+          "static const int xmb_p8_n = (int)(sizeof xmb_p8_refs / sizeof xmb_p8_refs[0]);\n\n"
+          "static inline const unsigned char *xmb_pico_cell(int cell)\n"
+          "{\n"
+          "    int i;\n"
+          "    for (i = 0; i < xmb_p8_n; i++)\n"
+          "        if (xmb_p8_refs[i].cell == cell) return xmb_p8_refs[i].px;\n"
+          "    return 0;\n"
+          "}\n"
+          "#endif /* XMB_PICO_ICONS_H */\n", stdout);
+    return 0;
+}
+#endif

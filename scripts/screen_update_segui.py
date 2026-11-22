@@ -57,6 +57,15 @@ SCREENS = [
     ("picocalc_prefs", "9. Preferences", "Hardware",
      "PicoCalc Preferences",
      "Custom PicoCalc Preference window: LCD/Kbd backlight, Theme, Battery, SRAM, BOOTSEL, Power-Off."),
+    ("picocalc_launcher_xmb", "Home / XMB page", "Page 2",
+     "PicoCalc Launcher, page 2",
+     "Right from the 3x3 grid. One XMB tile. Page 1 and keys 1-9 stay the nine apps."),
+    ("picocalc_xmb", "XMB", "Opened",
+     "XMB",
+     "Opened XMB: gradient, ribbon, one category row, one icon row, 32x32 cells. Host capture of the PicoCalc painter."),
+    ("picocalc_quake", "Quake", "start.bsp",
+     "Quake start hall",
+     "SegUI shell with the Introduction hall open. Host preview of maps/start.bsp in the body, before the picocalc image is flashed."),
 ]
 
 

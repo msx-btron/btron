@@ -1,9 +1,9 @@
 /*
- * pico_tinygl_rt.c — Freestanding Static-Arena & Portable IEEE-754 SoftFP
- * Runtime for Real OpenGL ES 1.1 (TinyGL) on PicoCalc (RP2350 & RP2040)
+ * pico_tinygl_rt.c — Freestanding math and libc shims for the PicoCalc image.
  *
- * Zero libc, zero BootROM version dependency, zero dynamic heap fragmentation
- * (96 KiB deterministic static bump arena), NASA JPL Rule 3 compliant.
+ * The 96 KiB TinyGL bump arena left with TinyGL in phase 3. malloc returns
+ * NULL. sinf, cosf, and sqrtf stay: GLGears precompute and the PicoGL door
+ * call them. There is no 112x96 RGBA buffer.
  *
  * Copyright 2026 Synrc Research Center. MIT License.
  */
@@ -11,31 +11,19 @@
 #include <stdint.h>
 #include <stddef.h>
 
-/* ── Deterministic 96 KiB Static Arena for TinyGL + ZBuffer ────────────── */
-
-#define PICO_TGL_ARENA_BYTES (96u * 1024u)
-
-static uint8_t  s_tgl_arena[PICO_TGL_ARENA_BYTES] __attribute__((aligned(8)));
-static uint32_t s_tgl_top = 0;
-
 void pico_tgl_arena_reset(void)
 {
-    s_tgl_top = 0;
 }
 
 uint32_t pico_tgl_arena_used(void)
 {
-    return s_tgl_top;
+    return 0;
 }
 
 void *malloc(size_t size)
 {
-    uint32_t aligned = (uint32_t)((size + 7u) & ~7u);
-    if (aligned == 0u) aligned = 8u;
-    if (s_tgl_top + aligned > PICO_TGL_ARENA_BYTES) return NULL;
-    void *ptr = &s_tgl_arena[s_tgl_top];
-    s_tgl_top += aligned;
-    return ptr;
+    (void)size;
+    return NULL;
 }
 
 void *calloc(size_t nmemb, size_t size)
@@ -50,7 +38,7 @@ void *calloc(size_t nmemb, size_t size)
 
 void free(void *ptr)
 {
-    (void)ptr; /* Reclaimed deterministically via pico_tgl_arena_reset() */
+    (void)ptr;
 }
 
 /* ── Minimal Freestanding libc Shims (memcpy/memset in pico_aeabi.c) ───── */

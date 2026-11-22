@@ -13,7 +13,31 @@
 #include <stddef.h>
 #include <btron/dp.h>
 #include <graphics/gl.h>
+#if !defined(PICO_REAL_HW)
 #include "zbuffer.h"
+#endif
+#if defined(PICO_REAL_HW)
+#include "picogl.h"
+#define glBegin            picogl_gl_begin
+#define glEnd              picogl_gl_end
+#define glVertex3f         picogl_gl_vertex3f
+#define glNormal3f         picogl_gl_normal3f
+#define glViewport         picogl_gl_viewport
+#define glEnable           picogl_gl_enable
+#define glShadeModel       picogl_gl_shade_model
+#define glLightfv          picogl_gl_light_fv
+#define glMatrixMode       picogl_gl_matrix_mode
+#define glLoadIdentity     picogl_gl_load_identity
+#define glFrustum          picogl_gl_frustum
+#define glTranslatef       picogl_gl_translate_f
+#define glRotatef          picogl_gl_rotate_f
+#define glClearColor       picogl_gl_clear_color
+#define glClear            picogl_gl_clear
+#define glPushMatrix       picogl_gl_push_matrix
+#define glPopMatrix        picogl_gl_pop_matrix
+#define glMaterialfv       picogl_gl_material_fv
+extern void dp_pico_blit_rgb565(const RECT *dst, const uint16_t *src, int src_w, int src_h);
+#endif
 
 #ifndef M_PI
 #define M_PI 3.1415926535897932384626433832795
@@ -150,18 +174,15 @@ static void build_gear(GLfloat inner_radius, GLfloat outer_radius, GLfloat width
     draw_precomp_gear(&g);
 }
 
-#if defined(PICO_REAL_HW)
-extern void pico_tgl_arena_reset(void);
-extern void dp_pico_blit_rgba_2x(const RECT *dst_rect, const uint32_t *src, int src_w, int src_h);
-#endif
-
 uint32_t gl_perf_us(void) { return 0; }
 
 void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
                           float view_rotx, float view_roty)
 {
     int w, h;
+#if !defined(PICO_REAL_HW)
     ZBuffer *zb;
+#endif
     static GLfloat pos[4]   = { 5.0f, 5.0f, 10.0f, 0.0f };
     static GLfloat red[4]   = { 0.85f, 0.15f, 0.15f, 1.0f };
     static GLfloat green[4] = { 0.15f, 0.75f, 0.20f, 1.0f };
@@ -170,10 +191,12 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
     static GLfloat amb[4]   = { 0.2f, 0.2f, 0.2f, 1.0f };
 
 #if defined(PICO_REAL_HW)
-    /* Persistent TinyGL 112x96 32-bit RGBA ZBuffer + precomputed gear trig tables
-     * (0 sinf/cosf/sqrtf calls per frame, GL_FLAT rasterizer, 0 display-list bloat!) */
-    static ZBuffer      *s_zb = NULL;
+    /* 112x96 RGB565 plus iz, static. PicoGL draws it. The center tile stays
+     * GLGears. TinyGL's glBegin is not called. */
+    static uint16_t     s_rgb[112 * 96];
+    static int32_t      s_iz[112 * 96];
     static PRECOMP_GEAR  s_g1, s_g2, s_g3;
+    static int           s_inited = 0;
     static int           s_valid = 0;
     static float         s_last_angle = -9999.0f;
     static float         s_last_rx    = -9999.0f;
@@ -182,12 +205,11 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
     if (!bounds) return;
     w = 112;
     h = 96;
-    if (!s_zb) {
+    if (!s_inited) {
         GLfloat aspect;
-        pico_tgl_arena_reset();
-        s_zb = ZB_open(w, h, ZB_MODE_RGBA, NULL);
-        if (!s_zb) return;
-        glInit(s_zb);
+        s_inited = 1;
+        picogl_bind_target(s_rgb, s_iz, w, h, w);
+        pico_core1_launch();
 
         glViewport(0, 0, w, h);
         glEnable(GL_CULL_FACE);
@@ -215,10 +237,9 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
         precomp_gear_init(&s_g2, 0.5f, 2.0f, 2.0f, 10, 0.7f);
         precomp_gear_init(&s_g3, 1.3f, 2.0f, 0.5f, 10, 0.7f);
     }
-    zb = s_zb;
     if (s_valid && angle_deg == s_last_angle &&
         view_rotx == s_last_rx && view_roty == s_last_ry) {
-        dp_pico_blit_rgba_2x(bounds, (const uint32_t *)zb->pbuf, w, h);
+        dp_pico_blit_rgb565(bounds, s_rgb, w, h);
         return;
     }
     s_last_angle = angle_deg;
@@ -226,6 +247,9 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
     s_last_ry    = view_roty;
     s_valid      = 1;
 
+    /* Init called glViewport, which begins one frame. A redraw resets the
+     * counters here. The cache hit above only blits. */
+    picogl_begin_frame(w, h);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glPushMatrix();
     glRotatef(view_rotx, 1.0f, 0.0f, 0.0f);
@@ -253,7 +277,7 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
     glPopMatrix();
 
     glPopMatrix();
-    dp_pico_blit_rgba_2x(bounds, (const uint32_t *)zb->pbuf, w, h);
+    dp_pico_blit_rgb565(bounds, s_rgb, w, h);
     return;
 #else
     int x, y;
@@ -265,7 +289,6 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
     zb = ZB_open(w, h, ZB_MODE_RGBA, NULL);
     if (!zb) return;
     glInit(zb);
-#endif
 
     glViewport(0, 0, w, h);
     glEnable(GL_CULL_FACE);
@@ -322,9 +345,6 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
 
     glPopMatrix();
 
-#if defined(PICO_REAL_HW)
-    dp_pico_blit_rgba_2x(bounds, (const uint32_t *)zb->pbuf, w, h);
-#else
     /* Blit TinyGL 32-bit RGBA framebuffer into GDEV bounds */
     for (y = 0; y < h; y++) {
         int dy = (int)bounds->top + y;

@@ -64,7 +64,7 @@ else
 endif
 
 .PHONY: all posix qemu kernel tkernel sakamura foma uefi pc98 arm-elf arm64-elf m68k ps2 mips \
-        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop \
+        check-structure test-ps2-softfloat test-arm-aeabi test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-picogl-bin test-picogl-raster test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map xmb-atlas test-xmb-atlas test-ps2-opengl-routing test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop \
         test-xmb-render test-xmb-render-tgl test-gl-context test-async-input \
         html2tad book2tad tad_bin test test-kernel test-yoko test-yoko4 test-m68k test-mips test-ps2 test-foma test-foma-ui foma-screens \
         segui-screens tbios-tools tbios-roms test-tbios \
@@ -2396,6 +2396,51 @@ $(TEST_EEGSG_BIN): $(TEST_EEGSG_OBJS) src/desktop/graphics/eegs/eegs_geom.h src/
 	@mkdir -p ./.build
 	$(CC) $(TEST_EEGSG_OBJS) -o $@ $(LDFLAGS) -lm
 
+TEST_PICOGL_SRCS = verify/tests/test_picogl_bin.c src/desktop/graphics/picogl/picogl_span.c
+TEST_PICOGL_OBJS = $(TEST_PICOGL_SRCS:.c=.test.o)
+TEST_PICOGL_BIN  = ./.build/test_picogl_bin
+
+test-picogl-bin: $(TEST_PICOGL_BIN)
+	@echo "=========================================================="
+	@echo " Running PicoGL phase 1: fan bin..."
+	@echo "=========================================================="
+	@./$(TEST_PICOGL_BIN)
+
+$(TEST_PICOGL_BIN): $(TEST_PICOGL_OBJS) src/desktop/graphics/picogl/picogl.h
+	@mkdir -p ./.build
+	$(CC) $(TEST_PICOGL_OBJS) -o $@ $(LDFLAGS) -lm
+
+TEST_PICOGLR_SRCS = verify/tests/test_picogl_raster.c src/desktop/graphics/picogl/picogl_span.c src/desktop/graphics/picogl/picogl_ctx.c
+TEST_PICOGLR_OBJS = $(TEST_PICOGLR_SRCS:.c=.test.o)
+TEST_PICOGLR_BIN  = ./.build/test_picogl_raster
+
+test-picogl-raster: $(TEST_PICOGLR_BIN)
+	@echo "=========================================================="
+	@echo " Running PicoGL phase 2: band depth..."
+	@echo "=========================================================="
+	@./$(TEST_PICOGLR_BIN)
+
+$(TEST_PICOGLR_BIN): $(TEST_PICOGLR_OBJS) src/desktop/graphics/picogl/picogl.h
+	@mkdir -p ./.build
+	$(CC) $(TEST_PICOGLR_OBJS) -o $@ $(LDFLAGS) -lm
+
+# Start-level sim. Not on `make test`: it needs pak0.pak to cook the blob.
+.build/start_blob.h .build/start_blob.c: scripts/cook_quake_start.py assets/quake/pak/pak0.pak
+	@mkdir -p .build
+	python3 scripts/cook_quake_start.py assets/quake/pak/pak0.pak .build/start_blob.h .build/start_blob.c
+
+.build/test_start_sim: verify/tests/test_start_sim.c src/media/quake/sim/start_sim.c \
+		.build/start_blob.c src/desktop/graphics/picogl/picogl_span.c \
+		.build/start_blob.h src/media/quake/sim/start_sim.h \
+		src/desktop/graphics/picogl/picogl.h
+	$(CC) $(CFLAGS) -I.build -Isrc/desktop/graphics/picogl -Isrc/media/quake/sim \
+		verify/tests/test_start_sim.c src/media/quake/sim/start_sim.c \
+		.build/start_blob.c src/desktop/graphics/picogl/picogl_span.c \
+		-o $@ -lm
+
+test-start-sim: .build/test_start_sim
+	@./.build/test_start_sim
+
 # LANE 12f gate (a): batch grid map projection bit-identical check vs TinyGL vertex walk.
 TEST_GRIDMAP_SRCS = verify/tests/test_grid_map.c src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/backend_tinygl.c \
                     src/desktop/graphics/virgl/backend_virgl.c $(TINYGL_SRCS) src/media/xmb/xmb_wave.c
@@ -3706,7 +3751,7 @@ test-tbios: $(TEST_TBIOS_DIFF_BIN) $(TEST_TBIOS_CORE_BIN) $(TEST_TBIOS_VIDEO_BIN
 	@./$(TEST_TBIOS_DISK_BIN)
 	@./$(TEST_BMSX_CFG_BIN)
 
-test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-virtio-blk test-installer test-storage-images test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop
+test: test-tad test-editor test-chat test-mozc test-wylie test-hmi test-ski test-tracker test-deskclip test-settings test-global-menu test-app-menu test-review test-drivesetup test-virtio-blk test-installer test-storage-images test-fs test-hd64180 test-aurel-vault test-bmsx-cfg test-tbios test-quake test-ps2-softfloat test-arm-aeabi test-hdmi-audio test-usb-audio test-bt-audio test-ps2-gs-pack test-ps2-gs-env test-ps2-gs-rec test-ps2-vu1-geom test-ps2-vu0-kernel test-gscube-nexus test-ps2-gs-poster test-ps2-gs-read test-ps2-gs-tex test-ps2-pointer test-ps2-fused-row test-ps2-gif-ring test-ps2-paintw test-eegs-raster test-eegs-geom test-eegs-present test-picogl-bin test-picogl-raster test-gl-math test-gl-backend-choice test-ps2-fb-order test-grid-map test-xmb-atlas test-ps2-opengl-routing test-gl-context test-nexus-ring test-compositor test-ps2-iso9660 test-demo-paths test-printf-float test-ps2-cdvd-loop
 	@echo "=========================================================="
 	@echo " ALL B-SYSTEM TEST SUITES PASSED (100% SUCCESS)!"
 	@echo "=========================================================="
@@ -4123,6 +4168,7 @@ CAPTURE_SEGUI_BIN  = ./.build/capture_segui
 CAPTURE_SEGUI_SRCS = tools/capture_segui.c \
                      src/desktop/industrial/segui/segui.c \
                      src/desktop/industrial/segui/segui_palm.c \
+                     src/media/xmb/xmb_pico.c \
                      src/media/sdk/glgears_segui.c \
                      src/apps/cabinet/cabinet_core.c \
                      src/apps/editor/teditor_core.c \
@@ -4139,15 +4185,30 @@ CAPTURE_SEGUI_SRCS = tools/capture_segui.c \
 
 CAPTURE_SEGUI_OBJS = $(CAPTURE_SEGUI_SRCS:.c=.test.o)
 
-src/desktop/industrial/segui/segui_palm.test.o: CFLAGS += -DBTRON_SEGUI_TINYGL=1
+src/desktop/industrial/segui/segui_palm.test.o: CFLAGS += -DBTRON_SEGUI_TINYGL=1 -DSEGUI_HOST_XMB
+tools/capture_segui.test.o: CFLAGS += -DSEGUI_HOST_XMB
+src/media/xmb/xmb_pico.test.o: CFLAGS += -DSEGUI_HOST_XMB
 
 $(CAPTURE_SEGUI_BIN): $(CAPTURE_SEGUI_OBJS)
 	$(CC) $(CAPTURE_SEGUI_OBJS) -o $@ $(LDFLAGS) -lm
 
-segui-screens: $(CAPTURE_SEGUI_BIN)
+# Start hall only, sized to the PicoCalc body (304x256). Not the episode set.
+CAPTURE_QUAKE_START_BIN = ./.build/capture_quake_start
+CAPTURE_QUAKE_START_OBJ = ./.build/capture_quake_start.o
+CAPTURE_QUAKE_START_OBJS = $(CAPTURE_QUAKE_START_OBJ) \
+                           $(filter-out verify/tests/capture_quake.test.o,$(CAPTURE_QUAKE_OBJS))
+
+$(CAPTURE_QUAKE_START_OBJ): verify/tests/capture_quake.c
+	@mkdir -p ./.build
+	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DQUAKE_CAP_W=304 -DQUAKE_CAP_H=256 \
+	    -DQUAKE_CAP_START_ONLY -MMD -MP -c $< -o $@
+
+segui-screens: $(CAPTURE_SEGUI_BIN) $(CAPTURE_QUAKE_START_BIN)
 	@echo "=========================================================="
-	@echo " Generating SegUI 480x272 Screen Set..."
+	@echo " Generating SegUI 320x320 Screen Set..."
 	@echo "=========================================================="
+	@mkdir -p /tmp/segui_raw_screens
+	@./$(CAPTURE_QUAKE_START_BIN) /tmp/quake_segui_body.raw
 	@./$(CAPTURE_SEGUI_BIN)
 	@python3 scripts/screen_update_segui.py
 
@@ -4185,6 +4246,11 @@ CAPTURE_QUAKE_SRCS = verify/tests/capture_quake.c \
 
 CAPTURE_QUAKE_OBJS = $(CAPTURE_QUAKE_SRCS:.c=.test.o)
 
+# Prerequisites expand when this line is read, so it stays below CAPTURE_QUAKE_OBJS.
+$(CAPTURE_QUAKE_START_BIN): $(CAPTURE_QUAKE_START_OBJS)
+	@mkdir -p ./.build
+	$(CC) $(CAPTURE_QUAKE_START_OBJS) -o $@ $(LDFLAGS) -lm -lz
+
 $(CAPTURE_QUAKE_BIN): $(CAPTURE_QUAKE_OBJS)
 	@mkdir -p ./.build
 	$(CC) $(CAPTURE_QUAKE_OBJS) -o $@ $(LDFLAGS) -lm -lz
@@ -4213,12 +4279,12 @@ test-compositor:
 .PHONY: test-compositor
 
 # ===================================================================
-# Raw Pico Series QEMU Kernel (RP2350 default | PICO_BOARD=rp2040)
+# Raw Pico Series QEMU Kernel (RP2040 default | PICO_BOARD=rp2350)
 #   make pico        — build freestanding Cortex-M QEMU ELF
 #   make run-pico    — boot interactive btron-pico# in QEMU
 #   make test-pico   — headless CI gate (both RP2350 & RP2040 profiles)
 # ===================================================================
-PICO_BOARD ?= rp2350
+PICO_BOARD ?= rp2040
 
 ifeq ($(PICO_BOARD),rp2040)
     PICO_ARCH_FLAGS := --target=thumbv6m-none-eabi -mcpu=cortex-m0plus -mthumb -DPICO_BOARD_RP2040
@@ -4264,7 +4330,7 @@ pico: $(PICO_QEMU_ELF)
 run-pico: $(PICO_QEMU_ELF)
 	@echo "=========================================================="
 	@echo " Launching B-System Raw Pico Series RTOS in QEMU"
-	@echo " Board   : $(PICO_BOARD) (override: PICO_BOARD=rp2040)"
+	@echo " Board   : $(PICO_BOARD) (override: PICO_BOARD=rp2350)"
 	@echo " Machine : $(PICO_QEMU_MACH)  |  ELF: $(PICO_QEMU_ELF)"
 	@echo " Exit    : Ctrl-A X"
 	@echo "=========================================================="
@@ -4276,7 +4342,7 @@ test-pico:
 .PHONY: pico run-pico test-pico
 
 # ===================================================================
-# ClockworkPi PicoCalc Real Hardware (RP2350 Default | PICO_BOARD=rp2040)
+# ClockworkPi PicoCalc Real Hardware (RP2040 Default | PICO_BOARD=rp2350)
 #   make picocalc        — build UF2 + SD-boot .bin for $(PICO_BOARD)
 #   make picocalc-all    — build all 4 binaries (RP2350 + RP2040 x UF2/SD)
 #   make flash-picocalc  — auto-detect /Volumes/RP2350 or /Volumes/RPI-RP2
@@ -4290,6 +4356,16 @@ PICOCALC_UF2        := btron-picocalc-$(PICO_BOARD).uf2
 PICOCALC_SDBOOT_ELF := $(PICOCALC_BUILD)/btron-picocalc-$(PICO_BOARD)-sdboot.elf
 PICOCALC_SDBOOT_BIN := btron-picocalc-$(PICO_BOARD)-sdboot.bin
 PICOCALC_LD         := src/drivers/pico/link_picocalc.ld
+
+# make picocalc-quake is a sibling elf. It does not reuse the gears objects.
+ifeq ($(PICOCALC_APP),quake)
+PICOCALC_BUILD      := .build/picocalc-quake-$(PICO_BOARD)
+PICOCALC_UF2_ELF    := $(PICOCALC_BUILD)/btron-picocalc-quake-$(PICO_BOARD).elf
+PICOCALC_UF2_BIN    := $(PICOCALC_BUILD)/btron-picocalc-quake-$(PICO_BOARD).bin
+PICOCALC_UF2        := btron-picocalc-quake-$(PICO_BOARD).uf2
+PICOCALC_SDBOOT_ELF := $(PICOCALC_BUILD)/btron-picocalc-quake-$(PICO_BOARD)-sdboot.elf
+PICOCALC_SDBOOT_BIN := btron-picocalc-quake-$(PICO_BOARD)-sdboot.bin
+endif
 
 ifeq ($(PICO_BOARD),rp2040)
     PICOCALC_RAM_LEN   := 262144
@@ -4306,7 +4382,8 @@ else
 endif
 
 PICOCALC_CFLAGS := $(PICO_CFLAGS) -DPICO_REAL_HW -DBTRON_SEGUI_COMPACT=1 \
-                   $(if $(PICOCALC_LCD_RGB666),-DPICOCALC_LCD_RGB666=1,)
+                   $(if $(PICOCALC_LCD_RGB666),-DPICOCALC_LCD_RGB666=1,) \
+                   $(if $(filter quake,$(PICOCALC_APP)),-DPICOCALC_APP_QUAKE,)
 
 PICOCALC_COMMON_C := src/drivers/pico/hal_rp2xxx.c \
                      src/drivers/pico/st7365p_spi.c \
@@ -4324,11 +4401,23 @@ PICOCALC_COMMON_C := src/drivers/pico/hal_rp2xxx.c \
                      src/apps/chat/chat_core.c \
                      src/apps/terminal/shell_core.c \
                      src/media/sdk/glgears_segui.c \
+                     src/desktop/graphics/picogl/picogl_span.c \
+                     src/desktop/graphics/picogl/picogl_ctx.c \
+                     src/drivers/pico/pico_core1.c \
+                     src/media/xmb/xmb_pico.c \
                      src/desktop/font/troncode.c \
                      src/desktop/font/jis_fonts.c \
                      src/desktop/font/tibetan_fonts.c \
                      src/desktop/tip/japanese/mozc_kkc.c \
                      src/desktop/tip/tibetan/wylie.c
+
+# Quake image: drop GLGears (112x96 color + iz) and XMB. The eight shell
+# apps stay. Their objects are not the SRAM that the start level needs.
+ifeq ($(PICOCALC_APP),quake)
+PICOCALC_COMMON_C := $(filter-out src/media/sdk/glgears_segui.c src/media/xmb/xmb_pico.c,$(PICOCALC_COMMON_C))
+PICOCALC_COMMON_C += src/media/quake/sim/start_sim.c .build/start_blob.c
+PICOCALC_CFLAGS += -I.build -Isrc/media/quake/sim -Isrc/desktop/graphics/picogl
+endif
 
 PICOCALC_TGL_C := src/desktop/graphics/tinygl/api.c \
                   src/desktop/graphics/tinygl/arrays.c \
@@ -4360,9 +4449,9 @@ PICOCALC_TGL_C := src/desktop/graphics/tinygl/api.c \
 PICOCALC_TGL_OBJS := $(patsubst %.c,$(PICOCALC_BUILD)/tgl_%.o,$(notdir $(PICOCALC_TGL_C)))
 PICOCALC_TGL_CFLAGS := $(PICOCALC_CFLAGS) -O2 -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/tinygl -Wno-error -Wno-unused-parameter -Wno-sign-compare -Wno-unused-variable -Wno-unused-function -Wno-incompatible-pointer-types-discards-qualifiers
 
+# Phase 3: PICOCALC_TGL_C is not on this link. TinyGL stays available to host builds.
 PICOCALC_COMMON_OBJS := $(PICOCALC_BUILD)/startup_pico.o \
-                        $(patsubst %.c,$(PICOCALC_BUILD)/%.o,$(notdir $(PICOCALC_COMMON_C))) \
-                        $(PICOCALC_TGL_OBJS)
+                        $(patsubst %.c,$(PICOCALC_BUILD)/%.o,$(notdir $(PICOCALC_COMMON_C)))
 
 $(PICOCALC_BUILD)/startup_pico.o: src/drivers/pico/startup_pico.S
 	@mkdir -p $(PICOCALC_BUILD)
@@ -4398,7 +4487,23 @@ $(PICOCALC_BUILD)/pico_tinygl_rt.o: src/drivers/pico/pico_tinygl_rt.c
 
 $(PICOCALC_BUILD)/glgears_segui.o: src/media/sdk/glgears_segui.c
 	@mkdir -p $(PICOCALC_BUILD)
-	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Wno-unused-function -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/tinygl -c $< -o $@
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Wno-unused-function -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/picogl -c $< -o $@
+
+$(PICOCALC_BUILD)/xmb_pico.o: src/media/xmb/xmb_pico.c src/media/xmb/xmb_pico.h src/media/xmb/xmb_pico_icons.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/picogl -c $< -o $@
+
+$(PICOCALC_BUILD)/picogl_span.o: src/desktop/graphics/picogl/picogl_span.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Isrc/drivers/pico/libc_shim -c $< -o $@
+
+$(PICOCALC_BUILD)/picogl_ctx.o: src/desktop/graphics/picogl/picogl_ctx.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Isrc/drivers/pico/libc_shim -c $< -o $@
+
+$(PICOCALC_BUILD)/pico_core1.o: src/drivers/pico/pico_core1.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
 
 $(PICOCALC_BUILD)/troncode.o: src/desktop/font/troncode.c
 	@mkdir -p $(PICOCALC_BUILD)
@@ -4440,7 +4545,7 @@ $(PICOCALC_BUILD)/segui_palm.o: src/desktop/industrial/segui/segui_palm.c includ
 	@mkdir -p $(PICOCALC_BUILD)
 	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
 
-$(PICOCALC_BUILD)/cabinet_core.o: src/apps/cabinet/cabinet_core.c src/apps/cabinet/cabinet_core.h
+$(PICOCALC_BUILD)/cabinet_core.o: src/apps/cabinet/cabinet_core.c src/apps/cabinet/cabinet_core.h src/apps/cabinet/picocalc_fs_image.h
 	@mkdir -p $(PICOCALC_BUILD)
 	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
 
@@ -4460,6 +4565,14 @@ $(PICOCALC_BUILD)/shell_core.o: src/apps/terminal/shell_core.c src/apps/terminal
 	@mkdir -p $(PICOCALC_BUILD)
 	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
 
+$(PICOCALC_BUILD)/start_sim.o: src/media/quake/sim/start_sim.c src/media/quake/sim/start_sim.h .build/start_blob.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Isrc/drivers/pico/libc_shim -c $< -o $@
+
+$(PICOCALC_BUILD)/start_blob.o: .build/start_blob.c .build/start_blob.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -c $< -o $@
+
 $(PICOCALC_UF2): $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) $(PICOCALC_LD) scripts/tool_mk_uf2.py
 	$(PICO_CC) $(PICO_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
 	    -Wl,--defsym=BTRON_FLASH_ORIGIN=0x10000000 \
@@ -4468,7 +4581,9 @@ $(PICOCALC_UF2): $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) $(PICOCALC
 	$(LLVM_OBJCOPY) -O binary $(PICOCALC_UF2_ELF) $(PICOCALC_UF2_BIN)
 	python3 scripts/tool_mk_uf2.py --board $(PICO_BOARD) $(PICOCALC_UF2_FLAGS) \
 	    $(PICOCALC_UF2_BIN) $@
+ifneq ($(PICOCALC_APP),quake)
 	@ln -sf $@ btron-picocalc.uf2
+endif
 	@llvm-size $(PICOCALC_UF2_ELF) 2>/dev/null || /opt/homebrew/opt/llvm/bin/llvm-size $(PICOCALC_UF2_ELF) 2>/dev/null || true
 
 $(PICOCALC_SDBOOT_BIN): $(PICOCALC_COMMON_OBJS) $(PICOCALC_LD)
@@ -4484,12 +4599,19 @@ picocalc: src/apps/cabinet/picocalc_fs_image.h $(PICOCALC_UF2) $(PICOCALC_SDBOOT
 	@echo " PicoCalc Real-Hardware Build Ready (PICO_BOARD=$(PICO_BOARD))"
 	@echo "   UF2    : $(PICOCALC_UF2)  (USB BOOTSEL & uf2loader)"
 	@echo "   SDBOOT : $(PICOCALC_SDBOOT_BIN)  (pico_multi_booter +200 KiB)"
+ifeq ($(PICOCALC_APP),quake)
+	@echo "   Flash  : this UF2 is not flashed by make flash-picocalc"
+else
 	@echo "   Flash  : make flash-picocalc"
+endif
 	@echo "=========================================================="
 
 picocalc-all:
 	@$(MAKE) PICO_BOARD=rp2350 picocalc
 	@$(MAKE) PICO_BOARD=rp2040 picocalc
+
+picocalc-quake:
+	@$(MAKE) PICOCALC_APP=quake picocalc
 
 PICOCALC_MODE ?= uf2
 PICOCALC_VOL  ?= $(PICOCALC_BOOT_VOL)
@@ -4565,4 +4687,4 @@ serial-picocalc:
 	echo "[SERIAL] Attaching to $$PORT @ 115200 8N1 (Ctrl-A then K to exit)..."; \
 	screen "$$PORT" 115200
 
-.PHONY: picocalc picocalc-all flash-picocalc test-picocalc test-segui-cores serial-picocalc
+.PHONY: picocalc picocalc-all picocalc-quake flash-picocalc test-picocalc test-segui-cores serial-picocalc test-start-sim

@@ -132,18 +132,37 @@ static int i2c1_read_u16(uint8_t reg, uint16_t *out)
     return 0;
 }
 
-int i2ckbd_poll_key(void)
+/* State byte: 1 press, 2 hold, 3 release. Ctrl is key 0x7E with those states.
+ * The shell still sees presses only. The Quake image also reads releases. */
+static int s_last_state;
+
+int i2ckbd_poll_event(int *down)
 {
     uint16_t raw = 0;
+    int state, key;
     if (i2c1_read_u16(REG_ID_FIF, &raw) < 0 || raw == 0) return -1;
-    if (raw == 0x7E03u) { s_ctrl_held = 0; return -1; }
-    if (raw == 0x7E02u) { s_ctrl_held = 1; return -1; }
-    if ((raw & 0xFFu) == 1u) { /* Key pressed */
-        int c = (int)(raw >> 8);
-        if (s_ctrl_held && c >= 'a' && c <= 'z') c = c - 'a' + 1;
-        return c;
+    state = (int)(raw & 0xFFu);
+    key = (int)(raw >> 8);
+    s_last_state = state;
+    if (key == 0x7E && (state == 2 || state == 3)) {
+        s_ctrl_held = (state != 3);
+        if (down) *down = (state != 3);
+        return 0x7E;
+    }
+    if (state == 1 || state == 2 || state == 3) {
+        if (down) *down = (state != 3);
+        return key;
     }
     return -1;
+}
+
+int i2ckbd_poll_key(void)
+{
+    int down = 1;
+    int key = i2ckbd_poll_event(&down);
+    if (key < 0 || s_last_state != 1) return -1;
+    if (s_ctrl_held && key >= 'a' && key <= 'z') key = key - 'a' + 1;
+    return key;
 }
 
 int i2ckbd_read_battery(void)
