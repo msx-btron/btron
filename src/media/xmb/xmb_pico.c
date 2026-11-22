@@ -1,9 +1,9 @@
 /*
- * xmb_pico.c — XMB page for the PicoCalc image.
+ * xmb_pico.c — XMB surface for the PicoCalc image.
  *
- * Gradient fill, a DST_COLOR_ONE ribbon, 32x32 P8 cells as SRC_OVER, and
- * A1 labels. Rectangles stay on core 0. This file does not link xmb.c,
- * xmb_wave.c, or the atlas.
+ * Gradient, a fixed perspective floor, 32x32 P8 cells as SRC_OVER, and
+ * A1 labels. The selected category is locked to the center. Rectangles
+ * stay on core 0. This file does not link xmb.c, xmb_wave.c, or the atlas.
  */
 #include "xmb_pico.h"
 #include "xmb_pico_icons.h"
@@ -73,7 +73,7 @@ static const xmb_cat_t s_cats[] = {
 
 static int s_cat;
 static int s_item;
-static int s_phase;
+static int s_glow;
 #if defined(PICO_REAL_HW)
 static int s_core;
 #endif
@@ -211,53 +211,84 @@ static void fill_gradient(int left, int top, int right, int bottom)
     }
 }
 
-static void ribbon(int left, int right, int y0, int y1)
+static void hline_dim(int y, int x0, int x1, int num)
 {
-    int span = right - left;
-    int head, y, x;
-    if (span < 1) return;
-    if (left < 0) left = 0;
-    if (right > 320) right = 320;
-    head = (s_phase % (span + 64)) - 32;
-    for (y = y0; y < y1; y++) {
-        uint16_t *row = dp_pico_band_row(y);
-        if (!row) continue;
-        for (x = left; x < right; x++) {
-            row[x] = brighten(row[x], 1, 4);
-            if (x >= left + head && x < left + head + 40)
-                row[x] = brighten(row[x], 1, 2);
+    uint16_t *row;
+    int x;
+    if (y < 0 || y >= 320 || x0 >= x1) return;
+    row = dp_pico_band_row(y);
+    if (!row) return;
+    if (x0 < 0) x0 = 0;
+    if (x1 > 320) x1 = 320;
+    for (x = x0; x < x1; x++) row[x] = brighten(row[x], num, 8);
+}
+
+/* Integer floor. Lines bunch at the horizon and spread toward the bottom.
+ * The icons stay put. s_glow only changes how hard the lines catch light. */
+static void floor_surface(int left, int right, int bottom, int cx, int horizon)
+{
+    int depth = bottom - horizon;
+    int shine = 1 + ((s_glow >> 4) & 1);
+    int i, y;
+    if (depth < 8 || left >= right) return;
+    for (i = 1; i <= 6; i++) {
+        int half;
+        y = horizon + (i * i * depth) / 40;
+        if (y >= bottom || y < 0) continue;
+        half = (y - horizon) * (right - left) / (depth * 2);
+        if (half < 6) half = 6;
+        hline_dim(y, cx - half, cx + half, shine);
+    }
+    for (i = -4; i <= 4; i++) {
+        int x1;
+        if (i == 0) continue;
+        x1 = cx + i * ((right - left) / 10);
+        for (y = horizon; y < bottom; y += 3) {
+            uint16_t *row = dp_pico_band_row(y);
+            int x;
+            if (!row) continue;
+            x = cx + (x1 - cx) * (y - horizon) / depth;
+            if (x >= left && x < right && x >= 0 && x < 320)
+                row[x] = brighten(row[x], shine, 7);
         }
     }
 }
 
-static void pad(int x, int y)
+static void pad(int x, int y, int size)
 {
     int py, px;
-    for (py = y - 3; py < y + XMB_PICO_CELL + 3; py++) {
+    for (py = y - 2; py < y + size + 2; py++) {
         uint16_t *row = dp_pico_band_row(py);
         if (!row) continue;
-        for (px = x - 3; px < x + XMB_PICO_CELL + 3; px++) {
+        for (px = x - 2; px < x + size + 2; px++) {
             if (px < 0 || px >= 320) continue;
             row[px] = brighten(row[px], 1, 3);
         }
     }
 }
 
-static void blit_cell(int cell, int x, int y, int selected)
+static void blit_cell(int cell, int x, int y, int size, int selected)
 {
     const unsigned char *px = xmb_pico_cell(cell);
-    int row, col;
-    if (!px) return;
-    for (row = 0; row < XMB_PICO_CELL; row++) {
+    int row, col, step;
+    if (!px || size < 8) return;
+    if (size > XMB_PICO_CELL) size = XMB_PICO_CELL;
+    step = (XMB_PICO_CELL << 8) / size;
+    for (row = 0; row < size; row++) {
         uint16_t *dst = dp_pico_band_row(y + row);
-        const unsigned char *src;
+        int sy, a_row;
         if (!dst) continue;
-        src = px + row * XMB_PICO_CELL;
-        for (col = 0; col < XMB_PICO_CELL; col++) {
-            int a = src[col];
-            int dx = x + col;
+        sy = (row * step) >> 8;
+        if (sy >= XMB_PICO_CELL) sy = XMB_PICO_CELL - 1;
+        a_row = sy * XMB_PICO_CELL;
+        for (col = 0; col < size; col++) {
+            int sx = (col * step) >> 8;
+            int a, dx;
+            if (sx >= XMB_PICO_CELL) sx = XMB_PICO_CELL - 1;
+            a = px[a_row + sx];
+            dx = x + col;
             if (a == 0 || dx < 0 || dx >= 320) continue;
-            if (!selected) a = (a * 160) >> 8;
+            if (!selected) a = (a * 140) >> 8;
             if (a == 0) continue;
             dst[dx] = src_over(dst[dx], a);
         }
@@ -290,21 +321,32 @@ static void label(int cx, int y, const char *s)
     }
 }
 
-static int row_x(int n, int left, int right, int index, int *pitch)
+static int wrap_d(int i, int sel, int n)
 {
-    int width = right - left;
-    int span, x0;
-    *pitch = 44;
-    if (n < 1) return left;
-    span = 32 + (n - 1) * (*pitch);
-    if (span > width && n > 1) {
-        *pitch = (width - 32) / (n - 1);
-        if (*pitch < 32) *pitch = 32;
-        span = 32 + (n - 1) * (*pitch);
-    }
-    x0 = left + (width - span) / 2;
-    if (x0 < left) x0 = left;
-    return x0 + index * (*pitch);
+    int d = i - sel;
+    if (n <= 1) return 0;
+    if (d > n / 2) d -= n;
+    if (d < -(n / 2)) d += n;
+    return d;
+}
+
+static int icon_size(int ad)
+{
+    int size = 32 - ad * 8;
+    if (size < 16) size = 16;
+    return size;
+}
+
+/* Selected category and the selected item share one x: the body center. */
+static void selected_cell(int left, int top, int right,
+                          int *cat_x, int *cat_y, int *item_x, int *item_y)
+{
+    int cx = left + (right - left) / 2;
+    int x = cx - 16;
+    if (cat_x) *cat_x = x;
+    if (cat_y) *cat_y = top + 36;
+    if (item_x) *item_x = x;
+    if (item_y) *item_y = top + 108;
 }
 
 void xmb_pico_tick(void)
@@ -316,8 +358,8 @@ void xmb_pico_tick(void)
     }
     picogl_reset_stats();
 #endif
-    s_phase += 8;
-    if (s_phase > 100000) s_phase = 0;
+    s_glow++;
+    if (s_glow > 100000) s_glow = 0;
 }
 
 void xmb_pico_move(int dcat, int ditem)
@@ -345,37 +387,79 @@ int xmb_pico_go(void)
     return c->items[s_item].go;
 }
 
+void xmb_pico_anchors(int left, int top, int right, int bottom,
+                      int *cat_x, int *item_x, int *cat, int *item)
+{
+    int nc = (int)(sizeof s_cats / sizeof s_cats[0]);
+    int cx, cy, ix, iy;
+    (void)bottom;
+    if (s_cat < 0 || s_cat >= nc) s_cat = 0;
+    if (s_item < 0 || s_item >= s_cats[s_cat].n) s_item = 0;
+    selected_cell(left, top, right, &cx, &cy, &ix, &iy);
+    (void)cy;
+    (void)iy;
+    if (cat_x) *cat_x = cx;
+    if (item_x) *item_x = ix;
+    if (cat) *cat = s_cat;
+    if (item) *item = s_item;
+}
+
+const char *xmb_pico_label(void)
+{
+    const xmb_cat_t *c;
+    int nc = (int)(sizeof s_cats / sizeof s_cats[0]);
+    if (s_cat < 0 || s_cat >= nc) return "";
+    c = &s_cats[s_cat];
+    if (s_item < 0 || s_item >= c->n) return "";
+    return c->items[s_item].label;
+}
+
 void xmb_pico_paint(int left, int top, int right, int bottom)
 {
     const xmb_cat_t *cat;
     int nc = (int)(sizeof s_cats / sizeof s_cats[0]);
-    int pitch = 44;
-    int i;
-    int cat_y, item_y;
+    int i, pass;
+    int cat_x, cat_y, item_x, item_y;
     if (right <= left || bottom <= top) return;
     if (s_cat < 0 || s_cat >= nc) s_cat = 0;
     cat = &s_cats[s_cat];
     if (s_item < 0 || s_item >= cat->n) s_item = 0;
+    selected_cell(left, top, right, &cat_x, &cat_y, &item_x, &item_y);
 
     fill_gradient(left, top, right, bottom);
-    cat_y = top + 36;
-    item_y = top + 112;
-    ribbon(left, right, cat_y - 8, cat_y + XMB_PICO_CELL + 8);
+    floor_surface(left, right, bottom, cat_x + 16, cat_y - 8);
 
-    for (i = 0; i < nc; i++) {
-        int x = row_x(nc, left, right, i, &pitch);
-        if (i == s_cat) pad(x, cat_y);
-        blit_cell(s_cats[i].icon, x, cat_y, i == s_cat);
+    for (pass = 3; pass >= 0; pass--) {
+        for (i = 0; i < nc; i++) {
+            int d = wrap_d(i, s_cat, nc);
+            int ad = d < 0 ? -d : d;
+            int size, x, y;
+            if (ad != pass) continue;
+            size = icon_size(ad);
+            x = (cat_x + 16) + d * 40 - size / 2;
+            y = cat_y - ad * 10;
+            if (i == s_cat) pad(x, y, size);
+            blit_cell(s_cats[i].icon, x, y, size, i == s_cat);
+        }
     }
-    label((left + right) / 2, cat_y + XMB_PICO_CELL + 4, cat->label);
+    label(cat_x + 16, cat_y + XMB_PICO_CELL + 4, cat->label);
 
-    for (i = 0; i < cat->n; i++) {
-        int x = row_x(cat->n, left, right, i, &pitch);
-        if (i == s_item) pad(x, item_y);
-        blit_cell(cat->items[i].icon, x, item_y, i == s_item);
+    for (pass = 6; pass >= 0; pass--) {
+        for (i = 0; i < cat->n; i++) {
+            int d = i - s_item;
+            int ad = d < 0 ? -d : d;
+            int size, x, y;
+            if (ad != pass) continue;
+            size = icon_size(ad);
+            x = (item_x + 16) - size / 2;
+            y = item_y + d * 44;
+            if (y + size < top || y >= bottom) continue;
+            if (i == s_item) pad(x, y, size);
+            blit_cell(cat->items[i].icon, x, y, size, i == s_item);
+        }
     }
     if (cat->n > 0)
-        label((left + right) / 2, item_y + XMB_PICO_CELL + 4, cat->items[s_item].label);
+        label(item_x + 16, item_y + XMB_PICO_CELL + 4, cat->items[s_item].label);
 #if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
     host_flush(left, top, right, bottom);
 #endif

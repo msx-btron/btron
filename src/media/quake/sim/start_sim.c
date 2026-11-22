@@ -423,6 +423,27 @@ static void physics(float dt)
     if (tr.fraction < 1.0f && tr.n[2] > 0.7f) {
         s_ground = 1;
         if (s_vel[2] < 0.0f) s_vel[2] = 0.0f;
+    } else if (tr.fraction >= 1.0f && s_vel[2] <= 0.0f) {
+        /* The hull backoff stops short of the plane. A step of exactly 18
+         * returns to that hover point and misses, so the next tick is
+         * airborne and will not accelerate. Probe a few units further.
+         * A rising jump stays airborne: the probe would catch the floor
+         * just left behind. */
+        tr_t probe;
+        float below[3];
+        below[0] = s_org[0];
+        below[1] = s_org[1];
+        below[2] = s_org[2] - 4.0f;
+        trace(&probe, s_org, below);
+        if (probe.fraction < 1.0f && probe.n[2] > 0.7f && !probe.startsolid) {
+            s_org[0] = probe.end[0];
+            s_org[1] = probe.end[1];
+            s_org[2] = probe.end[2];
+            s_ground = 1;
+            if (s_vel[2] < 0.0f) s_vel[2] = 0.0f;
+        } else {
+            s_ground = 0;
+        }
     } else if (tr.fraction >= 1.0f) {
         s_ground = 0;
     }
@@ -831,10 +852,14 @@ static int bit_of(int key)
     if (key == 'd' || key == 'D') return BIT_RIGHT;
     if (key == ' ') return BIT_JUMP;
     if (key == START_KEY_FIRE || key == 'f' || key == 'F') return BIT_FIRE;
+    /* PicoCalc arrows are the Quake cluster: up/down walk, left/right turn.
+     * q and z look. WASD stays walk and strafe. */
+    if (key == 0xB5) return BIT_FWD;
+    if (key == 0xB6) return BIT_BACK;
     if (key == 0xB4) return BIT_LL;
     if (key == 0xB7) return BIT_LR;
-    if (key == 0xB5) return BIT_LU;
-    if (key == 0xB6) return BIT_LD;
+    if (key == 'q' || key == 'Q') return BIT_LU;
+    if (key == 'z' || key == 'Z') return BIT_LD;
     return 0;
 }
 
@@ -867,7 +892,9 @@ void start_sim_key(int key, int down)
     idx = bit_index(bit);
     if (down) {
         s_bits |= bit;
-        s_hold[idx] = s_now + 500u;
+        /* Latch. The tick stamps the deadline from its own clock. A frame
+         * longer than the old 500 ms used to clear the key before physics. */
+        s_hold[idx] = 0xFFFFFFFFu;
     } else {
         s_bits &= ~bit;
         s_hold[idx] = 0;
@@ -915,13 +942,10 @@ void start_sim_tick(uint32_t now_ms)
     uint32_t prev;
     if (!s_ready) start_sim_init();
     prev = s_now;
-    /* The first tick adopts the device clock. Holds taken while s_now was
-     * still 0 are rebased so opening the app does not drop the key. */
+    /* The first tick adopts the device clock. A latched key is stamped
+     * after that, so a jump in now_ms cannot expire it in this same tick. */
     if (prev == 0) {
         s_now = now_ms ? now_ms : 1u;
-        for (i = 0; i < 10; i++) {
-            if (s_hold[i]) s_hold[i] = s_now + 500u;
-        }
         dt = 0.05f;
     } else {
         s_now = now_ms;
@@ -931,7 +955,9 @@ void start_sim_tick(uint32_t now_ms)
         if (dt > 0.1f) dt = 0.1f;
     }
     for (i = 0; i < 10; i++) {
-        if (s_hold[i] && s_now > s_hold[i]) {
+        if (s_hold[i] == 0xFFFFFFFFu)
+            s_hold[i] = s_now + 2000u;
+        else if (s_hold[i] && s_now > s_hold[i]) {
             s_bits &= ~(1 << i);
             s_hold[i] = 0;
         }
@@ -1161,8 +1187,16 @@ void start_sim_render(void)
     }
     angles(fwd, NULL, NULL);
     s_budget = TRI_ACTOR;
-    if (s_weapon >= 0 && s_weapon < 8)
-        draw_mesh(s_viewmesh[s_weapon], eye, s_yaw, s_pitch);
+    if (s_weapon >= 0 && s_weapon < 8) {
+        float vorg[3];
+        /* v_*.mdl vertices start about 2 units in front of the eye. The
+         * near plane is 8, so those vertices clip into a corner spike.
+         * Park the model 16 units along the view. */
+        vorg[0] = eye[0] + fwd[0] * 16.0f;
+        vorg[1] = eye[1] + fwd[1] * 16.0f;
+        vorg[2] = eye[2] + fwd[2] * 16.0f;
+        draw_mesh(s_viewmesh[s_weapon], vorg, s_yaw, s_pitch);
+    }
     for (i = 0; i < START_NZOMBIE; i++) {
         int mesh = START_MESH_ZSTAND;
         float dz;
@@ -1334,3 +1368,4 @@ void start_sim_set_origin(float x, float y, float z)
     s_vel[0] = s_vel[1] = s_vel[2] = 0.0f;
 }
 void start_sim_set_yaw(float yaw) { s_yaw = yaw; s_pitch = 0.0f; }
+float start_sim_yaw(void) { return s_yaw; }

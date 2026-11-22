@@ -88,6 +88,34 @@ static void out_dec(pico_out_fn out, void *ctx, uint32_t v)
     out(buf, ctx);
 }
 
+/* Fixed columns for the 40-character SegUI terminal (8px glyph, 320px). */
+static void out_spaces(pico_out_fn out, void *ctx, int n)
+{
+    while (n-- > 0) out(" ", ctx);
+}
+
+static void out_field(pico_out_fn out, void *ctx, const char *s, int width, int right)
+{
+    int n = 0;
+    if (!s) s = "";
+    while (s[n]) n++;
+    if (right && n < width) out_spaces(out, ctx, width - n);
+    out(s, ctx);
+    if (!right && n < width) out_spaces(out, ctx, width - n);
+}
+
+static void out_num(pico_out_fn out, void *ctx, uint32_t v, int width)
+{
+    char buf[12];
+    pico_u32_to_dec(v, buf, sizeof(buf));
+    out_field(out, ctx, buf, width, 1);
+}
+
+/* Picocalc links the strong copies in pico_core1.c. QEMU has no second core. */
+__attribute__((weak)) int pico_core1_state(void) { return 0; }
+__attribute__((weak)) unsigned pico_core1_queued(void) { return 0; }
+__attribute__((weak)) unsigned pico_core1_refused(void) { return 0; }
+
 static void out_hex(pico_out_fn out, void *ctx, uint32_t v)
 {
     char buf[16];
@@ -548,15 +576,40 @@ void pico_shell_exec(const char *line, pico_out_fn out, void *ctx)
         out(" B (free ", ctx); out_dec(out, ctx, total > used ? total - used : 0);
         out(" B, heap=0)\n", ctx);
     } else if (k_streq(line, "ps")) {
-        out("TID  PRIO  STATE  SWITCHES  NAME\n", ctx);
+        static const char *const c1_name[] = { "OFF", "RDY", "RUN", "ERR" };
+        int st = pico_core1_state();
+        if (st < 0 || st > 3) st = 0;
+        out("ID PRI STATE SWITCH C NAME\n", ctx);
         for (int i = 0; i < PICO_MAX_TASKS; i++) {
             if (s_tcb[i].state == PICO_TSK_UNUSED) continue;
-            out(" ", ctx);  out_dec(out, ctx, (uint32_t)i);
-            out("    ", ctx); out_dec(out, ctx, s_tcb[i].prio);
-            out("    ", ctx); out(state_str(s_tcb[i].state), ctx);
-            out("    ", ctx); out_dec(out, ctx, s_tcb[i].switches);
-            out("         ", ctx); out(s_tcb[i].name, ctx); out("\n", ctx);
+            out_num(out, ctx, (uint32_t)i, 2);
+            out(" ", ctx);
+            out_num(out, ctx, s_tcb[i].prio, 3);
+            out(" ", ctx);
+            out_field(out, ctx, state_str(s_tcb[i].state), 5, 0);
+            out(" ", ctx);
+            out_num(out, ctx, s_tcb[i].switches, 6);
+            out(" 0 ", ctx);
+            out(s_tcb[i].name, ctx);
+            out("\n", ctx);
         }
+        out("CORE STATE QUEUED REF NAME\n", ctx);
+        out_num(out, ctx, 0, 4);
+        out(" ", ctx);
+        out_field(out, ctx, "RUN", 5, 0);
+        out(" ", ctx);
+        out_num(out, ctx, 0, 6);
+        out(" ", ctx);
+        out_num(out, ctx, 0, 3);
+        out(" rtos\n", ctx);
+        out_num(out, ctx, 1, 4);
+        out(" ", ctx);
+        out_field(out, ctx, c1_name[st], 5, 0);
+        out(" ", ctx);
+        out_num(out, ctx, pico_core1_queued(), 6);
+        out(" ", ctx);
+        out_num(out, ctx, pico_core1_refused(), 3);
+        out(" picogl\n", ctx);
     } else if (k_streq(line, "ticks")) {
         out("Uptime: ", ctx); out_dec(out, ctx, pico_ticks_ms());
         out(" ms | switches: ", ctx); out_dec(out, ctx, s_total_sw);

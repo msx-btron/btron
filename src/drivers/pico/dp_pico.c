@@ -27,6 +27,12 @@ extern void st7365p_dma_wait(void);
 static uint16_t s_strip[2][DP_W * DP_BAND_H] __attribute__((aligned(4)));
 static int      s_active_buf = 0;
 static int      s_band_y0    = 0;
+static uint32_t s_present_gen = 1;
+
+uint32_t dp_pico_present_gen(void)
+{
+    return s_present_gen;
+}
 
 /* Convert 0xAARRGGBB -> big-endian RGB565 (byte-swapped for 8-bit SPI1 DMA) */
 uint16_t dp_pico_color565(COLOR c)
@@ -178,6 +184,9 @@ void dp_pico_blit_rgb565(const RECT *dst_rect, const uint16_t *src, int src_w, i
 void dp_pico_present(GDEV *dev, uint32_t dirty_mask, void (*paint_fn)(GDEV *))
 {
     if (!dev || !paint_fn || dirty_mask == 0u) return;
+
+    s_present_gen++;
+    if (s_present_gen == 0u) s_present_gen = 1u;
 
     for (int b = 0; b < DP_BAND_COUNT; b++) {
         if (!(dirty_mask & (1UL << b))) continue;

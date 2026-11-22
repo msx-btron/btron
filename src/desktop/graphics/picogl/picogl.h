@@ -62,10 +62,21 @@ void picogl_clear_target(int color, int depth, uint16_t rgb);
 void picogl_raster_band(int band, uint16_t *rgb, int stride,
                         int32_t *iz_row, int width);
 
-/* Draw the queued target triangles. Core 1 runs this when it has been
- * launched. The inline path is the same function. */
+/* Join the span. Core 0 posts triangles on the Nexus ring and does not wait
+ * inside snd. picogl_flush_target is the reap: it returns when core 1 has
+ * painted every posted triangle, or immediately when core 1 is down and the
+ * triangles were painted inline. picogl_flush_target_now is the consumer
+ * drain and runs on core 1. */
 void picogl_flush_target(void);
 void picogl_flush_target_now(void);
+
+/* Nexus SPSC span ring. posted/finished are the producer and consumer
+ * cursors. queued is how far core 1 is behind. refused counts S_FULL. */
+void     picogl_span_drain(void);
+uint32_t picogl_span_posted(void);
+uint32_t picogl_span_finished(void);
+int      picogl_span_queued(void);
+unsigned picogl_span_refused(void);
 
 int  picogl_drop(void);
 int  picogl_band_n(int band);
@@ -103,8 +114,15 @@ void picogl_gl_shade_model(int mode);
 void picogl_gl_light_fv(int light, int pname, const float *params);
 void picogl_gl_material_fv(int face, int pname, const float *params);
 
-/* Core 0 wakes core 1. A host build has no core 1: the weak hooks no-op. */
-void pico_core1_launch(void);
-int  pico_core1_run_flush(void);
+/* Core 0 wakes core 1. A host build leaves these undefined and weak, so the
+ * span paints on the calling core. state is 0 off, 1 ready, 2 painting, 3
+ * give-up. reap waits for the ring at a yield. sev wakes the consumer. */
+void     pico_core1_launch(void);
+int      pico_core1_run_flush(void);
+void     pico_core1_reap(void);
+void     pico_core1_sev(void);
+int      pico_core1_state(void);
+unsigned pico_core1_queued(void);
+unsigned pico_core1_refused(void);
 
 #endif /* BTRON_PICOGL_H */

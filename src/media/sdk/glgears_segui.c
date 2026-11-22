@@ -198,11 +198,15 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
     static PRECOMP_GEAR  s_g1, s_g2, s_g3;
     static int           s_inited = 0;
     static int           s_valid = 0;
+    static uint32_t      s_frame_gen;
     static float         s_last_angle = -9999.0f;
     static float         s_last_rx    = -9999.0f;
     static float         s_last_ry    = -9999.0f;
+    extern uint32_t dp_pico_present_gen(void);
+    uint32_t gen;
     (void)dev;
     if (!bounds) return;
+    gen = dp_pico_present_gen();
     w = 112;
     h = 96;
     if (!s_inited) {
@@ -237,11 +241,15 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
         precomp_gear_init(&s_g2, 0.5f, 2.0f, 2.0f, 10, 0.7f);
         precomp_gear_init(&s_g3, 1.3f, 2.0f, 0.5f, 10, 0.7f);
     }
-    if (s_valid && angle_deg == s_last_angle &&
-        view_rotx == s_last_rx && view_roty == s_last_ry) {
+    /* present() calls this once per 16px band. One generation is one frame.
+     * A repeated angle between presents only blits as well. */
+    if (s_valid && (gen == s_frame_gen ||
+        (angle_deg == s_last_angle && view_rotx == s_last_rx &&
+         view_roty == s_last_ry))) {
         dp_pico_blit_rgb565(bounds, s_rgb, w, h);
         return;
     }
+    s_frame_gen = gen;
     s_last_angle = angle_deg;
     s_last_rx    = view_rotx;
     s_last_ry    = view_roty;
@@ -277,6 +285,8 @@ void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
     glPopMatrix();
 
     glPopMatrix();
+    /* glEnd leaves the ring queued. This join is the one before the panel read. */
+    picogl_flush_target();
     dp_pico_blit_rgb565(bounds, s_rgb, w, h);
     return;
 #else

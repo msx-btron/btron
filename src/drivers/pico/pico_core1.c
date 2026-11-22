@@ -1,11 +1,15 @@
 /*
- * pico_core1.c — Wake core 1 and run the PicoGL span there.
+ * pico_core1.c — Wake core 1. The span jobs travel on a Nexus SPSC ring.
  *
  * A cold PicoCalc leaves core 1 in the bootrom. The wake is the bootrom
  * sequence 0, 0, 1, VTOR, SP, entry, each word echoed. If core 1 has already
  * entered Reset_Handler, that park takes one thumb pointer instead.
- * Core 0 transforms, then waits while core 1 paints. The integer span does
- * not use the hardware divider. If the wake fails, the caller paints here.
+ *
+ * Core 0 posts triangles with snd and does not wait inside the ring. A full
+ * ring refuses and counts the refusal. The completion check is reap, at the
+ * next yield (a full ring, or the frame being read), not on every triangle.
+ * The integer span does not use the hardware divider. If the wake fails,
+ * core 0 paints the same span.
  */
 #include <stdint.h>
 #include "../../desktop/graphics/picogl/picogl.h"
@@ -19,18 +23,18 @@
 #define FIFO_ST_RDY   2u
 #define LAUNCH_US     100000u
 #define ECHO_US       2000u
+#define REAP_US       200000u
 
 extern uint8_t __vectors_start__[];
 extern uint8_t __core1_stack_top__[];
 
 static volatile int s_ready;
-static volatile int s_job;
-static volatile int s_done;
-static int s_launched;
+static int s_giveup;
+static int s_tries;
+static int s_reap_fail;
 
 static void sev(void) { __asm__ volatile("sev" ::: "memory"); }
 static void wfe(void) { __asm__ volatile("wfe" ::: "memory"); }
-static void dmb(void) { __asm__ volatile("dmb sy" ::: "memory"); }
 
 static void fifo_drain(void)
 {
@@ -46,35 +50,84 @@ static int timed_out(uint32_t t0, uint32_t us)
     return (TIMER0_TIMERAWL - t0) > us;
 }
 
-void pico_core1_main(void)
+/* First instruction is cpsid. A C prologue must not run before it, or a
+ * pending SysTick on this VTOR would enter the core-0 scheduler. */
+__attribute__((noinline, used, noreturn))
+void pico_core1_body(void)
 {
     __asm__ volatile("cpsid i" ::: "memory");
     s_ready = 1;
     sev();
     for (;;) {
-        while (s_job == 0)
+        picogl_span_drain();
+        if (picogl_span_finished() == picogl_span_posted())
             wfe();
-        dmb();
-        if (s_job == 1)
-            picogl_flush_target_now();
-        s_job = 0;
-        dmb();
-        s_done = 1;
-        sev();
     }
+}
+
+__attribute__((naked, used, noreturn))
+void pico_core1_main(void)
+{
+    __asm__ volatile(
+        "cpsid i\n"
+        "bl pico_core1_body\n"
+        "1:\n"
+        "wfe\n"
+        "b 1b\n"
+    );
+}
+
+void pico_core1_sev(void)
+{
+    sev();
+}
+
+void pico_core1_reap(void)
+{
+    uint32_t t0;
+    if (!s_ready)
+        return;
+    t0 = TIMER0_TIMERAWL;
+    while (picogl_span_finished() != picogl_span_posted()) {
+        if (timed_out(t0, REAP_US)) {
+            s_reap_fail++;
+            if (s_reap_fail >= 3) {
+                s_ready = 0;
+                s_giveup = 1;
+            }
+            return;
+        }
+        sev();
+        wfe();
+    }
+    s_reap_fail = 0;
 }
 
 int pico_core1_run_flush(void)
 {
     if (SIO_CPUID != 0u || !s_ready)
         return 0;
-    s_done = 0;
-    dmb();
-    s_job = 1;
-    sev();
-    while (s_done == 0)
-        wfe();
-    return 1;
+    pico_core1_reap();
+    return s_ready ? 1 : 0;
+}
+
+int pico_core1_state(void)
+{
+    if (s_ready)
+        return picogl_span_queued() > 0 ? 2 : 1;
+    if (s_giveup)
+        return 3;
+    return 0;
+}
+
+unsigned pico_core1_queued(void)
+{
+    return (unsigned)picogl_span_queued();
+}
+
+unsigned pico_core1_refused(void)
+{
+    return picogl_span_refused();
 }
 
 static int fifo_push(uint32_t v, uint32_t t0, uint32_t us)
@@ -103,10 +156,13 @@ void pico_core1_launch(void)
     uint32_t t0, seq, resp;
     uintptr_t entry;
 
-    if (SIO_CPUID != 0u || s_launched)
+    if (SIO_CPUID != 0u || s_ready || s_giveup)
         return;
-    s_launched = 1;
-    s_ready = 0;
+    if (s_tries >= 3) {
+        s_giveup = 1;
+        return;
+    }
+    s_tries++;
     entry = (uintptr_t)pico_core1_main;
     cmds[0] = 0u;
     cmds[1] = 0u;
@@ -144,7 +200,9 @@ void pico_core1_launch(void)
     t0 = TIMER0_TIMERAWL;
     while (!s_ready) {
         if (timed_out(t0, LAUNCH_US))
-            return;
+            break;
         wfe();
     }
+    if (!s_ready && s_tries >= 3)
+        s_giveup = 1;
 }

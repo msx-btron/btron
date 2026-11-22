@@ -133,34 +133,78 @@ static int i2c1_read_u16(uint8_t reg, uint16_t *out)
 }
 
 /* State byte: 1 press, 2 hold, 3 release. Ctrl is key 0x7E with those states.
- * The shell still sees presses only. The Quake image also reads releases. */
-static int s_last_state;
+ * A stuck press used to be delivered on every poll. One edge is delivered,
+ * then repeats follow the delay and the repeat gap. A release is delivered
+ * once. Prefs writes the two gaps through i2ckbd_set_repeat. */
+static int s_hold_key = -1;
+static uint32_t s_hold_us;
+static uint32_t s_emit_us;
+static uint32_t s_delay_us  = 400000u;
+static uint32_t s_repeat_us = 80000u;
+
+void i2ckbd_set_repeat(uint32_t delay_ms, uint32_t repeat_ms)
+{
+    if (delay_ms < 50u) delay_ms = 50u;
+    if (delay_ms > 2000u) delay_ms = 2000u;
+    if (repeat_ms < 20u) repeat_ms = 20u;
+    if (repeat_ms > 1000u) repeat_ms = 1000u;
+    s_delay_us = delay_ms * 1000u;
+    s_repeat_us = repeat_ms * 1000u;
+}
+
+void i2ckbd_get_repeat(uint32_t *delay_ms, uint32_t *repeat_ms)
+{
+    if (delay_ms) *delay_ms = s_delay_us / 1000u;
+    if (repeat_ms) *repeat_ms = s_repeat_us / 1000u;
+}
+
+static int emit_repeat(int *down)
+{
+    uint32_t now;
+    if (s_hold_key < 0) return -1;
+    now = TIMER0_TIMERAWL;
+    if ((uint32_t)(now - s_hold_us) < s_delay_us) return -1;
+    if ((uint32_t)(now - s_emit_us) < s_repeat_us) return -1;
+    s_emit_us = now;
+    if (down) *down = 1;
+    return s_hold_key;
+}
 
 int i2ckbd_poll_event(int *down)
 {
     uint16_t raw = 0;
     int state, key;
-    if (i2c1_read_u16(REG_ID_FIF, &raw) < 0 || raw == 0) return -1;
+    uint32_t now;
+    if (i2c1_read_u16(REG_ID_FIF, &raw) < 0) return -1;
+    if (raw == 0) return emit_repeat(down);
     state = (int)(raw & 0xFFu);
     key = (int)(raw >> 8);
-    s_last_state = state;
-    if (key == 0x7E && (state == 2 || state == 3)) {
+    now = TIMER0_TIMERAWL;
+    if (key == 0x7E && (state == 2 || state == 3))
         s_ctrl_held = (state != 3);
-        if (down) *down = (state != 3);
-        return 0x7E;
+    if (state == 3 || key == 0) {
+        int k = s_hold_key;
+        if (k < 0) return -1;
+        s_hold_key = -1;
+        if (down) *down = 0;
+        return k;
     }
-    if (state == 1 || state == 2 || state == 3) {
-        if (down) *down = (state != 3);
+    if (state != 1 && state != 2) return -1;
+    if (key != s_hold_key) {
+        s_hold_key = key;
+        s_hold_us = now;
+        s_emit_us = now;
+        if (down) *down = 1;
         return key;
     }
-    return -1;
+    return emit_repeat(down);
 }
 
 int i2ckbd_poll_key(void)
 {
     int down = 1;
     int key = i2ckbd_poll_event(&down);
-    if (key < 0 || s_last_state != 1) return -1;
+    if (key < 0 || !down) return -1;
     if (s_ctrl_held && key >= 'a' && key <= 'z') key = key - 'a' + 1;
     return key;
 }

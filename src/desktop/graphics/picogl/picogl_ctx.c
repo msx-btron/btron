@@ -226,7 +226,8 @@ void picogl_gl_end(void)
 {
     s_in_begin = 0;
     s_vn = 0;
-    picogl_flush_target();
+    /* Leave the ring queued. picogl_flush_target is the join before a
+     * read. Reaping here stalled core 0 at the end of every gear strip. */
 }
 
 void picogl_gl_vertex3f(GLfloat x, GLfloat y, GLfloat z)

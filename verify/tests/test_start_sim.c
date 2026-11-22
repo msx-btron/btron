@@ -182,6 +182,53 @@ int main(void)
     printf("  lit %d / %d tris %d\n", start_sim_lit(), 128 * 96, picogl_tri_n());
     expect(start_sim_lit() > (128 * 96) / 12, "the hall lights more than the HUD");
     expect(picogl_tri_n() > 30, "the frame submits triangles");
+    {
+        /* v_axe flat color 0xFF606060 packs to RGB565 0x630C. A near-plane
+         * clip of that mesh smears it across the top of the hall. */
+        const uint16_t *px = start_sim_pixels();
+        int top = 0;
+        int y, x;
+        for (y = 0; y < 24; y++) {
+            for (x = 0; x < 128; x++) {
+                if (px[y * 128 + x] == 0x630Cu) top++;
+            }
+        }
+        printf("  axe-gray pixels in the top 24 rows: %d\n", top);
+        expect(top == 0, "the axe does not smear the top of the hall");
+    }
+
+    start_sim_init();
+    start_sim_set_yaw(90.0f);
+    start_sim_tick(1000);
+    {
+        float y_before = start_sim_origin()[1];
+        float yaw0;
+        start_sim_key(0xB5, 1);
+        start_sim_tick(1000u + 5000u);
+        printf("  up-arrow y %.1f -> %.1f after a 5s jump\n",
+               y_before, start_sim_origin()[1]);
+        expect(start_sim_origin()[1] > y_before + 5.0f,
+               "up arrow still moves when the frame is longer than 500 ms");
+        start_sim_key(0xB5, 0);
+        start_sim_init();
+        start_sim_tick(2000);
+        yaw0 = start_sim_yaw();
+        start_sim_key(0xB4, 1);
+        start_sim_tick(2100);
+        printf("  left-arrow yaw %.1f -> %.1f\n", yaw0, start_sim_yaw());
+        expect(start_sim_yaw() > yaw0 + 1.0f, "left arrow turns");
+        start_sim_key(0xB4, 0);
+        start_sim_init();
+        start_sim_tick(1000);
+        {
+            float zj = start_sim_origin()[2];
+            start_sim_key(' ', 1);
+            start_sim_tick(1050);
+            printf("  jump z %.1f -> %.1f\n", zj, start_sim_origin()[2]);
+            expect(start_sim_origin()[2] > zj + 1.0f, "jump leaves the floor");
+            start_sim_key(' ', 0);
+        }
+    }
 
     if (g_fail) {
         printf("%d failed\n", g_fail);

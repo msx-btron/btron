@@ -57,6 +57,101 @@ static GDEV     s_screen;
 static uint8_t  s_user_lcd_bkl = 200u;
 static int      s_cached_bat   = 86;
 
+/* Title-bar FPS. Same rule as the desktop overlay: capture the app caption
+ * once, replace it with "<caption>  <nnn> FPS", and do not invent a number
+ * when the clock does not move. The Palm caption is the status pill, which
+ * sits in bands 0 and 1, so a new number asks the next present for those. */
+static int s_fps_open;
+static int s_fps_dead;
+static int s_fps_app = -1;
+static int s_fps_bar;
+static uint32_t s_fps_win_us;
+static uint32_t s_fps_frames;
+static char s_fps_base[32];
+static char s_fps_last[32];
+
+static int fps_eq(const char *a, const char *b)
+{
+    int i = 0;
+    if (!a || !b) return 0;
+    while (a[i] && a[i] == b[i]) i++;
+    return a[i] == b[i];
+}
+
+static void fps_copy(char *dst, int cap, const char *src)
+{
+    int i = 0;
+    if (!dst || cap < 1) return;
+    if (!src) src = "";
+    for (; i < cap - 1 && src[i]; i++) dst[i] = src[i];
+    dst[i] = '\0';
+}
+
+static void title_fps(void)
+{
+    SEGUI_APP *app = segui_palm_app();
+    uint32_t now, elapsed, ms, fps;
+    int id, n, i;
+    char t[32];
+    char d0, d1, d2;
+    if (!app || !segui_palm_is_animated()) {
+        s_fps_open = 0;
+        s_fps_dead = 0;
+        s_fps_app = -1;
+        return;
+    }
+    id = (int)segui_palm_active_id();
+    now = TIMER0_TIMERAWL;
+    if (!s_fps_open || id != s_fps_app) {
+        s_fps_open = 1;
+        s_fps_dead = 0;
+        s_fps_app = id;
+        s_fps_last[0] = '\0';
+        s_fps_frames = 0;
+        fps_copy(s_fps_base, (int)sizeof s_fps_base, app->title);
+        s_fps_win_us = now;
+    } else if (!fps_eq(app->title, s_fps_last[0] ? s_fps_last : s_fps_base)) {
+        fps_copy(s_fps_base, (int)sizeof s_fps_base, app->title);
+        s_fps_last[0] = '\0';
+        s_fps_win_us = now;
+        s_fps_frames = 0;
+    }
+    if (s_fps_dead) return;
+    s_fps_frames++;
+    elapsed = now - s_fps_win_us;
+    if (elapsed < 250000u && s_fps_frames < 30u) return;
+    if (elapsed == 0u) {
+        s_fps_dead = 1;
+        return;
+    }
+    ms = elapsed / 1000u;
+    if (ms == 0u) ms = 1u;
+    fps = (s_fps_frames * 1000u) / ms;
+    if (fps > 999u) fps = 999u;
+    s_fps_frames = 0;
+    s_fps_win_us = now;
+    d0 = (char)('0' + (fps / 100u) % 10u);
+    d1 = (char)('0' + (fps / 10u) % 10u);
+    d2 = (char)('0' + fps % 10u);
+    if (d0 == '0') d0 = ' ';
+    if (d0 == ' ' && d1 == '0') d1 = ' ';
+    n = 0;
+    for (i = 0; s_fps_base[i] && n < 22; i++) t[n++] = s_fps_base[i];
+    t[n++] = ' ';
+    t[n++] = ' ';
+    t[n++] = d0;
+    t[n++] = d1;
+    t[n++] = d2;
+    t[n++] = ' ';
+    t[n++] = 'F';
+    t[n++] = 'P';
+    t[n++] = 'S';
+    t[n] = '\0';
+    segui_set_title(app, t);
+    fps_copy(s_fps_last, (int)sizeof s_fps_last, t);
+    s_fps_bar = 1;
+}
+
 /* ── SEGUI_PALM_HW_OPS Bridge to Real Silicon ──────────────────────────── */
 
 static void hw_set_lcd_bkl(uint8_t lvl)
@@ -81,7 +176,6 @@ static void segui_task(void *arg)
     uint32_t dirty = ALL_BANDS_DIRTY;
     uint32_t last_input_ms = 0;
     uint32_t last_bat_ms   = 0;
-    uint32_t last_key_ms   = 0;
     int lcd_dimmed = 0;
     int lcd_asleep = 0;
     (void)arg;
@@ -135,37 +229,37 @@ static void segui_task(void *arg)
 #if defined(PICOCALC_APP_QUAKE)
     pico_log("[SEGUI] Palm OS 320x320 UI active (center is Quake)\n");
 #else
-    pico_log("[SEGUI] Palm OS 320x320 UI active (page 1 is 9 apps, page 2 is XMB)\n");
+    pico_log("[SEGUI] Palm OS 320x320 UI active (center is XMB)\n");
 #endif
 
     for (;;) {
         uint32_t now = pico_ticks_ms();
         int key = -1;
-        /* During 3D animation, poll I2C1 every 60 ms to avoid 1.5 ms busy stall/frame */
-        if (!segui_palm_is_animated() || (uint32_t)(now - last_key_ms) >= 60u) {
-            last_key_ms = now;
+        /* One poll per loop. The driver emits one edge, then repeats on
+         * the Prefs delay and gap. A release is not a second character. */
+        {
 #if defined(PICOCALC_APP_QUAKE)
-            {
-                int down = 1;
-                key = i2ckbd_poll_event(&down);
-                if (key >= 0) {
-                    last_input_ms = now;
-                    if (lcd_asleep) {
-                        st7365p_sleep(0);
-                        i2ckbd_set_lcd_backlight(s_user_lcd_bkl);
-                        lcd_asleep = 0;
-                        lcd_dimmed = 0;
-                        dirty = ALL_BANDS_DIRTY;
-                        key = -1;
-                    } else if (lcd_dimmed) {
-                        i2ckbd_set_lcd_backlight(s_user_lcd_bkl);
-                        lcd_dimmed = 0;
-                    }
-                    if (key >= 0 && segui_palm_active_id() == PALM_APP_GLGEARS &&
-                        (key == START_KEY_FIRE || !down)) {
-                        start_sim_key(key, down);
-                        key = -1;
-                    }
+            int down = 1;
+            key = i2ckbd_poll_event(&down);
+            if (key >= 0) {
+                last_input_ms = now;
+                if (lcd_asleep) {
+                    st7365p_sleep(0);
+                    i2ckbd_set_lcd_backlight(s_user_lcd_bkl);
+                    lcd_asleep = 0;
+                    lcd_dimmed = 0;
+                    dirty = ALL_BANDS_DIRTY;
+                    key = -1;
+                } else if (lcd_dimmed) {
+                    i2ckbd_set_lcd_backlight(s_user_lcd_bkl);
+                    lcd_dimmed = 0;
+                }
+                if (key >= 0 && segui_palm_active_id() == PALM_APP_GLGEARS &&
+                    (key == START_KEY_FIRE || !down)) {
+                    start_sim_key(key, down);
+                    key = -1;
+                } else if (key >= 0 && !down) {
+                    key = -1;
                 }
             }
 #else
@@ -217,6 +311,12 @@ static void segui_task(void *arg)
             dirty |= 0x0007FFFCUL; /* Body bands only (skip status & softkey) */
         }
 
+        /* The Palm title is the status pill. A new FPS string needs bands 0 and 1. */
+        if (s_fps_bar) {
+            dirty |= 0x00000003UL;
+            s_fps_bar = 0;
+        }
+
         if (!lcd_asleep && dirty != 0u) {
             if (segui_palm_is_animated()) {
                 uint32_t t0 = TIMER0_TIMERAWL;
@@ -235,6 +335,7 @@ static void segui_task(void *arg)
                     if (segui_palm_active_id() == PALM_APP_XMB) client = "xmb";
 #endif
                     picogl_log_frame(client, (TIMER0_TIMERAWL - t0) / 1000u, bands);
+                    title_fps();
                 }
             } else {
                 dp_pico_present(&s_screen, dirty, segui_palm_paint);

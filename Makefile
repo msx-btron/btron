@@ -2396,7 +2396,8 @@ $(TEST_EEGSG_BIN): $(TEST_EEGSG_OBJS) src/desktop/graphics/eegs/eegs_geom.h src/
 	@mkdir -p ./.build
 	$(CC) $(TEST_EEGSG_OBJS) -o $@ $(LDFLAGS) -lm
 
-TEST_PICOGL_SRCS = verify/tests/test_picogl_bin.c src/desktop/graphics/picogl/picogl_span.c
+TEST_PICOGL_SRCS = verify/tests/test_picogl_bin.c src/desktop/graphics/picogl/picogl_span.c \
+                   src/desktop/graphics/picogl/picogl_host_core1.c
 TEST_PICOGL_OBJS = $(TEST_PICOGL_SRCS:.c=.test.o)
 TEST_PICOGL_BIN  = ./.build/test_picogl_bin
 
@@ -2410,7 +2411,9 @@ $(TEST_PICOGL_BIN): $(TEST_PICOGL_OBJS) src/desktop/graphics/picogl/picogl.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_PICOGL_OBJS) -o $@ $(LDFLAGS) -lm
 
-TEST_PICOGLR_SRCS = verify/tests/test_picogl_raster.c src/desktop/graphics/picogl/picogl_span.c src/desktop/graphics/picogl/picogl_ctx.c
+TEST_PICOGLR_SRCS = verify/tests/test_picogl_raster.c src/desktop/graphics/picogl/picogl_span.c \
+                    src/desktop/graphics/picogl/picogl_ctx.c \
+                    src/desktop/graphics/picogl/picogl_host_core1.c
 TEST_PICOGLR_OBJS = $(TEST_PICOGLR_SRCS:.c=.test.o)
 TEST_PICOGLR_BIN  = ./.build/test_picogl_raster
 
@@ -2431,15 +2434,24 @@ $(TEST_PICOGLR_BIN): $(TEST_PICOGLR_OBJS) src/desktop/graphics/picogl/picogl.h
 
 .build/test_start_sim: verify/tests/test_start_sim.c src/media/quake/sim/start_sim.c \
 		.build/start_blob.c src/desktop/graphics/picogl/picogl_span.c \
+		src/desktop/graphics/picogl/picogl_host_core1.c \
 		.build/start_blob.h src/media/quake/sim/start_sim.h \
 		src/desktop/graphics/picogl/picogl.h
 	$(CC) $(CFLAGS) -I.build -Isrc/desktop/graphics/picogl -Isrc/media/quake/sim \
 		verify/tests/test_start_sim.c src/media/quake/sim/start_sim.c \
 		.build/start_blob.c src/desktop/graphics/picogl/picogl_span.c \
+		src/desktop/graphics/picogl/picogl_host_core1.c \
 		-o $@ -lm
 
 test-start-sim: .build/test_start_sim
 	@./.build/test_start_sim
+
+.build/test_xmb_pico: verify/tests/test_xmb_pico.c src/media/xmb/xmb_pico.c src/media/xmb/xmb_pico.h
+	@mkdir -p .build
+	$(CC) $(CFLAGS) -Isrc/media/xmb verify/tests/test_xmb_pico.c src/media/xmb/xmb_pico.c -o $@
+
+test-xmb-pico: .build/test_xmb_pico
+	@./.build/test_xmb_pico
 
 # LANE 12f gate (a): batch grid map projection bit-identical check vs TinyGL vertex walk.
 TEST_GRIDMAP_SRCS = verify/tests/test_grid_map.c src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/backend_tinygl.c \
@@ -4687,4 +4699,4 @@ serial-picocalc:
 	echo "[SERIAL] Attaching to $$PORT @ 115200 8N1 (Ctrl-A then K to exit)..."; \
 	screen "$$PORT" 115200
 
-.PHONY: picocalc picocalc-all picocalc-quake flash-picocalc test-picocalc test-segui-cores serial-picocalc test-start-sim
+.PHONY: picocalc picocalc-all picocalc-quake flash-picocalc test-picocalc test-segui-cores serial-picocalc test-start-sim test-xmb-pico

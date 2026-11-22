@@ -52,5 +52,6 @@ const char *start_sim_message(void);
 
 void start_sim_set_origin(float x, float y, float z);
 void start_sim_set_yaw(float yaw);
+float start_sim_yaw(void);
 
 #endif

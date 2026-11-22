@@ -58,7 +58,9 @@ run_profile() {
         "[BOOT] Stage 1: Pico RTOS Console Active"
         "btron-pico#"
         "SRAM static used :"
-        "TID  PRIO  STATE  SWITCHES  NAME"
+        "ID PRI STATE SWITCH C NAME"
+        "CORE STATE QUEUED REF NAME"
+        "   1 OFF"
     )
 
     local PASS=0

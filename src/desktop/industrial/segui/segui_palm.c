@@ -682,13 +682,24 @@ static void draw_quake_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, voi
     (void)app;
     (void)ctx;
     if (!bounds) return;
-    start_sim_render();
 #if defined(PICO_REAL_HW)
+    /* present() paints once per 16px band. The scene is one frame.
+     * Later bands only copy the rows that band covers. */
+    {
+        static uint32_t s_gen;
+        extern uint32_t dp_pico_present_gen(void);
+        uint32_t g = dp_pico_present_gen();
+        if (g != s_gen) {
+            s_gen = g;
+            start_sim_render();
+        }
+    }
     (void)dev;
     dp_pico_blit_rgb565(bounds, start_sim_pixels(),
                         start_sim_view_w(), start_sim_view_h());
 #else
     (void)dev;
+    start_sim_render();
 #endif
 }
 
@@ -783,10 +794,11 @@ static void build_xmb(SEGUI_APP *app, const SEGUI_PROFILE *prof)
 static BOOL key_xmb(int key)
 {
     int go;
-    if (key == PALM_KEY_LEFT)  { xmb_pico_move(0, -1); return TRUE; }
-    if (key == PALM_KEY_RIGHT) { xmb_pico_move(0, +1); return TRUE; }
-    if (key == PALM_KEY_UP)    { xmb_pico_move(-1, 0); return TRUE; }
-    if (key == PALM_KEY_DOWN)  { xmb_pico_move(+1, 0); return TRUE; }
+    /* The category row is horizontal. The item column is vertical. */
+    if (key == PALM_KEY_LEFT)  { xmb_pico_move(-1, 0); return TRUE; }
+    if (key == PALM_KEY_RIGHT) { xmb_pico_move(+1, 0); return TRUE; }
+    if (key == PALM_KEY_UP)    { xmb_pico_move(0, -1); return TRUE; }
+    if (key == PALM_KEY_DOWN)  { xmb_pico_move(0, +1); return TRUE; }
     if (key == PALM_KEY_ENTER) {
         go = xmb_pico_go();
         if (go != XMB_GO_NONE) segui_palm_switch(xmb_go_palm(go));
@@ -976,32 +988,72 @@ static void prefs_confirm_bootsel(void)
     if (s_hw.reboot_bootsel) s_hw.reboot_bootsel();
 }
 
+/* Typematic. Delay is the pause before the first repeat. Repeat is the
+ * gap between repeats. Both cycle in Prefs and the keyboard driver reads them. */
+static const uint32_t s_key_delays[]  = { 250u, 400u, 600u, 1000u };
+static const uint32_t s_key_repeats[] = { 40u, 80u, 120u, 200u };
+static int s_key_delay_i  = 1;
+static int s_key_repeat_i = 1;
+
+enum {
+    PREF_LCD = 1,
+    PREF_THEME = 2,
+    PREF_KBKL = 4,
+    PREF_KDELAY = 5,
+    PREF_KREPEAT = 6,
+    PREF_BAT = 7,
+    PREF_POWER = 8,
+    PREF_BOARD = 10,
+    PREF_SRAM = 11,
+    PREF_UART = 12,
+    PREF_BOOT = 13
+};
+
+static void prefs_push_keys(void)
+{
+#if defined(PICO_REAL_HW)
+    extern void i2ckbd_set_repeat(uint32_t delay_ms, uint32_t repeat_ms);
+    i2ckbd_set_repeat(s_key_delays[s_key_delay_i], s_key_repeats[s_key_repeat_i]);
+#else
+    (void)s_key_delays;
+    (void)s_key_repeats;
+#endif
+}
+
 static void prefs_activate(SEGUI_APP *app, SEGUI_CTRL *list, int row)
 {
     (void)app; (void)list;
     switch (row) {
-    case 1: /* LCD Backlight */
+    case PREF_LCD:
         s_lcd_bkl = (uint8_t)((s_lcd_bkl + 32u) & 0xFFu);
         if (s_lcd_bkl < 32u) s_lcd_bkl = 32u;
         if (s_hw.set_lcd_backlight) s_hw.set_lcd_backlight(s_lcd_bkl);
         break;
-    case 2: /* Theme */
+    case PREF_THEME:
         s_theme_idx = (s_theme_idx + 1) % 4;
         s_theme = segui_theme_named(s_theme_names[s_theme_idx]);
         s_app.theme = s_theme;
         break;
-    case 4: /* Key Backlight */
+    case PREF_KBKL:
         s_kbd_bkl = (s_kbd_bkl == 0) ? 128 : (s_kbd_bkl < 240 ? 255 : 0);
         if (s_hw.set_kbd_backlight) s_hw.set_kbd_backlight(s_kbd_bkl);
         break;
-    case 6: /* Power Off */
+    case PREF_KDELAY:
+        s_key_delay_i = (s_key_delay_i + 1) % 4;
+        prefs_push_keys();
+        break;
+    case PREF_KREPEAT:
+        s_key_repeat_i = (s_key_repeat_i + 1) % 4;
+        prefs_push_keys();
+        break;
+    case PREF_POWER:
         segui_palm_alert("Power Off", "Shut down PicoCalc via STM32?", prefs_confirm_poweroff);
         break;
-    case 10: /* UART0 Mirror */
+    case PREF_UART:
         s_uart_mirror = !s_uart_mirror;
         if (s_hw.set_uart_mirror) s_hw.set_uart_mirror(s_uart_mirror);
         break;
-    case 11: /* Reboot to BOOTSEL */
+    case PREF_BOOT:
         segui_palm_alert("BOOTSEL", "Reboot Pico into USB UF2 mode?", prefs_confirm_bootsel);
         break;
     default:
@@ -1016,6 +1068,8 @@ static SEGUI_ROW s_prefs_rows[] = {
     { SEGUI_ROW_VALUE,  "SegUI Theme",               "Handset",   0, prefs_activate },
     { SEGUI_ROW_HEADER, "KEYBOARD & POWER (0x1F)",   "",          0, NULL },
     { SEGUI_ROW_VALUE,  "Key Backlight (0x0A)",      "OFF",       0, prefs_activate },
+    { SEGUI_ROW_VALUE,  "Key Delay",                 "400 ms",    0, prefs_activate },
+    { SEGUI_ROW_VALUE,  "Key Repeat",                "80 ms",     0, prefs_activate },
     { SEGUI_ROW_VALUE,  "Battery (0x0B)",            "86%",       0, NULL },
     { SEGUI_ROW_ARROW,  "Power Off (0x0E)...",       "",          0, prefs_activate },
     { SEGUI_ROW_HEADER, "SYSTEM & RTOS",             "",          0, NULL },
@@ -1025,29 +1079,39 @@ static SEGUI_ROW s_prefs_rows[] = {
     { SEGUI_ROW_ARROW,  "Reboot to BOOTSEL...",      "",          0, prefs_activate }
 };
 
+static void prefs_ms(char *dst, uint32_t ms)
+{
+    char num[12];
+    p_u32_dec(ms, num, (int)sizeof(num));
+    p_strlcpy(dst, SEGUI_LABEL_MAX, num);
+    p_strlcat(dst, SEGUI_LABEL_MAX, " ms");
+}
+
 static void prefs_refresh_values(void)
 {
     char num[16];
-    p_format_pct(s_prefs_rows[1].value, SEGUI_LABEL_MAX, s_lcd_bkl, 255);
-    p_strlcpy(s_prefs_rows[2].value, SEGUI_LABEL_MAX, s_theme_names[s_theme_idx]);
-    if (s_kbd_bkl == 0) p_strlcpy(s_prefs_rows[4].value, SEGUI_LABEL_MAX, "OFF");
-    else p_format_pct(s_prefs_rows[4].value, SEGUI_LABEL_MAX, s_kbd_bkl, 255);
+    p_format_pct(s_prefs_rows[PREF_LCD].value, SEGUI_LABEL_MAX, s_lcd_bkl, 255);
+    p_strlcpy(s_prefs_rows[PREF_THEME].value, SEGUI_LABEL_MAX, s_theme_names[s_theme_idx]);
+    if (s_kbd_bkl == 0) p_strlcpy(s_prefs_rows[PREF_KBKL].value, SEGUI_LABEL_MAX, "OFF");
+    else p_format_pct(s_prefs_rows[PREF_KBKL].value, SEGUI_LABEL_MAX, s_kbd_bkl, 255);
+    prefs_ms(s_prefs_rows[PREF_KDELAY].value, s_key_delays[s_key_delay_i]);
+    prefs_ms(s_prefs_rows[PREF_KREPEAT].value, s_key_repeats[s_key_repeat_i]);
 
     if (s_hw.get_battery_pct) s_battery_pct = s_hw.get_battery_pct();
     p_u32_dec((uint32_t)s_battery_pct, num, (int)sizeof(num));
-    p_strlcpy(s_prefs_rows[5].value, SEGUI_LABEL_MAX, num);
-    p_strlcat(s_prefs_rows[5].value, SEGUI_LABEL_MAX, "%");
+    p_strlcpy(s_prefs_rows[PREF_BAT].value, SEGUI_LABEL_MAX, num);
+    p_strlcat(s_prefs_rows[PREF_BAT].value, SEGUI_LABEL_MAX, "%");
 
-    p_strlcpy(s_prefs_rows[8].value, SEGUI_LABEL_MAX,
+    p_strlcpy(s_prefs_rows[PREF_BOARD].value, SEGUI_LABEL_MAX,
               s_hw.board_name ? s_hw.board_name : "RP2350");
 
     if (s_hw.get_sram_used) {
         p_u32_dec(s_hw.get_sram_used() / 1024u, num, (int)sizeof(num));
-        p_strlcpy(s_prefs_rows[9].value, SEGUI_LABEL_MAX, num);
-        p_strlcat(s_prefs_rows[9].value, SEGUI_LABEL_MAX, " KiB");
+        p_strlcpy(s_prefs_rows[PREF_SRAM].value, SEGUI_LABEL_MAX, num);
+        p_strlcat(s_prefs_rows[PREF_SRAM].value, SEGUI_LABEL_MAX, " KiB");
     }
-    if (s_uart_mirror) s_prefs_rows[10].state |= SEGUI_ST_SELECTED;
-    else               s_prefs_rows[10].state &= ~SEGUI_ST_SELECTED;
+    if (s_uart_mirror) s_prefs_rows[PREF_UART].state |= SEGUI_ST_SELECTED;
+    else               s_prefs_rows[PREF_UART].state &= ~SEGUI_ST_SELECTED;
 }
 
 static void build_prefs(SEGUI_APP *app, const SEGUI_PROFILE *prof)
@@ -1068,15 +1132,15 @@ static void launch_cb_term(SEGUI_APP *a, SEGUI_CTRL *c)     { (void)a;(void)c; s
 static void launch_cb_edit(SEGUI_APP *a, SEGUI_CTRL *c)     { (void)a;(void)c; segui_palm_switch(PALM_APP_EDITOR);   }
 static void launch_cb_browse(SEGUI_APP *a, SEGUI_CTRL *c)   { (void)a;(void)c; segui_palm_switch(PALM_APP_BROWSER);  }
 static void launch_cb_cab(SEGUI_APP *a, SEGUI_CTRL *c)      { (void)a;(void)c; segui_palm_switch(PALM_APP_CABINET);  }
+#if !defined(SEGUI_HAVE_XMB)
 static void launch_cb_gears(SEGUI_APP *a, SEGUI_CTRL *c)    { (void)a;(void)c; segui_palm_switch(PALM_APP_GLGEARS);  }
+#endif
 static void launch_cb_contacts(SEGUI_APP *a, SEGUI_CTRL *c) { (void)a;(void)c; segui_palm_switch(PALM_APP_CONTACTS); }
 static void launch_cb_phone(SEGUI_APP *a, SEGUI_CTRL *c)    { (void)a;(void)c; segui_palm_switch(PALM_APP_PHONE);    }
 static void launch_cb_chat(SEGUI_APP *a, SEGUI_CTRL *c)     { (void)a;(void)c; segui_palm_switch(PALM_APP_CHAT);     }
 static void launch_cb_prefs(SEGUI_APP *a, SEGUI_CTRL *c)    { (void)a;(void)c; segui_palm_switch(PALM_APP_PREFS);    }
 
 #if defined(SEGUI_HAVE_XMB)
-static int s_launch_page; /* 0 = the nine apps, 1 = the XMB tile */
-
 static void launch_cb_xmb(SEGUI_APP *a, SEGUI_CTRL *c)
 {
     (void)a; (void)c;
@@ -1088,19 +1152,15 @@ static void build_launcher(SEGUI_APP *app, const SEGUI_PROFILE *prof)
 {
     int tab;
     segui_app_init(app, "B-System", prof);
-#if defined(SEGUI_HAVE_XMB)
-    if (s_launch_page) {
-        tab = segui_add_tab(app, "XMB", TRUE);
-        segui_add_button(app, tab, "XMB", SEGUI_ICON_WINDOW, launch_cb_xmb);
-        return;
-    }
-#endif
     tab = segui_add_tab(app, "Apps", TRUE);
     segui_add_button(app, tab, "Terminal", SEGUI_ICON_TERMINAL, launch_cb_term);
     segui_add_button(app, tab, "Editor",   SEGUI_ICON_EDITOR,   launch_cb_edit);
     segui_add_button(app, tab, "Browser",  SEGUI_ICON_BROWSER,  launch_cb_browse);
     segui_add_button(app, tab, "Cabinet",  SEGUI_ICON_CABINET,  launch_cb_cab);
-#if defined(PICOCALC_APP_QUAKE)
+#if defined(SEGUI_HAVE_XMB)
+    /* Center is XMB. GLGears opens from the Applications row. */
+    segui_add_button(app, tab, "XMB",      SEGUI_ICON_WINDOW,   launch_cb_xmb);
+#elif defined(PICOCALC_APP_QUAKE)
     segui_add_button(app, tab, "Quake",    SEGUI_ICON_BOLT,     launch_cb_gears);
 #else
     segui_add_button(app, tab, "GLGears",  SEGUI_ICON_GEARS,    launch_cb_gears);
@@ -1137,7 +1197,7 @@ static void menu_open_phone(void)    { segui_palm_switch(PALM_APP_PHONE); }
 static void menu_open_contacts(void) { segui_palm_switch(PALM_APP_CONTACTS); }
 static void menu_phone_clr(void)     { chat_core_set_dial(""); segui_palm_switch(PALM_APP_PHONE); }
 static void menu_chat_ack(void)      { chat_core_send_msg("ACK from PicoCalc RP2350."); segui_palm_switch(PALM_APP_CHAT); }
-static void menu_prefs_theme(void)   { prefs_activate(&s_app, NULL, 2); }
+static void menu_prefs_theme(void)   { prefs_activate(&s_app, NULL, PREF_THEME); }
 
 static const SEGUI_PALM_MENU_ITEM s_menu_default[] = {
     { "Home Launcher (F1)", menu_go_home },
@@ -1238,6 +1298,7 @@ void segui_palm_init(const SEGUI_PROFILE *prof, const SEGUI_PALM_HW_OPS *hw)
     s_theme_idx = 0;
     s_menu_open = FALSE;
     s_alert_open = FALSE;
+    prefs_push_keys();
     segui_palm_switch(PALM_APP_LAUNCHER);
 }
 
@@ -1404,27 +1465,19 @@ BOOL segui_palm_handle_key(int key, GDEV *dev)
         return FALSE;
     }
 
-    /* 5. Launcher direct hotkeys 1..9. These stay the page-1 apps. */
+    /* 5. Launcher hotkeys. Key 5 is the center tile. On the gears image that
+     * is XMB, and PALM_APP_GLGEARS stays at its old index so 6..9 do not move.
+     * The quake image has no XMB, so key 5 stays the center Quake app. */
     if (s_active_id == PALM_APP_LAUNCHER && key >= '1' && key <= '9') {
-        segui_palm_switch((SEGUI_PALM_APP_ID)(PALM_APP_TERMINAL + (key - '1')));
+#if defined(SEGUI_HAVE_XMB)
+        if (key == '5')
+            segui_palm_switch(PALM_APP_XMB);
+        else
+#endif
+            segui_palm_switch((SEGUI_PALM_APP_ID)(PALM_APP_TERMINAL + (key - '1')));
         segui_palm_layout(dev);
         return TRUE;
     }
-
-#if defined(SEGUI_HAVE_XMB)
-    /* Left/Right on the launcher switches pages. Up/Down still walks the grid.
-     * GLGears keeps its own yaw keys; this runs only while the launcher is up. */
-    if (s_active_id == PALM_APP_LAUNCHER &&
-        (key == PALM_KEY_LEFT || key == PALM_KEY_RIGHT)) {
-        int page = (key == PALM_KEY_RIGHT) ? 1 : 0;
-        if (page != s_launch_page) {
-            s_launch_page = page;
-            segui_palm_switch(PALM_APP_LAUNCHER);
-            segui_palm_layout(dev);
-        }
-        return TRUE;
-    }
-#endif
 
     /* 6. App-specific key handler */
     if (d->on_key && d->on_key(key)) {

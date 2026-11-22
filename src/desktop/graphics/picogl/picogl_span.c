@@ -7,8 +7,21 @@
  */
 #include "picogl.h"
 
+#if defined(__ARM_ARCH_6M__) || defined(__ARM_ARCH_8M_MAIN__)
+#define NEXUS_BARRIER() __asm__ volatile("dmb sy" ::: "memory")
+#endif
+#include <btron/nexus_ring.h>
+
 #include <math.h>
 #include <string.h>
+
+/* 32 slots is two waves of the 16-wide batch. It is not a second bucket
+ * set: the bins stay one 7,680-byte table. snd refuses when this ring is
+ * full and never spins. Core 1 is the only consumer. */
+#define PICOGL_SPAN_SLOTS 32
+NEXUS_RING_DEFINE(picogl_span_ring_t, picogl_tri_t, PICOGL_SPAN_SLOTS)
+
+
 
 #define PICOGL_VERTS 40
 
@@ -34,11 +47,8 @@ static picogl_tri_t s_band[PICOGL_BANDS][PICOGL_BAND_CAP];
 static uint16_t *s_tgt_rgb;
 static int32_t  *s_tgt_iz;
 static int       s_tgt_w, s_tgt_h, s_tgt_stride;
-static picogl_tri_t s_queue[PICOGL_BAND_CAP];
-static volatile int s_queue_n;
-
-__attribute__((weak)) void pico_core1_launch(void) {}
-__attribute__((weak)) int pico_core1_run_flush(void) { return 0; }
+static picogl_span_ring_t s_span_ring;
+static volatile uint32_t s_span_done;
 
 static void mat_ident(float *m)
 {
@@ -273,27 +283,62 @@ static void paint_tri_target(const picogl_tri_t *t)
     }
 }
 
+void picogl_span_drain(void)
+{
+    for (;;) {
+        picogl_tri_t tri;
+        uint32_t t = s_span_ring.tail;
+        if (!picogl_span_ring_t_rcv(&s_span_ring, &tri))
+            return;
+        paint_tri_target(&tri);
+        NEXUS_BARRIER();
+        s_span_done = t + 1u;
+        NEXUS_BARRIER();
+    }
+}
+
+uint32_t picogl_span_posted(void) { return s_span_ring.head; }
+uint32_t picogl_span_finished(void) { return s_span_done; }
+int picogl_span_queued(void)
+{
+    uint32_t in_ring = picogl_span_ring_t_len(&s_span_ring);
+    uint32_t behind = s_span_ring.head - s_span_done;
+    if (behind < in_ring) behind = in_ring;
+    return (int)behind;
+}
+unsigned picogl_span_refused(void) { return s_span_ring.refused; }
+
+static void post_target(const picogl_tri_t *tri)
+{
+    int st;
+    pico_core1_launch();
+    st = pico_core1_state();
+    if (st == 1 || st == 2) {
+        if (picogl_span_ring_t_snd(&s_span_ring, tri) == 0) {
+            pico_core1_sev();
+            return;
+        }
+        /* S_FULL. The ring already counted the refusal. Reap is the
+         * completion check at this yield, then one retry. */
+        pico_core1_reap();
+        st = pico_core1_state();
+        if ((st == 1 || st == 2) &&
+            picogl_span_ring_t_snd(&s_span_ring, tri) == 0) {
+            pico_core1_sev();
+            return;
+        }
+    }
+    paint_tri_target(tri);
+}
+
 void picogl_flush_target_now(void)
 {
-    int i, n;
-    n = s_queue_n;
-    for (i = 0; i < n; i++)
-        paint_tri_target(&s_queue[i]);
-    s_queue_n = 0;
-#if defined(PICO_REAL_HW)
-    __asm__ volatile("dmb sy" ::: "memory");
-#endif
+    picogl_span_drain();
 }
 
 void picogl_flush_target(void)
 {
-    if (s_queue_n <= 0) return;
-    if (!s_tgt_rgb) {
-        s_queue_n = 0;
-        return;
-    }
-    if (pico_core1_run_flush()) return;
-    picogl_flush_target_now();
+    pico_core1_reap();
 }
 
 static void push_tri(const pv_t *a, const pv_t *b, const pv_t *c,
@@ -312,8 +357,16 @@ static void push_tri(const pv_t *a, const pv_t *b, const pv_t *c,
     for (i = 0; i < 3; i++) {
         float w = p[i]->w;
         if (!(w >= 1.0e-4f)) return;
-        sx[i] = (p[i]->x / w * 0.5f + 0.5f) * (float)s_vp_w;
-        sy[i] = (0.5f - p[i]->y / w * 0.5f) * (float)s_vp_h;
+        {
+            float nx = p[i]->x / w;
+            float ny = p[i]->y / w;
+            /* A vertex the clipper should have cut. Clamping it to the
+             * int16 box turns the triangle into a screen-edge spike. */
+            if (nx < -1.25f || nx > 1.25f || ny < -1.25f || ny > 1.25f)
+                return;
+            sx[i] = (nx * 0.5f + 0.5f) * (float)s_vp_w;
+            sy[i] = (0.5f - ny * 0.5f) * (float)s_vp_h;
+        }
         if (sx[i] != sx[i] || sy[i] != sy[i]) return;
         if ((1.0f / w) > izf) izf = 1.0f / w;
     }
@@ -350,10 +403,7 @@ static void push_tri(const pv_t *a, const pv_t *b, const pv_t *c,
     s_tris++;
 
     if (s_tgt_rgb) {
-        if (s_queue_n >= PICOGL_BAND_CAP)
-            picogl_flush_target();
-        if (s_queue_n < PICOGL_BAND_CAP)
-            s_queue[s_queue_n++] = tri;
+        post_target(&tri);
         return;
     }
 
@@ -395,8 +445,8 @@ static void submit_poly(const float *xyz, const float *st, int nverts,
 
 void picogl_begin_frame(int width, int height)
 {
+    pico_core1_reap();
     memset(s_band_n, 0, sizeof s_band_n);
-    s_queue_n = 0;
     s_drop = 0;
     s_fills = 0;
     s_glyphs = 0;
@@ -514,6 +564,7 @@ void picogl_bind_target(uint16_t *rgb, int32_t *iz, int w, int h, int stride)
 void picogl_clear_target(int color, int depth, uint16_t rgb)
 {
     int y, x;
+    pico_core1_reap();
     if (!s_tgt_rgb || s_tgt_w <= 0 || s_tgt_h <= 0) return;
     for (y = 0; y < s_tgt_h; y++) {
         uint16_t *row = s_tgt_rgb + y * s_tgt_stride;
