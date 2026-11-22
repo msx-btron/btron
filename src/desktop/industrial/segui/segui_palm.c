@@ -815,22 +815,67 @@ static BOOL key_xmb(int key)
 #endif
 
 #if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
-/* Host screenshot only. The picocalc elf does not have this app.
- * tools/capture_segui.c paints the start hall into the canvas. */
-extern void segui_host_quake_paint(GDEV *dev, const RECT *bounds);
+/* Host screenshot only. The picocalc gears elf does not have this app.
+ * The canvas calls the same start_sim_render the quake image calls, then
+ * stretches the 128x96 RGB565 target the way dp_pico_blit_rgb565 does. */
+#include "start_sim.h"
+
+static void host_blit_rgb565(GDEV *dev, const RECT *b,
+                             const uint16_t *src, int sw, int sh)
+{
+    int dw, dh, y;
+    uint32_t step_x, step_y, sy;
+    if (!dev || !b || !src || !dev->pixels || sw <= 0 || sh <= 0) return;
+    dw = (int)b->right - (int)b->left;
+    dh = (int)b->bottom - (int)b->top;
+    if (dw <= 0 || dh <= 0) return;
+    step_x = ((uint32_t)sw << 16) / (uint32_t)dw;
+    step_y = ((uint32_t)sh << 16) / (uint32_t)dh;
+    sy = 0;
+    for (y = 0; y < dh; y++) {
+        int syi = (int)(sy >> 16);
+        const uint16_t *srow;
+        COLOR *dst;
+        uint32_t sx = 0;
+        int x;
+        if (syi < 0) syi = 0;
+        if (syi >= sh) syi = sh - 1;
+        srow = src + syi * sw;
+        dst = dev->pixels + ((int)b->top + y) * (int)dev->width + (int)b->left;
+        for (x = 0; x < dw; x++) {
+            int sxi = (int)(sx >> 16);
+            uint16_t c;
+            int r5, g6, b5, r8, g8, b8;
+            if (sxi < 0) sxi = 0;
+            if (sxi >= sw) sxi = sw - 1;
+            c = srow[sxi];
+            r5 = (c >> 11) & 31;
+            g6 = (c >> 5) & 63;
+            b5 = c & 31;
+            r8 = (r5 << 3) | (r5 >> 2);
+            g8 = (g6 << 2) | (g6 >> 4);
+            b8 = (b5 << 3) | (b5 >> 2);
+            dst[x] = 0xFF000000u | ((COLOR)r8 << 16) | ((COLOR)g8 << 8) | (COLOR)b8;
+            sx += step_x;
+        }
+        sy += step_y;
+    }
+}
 
 static void draw_quake_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, void *ctx)
 {
     (void)app; (void)ctx;
     if (!bounds || !dev) return;
-    segui_host_quake_paint(dev, bounds);
+    start_sim_render();
+    host_blit_rgb565(dev, bounds, start_sim_pixels(),
+                     start_sim_view_w(), start_sim_view_h());
 }
 
 static void build_quake_preview(SEGUI_APP *app, const SEGUI_PROFILE *prof)
 {
     int tab;
     segui_app_init(app, "Quake", prof);
-    tab = segui_add_tab(app, "Start", FALSE);
+    tab = segui_add_tab(app, "e1m1", FALSE);
     segui_add_canvas(app, tab, draw_quake_canvas, NULL);
 }
 #endif

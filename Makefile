@@ -4239,6 +4239,10 @@ CAPTURE_SEGUI_SRCS = tools/capture_segui.c \
                      src/desktop/industrial/segui/segui.c \
                      src/desktop/industrial/segui/segui_palm.c \
                      src/media/xmb/xmb_pico.c \
+                     src/media/quake/sim/start_sim.c \
+                     .build/quake-e1m1/start_blob.c \
+                     src/desktop/graphics/picogl/picogl_span.c \
+                     src/desktop/graphics/picogl/picogl_host_core1.c \
                      src/media/sdk/glgears_segui.c \
                      src/apps/cabinet/cabinet_core.c \
                      src/apps/editor/teditor_core.c \
@@ -4255,9 +4259,15 @@ CAPTURE_SEGUI_SRCS = tools/capture_segui.c \
 
 CAPTURE_SEGUI_OBJS = $(CAPTURE_SEGUI_SRCS:.c=.test.o)
 
-src/desktop/industrial/segui/segui_palm.test.o: CFLAGS += -DBTRON_SEGUI_TINYGL=1 -DSEGUI_HOST_XMB
+src/desktop/industrial/segui/segui_palm.test.o: CFLAGS += -DBTRON_SEGUI_TINYGL=1 -DSEGUI_HOST_XMB -Isrc/media/quake/sim
 tools/capture_segui.test.o: CFLAGS += -DSEGUI_HOST_XMB
 src/media/xmb/xmb_pico.test.o: CFLAGS += -DSEGUI_HOST_XMB
+src/media/quake/sim/start_sim.test.o: .build/quake-e1m1/start_blob.h
+src/media/quake/sim/start_sim.test.o: CFLAGS += -DSEGUI_HOST_QUAKE -I.build/quake-e1m1 -Isrc/desktop/graphics/picogl -Isrc/media/quake/sim
+.build/quake-e1m1/start_blob.test.o: .build/quake-e1m1/start_blob.h
+.build/quake-e1m1/start_blob.test.o: CFLAGS += -I.build/quake-e1m1
+src/desktop/graphics/picogl/picogl_span.test.o: CFLAGS += -Isrc/desktop/graphics/picogl
+src/desktop/graphics/picogl/picogl_host_core1.test.o: CFLAGS += -Isrc/desktop/graphics/picogl
 
 $(CAPTURE_SEGUI_BIN): $(CAPTURE_SEGUI_OBJS)
 	$(CC) $(CAPTURE_SEGUI_OBJS) -o $@ $(LDFLAGS) -lm
@@ -4273,14 +4283,15 @@ $(CAPTURE_QUAKE_START_OBJ): verify/tests/capture_quake.c
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DQUAKE_CAP_W=304 -DQUAKE_CAP_H=256 \
 	    -DQUAKE_CAP_START_ONLY -MMD -MP -c $< -o $@
 
-segui-screens: $(CAPTURE_SEGUI_BIN) $(CAPTURE_QUAKE_START_BIN)
+segui-screens: $(CAPTURE_SEGUI_BIN)
 	@echo "=========================================================="
 	@echo " Generating SegUI 320x320 Screen Set..."
 	@echo "=========================================================="
 	@mkdir -p /tmp/segui_raw_screens
-	@./$(CAPTURE_QUAKE_START_BIN) /tmp/quake_segui_body.raw
+	@rm -f /tmp/segui_raw_screens/picocalc_launcher_xmb.raw
 	@./$(CAPTURE_SEGUI_BIN)
 	@python3 scripts/screen_update_segui.py
+	@rm -f b-system/img/segui/picocalc_launcher_xmb.png
 
 # ===================================================================
 # Quake Automated Screenshot Pipeline — 21:9 (672×288) ARGB frames

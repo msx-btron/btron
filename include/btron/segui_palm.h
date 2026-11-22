@@ -36,7 +36,7 @@ typedef enum {
     PALM_APP_XMB,          /* center of make picocalc; not on the quake image */
 #endif
 #if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
-    PALM_APP_QUAKE_PREVIEW, /* host screenshot of the start hall; not in the picocalc elf */
+    PALM_APP_QUAKE_PREVIEW, /* host shot of start_sim on e1m1; not in the gears elf */
 #endif
     PALM_APP_COUNT
 } SEGUI_PALM_APP_ID;

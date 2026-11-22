@@ -20,73 +20,6 @@
 #include "../src/apps/cabinet/cabinet_core.h"
 
 static const char *RAW_DIR = "/tmp/segui_raw_screens";
-static const char *QUAKE_BODY = "/tmp/quake_segui_body.raw";
-
-static COLOR *s_quake_px;
-static int s_quake_w;
-static int s_quake_h;
-
-/* The Quake start hall is rendered by capture_quake -DQUAKE_CAP_START_ONLY
- * and pasted into the SegUI body. This is a host preview, not the picocalc elf. */
-static int load_quake_body(void)
-{
-    FILE *fp;
-    uint32_t w = 0, h = 0;
-    size_t n;
-    fp = fopen(QUAKE_BODY, "rb");
-    if (!fp) {
-        fprintf(stderr, "Missing %s (start hall not rendered)\n", QUAKE_BODY);
-        return 1;
-    }
-    if (fread(&w, sizeof w, 1, fp) != 1 || fread(&h, sizeof h, 1, fp) != 1 ||
-        w < 16 || h < 16 || w > 1024 || h > 1024) {
-        fprintf(stderr, "Bad quake body header in %s\n", QUAKE_BODY);
-        fclose(fp);
-        return 1;
-    }
-    s_quake_px = (COLOR *)malloc((size_t)w * (size_t)h * sizeof(COLOR));
-    if (!s_quake_px) {
-        fclose(fp);
-        return 1;
-    }
-    n = fread(s_quake_px, sizeof(COLOR), (size_t)w * (size_t)h, fp);
-    fclose(fp);
-    if (n != (size_t)w * (size_t)h) {
-        fprintf(stderr, "Short quake body in %s\n", QUAKE_BODY);
-        free(s_quake_px);
-        s_quake_px = NULL;
-        return 1;
-    }
-    s_quake_w = (int)w;
-    s_quake_h = (int)h;
-    printf("  [QUAKE] body %dx%d from %s\n", s_quake_w, s_quake_h, QUAKE_BODY);
-    return 0;
-}
-
-void segui_host_quake_paint(GDEV *dev, const RECT *b)
-{
-    int dw, dh, y, x;
-    if (!dev || !b || !dev->pixels || !s_quake_px) return;
-    dw = (int)b->right - (int)b->left;
-    dh = (int)b->bottom - (int)b->top;
-    if (dw <= 0 || dh <= 0) return;
-    for (y = 0; y < dh; y++) {
-        int sy = (s_quake_h == dh) ? y : (y * s_quake_h / dh);
-        COLOR *dst = dev->pixels + ((int)b->top + y) * (int)dev->width + (int)b->left;
-        if (sy < 0) sy = 0;
-        if (sy >= s_quake_h) sy = s_quake_h - 1;
-        if (s_quake_w == dw) {
-            memcpy(dst, s_quake_px + sy * s_quake_w, (size_t)dw * sizeof(COLOR));
-            continue;
-        }
-        for (x = 0; x < dw; x++) {
-            int sx = x * s_quake_w / dw;
-            if (sx < 0) sx = 0;
-            if (sx >= s_quake_w) sx = s_quake_w - 1;
-            dst[x] = s_quake_px[sy * s_quake_w + sx];
-        }
-    }
-}
 
 static uint32_t mock_sram_used(void)  { return 76u * 1024u; }
 static uint32_t mock_sram_total(void) { return 520u * 1024u; }
@@ -220,26 +153,20 @@ int main(void)
     segui_palm_switch(PALM_APP_PREFS);
     errors += snap(dev, "picocalc_prefs", "9. Preferences");
 
-    /* Page 2, then the opened XMB app. Right does not wrap. */
-    segui_palm_switch(PALM_APP_LAUNCHER);
-    segui_palm_handle_key(PALM_KEY_RIGHT, dev);
-    errors += snap(dev, "picocalc_launcher_xmb", "Home / XMB page");
+    /* Opened XMB, settled, then one tick into a category walk. */
     segui_palm_switch(PALM_APP_XMB);
     {
         int tick;
-        for (tick = 0; tick < 20; tick++) segui_palm_tick(0);
+        for (tick = 0; tick < 12; tick++) segui_palm_tick(0);
     }
     errors += snap(dev, "picocalc_xmb", "XMB (opened)");
+    segui_palm_handle_key(PALM_KEY_RIGHT, dev);
+    segui_palm_tick(0);
+    errors += snap(dev, "picocalc_xmb_walk", "XMB (category walk)");
 
-    /* Start hall inside the SegUI shell. Host preview, not the firmware. */
-    if (load_quake_body() != 0) {
-        errors++;
-    } else {
-        segui_palm_switch(PALM_APP_QUAKE_PREVIEW);
-        errors += snap(dev, "picocalc_quake", "Quake start (opened)");
-        free(s_quake_px);
-        s_quake_px = NULL;
-    }
+    /* Pico quake app: start_sim renders e1m1 into the shell. */
+    segui_palm_switch(PALM_APP_QUAKE_PREVIEW);
+    errors += snap(dev, "picocalc_quake", "Quake e1m1 (opened)");
 
     cls_dev(dev);
     printf("===============================================================\n");

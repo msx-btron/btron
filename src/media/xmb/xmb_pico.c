@@ -214,12 +214,14 @@ static void fill_gradient(int left, int top, int right, int bottom)
     }
 }
 
-static void blit_cell(int cell, int x, int y, int size, int selected)
+/* alpha_q8 is 0..256. 256 is the active icon, 192 is the passive 0.75. */
+static void blit_cell(int cell, int x, int y, int size, int alpha_q8)
 {
     const unsigned char *px = xmb_pico_cell(cell);
     int row, col, step;
-    if (!px || size < 8) return;
-    if (size > XMB_PICO_CELL) size = XMB_PICO_CELL;
+    if (!px || size < 8 || alpha_q8 <= 0) return;
+    /* The cell is 32. Twice the PS3-on-320 icon is about 42, so scale up. */
+    if (size > 64) size = 64;
     step = (XMB_PICO_CELL << 8) / size;
     for (row = 0; row < size; row++) {
         uint16_t *dst = dp_pico_band_row(y + row);
@@ -235,20 +237,21 @@ static void blit_cell(int cell, int x, int y, int size, int selected)
             a = px[a_row + sx];
             dx = x + col;
             if (a == 0 || dx < 0 || dx >= 320) continue;
-            if (!selected) a = (a * 192) >> 8;
+            a = (a * alpha_q8) >> 8;
             if (a == 0) continue;
             dst[dx] = src_over(dst[dx], a);
         }
     }
 }
 
-/* Left edge at x, same 8px font. full is the selected row; the rest are dim. */
-static void label_at(int x, int y, const char *s, int full)
+/* Left edge at x, same 8px font. alpha_q8 fades the 1-bit pen in two steps. */
+static void label_at(int x, int y, const char *s, int alpha_q8)
 {
     int n = slen(s);
     int i;
-    uint16_t pen = full ? pack_be(INK_R, INK_G, INK_B) : pack_be(18, 40, 18);
-    if (n <= 0) return;
+    uint16_t pen;
+    if (n <= 0 || alpha_q8 < 64) return;
+    pen = alpha_q8 >= 220 ? pack_be(INK_R, INK_G, INK_B) : pack_be(18, 40, 18);
     for (i = 0; i < n; i++) {
         unsigned char ch = (unsigned char)s[i];
         int r;
@@ -267,26 +270,29 @@ static void label_at(int x, int y, const char *s, int full)
     }
 }
 
-/* xb_layout(): PS3 metrics, scale = body width / 1920. */
+/* xb_layout(): PS3 metrics, scale = body width / 1920.
+ * Icon and both pitches are twice that scale. A 320-wide body would
+ * otherwise draw a ~20px icon. Margins stay on the 1920 scale. */
 static int xmb_sc(int k, int w)
 {
     return (k * w) / 1920;
 }
 
 /* Cross at the selected category. cx, cy are its icon center.
- * icon, sph, spv are xb_layout's icon size and the two pitches. */
+ * icon, sph, spv are the drawn size and the two pitches. */
 static void xmb_metrics(int left, int top, int width,
                         int *icon, int *sph, int *spv, int *cx, int *cy)
 {
     int ic, sh, sv, mt, ml;
     if (width < 1) width = 1;
-    ic = xmb_sc(128, width);
-    sh = xmb_sc(192, width);
-    sv = xmb_sc(64, width);
+    ic = xmb_sc(128, width) * 2;
+    sh = xmb_sc(192, width) * 2;
+    sv = xmb_sc(64, width) * 2;
     mt = xmb_sc(272, width);
     ml = xmb_sc(336, width);
-    if (ic < 1) ic = 1;
+    if (ic < 8) ic = 8;
     if (sh < 1) sh = 1;
+    if (sv < 1) sv = 1;
     *icon = ic;
     *sph = sh;
     *spv = sv;
@@ -294,12 +300,59 @@ static void xmb_metrics(int left, int top, int width,
     *cy = top + mt + ic / 2;
 }
 
-/* xb_item_y(): above_item -1, active_factor 3, under_item 5. Depth stays 1. */
-static int item_yoff(int i, int current, int spv)
+/* xb_item_y() coefficient: above_item -1, active_factor 3, under_item 5. */
+static int item_k(int i, int current)
 {
-    if (i < current) return spv * (i - current - 1);
-    if (i == current) return spv * 3;
-    return spv * (i - current + 5);
+    if (i < current) return i - current - 1;
+    if (i == current) return 3;
+    return i - current + 5;
+}
+
+/* One ease-out follower per value. Each tick covers half the remainder,
+ * which is the cheap stand-in for XB_EASE_OUT_QUAD over XB_DELAY.
+ * Retargeting is changing the target; the follower keeps its place. */
+#define FOLLOW_N 8
+static int s_follow;
+static int s_vis_cat;             /* Q8 category index */
+static int s_col;                 /* Q8, 0 off to the side, 256 seated */
+static int s_col_dir = 1;
+static int s_k[FOLLOW_N];         /* Q8 item_k */
+static int s_z[FOLLOW_N];         /* Q8 zoom, 128 passive, 256 active */
+
+static void approach(int *v, int target)
+{
+    int d = target - *v;
+    if (d > -2 && d < 2) {
+        *v = target;
+        return;
+    }
+    *v += d / 2;
+}
+
+static void follow_boot(void)
+{
+    int i;
+    s_vis_cat = s_cat * 256;
+    s_col = 256;
+    for (i = 0; i < FOLLOW_N; i++) {
+        s_k[i] = item_k(i, s_item) * 256;
+        s_z[i] = (i == s_item) ? 256 : 128;
+    }
+    s_follow = 1;
+}
+
+static void follow_step(void)
+{
+    int i;
+    int nitem = s_cats[s_cat].n;
+    if (!s_follow) follow_boot();
+    approach(&s_vis_cat, s_cat * 256);
+    approach(&s_col, 256);
+    for (i = 0; i < FOLLOW_N; i++) {
+        int sel = (i < nitem && i == s_item) ? 256 : 128;
+        approach(&s_k[i], item_k(i, s_item) * 256);
+        approach(&s_z[i], sel);
+    }
 }
 
 void xmb_pico_tick(void)
@@ -313,23 +366,39 @@ void xmb_pico_tick(void)
 #endif
     s_phase += 11;
     if (s_phase > 180000) s_phase = 0;
+    follow_step();
 }
 
 void xmb_pico_move(int dcat, int ditem)
 {
     int nc = (int)(sizeof s_cats / sizeof s_cats[0]);
+    int i;
+    if (!s_follow) follow_boot();
     if (dcat) {
-        s_cat += dcat;
-        if (s_cat < 0) s_cat = nc - 1;
-        if (s_cat >= nc) s_cat = 0;
-        s_item = 0;
+        int next = s_cat + dcat;
+        if (next < 0) next = nc - 1;
+        if (next >= nc) next = 0;
+        if (next != s_cat) {
+            /* xb_anim_band_move slides the row. xb_anim_list_switch
+             * brings the new column in from this side. */
+            s_col_dir = dcat < 0 ? -1 : 1;
+            s_cat = next;
+            s_item = 0;
+            s_col = 0;
+            for (i = 0; i < FOLLOW_N; i++) {
+                s_k[i] = item_k(i, 0) * 256;
+                s_z[i] = (i == 0) ? 256 : 128;
+            }
+        }
     }
     if (ditem) {
         int n = s_cats[s_cat].n;
+        int next;
         if (n < 1) return;
-        s_item += ditem;
-        if (s_item < 0) s_item = n - 1;
-        if (s_item >= n) s_item = 0;
+        next = s_item + ditem;
+        if (next < 0) next = n - 1;
+        if (next >= n) next = 0;
+        s_item = next;
     }
 }
 
@@ -655,46 +724,63 @@ void xmb_pico_paint(int left, int top, int right, int bottom)
     mt = xmb_sc(272, width);
     ll = xmb_sc(85, width);
 
+    if (!s_follow) follow_boot();
     fill_gradient(left, top, right, bottom);
     /* Core 1 fills the sheet while the previous band is still on the SPI.
      * Icons are drawn after the join so they sit on the wave. */
     wave_surface(left, top, right, bottom);
 
-    /* Categories share cy. Farther icons are drawn first. The row does not wrap. */
-    for (pass = nc - 1; pass >= 0; pass--) {
+    /* Categories share cy. The row slides in Q8 (s_vis_cat) and zoom
+     * follows the distance, the same motion as s_band_x plus n->zoom.
+     * Smaller icons are drawn first. The row does not wrap on screen. */
+    for (pass = 0; pass < 2; pass++) {
         for (i = 0; i < nc; i++) {
-            int d = i - s_cat;
-            int ad = d < 0 ? -d : d;
-            int size, x, y;
-            if (ad != pass) continue;
-            size = (d == 0) ? icon : icon / 2;
-            x = cx + d * sph - size / 2;
+            int dist = i * 256 - s_vis_cat;
+            int z, aq, size, x, y;
+            if (dist < 0) dist = -dist;
+            if (dist > 256) dist = 256;
+            z = 256 - ((dist * 128) >> 8);
+            if ((pass == 0 && z >= 200) || (pass == 1 && z < 200)) continue;
+            aq = 256 - ((dist * 64) >> 8);
+            size = (icon * z) >> 8;
+            if (size < 8) size = 8;
+            x = cx + ((i * 256 - s_vis_cat) * sph) / 256 - size / 2;
             y = cy - size / 2;
-            blit_cell(s_cats[i].icon, x, y, size, d == 0);
+            blit_cell(s_cats[i].icon, x, y, size, aq);
         }
     }
     label_at(left + xmb_sc(34, width) + (icon * 2) / 5,
-             top + xmb_sc(30, width) + 8, cat->label, 1);
+             top + xmb_sc(30, width) + 8, cat->label, 256);
 
-    for (pass = cat->n; pass >= 0; pass--) {
-        for (i = 0; i < cat->n; i++) {
-            int d = i - s_item;
-            int ad = d < 0 ? -d : d;
-            int size, x, y, yoff;
-            if (ad != pass) continue;
-            yoff = item_yoff(i, s_item, spv);
-            size = (d == 0) ? icon : icon / 2;
-            x = cx - size / 2;
-            y = top + mt + yoff + icon / 2 - size / 2;
-            if (y + size < top || y >= bottom) continue;
-            blit_cell(cat->items[i].icon, x, y, size, d == 0);
+    /* The open column sits on the cross. A category change starts it
+     * one pitch to the side (s_col == 0) and eases it in. A row change
+     * eases each y and zoom. Depth stays 1. */
+    {
+        int slide = ((256 - s_col) * s_col_dir * sph) / 256;
+        for (pass = 0; pass < 2; pass++) {
+            for (i = 0; i < cat->n; i++) {
+                int z = s_z[i];
+                int yoff, size, x, y, aq;
+                if (z < 128) z = 128;
+                if (z > 256) z = 256;
+                if ((pass == 0 && z >= 200) || (pass == 1 && z < 200)) continue;
+                yoff = (s_k[i] * spv) / 256;
+                size = (icon * z) >> 8;
+                if (size < 8) size = 8;
+                x = cx + slide - size / 2;
+                y = top + mt + yoff + icon / 2 - size / 2;
+                if (y + size < top || y >= bottom) continue;
+                aq = (128 + (z >> 1)) * s_col / 256;
+                blit_cell(cat->items[i].icon, x, y, size, aq);
+            }
         }
-    }
-    for (i = 0; i < cat->n; i++) {
-        int yoff = item_yoff(i, s_item, spv);
-        int ty = top + mt + yoff + 2;
-        if (ty + 8 < top || ty >= bottom) continue;
-        label_at(cx + ll, ty, cat->items[i].label, i == s_item);
+        for (i = 0; i < cat->n; i++) {
+            int yoff = (s_k[i] * spv) / 256;
+            int ty = top + mt + yoff + 2;
+            int aq = (128 + (s_z[i] >> 1)) * s_col / 256;
+            if (ty + 8 < top || ty >= bottom) continue;
+            label_at(cx + slide + ll, ty, cat->items[i].label, aq);
+        }
     }
 #if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
     host_flush(left, top, right, bottom);

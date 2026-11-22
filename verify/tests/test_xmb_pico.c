@@ -42,8 +42,9 @@ int main(void)
     expect(cat_x == item_x, "item column starts on the category x");
     {
         int w = 320;
-        int icon = 128 * w / 1920;
-        int cross = 336 * w / 1920 + 192 * w / 1920;
+        int icon = (128 * w / 1920) * 2;
+        int pitch = (192 * w / 1920) * 2;
+        int cross = 336 * w / 1920 + pitch;
         int x, y;
         expect(cat_x == cross - icon / 2, "selected category is the PS3 cross");
         expect(xmb_pico_test_cat_cy(0, 40, 320, 300, 0)
@@ -51,8 +52,8 @@ int main(void)
                "category row is horizontal");
         expect(xmb_pico_test_cat_cx(0, 40, 320, 300, 1)
                - xmb_pico_test_cat_cx(0, 40, 320, 300, 0)
-               == 192 * w / 1920,
-               "categories use the PS3 horizontal pitch");
+               == pitch,
+               "categories use twice the PS3 horizontal pitch");
         xmb_pico_test_wave(0, 0, 0, 40, 320, 300, &x, &y);
         expect(x == 0 && y == 224, "sheet row 0 is the cosine ribbon");
         xmb_pico_test_wave(4, 3, 0, 40, 320, 300, &x, &y);

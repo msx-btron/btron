@@ -1659,6 +1659,15 @@ void start_sim_render(void)
 #else
     s_lit = 0;
 #endif
+#if defined(SEGUI_HOST_QUAKE)
+    /* Host screenshot of the boot menu. Counted above, so the hall
+     * gate's lit number does not move. DRONE is the highlighted row. */
+    draw_text(4, 28, "e1m1", 0xFFFFu);
+    draw_text(4, 40, "  play", 0xFFE0u);
+    draw_text(4, 48, "> drone", 0xFFE0u);
+    draw_text(4, 60, "fire starts", 0xFFFFu);
+    draw_text(4, 68, "m menu", 0xBDF7u);
+#endif
 }
 
 const uint16_t *start_sim_pixels(void) { return s_rgb; }

@@ -57,15 +57,15 @@ SCREENS = [
     ("picocalc_prefs", "9. Preferences", "Hardware",
      "PicoCalc Preferences",
      "Custom PicoCalc Preference window: LCD/Kbd backlight, Theme, Battery, SRAM, BOOTSEL, Power-Off."),
-    ("picocalc_launcher_xmb", "Home / XMB page", "Page 2",
-     "PicoCalc Launcher, page 2",
-     "Right from the 3x3 grid. One XMB tile. Page 1 and keys 1-9 stay the nine apps."),
     ("picocalc_xmb", "XMB", "Opened",
      "XMB",
-     "Opened XMB: gradient, ribbon, one category row, one icon row, 32x32 cells. Host capture of the PicoCalc painter."),
-    ("picocalc_quake", "Quake", "start.bsp",
-     "Quake start hall",
-     "SegUI shell with the Introduction hall open. Host preview of maps/start.bsp in the body, before the picocalc image is flashed."),
+     "Pico XMB painter: cosine ribbon, one horizontal category row, icons at twice the 1920 scale. Host capture of xmb_pico_paint."),
+    ("picocalc_xmb_walk", "XMB walk", "One tick",
+     "XMB category walk",
+     "One tick after Right. The category row eases toward the cross and the new column slides in from the side."),
+    ("picocalc_quake", "Quake", "e1m1",
+     "Quake e1m1",
+     "The PicoCalc Quake app. start_sim renders the e1m1 cook through PicoGL into the 128x96 target and the shell blits it. The boot menu has DRONE highlighted."),
 ]
 
 
