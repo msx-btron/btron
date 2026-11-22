@@ -407,6 +407,98 @@ def load_drone(path, doors):
     return fixed, events
 
 
+# Resting frame of id's lightstyle strings. 'a' is off, 'm' is full.
+STYLE0 = (
+    "m",
+    "mmnmmommommnonmmonqnmmo",
+    "abcdefghijklmnopqrstuvwxyzyxwvutsrqponmlkjihgfedcba",
+    "mmmmmaaaaammmmmaaaaaabcdefgabcdefg",
+    "mamamamamama",
+    "jklmnopqrstuvwxyzyxwvutsrqponmlkj",
+    "nmonqnmomnmomomno",
+    "mmmaaaabcdefgmmmmaaaammmaamm",
+    "mmmaaammmaaammmabcdefaaaammmmabcdefmmmaaaa",
+    "aaaaaaaazzzzzzzz",
+    "mmamammmmammamamaaamammma",
+    "abcdefghijklmnopqrrqponmlkjihgfedcba",
+)
+
+
+def style_scale(style):
+    if style == 255:
+        return 0.0
+    s = STYLE0[style] if 0 <= style < len(STYLE0) else "m"
+    if not s:
+        return 1.0
+    val = (ord(s[0]) - ord("a")) / 12.0
+    if val < 0.0:
+        return 0.0
+    if val > 1.0:
+        return 1.0
+    return val
+
+
+def light_stat(light, ofs, n):
+    """Mean and peak of one style block. The peak is the lamp on that face."""
+    if ofs < 0 or n < 1 or ofs + n > len(light):
+        return None
+    total = 0
+    peak = 0
+    for b in light[ofs:ofs + n]:
+        total += b
+        if b > peak:
+            peak = b
+    return (total / float(n) + peak) * 0.5
+
+
+def scale_rgba(rgba, level):
+    if level >= 0.999:
+        return rgba
+    if level < 0.0:
+        level = 0.0
+    r = (rgba >> 16) & 255
+    g = (rgba >> 8) & 255
+    b = rgba & 255
+    a = (rgba >> 24) & 255
+    r = int(r * level + 0.5)
+    g = int(g * level + 0.5)
+    b = int(b * level + 0.5)
+    if r > 255:
+        r = 255
+    if g > 255:
+        g = 255
+    if b > 255:
+        b = 255
+    return (a << 24) | (r << 16) | (g << 8) | b
+
+
+def entity_light(cx, cy, cz, plane, side, planes, lights):
+    """Quake light tool linear falloff: (brightness - distance) * facing."""
+    if plane < 0 or plane >= len(planes):
+        return 0.0
+    nx, ny, nz, dist, _typ = planes[plane]
+    if side:
+        nx, ny, nz, dist = -nx, -ny, -nz, -dist
+    total = 0.0
+    for lx, ly, lz, bri in lights:
+        ahead = nx * lx + ny * ly + nz * lz - dist
+        if ahead <= 1.0:
+            continue
+        dx, dy, dz = lx - cx, ly - cy, lz - cz
+        distl = math.sqrt(dx * dx + dy * dy + dz * dz)
+        if distl < 1.0:
+            distl = 1.0
+        ndot = ahead / distl
+        if ndot <= 0.0:
+            continue
+        add = (bri - distl) * ndot
+        if add > 0.0:
+            total += add
+    if total > 255.0:
+        total = 255.0
+    return total
+
+
 def main():
     if len(sys.argv) == 4:
         pak_path, hdr_path, c_path = sys.argv[1:]
@@ -450,10 +542,13 @@ def main():
         surfedges.append(struct.unpack_from("<i", raw, i * 4)[0])
 
     texinfo = []
+    texvecs = []
     raw = L[6]
     for i in range(len(raw) // 40):
         mip = struct.unpack_from("<i", raw, i * 40 + 32)[0]
         texinfo.append(mip)
+        texvecs.append(struct.unpack_from("<8f", raw, i * 40))
+    lighting = L[8] if len(L) > 8 else b""
 
     colors, texnames = tex_colors(L[2], pal)
 
@@ -464,7 +559,9 @@ def main():
         plane, side = struct.unpack_from("<hh", raw, o)
         first = struct.unpack_from("<i", raw, o + 4)[0]
         nedge, ti = struct.unpack_from("<hh", raw, o + 8)
-        faces_raw.append((plane, side, first, nedge, ti))
+        styles = raw[o + 12:o + 16]
+        lightofs = struct.unpack_from("<i", raw, o + 16)[0]
+        faces_raw.append((plane, side, first, nedge, ti, styles, lightofs))
 
     models = []
     raw = L[14]
@@ -499,7 +596,9 @@ def main():
 
     idx = []
     face_tris = []
-    for plane, side, first, nedge, ti in faces_raw:
+    face_shade = []
+    face_cent = []
+    for plane, side, first, nedge, ti, styles, lightofs in faces_raw:
         fan = []
         for e in range(nedge):
             se = surfedges[first + e]
@@ -523,7 +622,69 @@ def main():
             rgba = 0xFF806040
         elif name.startswith("*"):
             rgba = 0xFF406080
+        shade = None
+        cx = cy = cz = 0.0
+        if fan:
+            for vi in fan:
+                if 0 <= vi < len(verts):
+                    cx += verts[vi][0]
+                    cy += verts[vi][1]
+                    cz += verts[vi][2]
+            cx /= float(len(fan))
+            cy /= float(len(fan))
+            cz /= float(len(fan))
+        # Sky and a missing light block stay fullbright. Every other face
+        # takes the lightmap: ambient floor 0.18, then the samples.
+        if not name.startswith("sky") and lightofs >= 0 and 0 <= ti < len(texvecs):
+            sv, tv = texvecs[ti][0:4], texvecs[ti][4:8]
+            smin = tmin = 1.0e9
+            smax = tmax = -1.0e9
+            for vi in fan:
+                if vi < 0 or vi >= len(verts):
+                    continue
+                x, y, z = verts[vi]
+                s = x * sv[0] + y * sv[1] + z * sv[2] + sv[3]
+                t = x * tv[0] + y * tv[1] + z * tv[2] + tv[3]
+                if s < smin:
+                    smin = s
+                if s > smax:
+                    smax = s
+                if t < tmin:
+                    tmin = t
+                if t > tmax:
+                    tmax = t
+            lw = int(smax / 16.0) - int(smin / 16.0) + 1
+            lh = int(tmax / 16.0) - int(tmin / 16.0) + 1
+            if lw < 1:
+                lw = 1
+            if lh < 1:
+                lh = 1
+            if lw > 128:
+                lw = 128
+            if lh > 128:
+                lh = 128
+            block = lw * lh
+            stat = 0.0
+            any = False
+            for si in range(4):
+                st = styles[si] if si < len(styles) else 255
+                if st == 255:
+                    break
+                sc = style_scale(st)
+                if sc <= 0.0:
+                    continue
+                got = light_stat(lighting, lightofs + si * block, block)
+                if got is None:
+                    break
+                stat += got * sc
+                any = True
+            if any:
+                if stat > 255.0:
+                    stat = 255.0
+                shade = stat
         face_tris.append((tri0, ntri, rgba, plane, 1 if side else 0))
+        face_shade.append(shade)
+        face_cent.append((cx, cy, cz))
 
     # Which model owns each face.
     face_model = [0] * len(face_tris)
@@ -540,6 +701,7 @@ def main():
     trigs = []
     dests = []
     flames = []
+    lights = []
     spawn = (544.0, 288.0, 32.0, 90.0)
     message = "Introduction"
     for kv in ents:
@@ -622,8 +784,14 @@ def main():
             mi = int(model[1:]) if model.startswith("*") else 0
             models[mi]["draw"] = 1
             models[mi]["kind"] = 2
-        elif cn.startswith("light_flame") or cn.startswith("light_torch") or cn == "misc_fireball":
-            flames.append(vec3(kv.get("origin")))
+        elif cn == "light" or cn.startswith("light") or cn == "misc_fireball":
+            o = vec3(kv.get("origin"))
+            bri = fnum(kv.get("light"), 300.0)
+            if bri < 1.0:
+                bri = 300.0
+            lights.append((o[0], o[1], o[2], bri))
+            if cn.startswith("light_flame") or cn.startswith("light_torch") or cn == "misc_fireball":
+                flames.append(o)
         elif cn.startswith("trigger_") or cn.startswith("func_"):
             model = kv.get("model", "")
             if model.startswith("*"):
@@ -648,6 +816,27 @@ def main():
         else:
             t["target"] = -1
             t["dest"] = -1
+
+    # Flat color is the texture times the brighter of the lightmap and the
+    # light entities. 0.18 is the same floor R_LightForFace uses, then 0.6
+    # of the sample, so a lamp reads above a dark corner and neither clips
+    # to white. Fullbright faces (sky, lightofs < 0) stay as cooked.
+    shaded = fullb = 0
+    for i, shade in enumerate(face_shade):
+        if shade is None:
+            fullb += 1
+            continue
+        cx, cy, cz = face_cent[i]
+        ent = entity_light(cx, cy, cz, face_tris[i][3], face_tris[i][4],
+                           planes, lights)
+        stat = shade if shade >= ent else ent
+        level = 0.18 + (stat / 255.0) * 0.6
+        if level > 1.0:
+            level = 1.0
+        tri0, ntri, rgba, plane, side = face_tris[i]
+        face_tris[i] = (tri0, ntri, scale_rgba(rgba, level), plane, side)
+        shaded += 1
+    print("lights", len(lights), "shaded", shaded, "fullbright", fullb)
 
     # Alias soups.
     alias = [[] for _ in MESHES]
@@ -806,7 +995,9 @@ def main():
     hdr.write("extern const uint16_t start_mesh_v0[];\n")
     hdr.write("extern const uint16_t start_mesh_n[];\n")
     hdr.write("extern const uint32_t start_mesh_rgba[];\n")
+    hdr.write("#if !defined(PICO_REAL_HW)\n")
     hdr.write("extern const uint8_t start_font[59][5];\n")
+    hdr.write("#endif\n")
     if drone_poses is not None:
         hdr.write("#define START_NDRONE %d\n" % len(drone_poses))
         hdr.write("#define START_NDRONE_DOOR %d\n" % len(drone_doors))
@@ -961,12 +1152,14 @@ def main():
     col("start_mesh_n", "uint16_t", [m[1] for m in meshes], "%d")
     col("start_mesh_rgba", "uint32_t", [m[2] for m in meshes], "0x%08Xu")
 
+    out.write("#if !defined(PICO_REAL_HW)\n")
     out.write("const uint8_t start_font[59][5] = {\n")
     for code in range(32, 91):
         ch = chr(code)
         rows = FONT.get(ch, [0, 0, 0, 0, 0])
         out.write("  {%d,%d,%d,%d,%d},\n" % tuple(rows))
     out.write("};\n")
+    out.write("#endif\n")
     if drone_poses is not None:
         emit_i16_3(out, "start_drone_pos",
                    [(i16(round(p[1])), i16(round(p[2])), i16(round(p[3])))

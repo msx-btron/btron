@@ -7,7 +7,7 @@
 
 #include <drivers/virtio/virtio_blk.h>
 #include <drivers/virtio/virtio_gpu.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 #if defined(__STDC_HOSTED__) && __STDC_HOSTED__ == 1 && !defined(BTRON_UEFI_TARGET)
 #include <stdio.h>

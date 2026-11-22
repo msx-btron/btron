@@ -9,7 +9,7 @@
 #include <btron/itron.h>
 #include <btron/core.h>
 #include <btron/smp.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 extern void uart_puts_raw(const char *str);
 

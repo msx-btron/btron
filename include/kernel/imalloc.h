@@ -24,7 +24,7 @@
 #ifndef __SYS_IMALLOC_H__
 #define __SYS_IMALLOC_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/typedef.h>
 #include <kernel/sysmgr.h>
 

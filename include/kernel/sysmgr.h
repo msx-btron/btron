@@ -21,7 +21,7 @@
 #ifndef __TK_SYSMGR_H__
 #define __TK_SYSMGR_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 
 #ifdef __cplusplus
 extern "C" {

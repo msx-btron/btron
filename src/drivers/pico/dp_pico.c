@@ -52,6 +52,15 @@ uint16_t dp_pico_color565(COLOR c)
     return (uint16_t)((v >> 8) | (v << 8));
 }
 
+/* Current DMA strip. Callers write big-endian RGB565. */
+uint16_t *dp_pico_band_ptr(int *y0, int *h, int *stride)
+{
+    if (y0) *y0 = s_band_y0;
+    if (h) *h = DP_BAND_H;
+    if (stride) *stride = DP_W;
+    return s_strip[s_active_buf];
+}
+
 /* Current band row, big-endian RGB565, or NULL when y is outside the band. */
 uint16_t *dp_pico_band_row(int y)
 {

@@ -3,7 +3,8 @@
  *
  * Needed for `-ffreestanding -nostdlib` on ARMv6-M (RP2040 Cortex-M0+, which
  * lacks hardware UDIV/SDIV and has only a 32×32→32 multiply) and for
- * compiler-generated memcpy/memset calls. 64-bit products are four 16×16
+ * compiler-generated calls. memcpy and memset are B-RT on RP2040.
+ * 64-bit products are four 16×16
  * multiplies. 64-bit division is restoring division on 32-bit limbs.
  * __aeabi_ldivmod / __aeabi_uldivmod return the quotient in r0:r1 and the
  * remainder in r2:r3; clang reads r2:r3 for the `%` operator.
@@ -298,6 +299,7 @@ __attribute__((naked)) void __aeabi_uldivmod(void)
     );
 }
 
+#if !defined(PICO_BOARD_RP2040)
 void *memset(void *dst, int c, size_t n)
 {
     uint8_t *p = (uint8_t *)dst;
@@ -312,6 +314,10 @@ void *memcpy(void *dst, const void *src, size_t n)
     while (n--) *d++ = *s++;
     return dst;
 }
+#else
+void *memset(void *dst, int c, size_t n);
+void *memcpy(void *dst, const void *src, size_t n);
+#endif
 
 void __aeabi_memclr(void *dst, size_t n)        { (void)memset(dst, 0, n); }
 void __aeabi_memclr4(void *dst, size_t n)       { (void)memset(dst, 0, n); }

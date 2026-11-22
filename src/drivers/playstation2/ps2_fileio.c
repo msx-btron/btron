@@ -12,7 +12,7 @@
 #include "ps2_sif.h"
 #include "ps2_console.h"
 
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <stdio.h>
 
 #define FIO_RPC_SID    0x80000001u

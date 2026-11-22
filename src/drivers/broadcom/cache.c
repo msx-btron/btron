@@ -21,7 +21,7 @@
  *	Cache Operation
  */
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/tkernel.h>
 #include <kernel/sysdef.h>
 

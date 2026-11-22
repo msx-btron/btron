@@ -19,7 +19,7 @@
  */
 
 #include "kernel.h"
-#include <libstr.h>
+#include <rt/libstr.h>
 
 #if USE_DBGSPT
 

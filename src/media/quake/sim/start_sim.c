@@ -2,10 +2,15 @@
  * start_sim.c — playable cooked BSP without progs.dat.
  *
  * The host gate cooks maps/start.bsp. The picocalc quake image cooks
- * maps/e1m1.bsp and a drone camera track, and opens on a two-row menu.
+ * maps/e1m1.bsp and a drone camera track, and opens on a menu.
  * Collision is the player clip hull. Doors, walls, and gates are the other
- * hulls. The picture is flat-shaded BSP faces plus a few cooked mdl frames,
- * drawn through PicoGL into a 128x96 target.
+ * hulls. The picture is flat-shaded BSP faces plus a few cooked mdl frames.
+ * The host gate draws them into a 128x96 target. The SegUI capture uses
+ * 320x320. The device records triangles at the selected render size and
+ * scales that picture to the window, or to the 320x320 panel when
+ * fullscreen. Sizes are 320x320, 160x320, 320x160, 160x160, 80x80,
+ * 128x96, and 128x128. The menu and the status bar are the system font
+ * in destination pixels, so r_mode does not scale them.
  */
 #include "start_sim.h"
 #include "start_blob.h"
@@ -13,9 +18,17 @@
 
 #include <math.h>
 #include <string.h>
+#if defined(PICO_REAL_HW) || defined(SEGUI_HOST_QUAKE)
+#include <btron/troncode.h>
+#endif
 
+#if defined(SEGUI_HOST_QUAKE)
+#define VW 320
+#define VH 320
+#else
 #define VW 128
 #define VH 96
+#endif
 #define CLEAR_RGB 0x0841u
 #define EPS 0.03125f
 #define MAX_SHOT 16
@@ -29,20 +42,40 @@ enum {
     BIT_LL = 64, BIT_LR = 128, BIT_LU = 256, BIT_LD = 512
 };
 
+#if !defined(PICO_REAL_HW)
 static uint16_t s_rgb[VW * VH];
 static int32_t  s_iz[VW * VH];
 static int      s_bound;
+#endif
 static int      s_lit;
 static int      s_ready;
 
+#if defined(PICO_REAL_HW) || defined(SEGUI_HOST_QUAKE)
+/* Render size, then nearest scale onto the window or the panel.
+ * Index 0 is a real 320x320. Direct paint happens only when that size
+ * equals the destination. The boot picture is index 3, 160x160.
+ * Menu rows are play, drone, then these seven sizes. */
+#define RES_N      7
+static const int s_res_w[RES_N] = { 320, 160, 320, 160, 80, 128, 128 };
+static const int s_res_h[RES_N] = { 320, 320, 160, 160, 80,  96, 128 };
+#define RES_FULL   0
+#define RES_160    3
+#define MENU_N     (2 + RES_N)
+#endif
+
 #if defined(PICO_REAL_HW)
 /* The quake image boots into this menu. Fire runs the highlighted row.
- * M (or F2) leaves play or the drone and comes back here. The drone camera
- * is the cooked track: the eye is the recorded origin, and the player hull
- * does not walk, so triggers along the route do not fire. */
+ * M leaves play or the drone and comes back here. The drone camera is the
+ * cooked track: the eye is the recorded origin, and the player hull does
+ * not walk, so triggers along the route do not fire.
+ * Rows 2..8 pick a render size and stay on the menu. Every size is scaled
+ * to the window, or to the whole panel while fullscreen. */
 #define MODE_MENU  0
 #define MODE_PLAY  1
 #define MODE_DRONE 2
+#define CAP_TRI    896
+#define CON_LOG    8
+#define CON_COLS   32
 static int      s_mode;
 static int      s_menu_row = 1;
 static int      s_cam_eye;
@@ -50,6 +83,40 @@ static uint32_t s_drone_t0;
 static int      s_drone_i;
 static int      s_drone_door_i;
 static uint8_t  s_drone_hold[START_NDOOR];
+static int      s_res;
+static int      s_full;
+static int      s_vw = 160;
+static int      s_vh = 160;
+static int      s_dw = 160;
+static int      s_dh = 160;
+static picogl_tri_t s_cap_tri[CAP_TRI];
+static int      s_cap_n;
+static uint16_t s_ord[CAP_TRI];
+static uint16_t s_ord_tmp[CAP_TRI];
+static int32_t  s_band_iz[320 * 16];
+/* One band of a picture that is not already the destination. 320x16
+ * RGB565. A matching size paints the strip and skips this. */
+static uint16_t s_scale_rgb[320 * 16];
+static int      s_ox, s_oy;
+static GDEV    *s_dev;
+static int      s_con;
+static char     s_con_line[CON_COLS];
+static int      s_con_len;
+static char     s_con_log[CON_LOG][CON_COLS];
+static int      s_con_n;
+
+static void set_view_size(int dw, int dh)
+{
+    if (dw < 16) dw = 16;
+    if (dh < 16) dh = 16;
+    if (dw > 320) dw = 320;
+    if (dh > 320) dh = 320;
+    s_dw = dw;
+    s_dh = dh;
+    if (s_res < 0 || s_res >= RES_N) s_res = RES_160;
+    s_vw = s_res_w[s_res];
+    s_vh = s_res_h[s_res];
+}
 #endif
 
 static float    s_org[3];
@@ -62,6 +129,11 @@ static int      s_weapons;
 static int      s_weapon;
 static uint32_t s_quad_until;
 static int      s_dead;
+static int      s_god;
+static int      s_noclip;
+static int      s_fly;
+static int      s_notarget;
+static int      s_pause;
 static uint32_t s_dead_until;
 static int      s_bits;
 static uint32_t s_hold[10];
@@ -69,6 +141,32 @@ static uint32_t s_now;
 static uint32_t s_next_fire;
 static int      s_slip;
 static char     s_msg[64];
+#if defined(PICO_REAL_HW)
+static int put_dec(char *b, int n, int cap, int v)
+{
+    char tmp[4];
+    int t = 0;
+    if (v < 0) v = 0;
+    if (v == 0) tmp[t++] = '0';
+    while (v > 0 && t < 4) {
+        tmp[t++] = (char)('0' + (v % 10));
+        v /= 10;
+    }
+    while (t > 0 && n < cap - 1) b[n++] = tmp[--t];
+    if (n < cap) b[n] = 0;
+    return n;
+}
+
+static void res_msg(void)
+{
+    int n = 0;
+    int i = s_res;
+    if (i < 0 || i >= RES_N) i = RES_160;
+    n = put_dec(s_msg, n, (int)sizeof s_msg, s_res_w[i]);
+    if (n < (int)sizeof s_msg - 1) s_msg[n++] = 'x';
+    put_dec(s_msg, n, (int)sizeof s_msg, s_res_h[i]);
+}
+#endif
 static uint32_t s_rng = 1u;
 static int      s_tele_block;
 
@@ -405,6 +503,25 @@ static void physics(float dt)
     wish[2] = 0.0f;
     spd = len3(wish);
     if (spd > 0.0f) { wish[0] /= spd; wish[1] /= spd; wish[2] = 0.0f; }
+    if (s_noclip) {
+        float step = 320.0f * dt;
+        s_org[0] += wish[0] * step;
+        s_org[1] += wish[1] * step;
+        if (s_bits & BIT_JUMP) s_org[2] += step;
+        s_vel[0] = s_vel[1] = s_vel[2] = 0.0f;
+        s_ground = 0;
+        return;
+    }
+    /* Quake fly keeps the hull and drops gravity. Jump climbs. */
+    if (s_fly) {
+        s_vel[0] = wish[0] * 320.0f;
+        s_vel[1] = wish[1] * 320.0f;
+        s_vel[2] = (s_bits & BIT_JUMP) ? 200.0f : 0.0f;
+        s_ground = 0;
+        slide(s_org, s_vel, dt, 0);
+        s_vel[0] = s_vel[1] = s_vel[2] = 0.0f;
+        return;
+    }
     if (s_ground) {
         float speed = sqrtf(s_vel[0] * s_vel[0] + s_vel[1] * s_vel[1]);
         float control = speed < 100.0f ? 100.0f : speed;
@@ -585,6 +702,7 @@ static void hurt_player(int dmg)
 {
     int absorbed;
     if (s_dead || dmg <= 0) return;
+    if (s_god) return;
     if (s_armor > 0) {
         absorbed = dmg / 2;
         if (absorbed > s_armor) absorbed = s_armor;
@@ -784,6 +902,7 @@ static void fire(void)
 static void zombies(float dt)
 {
     int i;
+    if (s_notarget) return;
     for (i = 0; i < START_NZOMBIE; i++) {
         float dx, dy, dz, dist, wish[3], end[3];
         tr_t tr;
@@ -953,6 +1072,480 @@ static void enter_menu(void)
     memset(s_hold, 0, sizeof s_hold);
     respawn();
 }
+
+static int con_lower(int c)
+{
+    if (c >= 'A' && c <= 'Z') return c - 'A' + 'a';
+    return c;
+}
+
+static const char *con_skip(const char *s)
+{
+    while (*s == ' ' || *s == '\t') s++;
+    return s;
+}
+
+static void con_trim(char *s)
+{
+    int i = 0, j = 0;
+    while (s[i] == ' ' || s[i] == '\t') i++;
+    while (s[i]) s[j++] = s[i++];
+    while (j > 0 && (s[j - 1] == ' ' || s[j - 1] == '\t' || s[j - 1] == ';'))
+        j--;
+    s[j] = 0;
+}
+
+static void con_say(const char *s)
+{
+    int i, n = 0;
+    if (s_con_n >= CON_LOG) {
+        for (i = 1; i < CON_LOG; i++)
+            memcpy(s_con_log[i - 1], s_con_log[i], CON_COLS);
+        i = CON_LOG - 1;
+    } else {
+        i = s_con_n++;
+    }
+    if (!s) s = "";
+    while (s[n] && n < CON_COLS - 1) {
+        s_con_log[i][n] = s[n];
+        n++;
+    }
+    s_con_log[i][n] = 0;
+}
+
+static int con_is(const char *s, const char *w)
+{
+    while (*w) {
+        if (con_lower((unsigned char)*s) != *w) return 0;
+        s++;
+        w++;
+    }
+    return *s == 0;
+}
+
+/* Word match. The character after the word is the end, space, '(', or '='. */
+static int con_word(const char *s, const char *w, const char **rest)
+{
+    while (*w) {
+        if (con_lower((unsigned char)*s) != *w) return 0;
+        s++;
+        w++;
+    }
+    if (*s && *s != ' ' && *s != '\t' && *s != '(' && *s != '=') return 0;
+    if (rest) *rest = s;
+    return 1;
+}
+
+static void app_ch(char *d, int *n, char c)
+{
+    if (*n < CON_COLS - 1) d[(*n)++] = c;
+    d[*n] = 0;
+}
+
+static void app_s(char *d, int *n, const char *s)
+{
+    if (!s) return;
+    while (*s) app_ch(d, n, *s++);
+}
+
+static void app_i(char *d, int *n, int v)
+{
+    char tmp[8];
+    int i = 0;
+    unsigned u;
+    if (v < 0) {
+        app_ch(d, n, '-');
+        v = -v;
+    }
+    u = (unsigned)v;
+    if (u == 0u) tmp[i++] = '0';
+    while (u && i < 7) {
+        tmp[i++] = (char)('0' + (u % 10u));
+        u /= 10u;
+    }
+    while (i > 0) app_ch(d, n, tmp[--i]);
+}
+
+static int con_num(const char **ps, int *out)
+{
+    const char *s = *ps;
+    int sign = 1, v = 0, any = 0;
+    while (*s == ' ' || *s == '\t' || *s == '\'' || *s == '"' ||
+           *s == ',' || *s == '(' || *s == '=')
+        s++;
+    if (*s == '-') { sign = -1; s++; }
+    else if (*s == '+') s++;
+    while (*s >= '0' && *s <= '9') {
+        if (v < 1000000) v = v * 10 + (*s - '0');
+        any = 1;
+        s++;
+    }
+    if (*s == '.') {
+        s++;
+        while (*s >= '0' && *s <= '9') s++;
+    }
+    if (!any) return 0;
+    while (*s == '\'' || *s == '"' || *s == ')' || *s == ',') s++;
+    *out = v * sign;
+    *ps = s;
+    return 1;
+}
+
+static void con_help(void)
+{
+    /* id's console names. The log is eight lines, so this page fits. */
+    con_say("god noclip fly notarget");
+    con_say("give all | h s n r c N");
+    con_say("give 2-8  impulse 1-8");
+    con_say("impulse 9 = give all");
+    con_say("kill status pause map");
+    con_say("changelevel restart quit");
+    con_say("r_mode W H");
+    con_say("fullscreen");
+}
+
+static void con_status(void)
+{
+    char b[CON_COLS];
+    int n = 0;
+    b[0] = 0;
+    app_s(b, &n, "h");
+    app_i(b, &n, s_health);
+    app_s(b, &n, " a");
+    app_i(b, &n, s_armor);
+    app_s(b, &n, s_god ? " god" : "");
+    app_s(b, &n, s_noclip ? " clip" : "");
+    app_s(b, &n, s_fly ? " fly" : "");
+    app_s(b, &n, s_notarget ? " nt" : "");
+    con_say(b);
+    n = 0;
+    b[0] = 0;
+    app_s(b, &n, "sh");
+    app_i(b, &n, s_shells);
+    app_s(b, &n, " na");
+    app_i(b, &n, s_nails);
+    app_s(b, &n, " ro");
+    app_i(b, &n, s_rockets);
+    app_s(b, &n, " ce");
+    app_i(b, &n, s_cells);
+    con_say(b);
+    n = 0;
+    b[0] = 0;
+    app_s(b, &n, "w ");
+    if (s_weapon >= 0 && s_weapon < 8) app_s(b, &n, s_wname[s_weapon]);
+    con_say(b);
+}
+
+static void con_toggle_god(void)
+{
+    s_god = s_god ? 0 : 1;
+    con_say(s_god ? "god on" : "god off");
+}
+
+static void con_toggle_noclip(void)
+{
+    s_noclip = s_noclip ? 0 : 1;
+    con_say(s_noclip ? "noclip on" : "noclip off");
+}
+
+static void con_set_health(int v);
+static int con_ammo(int v);
+
+static void con_give_all(void)
+{
+    s_weapons = 0xFF;
+    s_shells = s_nails = s_rockets = s_cells = 200;
+    con_say("give all");
+}
+
+/* id give: 2 is the shotgun, 8 is the thunderbolt. 1 is the axe.
+ * h s n r c a take a count. Words are the same letters. No float parse. */
+static void con_give(const char *s)
+{
+    const char *rest;
+    int v, key;
+    s = con_skip(s);
+    if (con_word(s, "all", 0)) { con_give_all(); return; }
+    if (s[0] >= '1' && s[0] <= '8' && (s[1] == 0 || s[1] == ' ')) {
+        int w = s[0] - '1';
+        s_weapons |= 1 << w;
+        s_weapon = w;
+        con_say("give");
+        return;
+    }
+    key = 0;
+    rest = s;
+    if (con_word(s, "health", &rest)) key = 'h';
+    else if (con_word(s, "shells", &rest)) key = 's';
+    else if (con_word(s, "nails", &rest)) key = 'n';
+    else if (con_word(s, "rockets", &rest)) key = 'r';
+    else if (con_word(s, "cells", &rest)) key = 'c';
+    else if (con_word(s, "armor", &rest) || con_word(s, "armour", &rest)) key = 'a';
+    else if (s[0] && (s[1] == 0 || s[1] == ' ' || s[1] == '\t')) {
+        key = con_lower((unsigned char)s[0]);
+        rest = s + 1;
+    }
+    if (key != 'h' && key != 's' && key != 'n' && key != 'r' &&
+        key != 'c' && key != 'a') {
+        con_say("give all | h s n r c");
+        return;
+    }
+    if (!con_num(&rest, &v)) {
+        con_say("give h s n r c <n>");
+        return;
+    }
+    if (key == 'h') con_set_health(v);
+    else if (key == 's') s_shells = con_ammo(v);
+    else if (key == 'n') s_nails = con_ammo(v);
+    else if (key == 'r') s_rockets = con_ammo(v);
+    else if (key == 'c') s_cells = con_ammo(v);
+    else {
+        if (v < 0) v = 0;
+        if (v > 999) v = 999;
+        s_armor = v;
+    }
+    con_say("give");
+}
+
+static void con_impulse(const char *s)
+{
+    int v;
+    if (!con_num(&s, &v)) { con_say("impulse 1-9"); return; }
+    if (v == 9) { con_give_all(); return; }
+    if (v >= 1 && v <= 8) {
+        s_weapons |= 1 << (v - 1);
+        s_weapon = v - 1;
+        con_say("impulse");
+        return;
+    }
+    con_say("impulse 1-9");
+}
+
+static void con_set_health(int v)
+{
+    if (v < 0) v = 0;
+    if (v > 999) v = 999;
+    s_health = v;
+    if (v <= 0) {
+        s_dead = 1;
+        s_dead_until = s_now + 1000u;
+    } else {
+        s_dead = 0;
+    }
+}
+
+static int con_ammo(int v)
+{
+    if (v < 0) return 0;
+    if (v > 999) return 999;
+    return v;
+}
+
+static const char *con_strip_self(const char *s)
+{
+    s = con_skip(s);
+    if (s[0] && s[1] && s[2] && s[3] && s[4] == '.' &&
+        con_lower((unsigned char)s[0]) == 's' &&
+        con_lower((unsigned char)s[1]) == 'e' &&
+        con_lower((unsigned char)s[2]) == 'l' &&
+        con_lower((unsigned char)s[3]) == 'f')
+        return s + 5;
+    return s;
+}
+
+static void con_field(const char *s)
+{
+    char name[16];
+    const char *eq;
+    int i, v, x, y, z;
+    s = con_strip_self(s);
+    eq = s;
+    while (*eq && *eq != '=' && *eq != ' ' && *eq != '\t') eq++;
+    i = 0;
+    while (s < eq && i < 15) name[i++] = (char)con_lower((unsigned char)*s++);
+    name[i] = 0;
+    if (con_is(name, "origin")) {
+        s = eq;
+        if (!con_num(&s, &x) || !con_num(&s, &y) || !con_num(&s, &z)) {
+            con_say("origin x y z");
+            return;
+        }
+        s_org[0] = (float)x;
+        s_org[1] = (float)y;
+        s_org[2] = (float)z;
+        s_vel[0] = s_vel[1] = s_vel[2] = 0.0f;
+        con_say("origin");
+        return;
+    }
+    if (!con_num(&eq, &v)) {
+        con_say("need N");
+        return;
+    }
+    if (con_is(name, "health")) con_set_health(v);
+    else if (con_is(name, "armor")) {
+        if (v < 0) v = 0;
+        if (v > 999) v = 999;
+        s_armor = v;
+    } else if (con_is(name, "shells")) s_shells = con_ammo(v);
+    else if (con_is(name, "nails")) s_nails = con_ammo(v);
+    else if (con_is(name, "rockets")) s_rockets = con_ammo(v);
+    else if (con_is(name, "cells")) s_cells = con_ammo(v);
+    else if (con_is(name, "weapon")) {
+        if (v < 0 || v > 7) { con_say("0..7"); return; }
+        s_weapons |= 1 << v;
+        s_weapon = v;
+    } else {
+        con_say("?");
+        return;
+    }
+    con_say("ok");
+}
+
+static void con_bprint(const char *s)
+{
+    char buf[CON_COLS];
+    int n = 0;
+    while (*s && *s != '"') s++;
+    if (*s == '"') s++;
+    while (*s && *s != '"' && n < CON_COLS - 1) buf[n++] = *s++;
+    buf[n] = 0;
+    con_say(buf);
+}
+
+static void toggle_full(void)
+{
+    s_full = s_full ? 0 : 1;
+    if (s_full) memcpy(s_msg, "full", 5);
+    else memcpy(s_msg, "window", 7);
+}
+
+static void con_exec(char *line)
+{
+    const char *s, *rest;
+    int mode, v;
+    con_trim(line);
+    s = line;
+    if (!*s) return;
+    if (con_word(s, "help", 0)) { con_help(); return; }
+    if (con_word(s, "status", 0)) { con_status(); return; }
+    if (con_word(s, "god", 0)) { con_toggle_god(); return; }
+    if (con_word(s, "noclip", 0)) { con_toggle_noclip(); return; }
+    if (con_word(s, "fly", 0)) {
+        s_fly = s_fly ? 0 : 1;
+        con_say(s_fly ? "fly on" : "fly off");
+        return;
+    }
+    if (con_word(s, "notarget", 0)) {
+        s_notarget = s_notarget ? 0 : 1;
+        con_say(s_notarget ? "notarget on" : "notarget off");
+        return;
+    }
+    if (con_word(s, "give", &rest)) { con_give(con_skip(rest)); return; }
+    if (con_word(s, "impulse", &rest)) { con_impulse(con_skip(rest)); return; }
+    if (con_word(s, "kill", 0)) { con_set_health(0); con_say("kill"); return; }
+    if (con_word(s, "pause", 0)) {
+        s_pause = s_pause ? 0 : 1;
+        con_say(s_pause ? "pause on" : "pause off");
+        return;
+    }
+    if (con_word(s, "restart", 0)) { respawn(); con_say("restart"); return; }
+    if (con_word(s, "map", &rest) || con_word(s, "changelevel", &rest)) {
+        rest = con_skip(rest);
+        if (*rest && !con_word(rest, "e1m1", 0)) {
+            con_say("only e1m1");
+            return;
+        }
+        if (s_mode != MODE_PLAY) begin_play();
+        else respawn();
+        con_say("e1m1");
+        return;
+    }
+    if (con_word(s, "clear", 0)) { s_con_n = 0; return; }
+    if (con_word(s, "quit", 0)) {
+        s_con = 0;
+        enter_menu();
+        return;
+    }
+    if (con_word(s, "r_mode", &rest)) {
+        int h, i, found;
+        if (!con_num(&rest, &mode)) {
+            con_say("r_mode W H");
+            return;
+        }
+        if (!con_num(&rest, &h)) {
+            if (mode == 320) h = 320;
+            else if (mode == 160) h = 160;
+            else if (mode == 80) h = 80;
+            else {
+                con_say("r_mode W H");
+                return;
+            }
+        }
+        found = -1;
+        for (i = 0; i < RES_N; i++) {
+            if (s_res_w[i] == mode && s_res_h[i] == h) {
+                found = i;
+                break;
+            }
+        }
+        if (found < 0) {
+            con_say("r_mode W H");
+            return;
+        }
+        s_res = found;
+        set_view_size(s_dw, s_dh);
+        res_msg();
+        con_say(s_msg);
+        return;
+    }
+    if (con_word(s, "fullscreen", &rest)) {
+        if (con_num(&rest, &v)) s_full = v ? 1 : 0;
+        else toggle_full();
+        if (s_full) memcpy(s_msg, "full", 5);
+        else memcpy(s_msg, "window", 7);
+        con_say(s_full ? "full" : "window");
+        return;
+    }
+    if (con_word(s, "echo", &rest)) { con_say(con_skip(rest)); return; }
+    if (con_word(s, "bprint", &rest)) { con_bprint(rest); return; }
+    if (con_word(s, "self", 0) ||
+        (s[0] && s[1] && s[2] && s[3] && s[4] == '.')) {
+        con_field(s);
+        return;
+    }
+    if (con_word(s, "shells", 0) || con_word(s, "nails", 0) ||
+        con_word(s, "rockets", 0) || con_word(s, "cells", 0) ||
+        con_word(s, "health", 0) || con_word(s, "armor", 0) ||
+        con_word(s, "weapon", 0) || con_word(s, "origin", 0)) {
+        con_field(s);
+        return;
+    }
+    con_say("?");
+}
+
+static void con_feed(int key)
+{
+    if (key == 0x08 || key == 0x7F) {
+        if (s_con_len > 0) s_con_line[--s_con_len] = 0;
+        return;
+    }
+    if (key == 0x0A || key == 0x0D) {
+        con_exec(s_con_line);
+        s_con_len = 0;
+        s_con_line[0] = 0;
+        return;
+    }
+    if (key == 0x1B) {
+        s_con = 0;
+        s_con_len = 0;
+        s_con_line[0] = 0;
+        return;
+    }
+    if (key >= 32 && key < 127 && s_con_len < CON_COLS - 1) {
+        s_con_line[s_con_len++] = (char)key;
+        s_con_line[s_con_len] = 0;
+    }
+}
 #endif
 
 static int bit_of(int key)
@@ -962,7 +1555,13 @@ static int bit_of(int key)
     if (key == 'a' || key == 'A') return BIT_LEFT;
     if (key == 'd' || key == 'D') return BIT_RIGHT;
     if (key == ' ') return BIT_JUMP;
+#if defined(PICO_REAL_HW)
+    /* f toggles fullscreen on the device. Fire stays on space, enter, and
+     * the PicoCalc fire key. The host gate still treats f as fire. */
+    if (key == START_KEY_FIRE) return BIT_FIRE;
+#else
     if (key == START_KEY_FIRE || key == 'f' || key == 'F') return BIT_FIRE;
+#endif
     /* PicoCalc arrows are the Quake cluster: up/down walk, left/right turn.
      * q and z look. WASD stays walk and strafe. */
     if (key == 0xB5) return BIT_FWD;
@@ -986,14 +1585,39 @@ void start_sim_key(int key, int down)
     int bit, idx, w;
     if (!s_ready) start_sim_init();
 #if defined(PICO_REAL_HW)
+    if (down && key == 0x09) {
+        s_con = s_con ? 0 : 1;
+        s_con_len = 0;
+        s_con_line[0] = 0;
+        s_bits = 0;
+        memset(s_hold, 0, sizeof s_hold);
+        return;
+    }
+    if (s_con) {
+        if (down) con_feed(key);
+        return;
+    }
+    if (down && (key == 'f' || key == 'F')) {
+        toggle_full();
+        return;
+    }
     if (s_mode == MODE_MENU) {
         if (!down) return;
-        if (key == 0xB5 || key == 'w' || key == 'W') { s_menu_row = 0; return; }
-        if (key == 0xB6 || key == 's' || key == 'S') { s_menu_row = 1; return; }
-        if (key == 0x0A || key == ' ' || key == START_KEY_FIRE ||
-            key == 'f' || key == 'F') {
+        if (key == 0xB5 || key == 'w' || key == 'W') {
+            s_menu_row = (s_menu_row + MENU_N - 1) % MENU_N;
+            return;
+        }
+        if (key == 0xB6 || key == 's' || key == 'S') {
+            s_menu_row = (s_menu_row + 1) % MENU_N;
+            return;
+        }
+        if (key == 0x0A || key == ' ' || key == START_KEY_FIRE) {
             if (s_menu_row == 1) begin_drone();
-            else begin_play();
+            else if (s_menu_row >= 2 && s_menu_row < MENU_N) {
+                s_res = s_menu_row - 2;
+                set_view_size(s_dw, s_dh);
+                res_msg();
+            } else begin_play();
         }
         return;
     }
@@ -1047,6 +1671,11 @@ void start_sim_init(void)
     s_quad_until = 0;
     s_slip = 0;
     s_dead = 0;
+    s_god = 0;
+    s_noclip = 0;
+    s_fly = 0;
+    s_notarget = 0;
+    s_pause = 0;
     s_next_fire = 0;
     s_tele_block = 0;
     s_now = 0;
@@ -1066,6 +1695,18 @@ void start_sim_init(void)
     s_mode = MODE_MENU;
     s_cam_eye = 0;
     s_menu_row = 1;
+    s_res = RES_160; /* 160x160 scaled up. The light boot picture. */
+    s_full = 0;
+    s_con = 0;
+    s_con_len = 0;
+    s_con_line[0] = 0;
+    s_con_n = 0;
+    s_vw = 160;
+    s_vh = 160;
+    s_dw = 160;
+    s_dh = 160;
+    s_cap_n = 0;
+    s_dev = 0;
 #endif
 }
 
@@ -1098,6 +1739,7 @@ void start_sim_tick(uint32_t now_ms)
     }
 #if defined(PICO_REAL_HW)
     if (s_mode == MODE_MENU) return;
+    if (s_pause) return;
     if (s_mode == MODE_DRONE) {
         uint32_t t, dur;
         int di;
@@ -1468,9 +2110,28 @@ static void draw_box(const float *org, float s, uint32_t rgba)
 #endif
 }
 
+static int view_w(void)
+{
+#if defined(PICO_REAL_HW)
+    return s_vw;
+#else
+    return VW;
+#endif
+}
+
+static int view_h(void)
+{
+#if defined(PICO_REAL_HW)
+    return s_vh;
+#else
+    return VH;
+#endif
+}
+
+#if !defined(PICO_REAL_HW)
 static void plot(int x, int y, uint16_t c)
 {
-    if (x < 0 || y < 0 || x >= VW || y >= VH) return;
+    if (x < 0 || y < 0 || x >= view_w() || y >= view_h()) return;
     s_rgb[y * VW + x] = c;
 }
 
@@ -1482,7 +2143,7 @@ static void draw_text(int x, int y, const char *s, uint16_t c)
         unsigned ch = (unsigned char)*s++;
         int row, bit;
         if (ch >= 'a' && ch <= 'z') ch = ch - 'a' + 'A';
-        if (* (s - 1) == '\n' || col > VW - 5) {
+        if (* (s - 1) == '\n' || col > view_w() - 5) {
             col = x;
             y += 6;
             if (*(s - 1) == '\n') continue;
@@ -1497,29 +2158,111 @@ static void draw_text(int x, int y, const char *s, uint16_t c)
         col += 5;
     }
 }
+#endif
 
 static const int s_viewmesh[8] = {
     START_MESH_VAXE, START_MESH_VSHOT, START_MESH_VSSG, START_MESH_VNAIL,
     START_MESH_VSNAIL, START_MESH_VGL, START_MESH_VRL, START_MESH_VLG
 };
 
+#if defined(PICO_REAL_HW)
+/* Nearer iz first. Equal iz keeps the earlier capture so a shared edge
+ * pixel does not swap owners between frames. */
+static void permute_tris(uint16_t *p, int n)
+{
+    int i;
+    for (i = 0; i < n; i++) {
+        picogl_tri_t hold;
+        int j, steps;
+        uint16_t src;
+        if (p[i] & 0x8000u) continue;
+        src = (uint16_t)(p[i] & 0x7fffu);
+        if (src == (uint16_t)i) {
+            p[i] |= 0x8000u;
+            continue;
+        }
+        hold = s_cap_tri[i];
+        j = i;
+        steps = 0;
+        while (steps++ < n) {
+            uint16_t from = (uint16_t)(p[j] & 0x7fffu);
+            p[j] |= 0x8000u;
+            if (from == (uint16_t)i) {
+                s_cap_tri[j] = hold;
+                break;
+            }
+            if (from >= (uint16_t)n) break;
+            s_cap_tri[j] = s_cap_tri[from];
+            j = (int)from;
+        }
+    }
+}
+
+static void sort_near(void)
+{
+    uint16_t *a = s_ord;
+    uint16_t *b = s_ord_tmp;
+    int n = s_cap_n;
+    int i, w;
+    if (n < 2 || n > CAP_TRI) {
+        picogl_set_cover(0);
+        return;
+    }
+    for (i = 0; i < n; i++) a[i] = (uint16_t)i;
+    for (w = 1; w < n; w *= 2) {
+        int lo;
+        for (lo = 0; lo < n; lo += w * 2) {
+            int mid = lo + w;
+            int hi = mid + w;
+            int i0, i1, o;
+            if (mid > n) mid = n;
+            if (hi > n) hi = n;
+            i0 = lo;
+            i1 = mid;
+            o = lo;
+            while (i0 < mid && i1 < hi) {
+                int32_t z0 = s_cap_tri[a[i0]].iz;
+                int32_t z1 = s_cap_tri[a[i1]].iz;
+                if (z0 >= z1) b[o++] = a[i0++];
+                else b[o++] = a[i1++];
+            }
+            while (i0 < mid) b[o++] = a[i0++];
+            while (i1 < hi) b[o++] = a[i1++];
+        }
+        {
+            uint16_t *t = a;
+            a = b;
+            b = t;
+        }
+    }
+    permute_tris(a, n);
+    picogl_set_cover(1);
+}
+#endif
+
 void start_sim_render(void)
 {
     float eye[3], fwd[3], local[3];
     int i;
-    char hud[40];
     if (!s_ready) start_sim_init();
+#if defined(PICO_REAL_HW)
+    /* Record the frame. Each band paints the same list into the strip.
+     * Core 1 stays awake so ps shows it ready. Quake spans are not posted:
+     * the strip is also SegUI's, and a core-1 paint would race that fill. */
+    picogl_capture(s_cap_tri, CAP_TRI);
+    pico_core1_launch();
+#else
     if (!s_bound) {
         picogl_bind_target(s_rgb, s_iz, VW, VH, VW);
         s_bound = 1;
-#if defined(PICO_REAL_HW)
-        pico_core1_launch();
-#endif
     }
-    picogl_begin_frame(VW, VH);
+#endif
+    picogl_begin_frame(view_w(), view_h());
     picogl_set_cull(0);
     picogl_set_depth(1);
+#if !defined(PICO_REAL_HW)
     picogl_clear_target(1, 1, CLEAR_RGB);
+#endif
     eye[0] = s_org[0];
     eye[1] = s_org[1];
 #if defined(PICO_REAL_HW)
@@ -1531,7 +2274,7 @@ void start_sim_render(void)
     {
         float ang[3];
         ang[0] = s_pitch; ang[1] = s_yaw; ang[2] = 0.0f;
-        picogl_set_camera(eye, ang, VW, VH);
+        picogl_set_camera(eye, ang, view_w(), view_h());
     }
     angles(fwd, NULL, NULL);
 #if defined(PICO_REAL_HW)
@@ -1612,7 +2355,21 @@ void start_sim_render(void)
     walk_node(0, eye, fwd);
     picogl_flush_target();
 
+#if defined(PICO_REAL_HW)
+    s_cap_n = picogl_captured();
+    picogl_capture(0, 0);
+    sort_near();
+    s_lit = 0;
+#else
+    /* The host gate counts lit pixels. The device scan walked every
+     * pixel after the picture was already on the panel. HUD glyphs are
+     * in that count. The SegUI capture leaves them out: its canvas
+     * paints the same lines with the system font after the blit.
+     * test-start-sim does not define SEGUI_HOST_QUAKE. */
     {
+        int x;
+#if !defined(SEGUI_HOST_QUAKE)
+        char hud[40];
         int ammo = 0;
         if (s_weapon == START_W_SHOT || s_weapon == START_W_SSG) ammo = s_shells;
         else if (s_weapon == START_W_NAIL || s_weapon == START_W_SNAIL) ammo = s_nails;
@@ -1634,45 +2391,409 @@ void start_sim_render(void)
         hud[13] = (char)('0' + (ammo / 10) % 10);
         hud[14] = (char)('0' + ammo % 10);
         hud[15] = 0;
-    }
-    draw_text(2, 2, hud, 0xFFFFu);
-    draw_text(2, VH - 12, s_msg, 0xFFE0u);
-#if defined(PICO_REAL_HW)
-    if (s_mode == MODE_MENU) {
-        draw_text(4, 28, "e1m1", 0xFFFFu);
-        draw_text(4, 40, s_menu_row == 0 ? "> play" : "  play", 0xFFE0u);
-        draw_text(4, 48, s_menu_row == 1 ? "> drone" : "  drone", 0xFFE0u);
-        draw_text(4, 60, "fire starts", 0xFFFFu);
-        draw_text(4, 68, "m menu", 0xBDF7u);
-    } else {
-        draw_text(96, 10, "m menu", 0xBDF7u);
-    }
+        draw_text(2, 2, hud, 0xFFFFu);
+        draw_text(2, VH - 12, s_msg, 0xFFE0u);
 #endif
-#if !defined(PICO_REAL_HW)
-    /* The host gate counts lit pixels. The device scan walked every
-     * pixel after the picture was already on the panel. */
-    {
-        int x;
         s_lit = 0;
         for (x = 0; x < VW * VH; x++) if (s_rgb[x] != CLEAR_RGB) s_lit++;
     }
-#else
-    s_lit = 0;
-#endif
-#if defined(SEGUI_HOST_QUAKE)
-    /* Host screenshot of the boot menu. Counted above, so the hall
-     * gate's lit number does not move. DRONE is the highlighted row. */
-    draw_text(4, 28, "e1m1", 0xFFFFu);
-    draw_text(4, 40, "  play", 0xFFE0u);
-    draw_text(4, 48, "> drone", 0xFFE0u);
-    draw_text(4, 60, "fire starts", 0xFFFFu);
-    draw_text(4, 68, "m menu", 0xBDF7u);
 #endif
 }
 
-const uint16_t *start_sim_pixels(void) { return s_rgb; }
-int start_sim_view_w(void) { return VW; }
-int start_sim_view_h(void) { return VH; }
+#if defined(PICO_REAL_HW) || defined(SEGUI_HOST_QUAKE)
+/* Menu and status bar in destination pixels. r_mode does not scale them. */
+#define CHROME_BG   0xFF0A0A0Eu
+#define CHROME_HI   0xFF3A2814u
+#define CHROME_RULE 0xFF8C2020u
+#define CHROME_GOLD 0xFFD49A24u
+#define CHROME_BAR  0xFF14110Eu
+
+static int chrome_len(const char *s)
+{
+    int n = 0;
+    while (s && s[n]) n++;
+    return n;
+}
+
+static void chrome_fill(GDEV *dev, int x, int y, int w, int h, COLOR c)
+{
+    RECT r;
+    if (!dev || w <= 0 || h <= 0) return;
+    r.left = (H)x;
+    r.top = (H)y;
+    r.right = (H)(x + w);
+    r.bottom = (H)(y + h);
+    fill_rec(dev, &r, c);
+}
+
+static void chrome_text(GDEV *dev, int x, int y, const char *s, COLOR c)
+{
+    if (!dev || !s || !s[0]) return;
+    drw_tc_string(dev, (H)x, (H)y, s, c, 0);
+}
+
+static const char *chrome_item(int wide, int res, int i)
+{
+    static char b[20];
+    int n, p, vals[2];
+    if (i == 0) return wide ? "1. PLAY E1M1" : "1 PLAY";
+    if (i == 1) return wide ? "2. DRONE" : "2 DRONE";
+    if (i < 2 || i >= MENU_N) return "";
+    n = 0;
+    b[n++] = (char)('1' + i);
+    if (wide) b[n++] = '.';
+    b[n++] = ' ';
+    vals[0] = s_res_w[i - 2];
+    vals[1] = s_res_h[i - 2];
+    for (p = 0; p < 2; p++) {
+        char tmp[4];
+        int t = 0;
+        int v = vals[p];
+        if (p && n < (int)sizeof b - 1) b[n++] = 'x';
+        if (v <= 0) tmp[t++] = '0';
+        while (v > 0 && t < 4) {
+            tmp[t++] = (char)('0' + (v % 10));
+            v /= 10;
+        }
+        while (t > 0 && n < (int)sizeof b - 1) b[n++] = tmp[--t];
+    }
+    if (res == i - 2 && n < (int)sizeof b - 1) b[n++] = '*';
+    b[n] = 0;
+    return b;
+}
+
+static void paint_chrome(GDEV *dev, int ox, int oy, int dw, int dh,
+                         int menu_on, int row, int res, int full, int con_on,
+                         const char *msg)
+{
+    char hud[20];
+    char sel[28];
+    int health, armor, ammo, weapon, n, wide, i;
+    int bar_top, area, card_w, card_h, card_x, card_y, y, hint;
+    const char *wn = "  ";
+    const char *foot;
+    const char *hint_s;
+    if (!dev || dw < 16 || dh < 16) return;
+    health = s_health;
+    armor = s_armor;
+    weapon = s_weapon;
+    ammo = 0;
+    if (health < 0) health = 0;
+    if (health > 999) health = 999;
+    if (armor < 0) armor = 0;
+    if (armor > 999) armor = 999;
+    if (weapon == START_W_SHOT || weapon == START_W_SSG) ammo = s_shells;
+    else if (weapon == START_W_NAIL || weapon == START_W_SNAIL) ammo = s_nails;
+    else if (weapon == START_W_GL || weapon == START_W_RL) ammo = s_rockets;
+    else if (weapon == START_W_LG) ammo = s_cells;
+    if (ammo < 0) ammo = 0;
+    if (ammo > 99) ammo = 99;
+    if (weapon >= 0 && weapon < 8) wn = s_wname[weapon];
+    hud[0] = 'H';
+    hud[1] = (char)('0' + (health / 100) % 10);
+    hud[2] = (char)('0' + (health / 10) % 10);
+    hud[3] = (char)('0' + health % 10);
+    hud[4] = ' ';
+    hud[5] = 'A';
+    hud[6] = (char)('0' + (armor / 100) % 10);
+    hud[7] = (char)('0' + (armor / 10) % 10);
+    hud[8] = (char)('0' + armor % 10);
+    hud[9] = ' ';
+    hud[10] = wn[0];
+    hud[11] = wn[1];
+    hud[12] = ' ';
+    hud[13] = (char)('0' + (ammo / 10) % 10);
+    hud[14] = (char)('0' + ammo % 10);
+    hud[15] = 0;
+    wide = dw >= 240;
+    bar_top = dh - 17;
+    if (bar_top < 0) bar_top = 0;
+    if (!con_on && dh >= 17) {
+        int tx;
+        chrome_fill(dev, ox, oy + bar_top, dw, 1, CHROME_GOLD);
+        chrome_fill(dev, ox, oy + bar_top + 1, dw, 16, CHROME_BAR);
+        n = chrome_len(hud);
+        tx = ox + (dw - n * 8) / 2;
+        if (tx < ox + 2) tx = ox + 2;
+        chrome_text(dev, tx, oy + bar_top + 1, hud, COLOR_WHITE);
+    }
+    if (con_on || !menu_on) {
+        if (!con_on && msg && msg[0] && bar_top >= 16)
+            chrome_text(dev, ox + 4, oy + bar_top - 16, msg, COLOR_YELLOW);
+        return;
+    }
+    hint = dh >= 220;
+    card_h = 4 + 16 + 2 + 2 + 4 + MENU_N * 16 + 4 + 16 + 4;
+    if (hint) card_h += 16;
+    area = bar_top > 2 ? bar_top - 2 : 0;
+    if (card_h > area) {
+        hint = 0;
+        card_h = 4 + 16 + 2 + 2 + 4 + MENU_N * 16 + 4;
+    }
+    if (card_h > area) return;
+    card_w = wide ? 208 : dw - 8;
+    if (card_w > dw - 4) card_w = dw - 4;
+    if (card_w < 64) card_w = dw;
+    card_x = ox + (dw - card_w) / 2;
+    card_y = oy + (area - card_h) / 2;
+    if (card_y < oy) card_y = oy;
+    chrome_fill(dev, card_x, card_y, card_w, card_h, CHROME_BG);
+    chrome_fill(dev, card_x, card_y, card_w, 1, CHROME_GOLD);
+    y = card_y + 4;
+    foot = wide ? "Q U A K E" : "QUAKE";
+    chrome_text(dev, card_x + (card_w - chrome_len(foot) * 8) / 2, y,
+                foot, CHROME_GOLD);
+    y += 16 + 2;
+    n = card_w - 28;
+    if (n < 40) n = card_w - 8;
+    chrome_fill(dev, card_x + (card_w - n) / 2, y, n, 2, CHROME_RULE);
+    y += 2 + 4;
+    if (row < 0) row = 0;
+    if (row >= MENU_N) row = MENU_N - 1;
+    for (i = 0; i < MENU_N; i++) {
+        const char *lab = chrome_item(wide, res, i);
+        int hy = y + i * 16;
+        if (i == row) {
+            int k = 0;
+            chrome_fill(dev, card_x + 4, hy - 1, card_w - 8, 16, CHROME_HI);
+            sel[k++] = '>';
+            sel[k++] = ' ';
+            while (lab[k - 2] && k < (int)sizeof(sel) - 1) {
+                sel[k] = lab[k - 2];
+                k++;
+            }
+            sel[k] = 0;
+            chrome_text(dev, card_x + 8, hy, sel, COLOR_YELLOW);
+        } else {
+            chrome_text(dev, card_x + 16, hy, lab, COLOR_WHITE);
+        }
+    }
+    y += MENU_N * 16 + 4;
+    foot = wide ? "UP/DN SELECT   FIRE" : "W/S FIRE";
+    chrome_text(dev, card_x + (card_w - chrome_len(foot) * 8) / 2, y,
+                foot, COLOR_LTGRAY);
+    if (!hint) return;
+    y += 16;
+    if (wide)
+        hint_s = full ? "TAB CONSOLE   F WINDOW" : "TAB CONSOLE   F FULL";
+    else
+        hint_s = full ? "TAB  F WINDOW" : "TAB  F FULL";
+    chrome_text(dev, card_x + (card_w - chrome_len(hint_s) * 8) / 2, y,
+                hint_s, COLOR_LTGRAY);
+}
+
+#if defined(SEGUI_HOST_QUAKE)
+void start_sim_paint_menu(GDEV *dev, int ox, int oy, int dw, int dh)
+{
+    /* The capture is the 320 picture, so that row carries the star. */
+    paint_chrome(dev, ox, oy, dw, dh, 1, 1, RES_FULL, 0, 0, 0);
+}
+#endif
+#endif
+
+#if defined(PICO_REAL_HW)
+/* 8x16 system font in destination pixels, not in the render target. */
+#define SYS_LH 16
+static void draw_sys(int x, int y, const char *s, COLOR c)
+{
+    if (!s_dev || !s) return;
+    if (y >= s_dh || y + SYS_LH <= 0) return;
+    drw_tc_string(s_dev, (H)(s_ox + x), (H)(s_oy + y), s, c, 0);
+}
+
+static void draw_overlay(void)
+{
+    char line[CON_COLS + 2];
+    int i, y, n;
+    paint_chrome(s_dev, s_ox, s_oy, s_dw, s_dh,
+                 s_mode == MODE_MENU, s_menu_row, s_res, s_full, s_con, s_msg);
+    if (!s_con) return;
+    y = s_dh - SYS_LH - CON_LOG * SYS_LH;
+    if (y < 0) y = 0;
+    n = s_con_n;
+    if (n > CON_LOG) n = CON_LOG;
+    for (i = 0; i < n; i++) {
+        draw_sys(2, y, s_con_log[i], COLOR_WHITE);
+        y += SYS_LH;
+    }
+    line[0] = '>';
+    for (i = 0; i < s_con_len && i < CON_COLS - 1; i++)
+        line[i + 1] = s_con_line[i];
+    line[i + 1] = 0;
+    draw_sys(2, s_dh - SYS_LH, line, COLOR_YELLOW);
+}
+
+void start_sim_set_dest(int dw, int dh)
+{
+    set_view_size(dw, dh);
+}
+
+/* Source row for destination row dy (0..dh-1). One divide per row. */
+static int src_of(int dy, int rh, int dh)
+{
+    uint32_t v;
+    if (dh <= 1 || dy <= 0) return 0;
+    if (dy >= dh) dy = dh - 1;
+    v = ((uint32_t)dy * (uint32_t)rh) / (uint32_t)dh;
+    if (v >= (uint32_t)rh) v = (uint32_t)rh - 1u;
+    return (int)v;
+}
+
+static void raster_rows(int sy0, int ns, int rw, int rh)
+{
+    if (ns < 1 || rw < 1 || rw > 320 || rh < 1) return;
+    if (ns > 16) ns = 16;
+    if (sy0 < 0) sy0 = 0;
+    if (sy0 >= rh) return;
+    if (sy0 + ns > rh) ns = rh - sy0;
+    picogl_paint_band(s_cap_tri, s_cap_n, s_scale_rgb, rw,
+                      sy0, ns, 0, 0, rw, rh,
+                      s_band_iz, (uint16_t)CLEAR_RGB);
+}
+
+/* Exact 2x or 4x. Each source pixel is copied k times, no divider. */
+static void scale_int(uint16_t *be, int stride, int band_y,
+                      int ox, int oy, int dw, int k, int rw,
+                      int y0, int y1, int sy0)
+{
+    int y;
+    for (y = y0; y < y1; y++) {
+        int sy = (y - oy) / k - sy0;
+        const uint16_t *src;
+        uint16_t *dst;
+        int x, n;
+        if (sy < 0) sy = 0;
+        if (sy > 15) sy = 15;
+        src = s_scale_rgb + sy * rw;
+        dst = be + (y - band_y) * stride + ox;
+        n = dw / k;
+        if (k == 2) {
+            for (x = 0; x < n; x++) {
+                uint16_t p = src[x];
+                dst[0] = p;
+                dst[1] = p;
+                dst += 2;
+            }
+        } else {
+            for (x = 0; x < n; x++) {
+                uint16_t p = src[x];
+                dst[0] = p;
+                dst[1] = p;
+                dst[2] = p;
+                dst[3] = p;
+                dst += 4;
+            }
+        }
+    }
+}
+
+static void scale_span(uint16_t *be, int stride, int band_y,
+                       int ox, int oy, int dw, int dh, int rw, int rh,
+                       int y0, int y1, int sy0)
+{
+    uint32_t step_x = ((uint32_t)rw << 16) / (uint32_t)dw;
+    int y;
+    for (y = y0; y < y1; y++) {
+        int sy = src_of(y - oy, rh, dh) - sy0;
+        const uint16_t *src;
+        uint16_t *dst;
+        uint32_t sx = 0;
+        int x;
+        if (sy < 0) sy = 0;
+        if (sy > 15) sy = 15;
+        src = s_scale_rgb + sy * rw;
+        dst = be + (y - band_y) * stride + ox;
+        for (x = 0; x < dw; x++) {
+            int sxi = (int)(sx >> 16);
+            if (sxi >= rw) sxi = rw - 1;
+            if (sxi < 0) sxi = 0;
+            dst[x] = src[sxi];
+            sx += step_x;
+        }
+    }
+}
+
+static void paint_scaled(uint16_t *be, int stride, int band_y, int band_h,
+                         int ox, int oy, int dw, int dh, int rw, int rh)
+{
+    int y0, y1, k, y;
+    if (ox < 0) {
+        dw += ox;
+        ox = 0;
+    }
+    if (ox >= stride || dw <= 0 || dh <= 0) return;
+    if (ox + dw > stride) dw = stride - ox;
+    y0 = band_y > oy ? band_y : oy;
+    y1 = band_y + band_h;
+    if (y1 > oy + dh) y1 = oy + dh;
+    if (y0 >= y1) return;
+    k = 0;
+    if (dw == rw * 2 && dh == rh * 2) k = 2;
+    else if (dw == rw * 4 && dh == rh * 4) k = 4;
+    y = y0;
+    while (y < y1) {
+        int yb = y;
+        int s0, s1, ns;
+        if (k)
+            s0 = (y - oy) / k;
+        else
+            s0 = src_of(y - oy, rh, dh);
+        while (yb + 1 < y1) {
+            int s = k ? ((yb + 1 - oy) / k) : src_of(yb + 1 - oy, rh, dh);
+            if (s < s0 || s >= s0 + 16) break;
+            yb++;
+        }
+        s1 = k ? ((yb - oy) / k) : src_of(yb - oy, rh, dh);
+        if (s1 < s0) s1 = s0;
+        ns = s1 - s0 + 1;
+        raster_rows(s0, ns, rw, rh);
+        if (k)
+            scale_int(be, stride, band_y, ox, oy, dw, k, rw, y, yb + 1, s0);
+        else
+            scale_span(be, stride, band_y, ox, oy, dw, dh, rw, rh,
+                       y, yb + 1, s0);
+        y = yb + 1;
+    }
+}
+
+void start_sim_paint_band(uint16_t *be, int stride, int band_y, int band_h,
+                          int ox, int oy, GDEV *dev)
+{
+    if (!be || stride <= 0 || stride > 320 || band_h <= 0 || band_h > 16)
+        return;
+    if (s_vw == s_dw && s_vh == s_dh) {
+        /* The render size is the destination. One write per pixel. */
+        picogl_paint_band(s_cap_tri, s_cap_n, be, stride, band_y, band_h,
+                          ox, oy, s_vw, s_vh, s_band_iz, (uint16_t)CLEAR_RGB);
+    } else if (s_vw > 0 && s_vw <= 320 && s_vh > 0) {
+        paint_scaled(be, stride, band_y, band_h, ox, oy,
+                     s_dw, s_dh, s_vw, s_vh);
+    }
+    s_ox = ox;
+    s_oy = oy;
+    s_dev = dev;
+    draw_overlay();
+    s_dev = 0;
+}
+
+int start_sim_fullscreen(void) { return s_full; }
+int start_sim_console_open(void) { return s_con; }
+int start_sim_moving(void)
+{
+    return s_mode == MODE_PLAY || s_mode == MODE_DRONE;
+}
+#endif
+
+const uint16_t *start_sim_pixels(void)
+{
+#if defined(PICO_REAL_HW)
+    return 0;
+#else
+    return s_rgb;
+#endif
+}
+int start_sim_view_w(void) { return view_w(); }
+int start_sim_view_h(void) { return view_h(); }
 int start_sim_lit(void) { return s_lit; }
 const float *start_sim_origin(void) { return s_org; }
 int start_sim_health(void) { return s_health; }

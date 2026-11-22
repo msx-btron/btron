@@ -7,7 +7,7 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <string.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include <time.h>

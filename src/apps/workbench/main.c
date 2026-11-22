@@ -37,7 +37,7 @@ extern void raise_sdl_window(void);
 extern void btron_kernel_init(int target_mode);
 
 #if !defined(_WIN32)
-#include <termios.h>
+#include <rt/termios.h>
 #include <unistd.h>
 
 static struct termios g_orig_termios;

@@ -20,7 +20,7 @@
 #include "ps2_sif.h"
 #include "ps2_usb.h"
 
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>

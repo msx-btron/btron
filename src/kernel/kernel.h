@@ -21,14 +21,14 @@
 #ifndef _KERNEL_
 #define _KERNEL_
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/typedef.h>
 #include <kernel/errno.h>
 #include <kernel/syscall.h>
 #include <kernel/dbgspt.h>
 #include <kernel/imalloc.h>
 #include <kernel/queue.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 /*
  * Kernel configuration file

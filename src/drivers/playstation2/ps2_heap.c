@@ -8,7 +8,7 @@
  */
 
 #include "ps2_heap.h"
-#include <libstr.h>
+#include <rt/libstr.h>
 
 extern void ps2_kprintf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 

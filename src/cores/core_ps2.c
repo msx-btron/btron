@@ -41,7 +41,7 @@
 #endif
 #include <btron/settings.h>
 #include <fs/vol_api.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 extern void orchestra_ui_tick(void);
 extern void cassette_service(void);

@@ -2,7 +2,7 @@
 
 Stabilisation plan after the first device flash. The hall paints. The player still cannot play it and then leave it. This document is the work that makes the `start` level a background task on the quake image, and makes `make picocalc` a single home screen whose center is XMB.
 
-PicoGL itself stays the pipeline in [PICOGL.md](PICOGL.md). Frame rates of 12 fps and 20 fps stay unmeasured. Nothing in this plan is a licence to claim them.
+PicoGL itself stays the pipeline in doc/txt/PICO.txt section 11. Frame rates of 12 fps and 20 fps stay unmeasured. Nothing in this plan is a licence to claim them.
 
 ## Landed on the RP2040 images, 2026-11-22
 
@@ -122,7 +122,7 @@ Each phase has one deliverable and a done-when. The SRAM assert (`__sram_used__`
 
 **Done when.** A host test passes the anchor checks. Key `5` from the launcher switches to `PALM_APP_XMB`. Key `1` still opens Terminal. GLGears opens from the Applications row. The quake image still builds with Quake in the center and does not link `xmb_pico.c`. `__sram_used__` on the RP2040 gears elf stays under 215040.
 
-**Files.** `segui_palm.c`, `segui_palm.h`, `xmb_pico.c`, `xmb_pico.h`, `verify/tests/test_xmb_pico.c`, `doc/md/PICOGL.md`.
+**Files.** `segui_palm.c`, `segui_palm.h`, `xmb_pico.c`, `xmb_pico.h`, `verify/tests/test_xmb_pico.c`, `doc/txt/PICO.txt`.
 
 **Status.** Landed on the RP2040 gears elf. `make test-xmb-pico` passed. The quake elf still has no `xmb_pico`. `__sram_used__` is 174,248.
 

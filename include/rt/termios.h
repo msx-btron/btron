@@ -1,14 +1,17 @@
 /*
- * B-System BTRON3 — rt/termios.h
+ * B-System BTRON3 — include/rt/termios.h
  *
- * Standalone freestanding POSIX-compatible termios implementation.
- * Used on bare-metal targets (no host system SDK available).
- *
- * On hosted POSIX/macOS targets the top-level include/termios.h shim
- * routes directly to the system <termios.h> and never includes this file.
- *
- * Canonical location: include/rt/termios.h
+ * Hosted builds take the system <termios.h>. Freestanding builds use
+ * the definitions below. This is the only termios header in the tree.
  */
+
+#if !defined(_POSIX_C_SOURCE) && !defined(_XOPEN_SOURCE) && !defined(_GNU_SOURCE)
+#  define _POSIX_C_SOURCE 200809L
+#endif
+
+#if defined(__has_include_next) && __has_include_next(<termios.h>)
+#  include_next <termios.h>
+#else
 
 #ifndef _BTRON_RT_TERMIOS_H_
 #define _BTRON_RT_TERMIOS_H_
@@ -122,3 +125,4 @@ int tcflow(int fd, int action);
 #endif
 
 #endif /* _BTRON_RT_TERMIOS_H_ */
+#endif /* hosted termios */

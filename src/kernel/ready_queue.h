@@ -21,7 +21,7 @@
 #ifndef _READY_QUEUE_
 #define _READY_QUEUE_
 
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <kernel/bitop.h>
 
 /*

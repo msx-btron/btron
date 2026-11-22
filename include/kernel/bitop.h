@@ -38,7 +38,7 @@
 #ifndef	__SYS_BITOP_H__
 #define	__SYS_BITOP_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 
 #ifdef __cplusplus
 extern "C" {

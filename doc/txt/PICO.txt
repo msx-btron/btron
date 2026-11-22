@@ -306,6 +306,11 @@ Timing @ 25 MHz SPI1 (RGB565):
   - Compile-time fallback PICOCALC_LCD_RGB666=1 converts strip pixels to
     3-byte RGB666 (`COLMOD 0x66`) if any panel revision requires it.
 
+The 25 MHz line above is the original proposal. The linked RP2040 images
+program SPI1 at 31.25 MHz and do not raise it. Section 11 is the band
+budget those images use. A lower render size does not multiply that
+budget by the pixel ratio.
+
 
 6. Keyboard & Southbridge Input Map (i2ckbd_stm32.c)
 ----------------------------------------------------
@@ -444,3 +449,266 @@ Mandatory Verification Gates (Zero-Broken-Build Contract):
                             UF2/SD-boot), verifies PICOBIN markers, RP2040
                             boot2 MPEG-2 CRC32, UF2 family IDs/block counts,
                             +200 KiB VTOR entry, and SRAM < 64 KiB link gate.
+
+The 64 KiB figure and the ~58 KiB projection above are the original shell
+estimate. The linked images use the gate in section 11:
+`__sram_used__` <= 215040, with `__bss_end__` at least 4 KiB under
+`__stack_top__` (0x20040000).
+
+
+11. PicoGL band budget and Pico Quake resolutions
+-------------------------------------------------
+
+This section is the PicoGL specification. doc/md/PICOGL.md was removed
+when this section landed.
+CLK_SYS stays 125 MHz. SPI1 stays 31.25 MHz. DMA channel 0 has one owner,
+core 0. SegUI stays on both images. A full 320x320 RGB565 framebuffer
+(204800 bytes) plus a matching int32 depth picture does not fit beside
+the shell, so color is two 320x16 strips (20480 bytes) and depth for a
+Quake band is one 320x16 int32 strip.
+
+11.1 Images
+
+  make picocalc        Center tile is XMB. Key 5 opens XMB. Keys 1-4 and
+                       6-9 open Terminal through Prefs by index. GLGears
+                       opens from the XMB Applications row. f fills the
+                       panel for XMB and GLGears. make flash-picocalc
+                       writes only btron-picocalc-rp2040.uf2.
+  make picocalc-quake Center tile is cooked e1m1 plus the drone1m1 track.
+                       No XMB, no GLGears, no progs.dat. The Quake UF2 is
+                       copied by hand.
+
+PICO_BOARD defaults to rp2040. TinyGL is not on either link. Host
+make test-picogl-gears-fps and make test-picogl-quake-fps time the host
+GLES path. Those times are not RP2040 frame rates.
+
+11.2 Quake on the device
+
+The device sim is integer submit of the cooked e1m1 blob (picogl_world_tri).
+Physics stays on the float hull. There is no progs.dat: 385 edicts at
+780 bytes do not fit beside SegUI. The host gate make test-start-sim
+still cooks maps/start.bsp (the hall) and is not the device picture.
+Tab opens an integer console (god, noclip, fly, notarget, give, impulse,
+kill, pause, map, changelevel, r_mode, fullscreen). changelevel stays on
+e1m1. The menu and the status bar are the 8x16 system font in destination
+pixels, so r_mode does not scale them. Boot is the drone row at 160x160.
+f toggles fullscreen. Every r_mode stretch-fills the window, or the whole
+panel when fullscreen. There is no letterbox.
+
+Menu rows, in order:
+
+  1 PLAY E1M1
+  2 DRONE
+  3 320x320     render 320x320. Direct into the strip only when the
+                destination is also 320x320 (fullscreen). A window scales.
+  4 160x320
+  5 320x160
+  6 160x160     boot picture
+  7 80x80
+  8 128x96      test size
+  9 128x128     test size
+
+r_mode W H selects the same table. A single number still means the square:
+r_mode 320, r_mode 160, r_mode 80. r_mode 128 alone is rejected.
+r_mode 128 96 and r_mode 128 128 are the test sizes. r_mode 160 320 is
+the wide half. The active row is marked with a star.
+
+11.3 Wire term, fixed for a full panel
+
+One 320x16 RGB565 band is 10240 bytes, 81920 bits.
+
+  band_ms  = 81920 / 31.25e6 * 1000 = 2.621 ms
+  panel_ms(Dw, Dh) = Dw * Dh * 16 / 31250
+  panel_ms(320, 320) = 52.43 ms
+
+Twenty bands are the whole panel. If the CPU finishes a band while the
+previous band is on the wire, the frame is the panel time. 1000/52.43
+is 19.1 FPS. core_segui also waits about 1 ms once per frame, so a CPU
+that hides completely lands near 18.7 FPS, not 20 and not 30. The old
+section 5 figure of ~15 FPS is the same panel at the proposed 25 MHz
+(65.5 ms). That clock is not what the images program.
+
+A window presents fewer bands. The animated body mask 0x0007FFFC is 17
+bands, 17 * 2.621 = 44.6 ms, about 22 FPS if the CPU is hidden. The
+panel term depends on the destination that is actually sent. It does
+not depend on r_mode.
+
+11.4 CPU term, not linear in area
+
+The user measured 320x320 at 4 FPS on 2026-11-22 after the band-clipped
+edge walk (it had been 1-2 FPS). 4 FPS is about 250 ms of CPU. The 52 ms
+panel transfer sits inside that, so the frame is CPU-bound. Nothing in
+this section is a new measurement. The split below is that one 250 ms
+budget, not three stopwatches:
+
+  T_fixed ≈ 10 ms   BSP walk, capture, the nearer-first sort, HUD
+  T_edge  ≈ 20 ms   edge setup. About 1 ms per 16-row band at 320 tall,
+                    because each overlapping triangle does three software
+                    divides once per band it touches. Scales with height.
+  T_pix   ≈ 220 ms  z-tested pixel writes, including overdraw. Scales
+                    with area. This is the 4 FPS term.
+
+  cpu_ms(Rw, Rh) = 10
+                 + 20 * (Rh / 320)
+                 + 220 * (Rw * Rh) / (320 * 320)
+
+  frame_ms = max(panel_ms(Dw, Dh), cpu_ms(Rw, Rh)) + 1
+  fps      = 1000 / frame_ms
+
+Only the pixel term divides by the area ratio. The edge term divides by
+the height ratio. The fixed term does not move. The panel term does not
+move while the picture still stretch-fills 320x320. So:
+
+  320x320 at 19 FPS  is not  160x160 at 76 FPS.
+
+19.1 * (320*320)/(160*160) = 76.4, which is the "80 FPS" reading. It
+treats the wire as if a smaller render sent fewer panel pixels. The
+160x160 picture is scaled back up to 320x320, so the wire stays 52.43 ms.
+The same reading also ignores T_edge and T_fixed. A pure pixel law on
+the measured 4 FPS would be 4 / 0.25 = 16 FPS at 160x160, still not 80,
+and still high because it drops the edge and fixed terms.
+
+Fullscreen is the check, because it holds Dw and Dh at 320. Read the
+pill after each r_mode. The table is the prediction. A result near the
+pure-area column means T_pix is even more of the 250 ms than this split
+assumes. A result below the prediction means T_edge or T_fixed is larger.
+
+11.5 Predicted fullscreen rates
+
+Panel term held at 52.43 ms. Anchor: 320x320 = 4 FPS, measured.
+The other rows are predictions. Do not report them as measured.
+
+  size       area    cpu ms   frame ms   predicted   pure area   wire*area
+  320x320    1.00     250       251        4.0         4.0         19
+  160x320    0.50     140       141        7.1         8.0         38
+  320x160    0.50     130       131        7.6         8.0         38
+  160x160    0.25      75        76       13.2        16.0         76
+  128x128    0.16      53        54       18.5        25.0        119
+  128x96     0.12      42        53       18.7        33.3        159
+  80x80      0.0625    29        53       18.7        64.0        306
+
+pure area = 4 / (Rw*Rh/320/320). wire*area = 19.1 / (Rw*Rh/320/320).
+The last two columns are the linear laws this panel does not follow.
+80x80, 128x96, and 128x128 are predicted to sit on the panel ceiling
+(about 19 FPS, 18.7 with the 1 ms delay), because their CPU term falls
+under 52 ms. They cannot show a 64 FPS or an 80 FPS result while the
+panel is still sent at 320x320. 160x320 is slower than 320x160 in this
+split because it keeps the full-height edge setup.
+
+A window whose present is only the body (about 17 bands, 44.6 ms) raises
+the ceiling from 19 toward 22. It does not turn 160x160 into 80 FPS.
+
+11.6 15 FPS at 320x320
+
+15 FPS is a 66.7 ms frame. The panel already costs 52.4 ms, so the CPU
+term has to land at or under about 66 ms. With T_fixed and T_edge left
+at 10 and 20, T_pix has to fall from 220 ms to about 36 ms, roughly a
+6x cut of the shaded pixels. Front-to-back coverage is that attempt:
+the captured triangles are sorted once per frame by descending iz
+(stable on ties), and a band then skips a span a nearer triangle already
+filled. It is armed only on the Quake image, after that sort. Gears and
+make test-picogl-raster leave it off, so their pixels stay bit-identical.
+
+Coverage can only skip overdraw. If the visible surface is about a
+quarter of the shaded pixels, T_pix falls toward 55 ms and the frame
+toward 85 ms, about 12 FPS, still short of 15. A 6x overdraw cut would
+reach 15. That ratio is not known until the board is flashed. This link
+does not claim 15 FPS, and it does not claim any rate other than the
+user's 4 FPS at 320x320.
+
+Core 1 is not given Quake spans. The strip is also SegUI's. A row split
+would race that strip and, at best, approach 2x, which is still under
+15. Clocks stay where they are. A retained 320x320 color-plus-depth
+picture does not fit: after this link Quake has 35028 bytes free under
+215040, and 320x320 RGB565 plus int32 depth is 204800 + 409600.
+
+11.7 SRAM of the 2026-11-22 links
+
+Gate: __sram_used__ <= 215040. Scratch X is 4 KiB at 0x20040000.
+Core 1 stack top is 0x20041400.
+
+  Quake RP2040, after the resolution table and the coverage mask.
+  Not flashed. Not a measured frame rate.
+    text 823688   data 2892   bss 177120
+    __sram_used__ 0x2bf2c = 180012, free 35028
+    __bss_end__ 0x2002bf30
+    UF2 btron-picocalc-quake-rp2040.uf2 1653248 bytes, 3229 blocks
+    SD-boot bin 826324 bytes at 0x10032000
+    scratch X ends 0x200403c4 (964 bytes): paint_span_lift,
+    paint_span_write, and paint_span_cover
+    Added over the previous Quake link: 320x16 scale color (5120),
+    the stable sort index (3584), the 16x320 coverage bits (640)
+
+  Gears / XMB RP2040, relinked because picogl_span.c is shared.
+  Not flashed.
+    text 462248   data 2896   bss 188532
+    __sram_used__ 0x2ebc4 = 191428, free 23612
+    UF2 btron-picocalc-rp2040.uf2 930304 bytes, 1817 blocks
+    The coverage mask is in this image too. Coverage stays off, so
+    gears do not take the new span. Gears color stays two 112x96
+    RGB565 buffers plus one int32 iz. The gear resolution is unchanged.
+
+Phase 1 had measured data 3268 + bss 198924 = 202192, free 12848, and
+chose one bucket set of 16 triangles a band (7680 bytes) with iz on the
+triangle. That bucket set is still the bin table. Quake does not raster
+from it: the device captures up to 896 triangles and paints each band
+from that list. A 48-wide bin and a second bucket set stay out.
+
+make test-picogl-raster after the coverage edit: 10 checks, 0 failures.
+paint_one_row is unchanged. RP2350 was not relinked.
+
+11.8 Pipeline
+
+  core 0, once per frame
+  1 Submit      seven R_EEGS_* calls, or the GLES door for gears
+  2 Transform   one camera matrix, then an integer clip and divide
+  3 Bin         gears and XMB post to the span ring; Quake captures
+  core 0, each dirty band (Quake spans are not posted to core 1)
+  4 Raster      edge walk, strict iz test (larger iz wins), seal
+  5 Cover       system-font menu, HUD, status bar
+  6 Scan        DMA channel 0
+
+GL_BACKEND_PICOGL = 5. The seven calls are Live, BeginFrame, SetCamera,
+Poly, Tris, Fill, and String. On the device, world triangles are
+picogl_world_tri with PICOGL_SEAL. Gears use picogl_screen_tri and do
+not set the seal. The span walks pixel centers. A shared edge can miss
+both faces; the seal covers one extra pixel on a world triangle.
+cw_lerp rounds to nearest. Core 1 wakes so ps can show the picogl row.
+Quake paints on core 0 because the strip is SegUI's as well.
+
+The triangle is 24 bytes. The span ring is 128 slots, 3072 bytes, and
+is not a second bin table. A full ring waits for one slot. Core 1 never
+programs SPI, DMA, or GPIO.
+
+11.9 Decisions that still hold
+
+  - The seven R_EEGS_* calls are the scene API. PS2 keeps its own body.
+  - Both images keep the eight shell apps. The center tile is the only
+    difference. PALM_APP_GLGEARS is not renumbered.
+  - The framebuffer is the 16-line strip.
+  - Rectangles and the system font are not meshes.
+  - progs.dat is not linked. The device console is the integer command
+    list in start_sim.c.
+  - v1 is silent.
+  - The old "draw the world at 160 and store it 2x" choice is retired.
+    The seven sizes in section 11.2 all stretch to the destination.
+    Direct paint is only the case where render size equals destination.
+  - UART lines picogl gears at 20 FPS and picogl xmb / quake at 12 FPS
+    were targets in the phase plan. They were not measured. The only
+    device Quake rate recorded here is the user's 4 FPS at 320x320.
+
+11.10 Files
+
+  src/desktop/graphics/picogl/picogl.h
+  src/desktop/graphics/picogl/picogl_span.c    bins, span, coverage
+  src/desktop/graphics/picogl/picogl_ctx.c     GLES door
+  src/desktop/graphics/picogl/picogl_host_core1.c   host pthread only
+  src/drivers/pico/pico_core1.c                wake, FIFO, stack
+  src/media/xmb/xmb_pico.c                     make picocalc center
+  src/media/quake/sim/start_sim.c              make picocalc-quake only
+
+The plan once named picogl_xform.c, picogl_tex.c, picogl_blit.c, and
+picogl_present.c. Those files were not split out. The span and the
+present path live in picogl_span.c and dp_pico.c. The follow-on task
+plan for a background Quake task and a keyboard task is
+doc/md/QUAKE_RP2040.md. It does not own this budget.

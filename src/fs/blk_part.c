@@ -21,7 +21,7 @@
 #include <stdlib.h>
 #include <string.h>
 #else
-#include <libstr.h>
+#include <rt/libstr.h>
 #endif
 
 typedef struct {

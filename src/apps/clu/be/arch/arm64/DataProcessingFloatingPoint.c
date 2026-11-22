@@ -4,7 +4,7 @@
  * src/kernel/libstr.c provides the T-Kernel copy on all of them.  The three
  * bit-pattern puns below were calling memcpy with no <string.h> in scope,
  * which clang 16+/gcc 14 reject as an implicit declaration. */
-#include <libstr.h>
+#include <rt/libstr.h>
 
 #include "adefs.h"
 #include "bits.h"

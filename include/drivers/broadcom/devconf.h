@@ -21,7 +21,7 @@
 #ifndef __DEVICE_DEVCONF_H__
 #define __DEVICE_DEVCONF_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 
 #ifdef __cplusplus
 extern "C" {

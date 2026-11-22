@@ -7,7 +7,7 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <string.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <pthread.h>
 
 #define MAX_DEVICES 16

@@ -38,7 +38,7 @@
 #include <btron/workbench.h>
 #include <btron/fast_blit.h>
 #include <btron/arm64_mem.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <drivers/broadcom/dwc2.h>
 #include <drivers/broadcom/pcie.h>
 #include <drivers/broadcom/xhci.h>

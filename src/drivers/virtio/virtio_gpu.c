@@ -6,7 +6,7 @@
 
 #include <drivers/virtio/virtio_gpu.h>
 #include <drivers/vesa/vesa.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 extern void uart_puts_raw(const char *str);
 

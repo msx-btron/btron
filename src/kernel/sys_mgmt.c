@@ -7,7 +7,7 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <string.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 static FP g_exc_handlers[32];
 static char g_sys_name[64] = "BTRON3 Sakamura T-Kernel 2.0 (Cleanroom C99)";

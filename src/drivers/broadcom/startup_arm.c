@@ -134,7 +134,7 @@ void uart_hex32(uint32_t v) {
 #define HEAP_BASE ((uintptr_t)0x02000000)  /* 32 MB — clear of all text, data, and BSS */
 #define HEAP_LIMIT ((uintptr_t)0x38000000) /* 896 MB — safely below VideoCore GPU FB (~961MB) */
 uintptr_t heap_ptr = 0; /* initialized in btron_main before first use */
-#include <libstr.h>
+#include <rt/libstr.h>
 
 void* memcpy(void *dst, const void *src, size_t n) { return tkl_memcpy(dst, src, n); }
 void* memset(void *s, int c, size_t n) { return tkl_memset(s, c, n); }

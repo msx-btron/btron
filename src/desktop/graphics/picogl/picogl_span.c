@@ -53,12 +53,23 @@ static picogl_tri_t s_band[PICOGL_BANDS][PICOGL_BAND_CAP];
 static uint16_t *s_tgt_rgb;
 static int32_t  *s_tgt_iz;
 static int       s_tgt_w, s_tgt_h, s_tgt_stride;
+static uint16_t *s_out_rgb;
+static int32_t  *s_out_iz;
+static int       s_out_stride, s_out_w, s_out_h;
+static int       s_out_xoff, s_out_yoff, s_out_vw, s_out_vh, s_out_swap;
+static picogl_tri_t *s_cap;
+static int       s_cap_n, s_cap_max;
+static int       s_from_world;
 static uint16_t *s_push_rgb;
 static int32_t  *s_push_iz;
 static int       s_push_w, s_push_h, s_push_stride;
 static int       s_push_vp_w, s_push_vp_h, s_push_depth, s_pushed;
 static picogl_span_ring_t s_span_ring;
 static volatile uint32_t s_span_done;
+/* One band of coverage, 320 bits by 16 rows. Armed only while s_cover
+ * is set, and only for a band no wider than 320. */
+static int s_cover;
+static uint32_t s_cov[16][10];
 
 static void mat_ident(float *m)
 {
@@ -314,19 +325,89 @@ static void edge_apply(const span_edge_t *e, int *lo, int *hi)
     }
 }
 
+static int cover_live(void)
+{
+    return s_cover && s_out_rgb && s_out_h > 0 && s_out_h <= 16
+        && s_out_w > 0 && s_out_w <= 320;
+}
+
+/* 1 when every bit in [lo, hi] on this band row is already written. */
+static int span_full(int dy, int lo, int hi)
+{
+    uint32_t *bits;
+    int x;
+    if ((unsigned)dy >= 16u) return 0;
+    if (lo < 0) lo = 0;
+    if (hi > 319) hi = 319;
+    if (lo > hi) return 1;
+    bits = s_cov[dy];
+    x = lo;
+    while (x <= hi) {
+        int bit = x & 31;
+        int n = 32 - bit;
+        uint32_t mask;
+        if (x + n - 1 > hi) n = hi - x + 1;
+        mask = (n == 32) ? 0xffffffffu : (((1u << n) - 1u) << bit);
+        if ((bits[x >> 5] & mask) != mask) return 0;
+        x += n;
+    }
+    return 1;
+}
+
+static int cover_full(int x0, int x1, int y0, int y1)
+{
+    int y;
+    if (x0 < 0) x0 = 0;
+    if (y0 < 0) y0 = 0;
+    if (x1 > 319) x1 = 319;
+    if (y1 > 15) y1 = 15;
+    if (x0 > x1 || y0 > y1) return 1;
+    for (y = y0; y <= y1; y++) {
+        if (!span_full(y, x0, x1)) return 0;
+    }
+    return 1;
+}
+
 #if defined(PICO_REAL_HW)
 __attribute__((section(".scratch_x"), noinline))
 #endif
 static void paint_span_write(uint16_t *row, int32_t *iz, int lo, int hi,
-                             int32_t izv, uint16_t rgb)
+                             int32_t izv, uint16_t rgb, int swap)
 {
     int x, wrote = 0;
+    uint16_t pix = swap ? (uint16_t)((rgb >> 8) | (rgb << 8)) : rgb;
     for (x = lo; x <= hi; x++) {
         if (s_depth) {
             if (!iz || !(izv > iz[x])) continue;
             iz[x] = izv;
         }
-        row[x] = rgb;
+        row[x] = pix;
+        wrote = 1;
+    }
+    if (wrote) s_spans++;
+}
+
+#if defined(PICO_REAL_HW)
+__attribute__((section(".scratch_x"), noinline))
+#endif
+static void paint_span_cover(uint16_t *row, int32_t *iz, int lo, int hi,
+                             int32_t izv, uint16_t rgb, int swap, int dy)
+{
+    int x, wrote = 0;
+    uint16_t pix = swap ? (uint16_t)((rgb >> 8) | (rgb << 8)) : rgb;
+    uint32_t *bits;
+    if ((unsigned)dy >= 16u) return;
+    bits = s_cov[dy];
+    for (x = lo; x <= hi; x++) {
+        uint32_t mask = 1u << (x & 31);
+        uint32_t *word = bits + (x >> 5);
+        if (*word & mask) continue;
+        if (s_depth) {
+            if (!iz || !(izv > iz[x])) continue;
+            iz[x] = izv;
+        }
+        row[x] = pix;
+        *word |= mask;
         wrote = 1;
     }
     if (wrote) s_spans++;
@@ -365,9 +446,35 @@ static void paint_tri_target(const picogl_tri_t *t)
 {
     int y, ymin, ymax, py, area;
     int x0, y0, x1, y1, x2, y2;
+    int view_w, view_h, xoff, yoff, dest_w, dest_h, stride, swap;
+    uint16_t *rgb;
+    int32_t *izbase;
     span_edge_t e0, e1, e2;
-    if (!s_tgt_rgb || s_tgt_w <= 0 || s_tgt_h <= 0) return;
-    if (s_depth && !s_tgt_iz) return;
+    if (s_out_rgb) {
+        rgb = s_out_rgb;
+        izbase = s_out_iz;
+        stride = s_out_stride;
+        dest_w = s_out_w;
+        dest_h = s_out_h;
+        view_w = s_out_vw;
+        view_h = s_out_vh;
+        xoff = s_out_xoff;
+        yoff = s_out_yoff;
+        swap = s_out_swap;
+    } else {
+        if (!s_tgt_rgb || s_tgt_w <= 0 || s_tgt_h <= 0) return;
+        rgb = s_tgt_rgb;
+        izbase = s_tgt_iz;
+        stride = s_tgt_stride;
+        dest_w = s_tgt_w;
+        dest_h = s_tgt_h;
+        view_w = s_tgt_w;
+        view_h = s_tgt_h;
+        xoff = 0;
+        yoff = 0;
+        swap = 0;
+    }
+    if (s_depth && !izbase) return;
     ymin = t->y0;
     if (t->y1 < ymin) ymin = t->y1;
     if (t->y2 < ymin) ymin = t->y2;
@@ -375,8 +482,37 @@ static void paint_tri_target(const picogl_tri_t *t)
     if (t->y1 > ymax) ymax = t->y1;
     if (t->y2 > ymax) ymax = t->y2;
     if (ymin < 0) ymin = 0;
-    if (ymax >= s_tgt_h) ymax = s_tgt_h - 1;
+    if (ymax >= view_h) ymax = view_h - 1;
     if (ymin > ymax) return;
+    /* A band is dest_h rows of the view, starting at -yoff. edge_init at
+     * that row is the same edge state as walking every row above it, so
+     * a 320-tall wall is filled once per band instead of once per pixel
+     * of its whole height. A full target has yoff 0 and dest_h == view_h,
+     * and this clamp does not move. */
+    {
+        int top = -yoff;
+        int bot = dest_h - yoff;
+        if (ymin < top) ymin = top;
+        if (ymax >= bot) ymax = bot - 1;
+        if (ymin > ymax) return;
+    }
+    /* A nearer triangle already owns this sealed box. Skip the divides. */
+    if (cover_live() && (t->flags & PICOGL_LIFT) == 0) {
+        int bx0 = t->x0;
+        int bx1 = t->x0;
+        if (t->x1 < bx0) bx0 = t->x1;
+        if (t->x2 < bx0) bx0 = t->x2;
+        if (t->x1 > bx1) bx1 = t->x1;
+        if (t->x2 > bx1) bx1 = t->x2;
+        if (t->flags & PICOGL_SEAL) {
+            if (bx0 > 0) bx0--;
+            if (bx1 + 1 < view_w) bx1++;
+        }
+        if (bx0 < 0) bx0 = 0;
+        if (bx1 >= view_w) bx1 = view_w - 1;
+        if (cover_full(bx0 + xoff, bx1 + xoff, ymin + yoff, ymax + yoff))
+            return;
+    }
     x0 = t->x0 * 2; y0 = t->y0 * 2;
     x1 = t->x1 * 2; y1 = t->y1 * 2;
     x2 = t->x2 * 2; y2 = t->y2 * 2;
@@ -395,22 +531,37 @@ static void paint_tri_target(const picogl_tri_t *t)
     for (y = ymin; y <= ymax; y++) {
         int lo = t->x0;
         int hi = t->x0;
+        int dy = y + yoff;
+        int draw = 1;
         if (t->x1 < lo) lo = t->x1;
         if (t->x2 < lo) lo = t->x2;
         if (t->x1 > hi) hi = t->x1;
         if (t->x2 > hi) hi = t->x2;
         if (lo < 0) lo = 0;
-        if (hi >= s_tgt_w) hi = s_tgt_w - 1;
+        if (hi >= view_w) hi = view_w - 1;
         edge_apply(&e0, &lo, &hi);
         edge_apply(&e1, &lo, &hi);
         edge_apply(&e2, &lo, &hi);
-        if (lo <= hi) {
-            uint16_t *row = s_tgt_rgb + y * s_tgt_stride;
+        /* The integer projector rounds a shared edge so the pixel
+         * center falls outside both faces. Cover one more pixel. */
+        if ((t->flags & PICOGL_SEAL) && lo <= hi) {
+            if (lo > 0) lo--;
+            if (hi + 1 < view_w) hi++;
+        }
+        if (dy < 0 || dy >= dest_h) draw = 0;
+        lo += xoff;
+        hi += xoff;
+        if (lo < 0) lo = 0;
+        if (hi >= dest_w) hi = dest_w - 1;
+        if (draw && lo <= hi) {
+            uint16_t *row = rgb + dy * stride;
+            int32_t *iz = izbase ? izbase + dy * stride : 0;
             if (t->flags & PICOGL_LIFT)
                 paint_span_lift(row, lo, hi, t->rgb);
-            else
-                paint_span_write(row, s_tgt_iz ? s_tgt_iz + y * s_tgt_stride : 0,
-                                 lo, hi, t->iz, t->rgb);
+            else if (!cover_live())
+                paint_span_write(row, iz, lo, hi, t->iz, t->rgb, swap);
+            else if (!span_full(dy, lo, hi))
+                paint_span_cover(row, iz, lo, hi, t->iz, t->rgb, swap, dy);
         }
         edge_advance(&e0);
         edge_advance(&e1);
@@ -460,6 +611,11 @@ unsigned picogl_span_refused(void)
 static void post_target(const picogl_tri_t *tri)
 {
     int st, spins;
+    if (s_cap) {
+        if (s_cap_n < s_cap_max) s_cap[s_cap_n++] = *tri;
+        else s_drop++;
+        return;
+    }
     pico_core1_launch();
     st = pico_core1_state();
     if (st == 1 || st == 2) {
@@ -611,6 +767,7 @@ void picogl_begin_frame(int width, int height)
     s_glyphs = 0;
     s_tris = 0;
     s_spans = 0;
+    s_cap_n = 0;
     if (width > 0) s_vp_w = width;
     if (height > 0) s_vp_h = height;
     if (s_vp_h > PICOGL_BANDS * PICOGL_BAND_H)
@@ -785,14 +942,28 @@ static int cw_inside(const cw_t *v)
     return 1;
 }
 
+/* Toward-zero truncation put a clipped vertex a pixel off the edge the
+ * neighbour still owns, which is the black gap between faces. */
+static int cw_round_div(int64_t num, int den)
+{
+    if (den < 0) {
+        num = -num;
+        den = -den;
+    }
+    if (den == 0) return 0;
+    if (num >= 0) num += (int64_t)den >> 1;
+    else num -= (int64_t)den >> 1;
+    return (int)(num / den);
+}
+
 static void cw_lerp(cw_t *o, const cw_t *a, const cw_t *b, int da, int db)
 {
     int den = da - db;
     if (den == 0) { *o = *b; return; }
-    o->x = a->x + (int)(((int64_t)(b->x - a->x) * da) / den);
-    o->y = a->y + (int)(((int64_t)(b->y - a->y) * da) / den);
-    o->z = a->z + (int)(((int64_t)(b->z - a->z) * da) / den);
-    o->w = a->w + (int)(((int64_t)(b->w - a->w) * da) / den);
+    o->x = a->x + cw_round_div((int64_t)(b->x - a->x) * da, den);
+    o->y = a->y + cw_round_div((int64_t)(b->y - a->y) * da, den);
+    o->z = a->z + cw_round_div((int64_t)(b->z - a->z) * da, den);
+    o->w = a->w + cw_round_div((int64_t)(b->w - a->w) * da, den);
 }
 
 static int cw_clip(cw_t *v, int n, int plane)
@@ -859,29 +1030,36 @@ void picogl_world_tri(int x0, int y0, int z0, int x1, int y1, int z1,
     cw_t v[12];
     int n, p, i;
     uint16_t rgb;
-    if (!s_mq_ok || !s_tgt_rgb || s_vp_w <= 0 || s_vp_h <= 0) return;
+    if (!s_mq_ok || s_vp_w <= 0 || s_vp_h <= 0) return;
+    if (!s_tgt_rgb && !s_cap) return;
     cw_point(x0, y0, z0, &v[0]);
     cw_point(x1, y1, z1, &v[1]);
     cw_point(x2, y2, z2, &v[2]);
     rgb = rgb565(rgba);
+    s_from_world = 1;
     if (cw_inside(&v[0]) && cw_inside(&v[1]) && cw_inside(&v[2])) {
         cw_post(&v[0], &v[1], &v[2], rgb);
+        s_from_world = 0;
         return;
     }
     n = 3;
     for (p = 0; p < 6; p++) {
         n = cw_clip(v, n, p);
-        if (n < 3) return;
+        if (n < 3) {
+            s_from_world = 0;
+            return;
+        }
     }
     for (i = 1; i < n - 1; i++)
         cw_post(&v[0], &v[i], &v[i + 1], rgb);
+    s_from_world = 0;
 }
 
 void picogl_screen_tri(int x0, int y0, int x1, int y1, int x2, int y2,
                        int32_t iz, uint16_t rgb)
 {
     picogl_tri_t tri;
-    if (!s_tgt_rgb) return;
+    if (!s_tgt_rgb && !s_cap) return;
     memset(&tri, 0, sizeof tri);
     tri.x0 = (int16_t)clamp_i(x0, -4096, 4096);
     tri.y0 = (int16_t)clamp_i(y0, -4096, 4096);
@@ -892,7 +1070,7 @@ void picogl_screen_tri(int x0, int y0, int x1, int y1, int x2, int y2,
     if (tri_area2(&tri) == 0) return;
     tri.iz = iz > 0 ? iz : 1;
     tri.rgb = rgb;
-    tri.flags = (uint8_t)PICOGL_FLAT;
+    tri.flags = (uint8_t)(s_from_world ? (PICOGL_FLAT | PICOGL_SEAL) : PICOGL_FLAT);
     s_tris++;
     post_target(&tri);
 }
@@ -915,6 +1093,73 @@ void picogl_screen_lift(int x0, int y0, int x1, int y1, int x2, int y2,
     tri.flags = (uint8_t)PICOGL_LIFT;
     s_tris++;
     post_target(&tri);
+}
+
+void picogl_capture(picogl_tri_t *dst, int cap)
+{
+    s_cap = dst;
+    s_cap_n = 0;
+    s_cap_max = (dst && cap > 0) ? cap : 0;
+}
+
+int picogl_captured(void)
+{
+    return s_cap_n;
+}
+
+void picogl_set_cover(int on)
+{
+    s_cover = on ? 1 : 0;
+}
+
+void picogl_paint_band(const picogl_tri_t *tris, int ntri,
+                       uint16_t *be, int stride,
+                       int band_y, int band_h,
+                       int ox, int oy, int vw, int vh,
+                       int32_t *iz, uint16_t clear_rgb)
+{
+    int y, x, i;
+    uint16_t sky;
+    (void)band_y;
+    if (!be || !iz || stride <= 0 || band_h <= 0 || vw <= 0 || vh <= 0) return;
+    sky = (uint16_t)((clear_rgb >> 8) | (clear_rgb << 8));
+    for (y = 0; y < band_h; y++) {
+        int sy = band_y + y;
+        uint16_t *row;
+        if (sy < oy || sy >= oy + vh) continue;
+        row = be + y * stride;
+        for (x = 0; x < vw; x++) {
+            int sx = ox + x;
+            if ((unsigned)sx >= (unsigned)stride) continue;
+            row[sx] = sky;
+            iz[y * stride + sx] = 0;
+        }
+    }
+    s_out_rgb = be;
+    s_out_iz = iz;
+    s_out_stride = stride;
+    s_out_w = stride;
+    s_out_h = band_h;
+    s_out_xoff = ox;
+    s_out_yoff = oy - band_y;
+    s_out_vw = vw;
+    s_out_vh = vh;
+    s_out_swap = 1;
+    if (s_cover && band_h <= 16 && stride <= 320)
+        memset(s_cov, 0, (size_t)band_h * sizeof s_cov[0]);
+    for (i = 0; i < ntri; i++) {
+        int ymin = tris[i].y0;
+        int ymax = tris[i].y0;
+        if (tris[i].y1 < ymin) ymin = tris[i].y1;
+        if (tris[i].y2 < ymin) ymin = tris[i].y2;
+        if (tris[i].y1 > ymax) ymax = tris[i].y1;
+        if (tris[i].y2 > ymax) ymax = tris[i].y2;
+        if (ymax < 0 || ymin >= vh) continue;
+        if (oy + ymax < band_y || oy + ymin >= band_y + band_h) continue;
+        paint_tri_target(&tris[i]);
+    }
+    s_out_rgb = 0;
+    s_out_swap = 0;
 }
 
 void picogl_bind_target(uint16_t *rgb, int32_t *iz, int w, int h, int stride)
@@ -990,7 +1235,7 @@ static void paint_one_row(const picogl_tri_t *t, int y, uint16_t *row,
     edge_apply(&e1, &lo, &hi);
     edge_apply(&e2, &lo, &hi);
     if (lo <= hi)
-        paint_span_write(row, iz, lo, hi, t->iz, t->rgb);
+        paint_span_write(row, iz, lo, hi, t->iz, t->rgb, 0);
 }
 
 void picogl_raster_band(int band, uint16_t *rgb, int stride, int32_t *iz_row, int width)

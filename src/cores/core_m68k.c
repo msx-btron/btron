@@ -32,7 +32,7 @@
 #include <btron/event.h>
 #include <btron/tip.h>
 #include <btron/apps.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 extern void orchestra_ui_tick(void);
 extern void cassette_service(void);

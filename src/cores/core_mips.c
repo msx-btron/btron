@@ -21,7 +21,7 @@
 #include <btron/types.h>
 #include <btron/error.h>
 #include <btron/itron.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 #include "mips_uart.h"
 

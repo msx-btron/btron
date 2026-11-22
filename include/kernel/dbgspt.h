@@ -21,7 +21,7 @@
 #ifndef __TK_DBGSPT_H__
 #define __TK_DBGSPT_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/typedef.h>
 #include <kernel/syscall.h>
 

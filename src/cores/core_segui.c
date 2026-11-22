@@ -257,6 +257,9 @@ static void segui_task(void *arg)
                 if (key >= 0 && segui_palm_active_id() == PALM_APP_GLGEARS &&
                     (key == START_KEY_FIRE || !down)) {
                     start_sim_key(key, down);
+                    /* The menu does not repaint on its own. Fire has to
+                     * mark the panel or a resolution change never shows. */
+                    if (down) dirty = ALL_BANDS_DIRTY;
                     key = -1;
                 } else if (key >= 0 && !down) {
                     key = -1;
@@ -309,6 +312,15 @@ static void segui_task(void *arg)
             }
         } else if (!lcd_asleep && segui_palm_tick(now)) {
             dirty |= 0x0007FFFCUL; /* Body bands only (skip status & softkey) */
+#if defined(PICOCALC_APP_QUAKE)
+            /* Fullscreen is the whole 320x320 panel, including the bands
+             * the window chrome used to own. */
+            if (start_sim_fullscreen())
+                dirty |= ALL_BANDS_DIRTY;
+#else
+            if (segui_palm_gl_fullscreen())
+                dirty |= ALL_BANDS_DIRTY;
+#endif
         }
 
         /* The Palm title is the status pill. A new FPS string needs bands 0 and 1. */

@@ -21,7 +21,7 @@
 #ifndef __TK_TKERNEL_H__
 #define __TK_TKERNEL_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/typedef.h>
 #include <kernel/errno.h>
 

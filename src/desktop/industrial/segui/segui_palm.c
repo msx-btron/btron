@@ -676,29 +676,46 @@ static void build_cabinet(SEGUI_APP *app, const SEGUI_PROFILE *prof)
 
 #if defined(PICOCALC_APP_QUAKE)
 #include "start_sim.h"
-extern void dp_pico_blit_rgb565(const RECT *dst, const uint16_t *src, int src_w, int src_h);
 
 static void draw_quake_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, void *ctx)
 {
     (void)app;
     (void)ctx;
-    if (!bounds) return;
 #if defined(PICO_REAL_HW)
-    /* present() paints once per 16px band. The scene is one frame.
-     * Later bands only copy the rows that band covers. */
+    /* Every r_mode scales to this rectangle: the client, or the panel
+     * after f. The menu is drawn afterwards in destination pixels. */
     {
         static uint32_t s_gen;
         extern uint32_t dp_pico_present_gen(void);
-        uint32_t g = dp_pico_present_gen();
+        extern uint16_t *dp_pico_band_ptr(int *y0, int *h, int *stride);
+        int ox, oy, dw, dh, by, bh, stride;
+        uint16_t *strip;
+        uint32_t g;
+        if (start_sim_fullscreen()) {
+            ox = 0;
+            oy = 0;
+            dw = 320;
+            dh = 320;
+        } else if (bounds) {
+            ox = bounds->left;
+            oy = bounds->top;
+            dw = bounds->right - bounds->left;
+            dh = bounds->bottom - bounds->top;
+        } else {
+            return;
+        }
+        g = dp_pico_present_gen();
         if (g != s_gen) {
             s_gen = g;
+            start_sim_set_dest(dw, dh);
             start_sim_render();
         }
+        strip = dp_pico_band_ptr(&by, &bh, &stride);
+        if (strip)
+            start_sim_paint_band(strip, stride, by, bh, ox, oy, dev);
     }
-    (void)dev;
-    dp_pico_blit_rgb565(bounds, start_sim_pixels(),
-                        start_sim_view_w(), start_sim_view_h());
 #else
+    if (!bounds) return;
     (void)dev;
     start_sim_render();
 #endif
@@ -706,7 +723,15 @@ static void draw_quake_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, voi
 
 static BOOL key_quake(int key)
 {
-    if (key == PALM_KEY_ESC) return FALSE;
+    if (key == PALM_KEY_ESC) {
+#if defined(PICO_REAL_HW)
+        if (start_sim_console_open()) {
+            start_sim_key(key, 1);
+            return TRUE;
+        }
+#endif
+        return FALSE;
+    }
     start_sim_key(key, 1);
     return TRUE;
 }
@@ -817,8 +842,8 @@ static BOOL key_xmb(int key)
 
 #if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
 /* Host screenshot only. The picocalc gears elf does not have this app.
- * The canvas calls the same start_sim_render the quake image calls, then
- * stretches the 128x96 RGB565 target the way dp_pico_blit_rgb565 does. */
+ * The capture renders e1m1 at 320x320 and paints that picture 1:1 across
+ * the panel. The boot menu and the status bar are the system font. */
 #include "start_sim.h"
 
 static void host_blit_rgb565(GDEV *dev, const RECT *b,
@@ -865,11 +890,17 @@ static void host_blit_rgb565(GDEV *dev, const RECT *b,
 
 static void draw_quake_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, void *ctx)
 {
-    (void)app; (void)ctx;
-    if (!bounds || !dev) return;
+    RECT full;
+    (void)app; (void)ctx; (void)bounds;
+    if (!dev) return;
     start_sim_render();
-    host_blit_rgb565(dev, bounds, start_sim_pixels(),
+    full.left = 0;
+    full.top = 0;
+    full.right = dev->width;
+    full.bottom = dev->height;
+    host_blit_rgb565(dev, &full, start_sim_pixels(),
                      start_sim_view_w(), start_sim_view_h());
+    start_sim_paint_menu(dev, 0, 0, dev->width, dev->height);
 }
 
 static void build_quake_preview(SEGUI_APP *app, const SEGUI_PROFILE *prof)
@@ -1360,11 +1391,18 @@ void segui_palm_init(const SEGUI_PROFILE *prof, const SEGUI_PALM_HW_OPS *hw)
     segui_palm_switch(PALM_APP_LAUNCHER);
 }
 
+#if defined(PICO_REAL_HW) && !defined(PICOCALC_APP_QUAKE)
+static int s_gl_full;
+#endif
+
 void segui_palm_switch(SEGUI_PALM_APP_ID id)
 {
     if (id < 0 || id >= PALM_APP_COUNT) id = PALM_APP_LAUNCHER;
     s_menu_open = FALSE;
     s_alert_open = FALSE;
+#if defined(PICO_REAL_HW) && !defined(PICOCALC_APP_QUAKE)
+    s_gl_full = 0;
+#endif
     s_active_id = id;
     s_apps[id].build(&s_app, s_prof);
     s_app.theme = s_theme;
@@ -1381,7 +1419,8 @@ SEGUI_APP *segui_palm_app(void) { return &s_app; }
 BOOL segui_palm_is_animated(void)
 {
 #if defined(PICOCALC_APP_QUAKE)
-    if (s_active_id == PALM_APP_GLGEARS) return TRUE;
+    /* The menu is a still. Repainting it every tick scans the panel. */
+    if (s_active_id == PALM_APP_GLGEARS && start_sim_moving()) return TRUE;
 #else
     if (s_active_id == PALM_APP_GLGEARS && !s_gear_paused) return TRUE;
 #endif
@@ -1582,9 +1621,47 @@ static void paint_overlays(GDEV *dev)
     }
 }
 
+int segui_palm_gl_fullscreen(void)
+{
+#if defined(PICO_REAL_HW) && !defined(PICOCALC_APP_QUAKE)
+    if (!s_gl_full) return 0;
+    if (s_active_id == PALM_APP_GLGEARS) return 1;
+#if defined(SEGUI_HAVE_XMB)
+    if (s_active_id == PALM_APP_XMB) return 1;
+#endif
+#endif
+    return 0;
+}
+
 void segui_palm_paint(GDEV *dev)
 {
     if (!dev) return;
+#if defined(PICOCALC_APP_QUAKE) && defined(PICO_REAL_HW)
+    if (s_active_id == PALM_APP_GLGEARS && start_sim_fullscreen()) {
+        RECT full;
+        full.left = 0;
+        full.top = 0;
+        full.right = dev->width;
+        full.bottom = dev->height;
+        draw_quake_canvas(0, dev, &full, 0);
+        return;
+    }
+#elif defined(PICO_REAL_HW)
+    if (segui_palm_gl_fullscreen()) {
+        RECT full;
+        full.left = 0;
+        full.top = 0;
+        full.right = dev->width;
+        full.bottom = dev->height;
+        if (s_active_id == PALM_APP_GLGEARS)
+            draw_glgears_canvas(0, dev, &full, 0);
+#if defined(SEGUI_HAVE_XMB)
+        else if (s_active_id == PALM_APP_XMB)
+            draw_xmb_canvas(0, dev, &full, 0);
+#endif
+        return;
+    }
+#endif
     segui_paint(&s_app, dev);
     paint_overlays(dev);
 }
@@ -1659,6 +1736,20 @@ BOOL segui_palm_handle_key(int key, GDEV *dev)
         return TRUE;
     }
 
+#if defined(PICO_REAL_HW) && !defined(PICOCALC_APP_QUAKE)
+    /* f fills the panel for the two GL canvases, and f again restores
+     * the SegUI window. Quake handles its own f before this dispatch. */
+    if ((key == 'f' || key == 'F') &&
+        (s_active_id == PALM_APP_GLGEARS
+#if defined(SEGUI_HAVE_XMB)
+         || s_active_id == PALM_APP_XMB
+#endif
+        )) {
+        s_gl_full = s_gl_full ? 0 : 1;
+        return TRUE;
+    }
+#endif
+
     /* 6. App-specific key handler */
     if (d->on_key && d->on_key(key)) {
 #if defined(SEGUI_HAVE_XMB)
@@ -1703,7 +1794,7 @@ BOOL segui_palm_handle_key(int key, GDEV *dev)
 BOOL segui_palm_tick(uint32_t now_ms)
 {
 #if defined(PICOCALC_APP_QUAKE)
-    if (s_active_id == PALM_APP_GLGEARS) {
+    if (s_active_id == PALM_APP_GLGEARS && start_sim_moving()) {
         start_sim_tick(now_ms);
         return TRUE;
     }

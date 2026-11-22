@@ -5,7 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdio.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 #include "../../editor.h"
 

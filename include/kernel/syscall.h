@@ -22,7 +22,7 @@
 #ifndef __TK_SYSCALL_H__
 #define __TK_SYSCALL_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/typedef.h>
 
 #ifdef __cplusplus

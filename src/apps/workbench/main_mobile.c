@@ -11,7 +11,7 @@
 #include <SDL.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <termios.h>
+#include <rt/termios.h>
 #include <unistd.h>
 
 extern BOOL init_sdl_backend(H width, H height, const char *title);

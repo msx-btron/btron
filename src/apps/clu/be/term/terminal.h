@@ -6,7 +6,7 @@
 #define XT_VERSION "1.5.0"
 
 #include <stdbool.h>
-#include <termios.h>
+#include <rt/termios.h>
 
 enum key_codes {
     KEY_NULL      = 0,

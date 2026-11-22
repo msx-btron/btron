@@ -21,7 +21,7 @@
 #ifndef __TK_SYSLIB_H__
 #define __TK_SYSLIB_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/typedef.h>
 
 /*

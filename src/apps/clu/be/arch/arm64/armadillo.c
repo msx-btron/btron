@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 #include "adefs.h"
 #include "bits.h"

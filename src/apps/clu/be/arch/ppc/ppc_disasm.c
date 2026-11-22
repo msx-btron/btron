@@ -43,7 +43,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 #include "ppc_disasm.h"
 
 

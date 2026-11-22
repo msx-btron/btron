@@ -30,6 +30,9 @@
 #define PICOGL_FLAT      1u
 #define PICOGL_TEX       2u
 #define PICOGL_LIFT      4u
+/* World triangles. Integer projection can leave the shared edge pixel
+ * in neither face. The span covers one extra pixel on each side. */
+#define PICOGL_SEAL      8u
 
 typedef struct {
     int16_t  x0, y0, x1, y1, x2, y2;
@@ -54,6 +57,25 @@ void picogl_string(int x, int y, const char *str, const uint8_t font[96][8]);
 
 /* Color is RGB565. iz is one int32 per pixel, 0 meaning empty, larger
  * meaning closer. stride is in pixels. The pointer stays owned by the caller. */
+/* While dst is set, screen triangles are stored and not painted.
+ * picogl_begin_frame clears the count. A null dst paints again. */
+void picogl_capture(picogl_tri_t *dst, int cap);
+int  picogl_captured(void);
+
+/* Paint captured view-space triangles into one panel band, 1:1.
+ * be is big-endian RGB565. iz is one band, stride ints wide, and is
+ * cleared on the view rectangle. clear_rgb is native RGB565. */
+void picogl_paint_band(const picogl_tri_t *tris, int ntri,
+                       uint16_t *be, int stride,
+                       int band_y, int band_h,
+                       int ox, int oy, int vw, int vh,
+                       int32_t *iz, uint16_t clear_rgb);
+
+/* 1 skips a pixel a nearer triangle already wrote. The caller sorts
+ * that list by descending iz first and keeps the earlier triangle when
+ * iz ties. 0 is the default. Gears and picogl_raster_band leave it off. */
+void picogl_set_cover(int on);
+
 void picogl_bind_target(uint16_t *rgb, int32_t *iz, int w, int h, int stride);
 void picogl_clear_target(int color, int depth, uint16_t rgb);
 

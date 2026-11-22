@@ -3,8 +3,8 @@
  * T-Kernel 2.0 Standard String & Memory Library: libstr.c
  */
 
-#include <basic.h>
-#include <libstr.h>
+#include <kernel/basic.h>
+#include <rt/libstr.h>
 #include <stdarg.h>
 
 __attribute__((weak)) void* tkl_memset(void *s, int c, size_t n) {

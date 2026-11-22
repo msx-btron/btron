@@ -12,7 +12,7 @@
 #include <stdint.h>
 #include <ctype.h>
 #include <string.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 struct OpcodeDetails {
 	uint16_t and;

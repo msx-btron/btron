@@ -30,7 +30,7 @@
 #include <kernel/sysinfo.h>
 #include <kernel/rominfo.h>
 #include <drivers/broadcom/devconf.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 
 /*
  * Display the progress of start processing

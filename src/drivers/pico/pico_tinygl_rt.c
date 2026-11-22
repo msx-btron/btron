@@ -11,6 +11,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+void *memset(void *dst, int c, size_t n);
+
 void pico_tgl_arena_reset(void)
 {
 }
@@ -29,10 +31,9 @@ void *malloc(size_t size)
 void *calloc(size_t nmemb, size_t size)
 {
     size_t total = nmemb * size;
-    uint8_t *p = (uint8_t *)malloc(total);
-    if (p) {
-        for (size_t i = 0; i < total; i++) p[i] = 0;
-    }
+    void *p = malloc(total);
+    if (p)
+        memset(p, 0, total);
     return p;
 }
 
@@ -51,6 +52,8 @@ FILE *stdout = (FILE *)&s_dummy_file;
 void exit(int status) { (void)status; for (;;) { __asm__ volatile ("wfi"); } }
 void abort(void)      { for (;;) { __asm__ volatile ("wfi"); } }
 
+#if !defined(PICO_BOARD_RP2040)
+/* RP2040 links these from src/rt. This body is only the other board. */
 void *memmove(void *dst, const void *src, size_t n)
 {
     uint8_t *d = (uint8_t *)dst;
@@ -153,6 +156,7 @@ int snprintf(char *buf, size_t cap, const char *fmt, ...)
     if (buf && cap > 0) buf[0] = '\0';
     return 0;
 }
+#endif
 
 /* ── Portable IEEE-754 Single-Precision Soft-Float for Cortex-M0+ (RP2040) ─ */
 

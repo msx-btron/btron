@@ -22,7 +22,7 @@
  *	Calculate the value of required count for loop-wait for a given period (in micro seconds)
  */
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/sysinfo.h>
 #include <kernel/syslib.h>
 #include "tkdev_conf.h"

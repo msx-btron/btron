@@ -33,7 +33,7 @@
 #include <btron/tip.h>
 #include <btron/apps.h>
 #include <btron/workbench.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <drivers/broadcom/dwc2.h>
 
 extern void orchestra_ui_tick(void);

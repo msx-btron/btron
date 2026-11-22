@@ -23,7 +23,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 #include "../../editor.h"
 #include "armv7.h"
 

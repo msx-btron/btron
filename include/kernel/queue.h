@@ -21,7 +21,7 @@
 #ifndef	__SYS_QUEUE_H__
 #define __SYS_QUEUE_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 
 #ifdef __cplusplus
 extern "C" {

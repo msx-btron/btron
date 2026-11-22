@@ -25,7 +25,7 @@
 #ifndef __TK_DEVMGR_H__
 #define __TK_DEVMGR_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/typedef.h>
 #include <kernel/syscall.h>
 

@@ -4385,6 +4385,45 @@ PICO_CFLAGS = -Os -std=c99 -Wall -Wextra -Werror \
               -Iinclude -Isrc/drivers/pico
 PICO_LDFLAGS = $(ARM_LLD_FLAG) -Wl,--gc-sections -Wl,--build-id=none
 
+# B-RT Cortex-M0 plane. One implementation of each libc call.
+# RP2350 keeps the local bodies in pico_aeabi.c and pico_tinygl_rt.c.
+PICO_RT_BUILD := .build/rt-m0
+PICO_RT_CFLAGS := $(PICO_CFLAGS) -Iinclude/rt -Wno-error
+ifeq ($(PICO_BOARD),rp2040)
+PICO_RT_OBJS := $(PICO_RT_BUILD)/mem_m0.o \
+                $(PICO_RT_BUILD)/string_m0.o \
+                $(PICO_RT_BUILD)/iso_m0.o \
+                $(PICO_RT_BUILD)/mem_scalar.o \
+                $(PICO_RT_BUILD)/stdio_scalar.o \
+                $(PICO_RT_BUILD)/stdlib_scalar.o
+else
+PICO_RT_OBJS :=
+endif
+
+$(PICO_RT_BUILD)/mem_m0.o: src/rt/aarch32/Cortex-M0/mem.S
+	@mkdir -p $(PICO_RT_BUILD)
+	$(LLVM_CLANG) --target=thumbv6m-none-eabi -mcpu=cortex-m0plus -mthumb -c $< -o $@
+
+$(PICO_RT_BUILD)/string_m0.o: src/rt/aarch32/Cortex-M0/string.S
+	@mkdir -p $(PICO_RT_BUILD)
+	$(LLVM_CLANG) --target=thumbv6m-none-eabi -mcpu=cortex-m0plus -mthumb -c $< -o $@
+
+$(PICO_RT_BUILD)/iso_m0.o: src/rt/aarch32/Cortex-M0/iso.S
+	@mkdir -p $(PICO_RT_BUILD)
+	$(LLVM_CLANG) --target=thumbv6m-none-eabi -mcpu=cortex-m0plus -mthumb -c $< -o $@
+
+$(PICO_RT_BUILD)/mem_scalar.o: src/rt/common/scalar/mem.c
+	@mkdir -p $(PICO_RT_BUILD)
+	$(PICO_CC) $(PICO_RT_CFLAGS) -c $< -o $@
+
+$(PICO_RT_BUILD)/stdio_scalar.o: src/rt/common/scalar/stdio.c
+	@mkdir -p $(PICO_RT_BUILD)
+	$(PICO_CC) $(PICO_RT_CFLAGS) -c $< -o $@
+
+$(PICO_RT_BUILD)/stdlib_scalar.o: src/rt/common/scalar/stdlib.c
+	@mkdir -p $(PICO_RT_BUILD)
+	$(PICO_CC) $(PICO_RT_CFLAGS) -c $< -o $@
+
 PICO_QEMU_BUILD := .build/pico-qemu-$(PICO_BOARD)
 PICO_QEMU_ELF   := $(PICO_QEMU_BUILD)/btron-pico-$(PICO_BOARD)-qemu.elf
 
@@ -4394,7 +4433,8 @@ $(PICO_QEMU_ELF): src/drivers/pico/startup_pico.S \
                   src/cores/core_pico.c \
                   src/drivers/pico/pico_hal.h \
                   include/btron/pico_rtos.h \
-                  $(PICO_QEMU_LD)
+                  $(PICO_QEMU_LD) \
+                  $(PICO_RT_OBJS)
 	@mkdir -p $(PICO_QEMU_BUILD)
 	$(PICO_CC) $(PICO_CFLAGS) -c src/drivers/pico/startup_pico.S -o $(PICO_QEMU_BUILD)/startup_pico.o
 	$(PICO_CC) $(PICO_CFLAGS) -c src/drivers/pico/hal_qemu_mps2.c -o $(PICO_QEMU_BUILD)/hal_qemu_mps2.o
@@ -4404,7 +4444,8 @@ $(PICO_QEMU_ELF): src/drivers/pico/startup_pico.S \
 	    $(PICO_QEMU_BUILD)/startup_pico.o \
 	    $(PICO_QEMU_BUILD)/hal_qemu_mps2.o \
 	    $(PICO_QEMU_BUILD)/pico_aeabi.o \
-	    $(PICO_QEMU_BUILD)/core_pico.o -o $@
+	    $(PICO_QEMU_BUILD)/core_pico.o \
+	    $(PICO_RT_OBJS) -o $@
 	@echo "[PICO-QEMU] Built ($@)"
 	@llvm-size $@ 2>/dev/null || /opt/homebrew/opt/llvm/bin/llvm-size $@ 2>/dev/null || true
 
@@ -4450,6 +4491,43 @@ PICOCALC_SDBOOT_ELF := $(PICOCALC_BUILD)/btron-picocalc-quake-$(PICO_BOARD)-sdbo
 PICOCALC_SDBOOT_BIN := btron-picocalc-quake-$(PICO_BOARD)-sdboot.bin
 endif
 
+# make picocalc-tkernel links the T-Kernel syscall objects beside core_pico.
+# libstr.c stays off this link: string and memory calls come from B-RT.
+PICOCALC_TK_OBJS :=
+PICOCALC_TK_LDFLAGS :=
+PICOCALC_TK_SRC := \
+    src/kernel/task.c \
+    src/kernel/task_manage.c \
+    src/kernel/task_sync.c \
+    src/kernel/semaphore.c \
+    src/kernel/eventflag.c \
+    src/kernel/mailbox.c \
+    src/kernel/messagebuf.c \
+    src/kernel/rendezvous.c \
+    src/kernel/mutex.c \
+    src/kernel/mempool.c \
+    src/kernel/mempfix.c \
+    src/kernel/subsystem.c \
+    src/kernel/time_calls.c \
+    src/kernel/timer.c \
+    src/kernel/klock.c \
+    src/kernel/wait.c \
+    src/kernel/objname.c \
+    src/kernel/misc_calls.c \
+    src/kernel/version.c \
+    src/kernel/tkstart.c
+ifeq ($(PICOCALC_APP),tkernel)
+PICOCALC_BUILD      := .build/picocalc-tkernel-$(PICO_BOARD)
+PICOCALC_UF2_ELF    := $(PICOCALC_BUILD)/btron-picocalc-tkernel-$(PICO_BOARD).elf
+PICOCALC_UF2_BIN    := $(PICOCALC_BUILD)/btron-picocalc-tkernel-$(PICO_BOARD).bin
+PICOCALC_UF2        := btron-picocalc-tkernel-$(PICO_BOARD).uf2
+PICOCALC_SDBOOT_ELF := $(PICOCALC_BUILD)/btron-picocalc-tkernel-$(PICO_BOARD)-sdboot.elf
+PICOCALC_SDBOOT_BIN := btron-picocalc-tkernel-$(PICO_BOARD)-sdboot.bin
+PICOCALC_TK_OBJS    := $(PICOCALC_TK_SRC:src/kernel/%.c=$(PICOCALC_BUILD)/tk_%.o) \
+                       $(PICOCALC_BUILD)/tk_glue.o
+PICOCALC_TK_LDFLAGS := -Wl,--undefined=pico_tk_retain
+endif
+
 ifeq ($(PICO_BOARD),rp2040)
     PICOCALC_RAM_LEN   := 262144
     PICOCALC_BOOT_SRC  := src/drivers/pico/boot2_rp2040.S
@@ -4467,6 +4545,11 @@ endif
 PICOCALC_CFLAGS := $(PICO_CFLAGS) -DPICO_REAL_HW -DBTRON_SEGUI_COMPACT=1 \
                    $(if $(PICOCALC_LCD_RGB666),-DPICOCALC_LCD_RGB666=1,) \
                    $(if $(filter quake,$(PICOCALC_APP)),-DPICOCALC_APP_QUAKE,)
+PICOCALC_TK_CFLAGS := $(PICOCALC_CFLAGS) -Wno-error -Wno-unused-parameter \
+                      -Wno-sign-compare -Wno-unused-function -Wno-unused-variable \
+                      -Wno-missing-field-initializers \
+                      -Iinclude/rt -Iinclude/drivers/broadcom -Isrc/kernel \
+                      -include src/drivers/pico/tk_noarm.h
 
 PICOCALC_COMMON_C := src/drivers/pico/hal_rp2xxx.c \
                      src/drivers/pico/st7365p_spi.c \
@@ -4665,24 +4748,32 @@ $(PICOCALC_BUILD)/start_blob.o: $(PICOCALC_BLOB_SRC) $(PICOCALC_BLOB_HDR)
 	@mkdir -p $(PICOCALC_BUILD)
 	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -c $< -o $@
 
-$(PICOCALC_UF2): $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) $(PICOCALC_LD) scripts/tool_mk_uf2.py
-	$(PICO_CC) $(PICO_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
+$(PICOCALC_BUILD)/tk_%.o: src/kernel/%.c src/drivers/pico/tk_noarm.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_TK_CFLAGS) -c $< -o $@
+
+$(PICOCALC_BUILD)/tk_glue.o: src/drivers/pico/tk_glue.c
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
+
+$(PICOCALC_UF2): $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) $(PICOCALC_TK_OBJS) $(PICO_RT_OBJS) $(PICOCALC_LD) scripts/tool_mk_uf2.py
+	$(PICO_CC) $(PICO_LDFLAGS) $(PICOCALC_TK_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
 	    -Wl,--defsym=BTRON_FLASH_ORIGIN=0x10000000 \
 	    -Wl,--defsym=BTRON_RAM_LENGTH=$(PICOCALC_RAM_LEN) \
-	    $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) -o $(PICOCALC_UF2_ELF)
+	    $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) $(PICOCALC_TK_OBJS) $(PICO_RT_OBJS) -o $(PICOCALC_UF2_ELF)
 	$(LLVM_OBJCOPY) -O binary $(PICOCALC_UF2_ELF) $(PICOCALC_UF2_BIN)
 	python3 scripts/tool_mk_uf2.py --board $(PICO_BOARD) $(PICOCALC_UF2_FLAGS) \
 	    $(PICOCALC_UF2_BIN) $@
-ifneq ($(PICOCALC_APP),quake)
+ifeq ($(PICOCALC_APP),)
 	@ln -sf $@ btron-picocalc.uf2
 endif
 	@llvm-size $(PICOCALC_UF2_ELF) 2>/dev/null || /opt/homebrew/opt/llvm/bin/llvm-size $(PICOCALC_UF2_ELF) 2>/dev/null || true
 
-$(PICOCALC_SDBOOT_BIN): $(PICOCALC_COMMON_OBJS) $(PICOCALC_LD)
-	$(PICO_CC) $(PICO_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
+$(PICOCALC_SDBOOT_BIN): $(PICOCALC_COMMON_OBJS) $(PICOCALC_TK_OBJS) $(PICO_RT_OBJS) $(PICOCALC_LD)
+	$(PICO_CC) $(PICO_LDFLAGS) $(PICOCALC_TK_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
 	    -Wl,--defsym=BTRON_FLASH_ORIGIN=0x10032000 \
 	    -Wl,--defsym=BTRON_RAM_LENGTH=$(PICOCALC_RAM_LEN) \
-	    $(PICOCALC_COMMON_OBJS) -o $(PICOCALC_SDBOOT_ELF)
+	    $(PICOCALC_COMMON_OBJS) $(PICOCALC_TK_OBJS) $(PICO_RT_OBJS) -o $(PICOCALC_SDBOOT_ELF)
 	$(LLVM_OBJCOPY) -O binary $(PICOCALC_SDBOOT_ELF) $@
 	@SZ=$$(wc -c < $@ | tr -d ' '); echo "  [SDBOOT] $@ ($$SZ bytes, linked @ 0x10032000)"
 
@@ -4691,7 +4782,7 @@ picocalc: src/apps/cabinet/picocalc_fs_image.h $(PICOCALC_UF2) $(PICOCALC_SDBOOT
 	@echo " PicoCalc Real-Hardware Build Ready (PICO_BOARD=$(PICO_BOARD))"
 	@echo "   UF2    : $(PICOCALC_UF2)  (USB BOOTSEL & uf2loader)"
 	@echo "   SDBOOT : $(PICOCALC_SDBOOT_BIN)  (pico_multi_booter +200 KiB)"
-ifeq ($(PICOCALC_APP),quake)
+ifneq ($(PICOCALC_APP),)
 	@echo "   Flash  : this UF2 is not flashed by make flash-picocalc"
 else
 	@echo "   Flash  : make flash-picocalc"
@@ -4704,6 +4795,9 @@ picocalc-all:
 
 picocalc-quake:
 	@$(MAKE) PICOCALC_APP=quake picocalc
+
+picocalc-tkernel:
+	@$(MAKE) PICOCALC_APP=tkernel picocalc
 
 PICOCALC_MODE ?= uf2
 PICOCALC_VOL  ?= $(PICOCALC_BOOT_VOL)
@@ -4779,4 +4873,4 @@ serial-picocalc:
 	echo "[SERIAL] Attaching to $$PORT @ 115200 8N1 (Ctrl-A then K to exit)..."; \
 	screen "$$PORT" 115200
 
-.PHONY: picocalc picocalc-all picocalc-quake flash-picocalc test-picocalc test-segui-cores serial-picocalc test-start-sim test-xmb-pico test-picogl-gears-fps test-picogl-quake-fps test-picogl-cores
+.PHONY: picocalc picocalc-all picocalc-quake picocalc-tkernel flash-picocalc test-picocalc test-segui-cores serial-picocalc test-start-sim test-xmb-pico test-picogl-gears-fps test-picogl-quake-fps test-picogl-cores

@@ -88,6 +88,8 @@ SEGUI_APP       *segui_palm_app(void);
 BOOL             segui_palm_handle_key(int key, GDEV *dev);
 BOOL             segui_palm_tick(uint32_t now_ms);
 BOOL             segui_palm_is_animated(void);
+/* 1 when XMB or GLGears asked for the whole panel. Quake keeps its own flag. */
+int              segui_palm_gl_fullscreen(void);
 
 /* Layout & paint (paints base SegUI + Palm menu/alert overlays) */
 void             segui_palm_layout(GDEV *dev);

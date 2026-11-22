@@ -21,6 +21,26 @@ void start_sim_render(void);
 const uint16_t *start_sim_pixels(void);
 int  start_sim_view_w(void);
 int  start_sim_view_h(void);
+
+/* Device picture scales to the destination. 320 renders at the window,
+ * or at the panel when fullscreen. 160 and 80 render that square and
+ * scale up to the same rectangle. The menu is destination pixels.
+ * Host builds keep the 128x96 target. The SegUI capture renders 320. */
+#if defined(PICO_REAL_HW)
+#include <btron/dp.h>
+void start_sim_set_dest(int dw, int dh);
+void start_sim_paint_band(uint16_t *be, int stride, int band_y, int band_h,
+                          int ox, int oy, GDEV *dev);
+int  start_sim_fullscreen(void);
+int  start_sim_console_open(void);
+/* Play and the drone repaint. The menu stays on the last frame. */
+int  start_sim_moving(void);
+#endif
+#if !defined(PICO_REAL_HW)
+#include <btron/dp.h>
+/* SegUI capture. Boot menu and status bar in the system font. */
+void start_sim_paint_menu(GDEV *dev, int ox, int oy, int dw, int dh);
+#endif
 int  start_sim_lit(void);
 
 const float *start_sim_origin(void);

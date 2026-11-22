@@ -16,7 +16,7 @@
 #include "ps2_console.h"
 #include "ps2_usb.h"
 
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <stdio.h>
 
 extern int32_t  ps2_ee_syscall3(int32_t nr, int32_t a0, int32_t a1, int32_t a2);

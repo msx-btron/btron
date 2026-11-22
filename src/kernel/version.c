@@ -17,7 +17,7 @@
  *	Version Information
  */
 
-#include <basic.h>
+#include <kernel/basic.h>
 #include <kernel/tkernel.h>
 #include "version.h"
 

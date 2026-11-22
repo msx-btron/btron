@@ -24,7 +24,7 @@
 #include <stdint.h>
 
 #include <btron/libc_shim.h>
-#include <libstr.h>
+#include <rt/libstr.h>
 #if BTRON_HOSTED
 #include <time.h>
 #endif

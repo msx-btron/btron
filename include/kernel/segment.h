@@ -25,7 +25,7 @@
 #ifndef __SYS_SEGMENT_COMMON_H__
 #define __SYS_SEGMENT_COMMON_H__
 
-#include <basic.h>
+#include <kernel/basic.h>
 
 /*
  * System-dependent definition

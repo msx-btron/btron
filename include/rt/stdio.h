@@ -5,7 +5,7 @@
 #ifndef _GL_STDIO_H_
 #define _GL_STDIO_H_
 
-#include <libstr.h>
+#include <rt/libstr.h>
 #include <stdarg.h>
 
 #ifndef NULL
@@ -63,6 +63,18 @@ extern int fseek(FILE *stream, long offset, int whence);
 extern long ftell(FILE *stream);
 extern char *fgets(char *s, int size, FILE *stream);
 
+
+/* B-RT. One declaration set. ISO names above stay the public calls. */
+/* Bounded C99 formatter. Zero stream heap. No floating-point locale.
+   Supported: %% %c %s %d %i %u %o %x %X %p
+   Flags: - + space # 0   Width / precision / length: h hh l ll z t */
+
+int  rt_snprintf(char *buf, size_t n, const char *fmt, ...);
+int  rt_vsnprintf(char *buf, size_t n, const char *fmt, va_list ap);
+
+/* Deterministic binary32 decimal helper (no double promotion). */
+int  rt_fmt_f32(char *buf, size_t n, float x);
+int  rt_fmt_f32_into(char *buf, size_t n, float x, int prec);
 #endif /* _GL_STDIO_H_ */
 #endif /* HOSTED */
 
