@@ -1,859 +1,603 @@
-PICO.txt — Palm OS-Like SegUI Architecture for ClockworkPi PicoCalc
-====================================================================
-
-B-System (BTRON 3.20)
-Target: ClockworkPi PicoCalc (RP2040 default, RP2350 via PICO_BOARD=rp2350)
-Related: ASYNC.txt, RENDER.txt, STRUCTURE.txt, include/btron/segui.h
-
-Status: Architectural Proposal (Rev 7 — Spec-Driven, Battery-Optimized & Gap-Audited)
-Policy: Minimal, spec-driven clean code (-Os --gc-sections -Wall -Wextra -Werror).
-        NASA JPL Rule 3 compliant (zero post-boot heap, bounded static state).
-        Battery-first execution (WFI idle, 0 FPS static dirty-band, peripheral gating).
-        Zero pixel coordinates in any application; legacy segui_demo/segui_phone removed.
-
-BTRON B-System supported screen resolutions across HMI FOMA SEGUI workbench shell UI applications:
-
-============================ DESKTOP =================================
-1280 x 1024 VESA Desktop
-1024 x 768 Workspace Desktop
-================================= FOMA RETRO GAME CONSOLE ============
-800 x 600 Workstation Desktop
-640 x 480 SVGA Desktop
-=========================== PICO SEGUI ===============================
-320 x 240 VGA Desktop
-240 x 160 HQVGA
-208 x 208 Series 40
-176 x 208 Series 60
-176 x 144 QCIF
-160 x 144 Game Boy
-128 x 160 Series 30, Nokia 2630, 3500, 6650
-160 x 120 QQVGA
-128 x 128 SQVGA
-128 x 96 SQCIF
-128 x 64 Arduboy
-96 x 60 Nokia 7110
-96 x 64 TI-81, Nokia 1100, 3410, 3510i, 6310i
-96 x 68 Nokia 1280, 1600, 2600
-88 x 72 QQCIF
-84 x 84 Nokia 5110i
-84 x 48 Nokia 3310, 3330, 5110, 8210
-======================================================================
-
-0. Scope & Design Invariants
-----------------------------
-
-ClockworkPi PicoCalc is a Tier-1 Embedded MCU pocket computer with:
-  - CPU (Default): Raspberry Pi Pico 1 — RP2040, Dual Cortex-M0+ (ARMv6-M),
-    125 MHz, 264 KiB SRAM, 2 MiB XIP Flash.
-  - CPU (Option):  Raspberry Pi Pico 2 — RP2350, Dual Cortex-M33 (ARMv8-M
-    Mainline + FPv5-SP FPU), 150 MHz, 520 KiB SRAM, 4 MiB XIP Flash
-    (PICO_BOARD=rp2350).
-  - Display:       4.0" 320x320 IPS TFT, Sitronix ST7365P on SPI1 (25 MHz).
-  - Input / PMU:   QWERTY keyboard + AXP2101 PMU via STM32 on I2C1 (0x1F).
-
-Five hard invariants govern the PicoCalc UI architecture:
-
-  I1. Zero overlapping desktop windows. A 320x320 keyboard-driven pocket
-      screen has no mouse and cannot pay for z-ordered window backing stores.
-  I2. Zero pixel coordinates in applications. Every app declares widgets only;
-      SegUI's resolve_segments() and resolve_body() compute all geometry.
-  I3. Zero post-boot malloc(). All apps, forms, menus, dialogs, and display
-      strip buffers live in static BSS/DATA checked at link time.
-  I4. Banded 320x16 RGB565 rendering (20 KiB double-buffered SRAM) is unified
-      across both RP2350 and RP2040 so the same UI binary model runs on both
-      chips with >450 KiB (RP2350) / >200 KiB (RP2040) SRAM headroom.
-  I5. Strict core layering: core_pico.c is the pure non-UI Cortex-M RTOS core
-      (verified in QEMU via `make run-pico` / `make test-pico`); core_segui.c
-      layers the 320x320 Palm/SegUI hardware shell on top (analogous to
-      core_arm64.c on Pi 400).
-
-
-1. Why Palm OS 5 HiRes (320x320) + SegUI Autolayout
----------------------------------------------------
-
-Palm OS 5 HiRes (Tungsten / Treo) solved the exact 320x320 pocket-computer
-problem with four primitives:
-
-  1) Home Launcher      — one icon grid that launches any installed app.
-  2) Single Active Form — one full-screen app owns the body segment at a time.
-  3) Pull-Down Menu Bar — hidden until invoked (0 px vertical cost at rest).
-  4) Modal Alert Dialog — transient confirmation / status box over the form.
-
-B-System's existing SegUI toolkit (src/desktop/industrial/segui/segui.c)
-already separates device geometry (SEGUI_PROFILE) from layout arithmetic
-(resolve_segments / resolve_body) and widget painting:
-
-  +------------------------------------------------------------------+
-  | SEG_STATUS   20 px   [App Title Pill]     12:04  BAT 86%  BL 80% |
-  +------------------------------------------------------------------+
-  | SEG_TABBAR    0 px   (auto-hidden when active app has 1 Form;    |
-  |              22 px    auto-shown when app declares >1 Forms)     |
-  +------------------------------------------------------------------+
-  |                                                                  |
-  | SEG_BODY    276 px   stretch = TRUE                              |
-  |                      (or 254 px when SEG_TABBAR is visible)      |
-  |                                                                  |
-  |   * Launcher:   6 SEGUI_W_BUTTON tiles -> auto 3x2 grid          |
-  |   * List apps:  1 SEGUI_W_LIST -> auto full-body scrolling list  |
-  |   * Text apps:  1 SEGUI_W_TEXT -> auto full-body console/editor  |
-  |   * 3D app:     1 SEGUI_W_CANVAS -> auto full-body banded canvas |
-  |                                                                  |
-  +------------------------------------------------------------------+
-  | SEG_SOFTKEY  24 px   [F1 Home]   [F2 Menu]   [Enter OK]   [Esc]  |
-  +------------------------------------------------------------------+
-                         Total = 20 + 0 + 276 + 24 = 320 px exact.
-
-When `F2` (Menu) is pressed, a 1-column SEGUI_ROW dropdown overlays the top
-of SEG_BODY (auto-sized via segui_row_h()). When a modal alert is active, an
-auto-centered framed dialog overlays L->body. Neither reserves permanent
-screen height.
-
-
-2. Clean-Slate Coordinate-Free SegUI Core Redesign
---------------------------------------------------
-
-Legacy demo files (`segui_demo.c`, `segui_phone.c` — Contacts/Phone demos)
-are REMOVED and fully replaced by the Palm OS-like SegUI system. No
-backwards compatibility with legacy demo layouts is required; `segui.h` /
-`segui.c` are streamlined directly around the 320x320 PicoCalc Palm Form
-model (while preserving coordinate-free autolayout for any screen size), and
-`tools/capture_segui.c` (`make segui-screens`) is updated to render the new
-320x320 PicoCalc screens.
-
-Three core capabilities anchor the redesigned `segui.h` / `segui.c`:
-
-2.1 New Profile: segui_profile_picocalc (320x320)
-  - form_w = 320, form_h = 320; exact auto-match in segui_profile_for(320,320)
-  - bands: SEG_STATUS(20), SEG_TABBAR(22, auto-skipped if n_tab <= 1),
-           SEG_BODY(0, stretch=TRUE), SEG_SOFTKEY(24)
-  - grid metrics: margin=4, pad=6, gap=6, btn_h=72, row_h=22,
-                  min_col_w=68, max_cols=4
-    -> On 320x320: body_w = 320 - 2*(4+6) = 300 px.
-       4 columns = (300 - 3*6) / 4 = 70 px >= min_col_w(68).
-       8 Launcher tiles automatically arrange as a balanced 4x2 grid
-       (2 rows x 72 px + 6 px gap = 150 px, centered cleanly in 276 px).
-
-2.2 New Container Widget: SEGUI_W_TEXT
-  - Added to is_container() alongside SEGUI_W_LIST and SEGUI_W_CHAT.
-  - resolve_body() automatically assigns it the full remaining L->body below
-    any top SEGUI_W_LABEL.
-  - Backed by a caller-owned static ring/line buffer (zero heap):
-      * Read-only / append mode: powers Terminal (scrollback + prompt line)
-        and Browser (wrapped hypertext/TAD document view).
-      * Editable mode: powers Editor (cursor row/col, insert, backspace,
-        newline, vertical auto-scroll).
-
-2.3 New Container Widget: SEGUI_W_CANVAS
-  - Added to is_container() alongside SEGUI_W_LIST / SEGUI_W_CHAT / SEGUI_W_TEXT.
-  - resolve_body() assigns it the full remaining L->body RECT.
-  - Calls a registered band-aware paint callback:
-      void (*draw_band)(SEGUI_APP *app, GDEV *dev, const RECT *bounds);
-    where dev->clip is the active 320x16 strip. Used exclusively by GLGears
-    so 3D rasterization fits inside the same 20 KiB display strip + 10 KiB
-    banded 16-bit Z-buffer with zero full-frame allocation.
-
-
-3. Palm OS Application Runtime (segui_palm.h / segui_palm.c)
-------------------------------------------------------------
-
-Every PicoCalc application is a static, read-only descriptor in Flash:
-
-  typedef struct SEGUI_PALM_MENU_ITEM {
-      const char *label;
-      void (*action)(SEGUI_APP *app);
-  } SEGUI_PALM_MENU_ITEM;
-
-  typedef struct SEGUI_PALM_APP {
-      const char *id;                  /* "terminal", "editor", ...        */
-      const char *title;               /* Launcher tile & status title     */
-      SEGUI_ICON  icon;                /* Built-in SegUI vector glyph      */
-      void (*build)(SEGUI_APP *app, const SEGUI_PROFILE *prof);
-      BOOL (*on_key)(SEGUI_APP *app, int key);
-      void (*on_tick)(SEGUI_APP *app, uint32_t now_ms);
-      void (*on_close)(SEGUI_APP *app);
-      const SEGUI_PALM_MENU_ITEM *menu;
-      int n_menu;
-  } SEGUI_PALM_APP;
-
-3.1 Application Switch (Palm SysUIAppSwitch Equivalent)
-  A single static `SEGUI_APP g_palm_app` exists in SRAM. Switching apps:
-    1) Dismisses any open menu/alert overlay.
-    2) Calls `cur_app->on_close(&g_palm_app)` if non-NULL.
-    3) Resets `g_palm_app` and invokes `next_app->build(&g_palm_app, prof)`.
-    4) Runs `segui_layout(&g_palm_app, &g_dev)` and marks all bands dirty.
-  RAM cost does NOT grow with the number of installed apps.
-
-3.2 Deterministic Event Loop (Palm AppEventLoop Equivalent)
-  On every key event from I2C1 (0x1F) or UART0 mirror:
-    1) F1 (Home):     Switch to Launcher (no-op if already on Launcher).
-    2) Modal Alert:   If open, consumes Enter (confirm) / Esc (cancel).
-    3) F2 (Menu):     Toggles pull-down menu overlay for current app.
-    4) Menu Open:     Consumes Up/Down/Enter/Esc; executes item->action().
-    5) app->on_key(): App-specific typing/command/scroll handling.
-    6) segui_key():   Default SegUI autolayout focus/scroll/activate.
-
-
-4. Frozen 9-App Suite (Symmetric 3x3 Palm OS Launcher Grid)
------------------------------------------------------------
-
-Launcher (`Home`) renders 9 SEGUI_W_BUTTON tiles with bespoke 12x12 pixel-art
-icons (hotkeys `1`..`9` or arrows + `Enter`), rendered with `segui_theme_palm`
-(Red Dot industrial retro: warm alabaster `#F4F2EC`, Deep Palm Cobalt `#1C437A`,
-brushed stone `#E8E4DA`, Red Dot vermilion `#D63B2F` focus pip, Palm title pill
-+ 2 px rule, 1 px rounded cards with drop-shadow, silkscreen softkeys):
-
-  +------------------------------------------------------------------+
-  | [1] Terminal        | [2] Editor          | [3] Browser          |
-  | [4] Cabinet         | [5] GLGears         | [6] Contacts         |
-  | [7] Phone           | [8] Chat            | [9] Preferences      |
-  +------------------------------------------------------------------+
-
-4.1 [1] Terminal (B-System Interactive Shell)
-  - Widgets: 1 SEGUI_W_TEXT (console ring, 4 KiB static buffer).
-  - Features: Interactive `btron-pico#` shell (`help`, `ver`, `mem`, `ps`,
-    `ls`, `cat`, `bat`, `bkl <0-255>`, `kbkl <0-255>`, `lcd`, `reboot`),
-    mirrored bidirectionally to PL011 UART0 for host debugging.
-  - Menu: [Clear] [SysInfo] [Reboot].
-
-4.2 [2] Editor (PicoCalc Text / TAD Scratchpad)
-  - Widgets: 1 SEGUI_W_LABEL (filename + cursor row:col + dirty flag) +
-             1 SEGUI_W_TEXT (editable, 8 KiB static document buffer).
-  - Features: Full QWERTY input, Backspace, Enter, arrow cursor movement,
-    load/save against RAM `/SYS` volume (and SD card in Phase 4).
-  - Menu: [New] [Save] [Word Count] [Open in Browser].
-
-4.3 [3] Browser (Local TAD / Hypertext Manual Reader)
-  - Widgets: 2-form or list+reader view using SEGUI_W_LIST (document index /
-    links) and SEGUI_W_TEXT (wrapped reader pane).
-  - Features: Reads embedded `/SYS` B-System manuals, release notes, and
-    saved Editor TAD/text documents; `Enter` follows links, `Esc` goes back.
-  - Menu: [Index] [Back] [Edit Source].
-
-4.4 [4] Cabinet (B-System VObj / Volume Manager)
-  - Widgets: 1 SEGUI_W_LIST (`SEGUI_ROW_HEADER` per volume + `SEGUI_ROW_ARROW`
-    / `SEGUI_ROW_VALUE` per file showing name and byte size).
-  - Features: Browses embedded RAM `/SYS` volume (and Phase 4 SD HFDS volume);
-    selecting an entry opens it in Browser (read) or Editor (edit).
-  - Menu: [Refresh] [New File] [Volume Info].
-
-4.5 [5] GLGears (3D Banded-Z Benchmark — Sole Bonus App)
-  - Widgets: 1 SEGUI_W_CANVAS (full 300x276 body, band-rendered).
-  - Pipeline: Classic 3-gear interlocking 3D scene (Red/Green/Blue involute
-    gears, Lambertian directional shading, back-face culling) rasterized into
-    the active 320x16 RGB565 strip + a shared **10 KiB 320x16 16-bit Z-band**.
-  - Math: Hardware single-precision FPU (`FPv5-SP`) on RP2350 Cortex-M33;
-    Q16.16 fixed-point on RP2040 Cortex-M0+.
-  - Controls: Arrow keys rotate camera; Space pauses; live FPS & SPI1 ms
-    printed in SEG_STATUS. Doubles as hardware DMA + CPU stress test.
-  - Menu: [Pause/Resume] [Reset View] [Toggle Wire/Solid].
-
-4.6 [6] Contacts (Redesigned Palm-Style Directory)
-  - Widgets: 1 SEGUI_W_LIST (`SEGUI_ROW_HEADER` + `SEGUI_ROW_PERSON` +
-             `SEGUI_ROW_ARROW`) — clean replacement of legacy segui_phone.c.
-  - Features: Grouped Favourites & All Contacts directory; pressing Enter on
-    a person switches directly to Phone with that peer loaded.
-  - Menu: [Call / Chat] [New Contact] [Circles].
-
-4.7 [7] Phone (Redesigned Palm-Style LoRa Chat & Communicator)
-  - Widgets: 2-Form app (`Chat` via SEGUI_W_CHAT + `People` via SEGUI_W_LIST)
-             — clean replacement of legacy segui_phone.c.
-  - Features: Message log with peer header, QWERTY quick-reply composer,
-    and Circles / Recently Seen tab.
-  - Menu: [Contacts] [Clear Thread] [Radio Status].
-
-4.8 [8] Preferences (Custom PicoCalc SegUI Preference Window)
-  - Widgets: Multi-section SEGUI_W_LIST (`SEGUI_ROW_HEADER`, `SEGUI_ROW_VALUE`,
-    `SEGUI_ROW_TOGGLE`, `SEGUI_ROW_ARROW`) — zero hardcoded coordinates,
-    purpose-built for PicoCalc hardware:
-      * [DISPLAY]
-          - LCD Backlight     : 0..255 (steps of 16 via Left/Right/Enter -> STM32 0x05)
-          - Theme             : Handset / Retro / Appliance (live SegUI theme switch)
-          - Color Format      : RGB565 (16-bit) / RGB666 (status)
-      * [KEYBOARD & POWER]
-          - Key Backlight     : 0..255 (steps of 16 -> STM32 0x0A)
-          - Battery           : Live % + charging state (STM32 0x0B)
-          - Power Off...      : Opens Modal Alert confirm -> STM32 0x0E
-      * [SYSTEM & HARDWARE]
-          - Board / CPU       : RP2350 Cortex-M33 150 MHz | RP2040 Cortex-M0+ 125 MHz
-          - SRAM Used / Free  : Live static + headroom readout
-          - RTOS Uptime       : Live SysTick seconds & active task count
-          - UART0 Mirror      : On / Off toggle
-  - Menu: [Defaults] [Reboot to BOOTSEL] [About B-System].
-
-
-5. Banded 320x16 RGB565 Display Pipeline (dp_pico.c + st7365p_spi.c)
---------------------------------------------------------------------
-
-Why banded rendering:
-  - 320x320x32-bpp ARGB = 409,600 B (exceeds RP2040 264 KiB SRAM).
-  - 320x320x16-bpp RGB565 = 204,800 B (leaves <60 KiB on RP2040).
-  - 2 x (320x16x2 B) ping-pong strips = **20,480 B (20 KiB)** total SRAM!
-
-Per-frame / dirty-band loop:
-  For each dirty band b in 0..19 (y = b*16 .. b*16+15):
-    1) Set GDEV clip = { 0, y, 320, y+16 }, target = strip_buf[b & 1].
-    2) Run segui_paint(&g_palm_app, &g_dev) (+ menu/alert overlay if open).
-       Primitives outside [y, y+16) are rejected in O(1); inside pixels are
-       converted 0xAARRGGBB -> big-endian RGB565 directly into strip_buf.
-    3) Wait for prior SPI1 DMA completion, issue ST7365P CASET(0..319) +
-       RASET(y..y+15) + RAMWR(0x2C), start DMA Channel 0 -> SPI1 TX FIFO.
-    4) Immediately compute band b+1 into strip_buf[(b+1) & 1].
-
-Timing @ 25 MHz SPI1 (RGB565):
-  - Single 320x16 band = 10,240 B = 81,920 bits -> ~3.3 ms.
-  - Full 320x320 frame (20 bands) -> ~65 ms (~15 FPS; ~25 FPS @ 40 MHz).
-  - Partial keystroke/focus redraw (1–2 bands) -> 3.3–6.6 ms.
-  - Compile-time fallback PICOCALC_LCD_RGB666=1 converts strip pixels to
-    3-byte RGB666 (`COLMOD 0x66`) if any panel revision requires it.
-
-The 25 MHz line above is the original proposal. The linked RP2040 images
-program SPI1 at 31.25 MHz and do not raise it. Section 11 is the band
-budget those images use. A lower render size does not multiply that
-budget by the pixel ratio.
-
-
-6. Keyboard & Southbridge Input Map (i2ckbd_stm32.c)
-----------------------------------------------------
-
-I2C1 (GP6 SDA, GP7 SCL, pull-ups enabled, 10 kHz, addr 0x1F):
-  - Poll REG_ID_FIF (0x09) at 20–50 Hz (16-bit word: lo=state, hi=code).
-  - State 1 = key press, 2 = hold/ctrl-down (0x7E02), 3 = release (0x7E03).
-
-  STM32 Code   Physical Key    Palm/SegUI Action
-  ----------   ------------    -----------------------------------------
-  0xB5         Arrow Up        Move focus / scroll up / GLGears pitch
-  0xB6         Arrow Down      Move focus / scroll down / GLGears pitch
-  0xB4         Arrow Left      Prev col / Prefs dec / GLGears yaw
-  0xB7         Arrow Right     Next col / Prefs inc / GLGears yaw
-  0x0A / 0x0D  Enter           Activate / Open / Confirm alert
-  0x08 / 0x7F  Backspace       Delete char / Browser Back
-  0x09         Tab             Cycle focus / next tab
-  0x1B         Esc             Close menu/alert / Back
-  0x81 (F1)    F1              Palm HOME (switch to Launcher)
-  0x82 (F2)    F2              Palm MENU (toggle app dropdown menu)
-  0x20..0x7E   ASCII           Direct text input (Terminal/Editor/Search)
-
-
-7. Layered Cores & Dual Bootloader Support
-------------------------------------------
-
-  Layer               File(s)                         Targets
-  -----               -------                         -------
-  Pure RTOS Kernel    src/cores/core_pico.c           run-pico, test-pico,
-                      src/drivers/pico/startup_pico.S picocalc (both chips)
-  QEMU HAL            src/drivers/pico/hal_qemu_mps2.c run-pico, test-pico
-  Real Silicon HAL    src/drivers/pico/hal_rp2xxx.c   picocalc (RP2350/RP2040)
-  Hardware UI Core    src/cores/core_segui.c          picocalc (RP2350/RP2040)
-  Palm/SegUI Layer    src/desktop/industrial/segui/   picocalc + host capture
-
-Bootloader Matrix (all 4 artifacts built by `make picocalc-all`):
-  1) btron-picocalc-rp2350.uf2         — 0x10000000, PICOBIN ARM-S, family 0xE48BFF59
-                                         (USB BOOTSEL + SD `uf2loader` /pico2-apps/)
-  2) btron-picocalc-rp2350-sdboot.bin  — 0x10032000 (+200 KiB), `pico_multi_booter`
-  3) btron-picocalc-rp2040.uf2         — 0x10000000, CRC32 boot2, family 0xE48BFF56
-                                         (USB BOOTSEL + SD `uf2loader` /pico1-apps/)
-  4) btron-picocalc-rp2040-sdboot.bin  — 0x10032000 (+200 KiB), `pico_multi_booter`
-
-Critical RP2350 Bring-Up Invariant:
-  RP2350 resets all PADS_BANK0_GPIOx registers with bit 8 (ISO=1). hal_rp2xxx.c
-  MUST clear ISO=0 on every configured GPIO (UART0 GP0/1, I2C1 GP6/7, SPI1
-  GP10-12, LCD CS/DC/RST GP13-15) before peripheral traffic begins.
-
-
-8. Battery & Power-Efficiency Architecture
-------------------------------------------
-
-PicoCalc runs on dual 18650 cells; every subsystem must earn its milliwatts:
-
-  P1. Event-Driven WFI Idle Sleep:
-      No `while(1)` busy-wait loops anywhere in kernel or UI. Idle task
-      executes `wfi`; Core 1 remains parked in bootrom/deep `wfe` (saves
-      ~30-40% core dynamic power).
-  P2. Demand-Driven Dirty-Band Rendering (0 FPS When Static):
-      A 20-bit `dirty_bands` mask tracks modified 320x16 strips. When
-      `dirty_bands == 0` (idle Launcher, Terminal, Editor, Browser, Cabinet,
-      Preferences), 0 SPI1 clocks and 0 DMA bursts occur. Only GLGears runs
-      continuously (and pauses on Space or inactivity timeout).
-  P3. Smart Backlight & ST7365P Sleep:
-      - Keyboard backlight (STM32 0x0A) defaults to 0 (OFF) at boot.
-      - Configurable inactivity timer (Preferences): 60 s -> dim LCD
-        backlight (0x05) to 20%; 5 min -> ST7365P DISPOFF (0x28) + SLPIN
-        (0x10) + backlight 0; any key wakes via SLPOUT (0x11) + DISPON (0x29).
-  P4. Adaptive I2C1 Polling Cadence:
-      Poll STM32 REG_ID_FIF (0x09) at 50 Hz (20 ms) while active, stepping
-      down to 10 Hz (100 ms) after 3 s idle. Poll REG_ID_BAT (0x0B) once
-      every 15 s (never per frame).
-  P5. Peripheral Clock & Reset Gating:
-      Keep unused peripherals held in RESETS (ADC, PWM, PIO, SPI0 when SD
-      idle, I2C0, UART1, USBCTRL, HSTX, TRNG). Only un-reset IO_BANK0,
-      PADS_BANK0, UART0, SPI1, I2C1, DMA, TIMER0.
-  P6. Minimal, Spec-Driven Code Discipline:
-      All Pico/SegUI sources compile with `-Os -ffunction-sections
-      -fdata-sections -Wl,--gc-sections -Wall -Wextra -Werror`. Every
-      register offset, bitfield, and init sequence cites its hardware spec
-      (RP2350 DS, RP2040 DS, ST7365P V1.0, STM32 i2ckbd, ARMv8-M/v6-M ARM).
-
-
-9. Silicon Bring-Up Safeguards & Gap Analysis
----------------------------------------------
-
-Six real-hardware failure modes explicitly mitigated by design:
-
-  G1. RP2350 TICKS Generator (0x40108000):
-      Unlike RP2040 (WATCHDOG_TICK), RP2350 gates TIMER0 and PROC0 SysTick
-      ref clocks via the dedicated TICKS peripheral. hal_rp2xxx.c MUST
-      program TICKS_TIMER0_CYCLES=12, TICKS_TIMER0_CTRL=1 (1 MHz) and
-      TICKS_PROC0_CTRL=1 before enabling SysTick or delays.
-  G2. RP2350 Pad Isolation (PADS_BANK0 bit 8 ISO=1):
-      RP2350 resets all GPIO pads isolated. hal_rp2xxx.c MUST clear ISO=0
-      on every configured pin (GP0/1, GP6/7, GP10-15) before I/O.
-  G3. I2C1 Stuck-Low SDA Recovery:
-      If MCU resets mid-I2C transaction, STM32 can hold GP6 (SDA) LOW.
-      i2ckbd_init() checks GP6; if LOW, bit-bangs 9 SCL pulses on GP7 +
-      STOP condition before switching GP6/GP7 to I2C1 function.
-  G4. HardFault Diagnostics on Real Silicon:
-      HardFault_Handler dumps PC/LR/PSR/CFSR/HFSR to UART0 AND draws a
-      minimal raw-SPI1 (blocking, no DMA/RTOS) red fault banner on ST7365P.
-  G5. SD-Boot (+200 KiB) Relocated Handoff:
-      When launched by pico_multi_booter at 0x10032000, Reset_Handler runs
-      `cpsid i`, explicitly writes SCB->VTOR = __vectors_start__, and
-      resets SPI1/I2C1/DMA so no stale bootloader IRQ or DMA channel fires.
-  G6. Clean Legacy Removal Blast Radius:
-      Verified grep across repo: only Makefile (CAPTURE_SEGUI_SRCS),
-      include/btron/segui.h, tools/capture_segui.c, and
-      scripts/screen_update_segui.py reference segui_demo/segui_phone.
-      All four will be updated atomically when removing the legacy files.
-
-
-10. Static Resource Budget & CI Verification Gates
---------------------------------------------------
-
-Projected Footprint (All 6 Frozen Apps + Kernel + Drivers + 8x16 Flash Font):
-  - Flash:       ~105–125 KiB (-Os --gc-sections; 3.0% RP2350, 6.1% RP2040)
-  - Static SRAM: ~58 KiB peak (11% of RP2350 520 KiB; 22% of RP2040 264 KiB)
-      * Banded RGB565 ping-pong strips:   20 KiB
-      * Banded 16-bit Z-buffer (GLGears): 10 KiB
-      * RTOS TCBs + 8 x 2 KiB stacks:     16 KiB
-      * Terminal (4K) + Editor (8K):      12 KiB
-      * Core 0/1 MSP stacks:               8 KiB (SCRATCH_X + SCRATCH_Y)
-
-Mandatory Verification Gates (Zero-Broken-Build Contract):
-  1) `make test-pico`     — Headless QEMU Cortex-M33 (`mps2-an521`) AND
-                            Cortex-M3 (`mps2-an385`): verifies boot banner,
-                            1 kHz SysTick, PendSV task preemption, semaphores,
-                            eventflags, WFI idle, and `btron-pico#` shell.
-  2) `make segui-screens` — Host headless 320x320 golden capture of Launcher,
-                            Terminal, Editor, Browser, Cabinet, GLGears, and
-                            Preferences (0 px overflow assertion).
-  3) `make test-picocalc` — Builds all 4 hardware binaries (RP2350/RP2040 x
-                            UF2/SD-boot), verifies PICOBIN markers, RP2040
-                            boot2 MPEG-2 CRC32, UF2 family IDs/block counts,
-                            +200 KiB VTOR entry, and SRAM < 64 KiB link gate.
-
-The 64 KiB figure and the ~58 KiB projection above are the original shell
-estimate. The linked images use the gate in section 11:
-`__sram_used__` <= 215040, with `__bss_end__` at least 4 KiB under
-`__stack_top__` (0x20040000).
-
-
-11. PicoGL band budget and Pico Quake resolutions
--------------------------------------------------
-
-This section is the PicoGL specification. doc/md/PICOGL.md was removed
-when this section landed.
-CLK_SYS stays 125 MHz. SPI1 stays 31.25 MHz. DMA channel 0 has one owner,
-core 0. SegUI stays on both images. A full 320x320 RGB565 framebuffer
-(204800 bytes) plus a matching int32 depth picture does not fit beside
-the shell, so color is two 320x16 strips (20480 bytes) and depth for a
-Quake band is one 320x16 int32 strip.
-
-11.1 Images
-
-  make picocalc        Center tile is XMB. Key 5 opens XMB. Keys 1-4 and
-                       6-9 open Terminal through Prefs by index. GLGears
-                       opens from the XMB Applications row. f fills the
-                       panel for XMB and GLGears. make flash-picocalc
-                       writes only btron-picocalc-rp2040.uf2.
-  make picocalc-quake Center tile is cooked e1m1 plus the drone1m1 track.
-                       No XMB, no GLGears, no progs.dat. The Quake UF2 is
-                       copied by hand.
-
-PICO_BOARD defaults to rp2040. TinyGL is not on either link. Host
-make test-picogl-gears-fps and make test-picogl-quake-fps time the host
-GLES path. Those times are not RP2040 frame rates.
-
-11.2 Quake on the device
-
-The device sim is integer submit of the cooked e1m1 blob (picogl_world_tri).
-Physics stays on the float hull. There is no progs.dat: 385 edicts at
-780 bytes do not fit beside SegUI. The host gate make test-start-sim
-still cooks maps/start.bsp (the hall) and is not the device picture.
-Tab opens an integer console (god, noclip, fly, notarget, give, impulse,
-kill, pause, map, changelevel, r_mode, fullscreen). changelevel stays on
-e1m1. The menu and the status bar are the 8x16 system font in destination
-pixels, so r_mode does not scale them. Boot is the drone row at 160x160.
-f toggles fullscreen. Every r_mode stretch-fills the window, or the whole
-panel when fullscreen. There is no letterbox. The frustum aspect is the
-destination width over the destination height, so a 160x320 or 320x160
-or 128x96 picture stays round after that stretch. The viewport stays
-the render size. A square destination already matched, and still does.
-Gears leave the aspect on the viewport.
-
-Menu rows, in order:
+PICO.txt — PicoCalc builder's book
+=================================
+
+B-System on the Clockwork PicoCalc. Two images, one shell, one span.
+This file is the reimplementation blueprint. A number in the measured
+column is a rate the user read on a board. A derived number is arithmetic
+on that rate or on the panel wire. 18.7 FPS is the wire ceiling. It is
+not a pill reading and not a promise.
+
+CLK_SYS stays 125 MHz. SPI1 stays 31.25 MHz. Do not raise either.
+The SIO divider stays unused. SegUI stays on both images.
+PICO_BOARD defaults to rp2040. PICO_BOARD=rp2350 is the override and is
+not what the sizes below were linked for.
+
+
+1. The machine
+--------------
+
+  CPU     RP2040, two Cortex-M0+ at 125 MHz. No FPU. No LDREX.
+          264 KiB SRAM at 0x20000000. 2 MiB XIP at 0x10000000.
+          Scratch X is 4 KiB at 0x20040000. Scratch Y is the next 4 KiB.
+          Each scratch bank is single-ported. Two cores that fetch from
+          the same bank, or from the one XIP cache, serialize.
+  Panel   ST7365P, 320x320, RGB565, SPI1, DMA channel 0.
+          One owner: core 0. Core 1 does not touch SPI, DMA, or GPIO.
+  Input   QWERTY plus the STM32 keyboard bridge on I2C1 address 0x1F.
+  Option  RP2350 is a different chip (M33, FPU, 520 KiB, 4 MiB). The
+          Quake and gears sizes in this book are the RP2040 links.
+          Do not treat an RP2350 picture as this board.
+
+SRAM gate on every picocalc link:
+
+  __sram_used__ <= 215040
+  __bss_end__   <= __stack_top__ - 4096
+  __stack_top__ = 0x20040000
+  __core1_stack_top__ = 0x20042000
+
+__sram_used__ counts striped .data and .bss. It does not count scratch.
+Core 0's stack is the 4 KiB under __stack_top__. Core 1's stack is all
+of scratch Y. Do not put code in scratch Y.
+
+A 320x320 RGB565 picture is 204800 bytes. A matching int32 depth picture
+does not fit beside the shell. Color is two 320x16 strips, 20480 bytes,
+in dp_pico.c. Depth for a Quake band is not a second picture: iz lives
+on the triangle, and coverage is a bit mask.
+
+
+2. The nexus
+------------
+
+One scheduler, on core 0. Core 1 is an offload engine, not a second
+task list. The handoff is non-blocking and zero-copy: the consumer
+reads the buffer the producer just filled. Nobody memcpy's the job
+onto a second queue, and nobody waits inside the producer except the
+join at the end of the frame.
+
+M0+ has no exclusive monitor. The protocol is a single volatile flag
+published last, with a data barrier on both sides.
+
+  producer, only when go is clear
+    write the payload
+    dmb sy
+    go = 1
+    dmb sy
+    sev
+
+  consumer
+    if go is clear, return
+    dmb sy
+    read the payload and do the work
+    dmb sy
+    go = 0
+
+The payload and the flag are not the same word. Two cores must not
+store adjacent halfwords in one word: SRAM has byte enables, but a
+same-word store from both cores drops one of them. A timeout does not
+clear go and does not reuse the buffer. The late finisher is adopted
+on the next acquire, after a barrier.
+
+Core 1's entry is cpsid i, then the job, then wfe when the job and the
+span ring are both idle. It never reaps itself. It never uses the SIO
+divider. The SIO base is 0xd0000000. A correct SIO sequence is a few
+milliseconds and is not the floor; a sequence that reads DIV_QUOTIENT
+on the instruction after the divisor write is undefined for 8 cycles
+and tore the picture. Leave it out.
+
+What runs where:
+
+  core 0, always
+    keys, the pose, the doors, the tick
+    the strip, SPI, DMA, GPIO, the system font
+    the Quake paint of the list that is already built
+    the join, after the last band and before the next tick
+
+  core 1, Quake image
+    the next list only: BSP, project, capture, sort
+    into the slot core 0 is not painting
+    nothing else
+
+  core 1, gears / XMB image
+    the 128-slot span ring (24-byte triangles, 3072 bytes)
+    the producer waits for one slot
+    the tail moves after the paint, so the slot is the buffer
+
+Quake does not post world triangles onto that ring. The ring stays in
+the span for gears and XMB. Gears do not build a Quake list. The Quake
+hook is picogl_core1_extra. In the gears image that symbol is the weak
+empty body in picogl_span.c. In the Quake image start_sim.c defines it
+strong. A prototype in the header marked weak would make the strong
+definition weak. The prototype stays out of the header.
+
+Optimal offload is the split above, and not a second painter. Painting
+the far half on core 1 was tried. It wrote an empty band, so it could
+not see the near coverage, and both cores fetched the painter through
+one XIP cache. The pill did not move past a flat 10. The build is the
+work that does not touch the panel, so it can overlap the paint.
+The paint stays on core 0 because the strip is also SegUI's.
+
+
+3. The Quake frame
+------------------
+
+Two slots, s_cap_tri[2][896]. A triangle is 24 bytes. Paint reads
+s_paint. The build writes s_paint ^ 1. Slot width and height travel
+with the slot. The destination s_dw, s_dh is the window, or 320x320
+when fullscreen.
+
+  cold, core 1 up
+    core 0 builds slot 0 and paints it
+    core 0 kicks slot 1
+    later frames paint the finished slot and kick the other
+    the picture is one pose behind the tick
+
+  core 1 down
+    every frame builds slot 0 on core 0
+    no extra pose
+
+  go still set at acquire
+    keep painting the old slot
+    do not kick, do not call picogl_begin_frame
+
+  join, inside the present, after the last band
+    spin while go, timeout 200000 us on TIMER0
+    on timeout leave go set and leave the kick armed
+    on success, barrier, mark the build done, clear the kick
+
+  tick
+    if go is set, return before the pose and the doors
+    the present still runs; segui_palm_tick already decided the app
+    is moving
+
+Acquire arms cull and depth once. It calls picogl_begin_frame only when
+go is clear, and that call zeros the span counter. The build uses
+picogl_begin_capture, which must not zero that counter. The first paint
+band of a frame arms coverage and the edge remainder, on core 0.
+The row step is not stored. A later band divides that edge again.
+The remainder still carries across the rows of one band.
+
+UART, after the join, inside the pill window:
+
+  ren   build, milliseconds
+  ras   paint walk
+  wai   join after the bands
+
+The pill itself is wall time from one present to the next, so it also
+holds the 1 ms pico_tsk_delay, the key poll, and the tick. The in-frame
+number is that same window: 250000 us or 30 frames, frames * 1000 / ms,
+capped at 999. Fullscreen draws it on the picture. It does not rewrite
+the Palm title and does not dirty the title bands for a caption the
+paint will not draw.
+
+
+4. The raster contract
+----------------------
+
+Sort by descending flat iz. iz is the max of the three vertices, and
+each vertex iz is at least 1. A tie keeps the earlier triangle. Strict
+greater-than is the same rule: a later triangle cannot win a pixel an
+earlier one wrote.
+
+Coverage is opt-in (picogl_set_cover), armed on core 0 before the first
+band, including when the list is shorter than 2. Gears never call it.
+When it is armed the band is not cleared to sky or iz first.
+
+  a full 32-pixel word is one compare
+  a free word is halfword stores
+  a mixed word walks bits
+  do not uint32-alias the uint16 row
+  the lift path does not set coverage bits
+  after the list, one sky span fills the holes if any bit is still clear
+
+A counter that hits zero early leaves a hole. The full-band stop
+(s_cov_left <= 0) does not fire on drone1m1: the sky leaves a hole, so
+every overlapping triangle is still entered. That is why an open
+corridor costs more than a tight one, and why a smaller r_mode did not
+buy a faster pill while the destination stayed the full panel.
+
+Edges: floor_div_pos is the software divide,
+
+  n >= 0 ? n / d : -((d - 1 - n) / d)
+
+Vertices are clamped to +/-4096. The first band a triangle touches
+divides. Later bands reuse q and r when the next ymin is the row those
+remainders were left for. A gap divides again. Horizontal edges
+recompute. The stored per-row quotient was dropped so the second
+triangle list would fit. dr of 0xFFFF means "does not fit, divide
+again" only when the step pointers are non-null. Quake passes null
+step pointers.
+
+paint_one_row calls paint_span_write and edge_init only. The cover
+walk sits in the band painter. The three hot leaves live in scratch X
+so the inner loop does not fetch them from XIP:
+
+  paint_span_cover, paint_span_lift, paint_span_write
+
+paint_tri_target does not. On the pipeline link it is 2384 bytes
+(0x950) at 0x10009568, with a 352-byte frame. Scratch X had 2776 bytes
+free after the three leaves (1320 used of 4096). 2384 fits, with a few
+hundred bytes of margin. Only core 0 calls it now, so it would not
+share that bank with core 1. It was not moved in the overlay image:
+this image's question is the chrome, and a second change would mix the
+reading. The builder stays in XIP on purpose. start_sim_render is
+3432 bytes and does not fit in the leftover scratch. If the painter
+moves to scratch X later, the builder must stay in flash so the two
+cores fetch from different buses.
+
+World triangles set PICOGL_SEAL. cw_lerp rounds to nearest. The span
+walks pixel centers. A shared edge can miss both faces; the seal covers
+one extra pixel. Gears use picogl_screen_tri with s_from_world clear,
+so the seal stays off. Do not switch Quake to TinyGL.
+
+Flags: FLAT 1, TEX 2, LIFT 4, SEAL 8.
+PICOGL_Q10 is 1024. A band is 16 rows. The panel is 20 bands.
+
+Direct paint is only the case where the slot's width and height equal
+the destination. Every other size is stretch-filled. There is no
+letterbox. The frustum aspect is the destination aspect, set on the
+device with picogl_set_display(s_dw, s_dh) immediately before the
+camera. The viewport stays the render size. Gears and the host tests
+leave the aspect on the viewport. A square panel is aspect 1.
+
+Budgets: TRI_ACTOR 180, TRI_SUB 220, TRI_WORLD 480, CAP_TRI 896.
+Do not grow CAP_TRI. Cooked e1m1: verts 7358, faces 5516, nodes 2750,
+clips 5408, doors 14. The drone track is 513 poses, 17067 ms.
+Lights are baked: level = clamp(0.18 + stat/255*0.6, 0, 1), cook
+"lights 198 shaded 4563 fullbright 953". Do not retune and do not recook.
+The device BSP and the console are integer. Soft-float left on a device
+frame is the camera matrix (once per build, on core 1), angles() once,
+and the drone pose lerp on core 0 before present. There is no progs.dat.
+385 edicts at about 780 bytes do not fit beside the shell.
+
+Menu rows, in order. Boot is row 2, drone, at 160x160.
 
   1 PLAY E1M1
   2 DRONE
-  3 320x320     render 320x320. Direct into the strip only when the
-                destination is also 320x320 (fullscreen). A window scales.
+  3 320x320
   4 160x320
   5 320x160
-  6 160x160     boot picture
+  6 160x160
   7 80x80
-  8 128x96      test size
-  9 128x128     test size
+  8 128x96
+  9 128x128
 
-r_mode W H selects the same table. A single number still means the square:
-r_mode 320, r_mode 160, r_mode 80. r_mode 128 alone is rejected.
-r_mode 128 96 and r_mode 128 128 are the test sizes. r_mode 160 320 is
-the wide half. The active row is marked with a star.
+r_mode W H selects the same table. A single number means the square
+(320, 160, 80). r_mode 128 alone is rejected. The active row is starred.
+The menu, the status bar, and the console are the 8x16 system font in
+destination pixels. r_mode does not scale them.
 
-11.3 Wire term, fixed for a full panel
+f toggles fullscreen. Tab toggles the console. In fullscreen the yellow
+line above the status bar is the pill ("  9 FPS", three columns, or
+"--- FPS" until the first window). The word "full" is not drawn.
+The menu hint still says how to leave (F WINDOW). The console command
+fullscreen still answers "full" or "window" on the console log.
+The health bar stays. segui_palm_paint returns before the Palm chrome,
+so the title, the softkeys, and the launcher are not painted. All 20
+bands are still presented, because the picture covers the bands the
+chrome used to own. Windowed mode presents the body mask 0x0007FFFC
+(17 bands) and, when the title number changes, bands 0 and 1.
+
+Keys, device Quake: arrows walk and turn, q and z look, WASD walks,
+space and the fire key shoot. f is fullscreen, not fire. The host gate
+still treats f as fire.
+
+
+5. The wire
+-----------
 
 One 320x16 RGB565 band is 10240 bytes, 81920 bits.
 
-  band_ms  = 81920 / 31.25e6 * 1000 = 2.621 ms
-  panel_ms(Dw, Dh) = Dw * Dh * 16 / 31250
+  band_ms            = 81920 / 31.25e6 * 1000 = 2.621 ms
+  panel_ms(Dw, Dh)   = Dw * Dh * 16 / 31250
   panel_ms(320, 320) = 52.43 ms
 
-Twenty bands are the whole panel. If the CPU finishes a band while the
-previous band is on the wire, the frame is the panel time. 1000/52.43
-is 19.1 FPS. core_segui also waits about 1 ms once per frame, so a CPU
-that hides completely lands near 18.7 FPS, not 20 and not 30. The old
-section 5 figure of ~15 FPS is the same panel at the proposed 25 MHz
-(65.5 ms). That clock is not what the images program.
+Twenty bands are the whole panel. Paint of band N+1 overlaps DMA of
+band N. If the CPU finishes each band while the previous band is on
+the wire, the frame is the panel plus the last band's DMA, which is
+already inside the 52.43 ms, plus the 1 ms yield. 1000/53.4 is 18.7 FPS.
+That is the ceiling when the CPU hides. It is not 20 and not 30.
 
-A window presents fewer bands. The animated body mask 0x0007FFFC is 17
-bands, 17 * 2.621 = 44.6 ms, about 22 FPS if the CPU is hidden. The
-panel term depends on the destination that is actually sent. It does
-not depend on r_mode.
+The old section 5 figure of about 15 FPS was this panel at a proposed
+25 MHz (65.5 ms). The images do not program that clock.
 
-11.4 CPU term, not linear in area
+A window that presents 17 bands is 17 * 2.621 = 44.6 ms on the wire,
+about 22 FPS if the CPU is hidden and the title bands stay clean.
+The panel term depends on the destination that is actually sent.
+It does not depend on r_mode. Fullscreen sends the whole panel at
+every r_mode.
 
-The user measured 320x320 at 4 FPS on 2026-11-22 after the band-clipped
-edge walk (it had been 1-2 FPS). 4 FPS is about 250 ms of CPU. The 52 ms
-panel transfer sits inside that, so the frame is CPU-bound. Nothing in
-this section is a new measurement. The split below is that one 250 ms
-budget, not three stopwatches:
+  320x320 at 19.1 FPS is not 160x160 at 76 FPS.
 
-  T_fixed ≈ 10 ms   BSP walk, capture, the nearer-first sort, HUD
-  T_edge  ≈ 20 ms   edge setup. About 1 ms per 16-row band at 320 tall,
-                    because each overlapping triangle does three software
-                    divides once per band it touches. Scales with height.
-  T_pix   ≈ 220 ms  z-tested pixel writes, including overdraw. Scales
-                    with area. This is the 4 FPS term.
+19.1 * (320*320)/(160*160) = 76.4. That reading treats a smaller render
+as if it sent fewer panel pixels. The 160x160 picture is scaled back
+up, so the wire stays 52.43 ms.
 
-  cpu_ms(Rw, Rh) = 10
-                 + 20 * (Rh / 320)
-                 + 220 * (Rw * Rh) / (320 * 320)
 
-  frame_ms = max(panel_ms(Dw, Dh), cpu_ms(Rw, Rh)) + 1
-  fps      = 1000 / frame_ms
+6. What the board did
+---------------------
 
-Only the pixel term divides by the area ratio. The edge term divides by
-the height ratio. The fixed term does not move. The panel term does not
-move while the picture still stretch-fills 320x320. So:
+Nothing in this section is a host timer. Host GLES times and host
+raster checks are not RP2040 frame rates.
 
-  320x320 at 19 FPS  is not  160x160 at 76 FPS.
+  image                                      drone1m1 pill
+  band-clipped walk, before that             1-2 FPS at 320
+  band clip                                  4 FPS at 320
+  SIO divide, geometry torn                  about 5, every r_mode
+  software divide restored, geometry fixed   about 5, every r_mode
+  one-bit divide, edge remainder kept        9-10, every r_mode
+  destination aspect, stored row step,
+    full-band coverage stop                  9-10, ratio fixed
+  core 1 paints the far half                 solid 10, every r_mode
+  core 1 builds the next list                9-14, by corridor
 
-19.1 * (320*320)/(160*160) = 76.4, which is the "80 FPS" reading. It
-treats the wire as if a smaller render sent fewer panel pixels. The
-160x160 picture is scaled back up to 320x320, so the wire stays 52.43 ms.
-The same reading also ignores T_edge and T_fixed. A pure pixel law on
-the measured 4 FPS would be 4 / 0.25 = 16 FPS at 160x160, still not 80,
-and still high because it drops the edge and fixed terms.
+The 9-14 reading is the pipeline image, during the drone1m1 flight.
+The user did not publish a separate number per r_mode for that image.
+The spread is the corridor. 15 FPS is 66.7 ms and is not claimed.
 
-That split is retired. It charged the edge divide to render height.
-The divide was charged again on every destination band, and fullscreen
-is 20 bands at every r_mode. Section 11.5 replaces it with the flat
-200 ms reading and the rate derived from paying that init once.
+  pill     frame      past the 53.4 ms wire
+  14       71 ms      18 ms
+  9        111 ms     58 ms
+  wire     53.4 ms    0, which is 18.7 FPS, not a pill
 
-11.5 Fullscreen timings
+A tight corridor is the close one. An open corridor still has most of
+a tenth of a second of CPU. The earlier images were flat across r_mode,
+so the area term was inside one step of the pill (about 11 ms) and the
+rest did not shrink with the picture. The pipeline is the first image
+whose pill moves with what is on screen. Coverage can skip a filled
+word. It still cannot skip a sky hole, and every triangle is still
+entered on all 20 destination bands.
 
-Panel term held at 52.43 ms. The pill is wall time per present. 9 FPS
-is about 111 ms. 10 FPS is about 100 ms. DMA overlaps the next band, so
-a 100 ms pill is about 100 ms of CPU. A CPU already under 52.43 ms
-would sit on the wire ceiling, 18.7 FPS with the 1 ms delay.
+The table below is the resolution law those flat images already
+refused, kept so a later model has the same columns. "measured" on
+the rows is the resume image through the far-half image (9-10, then
+10). The pipeline row is the corridor range, not a new per-size reading.
+pure area = 4 / area, from the 4 FPS 320 reading. wire*area = 19.1 / area.
+Neither is a pill.
 
-The user measured the resume image (one-bit divider, edge remainder
-kept across bands) at 9-10 FPS on drone1m1 at every r_mode. That
-retires the earlier derivation. That derivation charged 170 ms of a
-flat 200 ms to the per-band edge divide and, after paying the divide
-once, put every cpu_ms under the panel, so every row derived 18.7.
-The resume image removed about half of the 200 ms and stayed above
-the panel. 18.7 remains the wire ceiling. It is not the prediction
-for the image that read 9-10, and it is not a pill reading.
+  size       area    measured    pure area   wire*area
+  320x320    1.00    9-14        4.0         19
+  160x320    0.50    9-10..10    8.0         38
+  320x160    0.50    9-10..10    8.0         38
+  160x160    0.25    9-10..10    16.0        76
+  128x128    0.16    9-10..10    25.0        119
+  128x96     0.12    9-10..10    33.3        159
+  80x80      0.0625  9-10..10    64.0        306
 
-One step of that pill is about 11 ms. A gap from 80x80 to 320x320 that
-still reads 9 or 10 is at most about 15 ms. Call that the scalable
-part (source rows, pixels, the scale copy). The other ~90 ms is flat:
-fullscreen is 20 destination bands at every r_mode, and the BSP and
-the projection run once per frame at every r_mode.
+The retired CPU split (10 ms fixed + 20 ms of edge + 220 ms of pixels,
+then a later split that charged 170 ms of a flat 200 ms to the per-band
+divide) put every derived cpu_ms under the panel and printed 18.7 on
+every row. The resume image removed about half of that 200 ms and
+stayed above the panel. 18.7 stayed the ceiling. Do not put it back
+as a predicted rate.
 
-  size       area    measured   scalable   flat    pure area   wire*area
-  320x320    1.00    9-10       <=15 ms    ~90 ms    4.0         19
-  160x320    0.50    9-10       <=15 ms    ~90 ms    8.0         38
-  320x160    0.50    9-10       <=15 ms    ~90 ms    8.0         38
-  160x160    0.25    9-10       <=15 ms    ~90 ms   16.0         76
-  128x128    0.16    9-10       <=15 ms    ~90 ms   25.0        119
-  128x96     0.12    9-10       <=15 ms    ~90 ms   33.3        159
-  80x80      0.0625  9-10       <=15 ms    ~90 ms   64.0        306
+This overlay image has not been measured. Fullscreen already skipped
+segui_paint before this image. What changed is the readout and the
+bands that do not contain the status line: those bands no longer walk
+the system font. The health bar is still drawn on the bands that
+contain it. Compare the yellow line, same corridor, window against
+fullscreen. A higher fullscreen number means the title-band Palm paint
+and the off-band glyph walk were in the pill. A number that stays in
+the 9-14 range means they were not, and the remaining time is the open
+view. ren against ras against wai says which side is longer. If ras
+leads, the paint is the pole and the build is hidden. If wai is large,
+the build outlasted the paint and core 1 is the pole.
 
-measured is the user's pill. It was 9-10 on the resume image, and
-again on the image that added the destination aspect, the precomputed
-row step, and the full-band coverage stop. The ratio on that second
-image is fixed for the non-square modes. The far-half link then read
-a solid 10 at every r_mode. That is one step of the pill, about 11 ms.
-pure area = 4 / area and
-wire*area = 19.1 / area are the linear laws this panel does not
-follow. 15 FPS is 66.7 ms. Reaching it from ~105 ms means about 35 ms
-out of the flat ~90 ms. Removing the scalable 15 ms would land near
-11 FPS, still short of 15, and that 15 ms is an upper bound, not a
-stopwatch.
 
-The full-band stop does not fire on drone1m1. The sky leaves a hole,
-so every overlapping triangle is still entered on all 20 destination
-bands. That entry is the flat part. The row step and the inlined
-multiply sit in the scalable part, which is already inside one step
-of the pill.
+7. What is still in the way of the ceiling
+------------------------------------------
 
-The far-half link did not take the flat cost out. Core 1 painted the
-later triangles into an empty band, so it could not see the near
-coverage and it filled pixels the near half already owned. Both cores
-also fetched the painter from the one XIP cache. The wall time stayed
-a solid 10.
+In order. None of these is a promised delta.
 
-This link stops using core 1 for that half. Core 0 paints the whole
-sorted list, so coverage applies to every triangle. Core 1 builds the
-next list into the other 896-slot buffer while that paint runs. The
-picture is one pose behind. The far band and the stored row step came
-out to pay for the second list. An edge divides on the first band of
-the frame and again on a later band. The join sits inside the present,
-before the next tick writes the pose. UART adds wai= beside ren= and
-ras=. ren is the build. ras is the band walk. wai is the join after
-the bands. If core 1 is down, the build stays on core 0 and there is
-no extra pose latency. This link's pill is unread. 15 FPS stays
-unclaimed. 18.7 stays the wire ceiling.
+  1. Read this image. The yellow line is the experiment. Do not add
+     another change on top of an unread pill.
+  2. If ras leads in an open corridor, the walk is the list entered
+     on 20 bands because the sky is a hole. A sky mask that lets the
+     full-band stop fire, without a counter that hits zero over a real
+     pixel, is the cut that matches the 9-versus-14 spread. A wrong
+     mask leaves a hole. The host raster test is the check.
+  3. If wai leads, the build is the pole. The next offload is inside
+     the build (a piece of the BSP or the project), not a second
+     painter. Core 1 still must not touch the strip.
+  4. paint_tri_target is the hot walker still fetched from XIP while
+     core 1 fetches the builder from the same cache. It fits in the
+     leftover scratch X, and only core 0 calls it. Moving it is a
+     separate image. The three leaves are already there. The builder
+     stays in flash.
+  5. The per-row quotient was a real divide removed from the inner
+     loop, then dropped to pay for the second triangle list. Putting
+     it back means a different SRAM trade, not a quieter inner loop
+     on top of this one. The edge remainder itself stays.
+  6. UART is inside the pill. It is the instrument. Leave it until
+     the three numbers have been read.
 
-11.6 15 FPS at a real 320x320
+Rejected, and why:
 
-15 FPS is a 66.7 ms frame. The panel already costs 52.4 ms, so the CPU
-term has to land at or under about 66 ms. The render size stays 320x320.
-This is not a smaller picture scaled up, and fullscreen is the check that
-holds the panel term fixed.
+  serial CPU then DMA, as the model of the old flat pill
+  the SIO divider
+  posting Quake spans onto the gears ring
+  a row split or an x split of one frame (the edges get built twice,
+    and the row count is the part that already scales)
+  painting into the inactive DMA strip from core 1
+  a retained 320x320 color-plus-depth picture
+  both cores executing the painter from scratch X
+  raising either clock
+  TinyGL, a second scheduler, stripping the shell apps
 
-The Quake image arms coverage only after the nearer-first sort. The
-span then does four things the per-pixel cover walk did not:
+References, ideas only, not copied: RP2350-Quake and frank-quake2.
+Both set a polygon's edges once and then fill a framebuffer this SRAM
+cannot hold. frank-quake2 is Quake II on an RP2350 at 504 MHz with
+8 MB of PSRAM and HDMI. Their published rates are not measurements
+of this board. Take one sentence: set the edges, then write each
+pixel once. The order here is the same. The picture is the 16-line strip.
 
-  - Flat iz is the sort key, and a tie keeps the earlier triangle, which
-    is the same rule as a strict greater-than test. The cover path does
-    not load or store iz. A later triangle cannot win a pixel an earlier
-    one wrote.
-  - A 32-pixel word that is already full is one compare. A word that is
-    entirely free is halfword stores. Only a word that is partly full
-    walks bits. The second scan that used to reject a span before that
-    walk is gone.
-  - The band is not cleared to sky first. After the triangles, one sky
-    span fills the bits that are still clear, so a covered pixel is
-    written once.
 
-The edge divide is the software floor divide. A device build that fed
-the SIO unsigned divider read DIV_QUOTIENT on the next instruction.
-That register is undefined until 8 cycles after the divisor write, so
-the edge positions were garbage. The repair loop then ran out its 48
-steps on every row and divided again into the same register. The picture
-tore, and every r_mode landed near 5 FPS because that loop does not
-shrink with the render size. The span does not touch the SIO divider.
-After that divide was put back, the user measured the geometry fixed
-and the pill still near 5 FPS at every r_mode, including the small
-ones. 320x320 had moved from 4 FPS to about 5. Section 11.5 records
-that reading. The remaining cost does not scale with area.
-
-Fullscreen still paints about 20 destination bands. A scaled r_mode
-calls the span on each source slice, and a triangle that covers the
-view overlaps every slice, so edge_init ran about 20 times per such
-triangle at 80x80 and at 320x320. The old software divider shifted by
-a variable count. On this M0+ a variable shift costs a cycle per bit,
-so one 32-bit divide was on the order of a thousand cycles. Projection
-used the same 64-bit divide. Pixel loops shrink with r_mode. That
-setup did not.
-
-The resume image keeps the edge algebra and steps a saved remainder.
-The first band a triangle touches divides. Later bands reuse q and r
-when the next ymin is the row those remainders were left for. A gap
-re-divides. Horizontal edges still recompute. This link's row step
-adds that edge's precomputed quotient and does not divide on the row.
-The divider shifts one bit at a time. cw_project uses a 32-bit divide
-when the already-rounded numerator and the denominator fit in a signed
-32-bit value. cw_lerp is unchanged. The SIO divider stays unused.
-Quake triangles are still not posted to the span ring. Core 1 builds
-the next captured list. There is no second 320 framebuffer. The
-320x16 iz band is gone. The private far band and the stored row step
-are gone on this link. Clocks are unchanged. The resume tables are
-896*3*2 ints plus 896 int16s, 23296 bytes, cleared when core 0 starts
-the paint. Gears do not call picogl_set_edge_resume or picogl_set_cover.
-
-RP2350-Quake and frank-quake2 each build a polygon's edges once and
-then fill a framebuffer this SRAM cannot hold. frank-quake2 is Quake
-II on an RP2350 at 504 MHz with 8 MB of PSRAM, a 320x240 8-bit picture
-doubled onto HDMI, and the two cores splitting the world and the edges.
-Its demo1 time is not a measurement of this board. RP2350-Quake keeps
-an indexed picture and hands the panel to the other core. This image
-keeps the order only: divide an edge once, then step it across the
-bands. The picture stays the 16-line strip.
-
-Gears never call picogl_set_cover. make test-picogl-raster paints
-through paint_span_write, and one more check compares a resumed edge
-with a fresh divide. Those pixels stay bit-identical. A host
-comparison of the same nearer-first triangles, cover against the z-test,
-matched inside the view, including each 32-pixel residue and a window
-that does not start at the origin. An unsorted pair diverged, which is
-what the sort invariant requires.
-
-This link does not claim 15 FPS. The user measured the resume image
-at 9-10 FPS, then the aspect image at the same 9-10 with the ratio
-fixed, then the far-half link at a solid 10 at every r_mode. This
-link's pill is unread. 18.7 is the wire ceiling when the CPU hides
-behind the panel. The recorded device rates are the user's: 4 FPS at
-320x320, then about 5 FPS at every r_mode on the torn SIO image, then
-geometry fixed and still about 5 FPS, then 9-10 FPS at every r_mode
-on drone1m1 after the one-bit divider and the edge remainder, then
-still 9-10 after the aspect fix, then a solid 10 after the far half.
-Copy btron-picocalc-quake-rp2040.uf2 by hand. Read the pill at
-fullscreen 320x320, at one non-square r_mode, and at 80x80. Square
-modes should look unchanged. The non-square ratio should stay fixed.
-The drone is one pose behind the tick. If the UART line is visible,
-ren= against ras= and wai= says whether the build or the band walk
-is the longer side.
-
-The strip is also SegUI's, so core 1 does not paint it. A row split
-would build every edge twice, and the row count is the part that
-already scales. Clocks stay where they are. A retained 320x320
-color-plus-depth picture does not fit. The second triangle list is
-21504 bytes. It fits because the far band (10240) and the step tables
-(5376 + 5376) came out. Core 1's stack is the whole of scratch Y,
-4096 bytes, because the build nests the camera and a world triangle.
-
-11.7 SRAM of the 2026-11-23 links
+8. SRAM of the links
+--------------------
 
 Gate: __sram_used__ <= 215040. Scratch X is 4 KiB at 0x20040000.
 Core 1 stack top is 0x20042000.
 
-  Quake RP2040, core 1 builds the next list, core 0 paints.
-  Not flashed. Not a measured frame rate.
-    text 834700   data 2892   bss 201592
-    __sram_used__ 0x31ec4 = 204484, free 10556
+  Quake RP2040. Core 1 builds the next list. Core 0 paints.
+  Fullscreen draws the pill on the frame and does not paint the Palm
+  chrome. Not flashed. The 9-14 corridor reading is the previous image.
+  This image's line has not been read.
+    text 816580   data 2896   bss 201592
+    __sram_used__ 0x31ec8 = 204488, free 10552
     __bss_end__ 0x20031ec8
-    UF2 btron-picocalc-quake-rp2040.uf2 1675264 bytes, 3272 blocks
-    SD-boot bin 837336 bytes at 0x10032000
-    scratch X ends 0x20040528 (1320 bytes): paint_span_cover at
-    0x20040000, paint_span_lift at 0x2004021c, paint_span_write
-    at 0x200404ac
-    The far band, the step tables, and the far coverage came out.
-    The second 896-triangle list went in. paint_tri_target's frame
-    is 352 bytes. Core 1's stack is scratch Y, 4096 bytes, top
-    0x20042000. start_sim_render's frame is 240 bytes and
-    picogl_world_tri's is 456. That nest fits.
+    UF2 btron-picocalc-quake-rp2040.uf2 1639424 bytes, 3202 blocks
+    family 0xE48BFF56
+    SD-boot bin 819220 bytes at 0x10032000
+    scratch X ends 0x20040528 (1320 bytes)
+    paint_tri_target frame is 352 bytes, code 2384 bytes, in flash.
+    Core 1's stack is scratch Y, 4096 bytes.
+    start_sim_render's frame is 240 bytes. picogl_world_tri's is 456.
+    That nest fits in scratch Y.
+    The second 896-triangle list is in. The far band (10240), the step
+    tables (5376 + 5376), and the far coverage are out.
+    picogl_paint_band_split is not in the Quake ELF. The span keeps it
+    for the host raster test.
 
-  Gears / XMB RP2040, relinked because picogl_span.c is shared.
+  Gears / XMB RP2040. Relinked because the shell and the span are shared.
   Not flashed.
-    text 471704   data 2896   bss 187960
+    text 453356   data 2896   bss 187960
     __sram_used__ 0x2e988 = 190856, free 24184
-    UF2 btron-picocalc-rp2040.uf2 949248 bytes, 1854 blocks
-    SD-boot bin 474344 bytes at 0x10032000
-    Gears do not call the band painter, so the linker drops both
-    coverage arrays. The ring and the core 1 wake stay. Coverage
-    stays off. Gears color stays two 112x96 RGB565 buffers plus
-    one int32 iz. The gear resolution is unchanged.
+    __bss_end__ 0x2002e988
+    UF2 btron-picocalc-rp2040.uf2 912896 bytes, 1783 blocks
+    SD-boot bin 455996 bytes at 0x10032000
+    The linker drops both coverage arrays. The weak extra stays empty.
+    The ring and the core 1 wake stay. Coverage stays off.
+    Gears color is two 112x96 RGB565 buffers plus one int32 iz.
+    The gear picture is unchanged.
 
-Phase 1 had measured data 3268 + bss 198924 = 202192, free 12848, and
-chose one bucket set of 16 triangles a band (7680 bytes) with iz on the
-triangle. That bucket set is still the bin table. Quake does not raster
-from it: the device captures up to 896 triangles and paints each band
-from that list. A 48-wide bin and a second bucket set stay out.
+make flash-picocalc writes only btron-picocalc-rp2040.uf2.
+The Quake UF2 is copied by hand.
 
-make test-picogl-raster: 17 checks, 0 failures. paint_one_row is
-unchanged. The checks include a resumed edge against a fresh divide
-(including a 1-pixel-tall edge), a covered span that leaves the far
-side, a saved row step against that fresh divide, a split band
-against one core (including the hole at x=70), and a 160x320 render
-whose frustum uses the 320x320 destination. The host runs both
-halves on the calling thread. RP2350 was not relinked.
+Host make test-picogl-raster, last run on the span that is in the
+pipeline image: 17 checks, 0 failures. paint_one_row is unchanged.
+The checks include a resumed edge against a fresh divide, a covered
+span that leaves the far side, a saved row step, a split band against
+one core, and a 160x320 render whose frustum uses the 320x320
+destination. The host runs both halves on the calling thread.
+The overlay image does not change the span. RP2350 was not relinked.
 
-11.8 Pipeline
 
-  core 0, once per frame
-  1 Submit      seven R_EEGS_* calls, or the GLES door for gears
-  2 Transform   one camera matrix, then an integer clip and divide
-  3 Bin         gears and XMB post to the span ring; Quake captures
-  core 0 paints, core 1 builds the next list
-  4 Raster      Quake: core 0 paints the whole sorted list into the
-                    strip. Coverage skips a filled word. An edge
-                    divides on the first band of the frame. Core 1
-                    builds the next list and does not paint. Gears and
-                    XMB still post to the ring. The strip, SPI, DMA,
-                    and GPIO stay on core 0. A strict iz test remains
-                    where coverage is off (larger iz wins)
-  5 Cover       system-font menu, HUD, status bar
-  6 Scan        DMA channel 0
+9. The shell
+------------
 
-GL_BACKEND_PICOGL = 5. The seven calls are Live, BeginFrame, SetCamera,
-Poly, Tris, Fill, and String. On the device, world triangles are
-picogl_world_tri with PICOGL_SEAL. Gears use picogl_screen_tri and do
-not set the seal. The span walks pixel centers. A shared edge can miss
-both faces; the seal covers one extra pixel on a world triangle.
-cw_lerp rounds to nearest. Core 1 wakes so ps can show the picogl row.
-Quake's build is the only Quake work core 1 runs. The strip stays
-on core 0 because SegUI uses it too. The far-half painter remains in
-the span for the host raster test. The device image does not call it.
+Palm OS 5 HiRes is the 320x320 form. One app owns the body. There is
+no overlapping window and no backing store. Widgets do not carry pixel
+coordinates; resolve_segments and resolve_body do. There is no post-boot
+malloc. Bands are the unit of redraw: a zero dirty mask clocks no SPI.
 
-The triangle is 24 bytes. The span ring is 128 slots, 3072 bytes, and
-is not a second bin table. A full ring waits for one slot. Core 1 never
-programs SPI, DMA, or GPIO.
+Profile segui_profile_picocalc: form 320x320. Status, tab (skipped when
+the app has one tab), body, softkey. The launcher is one 3x3.
 
-11.9 Decisions that still hold
+  1 Terminal   2 Editor    3 Browser
+  4 Cabinet    5 center    6 Contacts
+  7 Phone      8 Chat      9 Preferences
 
-  - The seven R_EEGS_* calls are the scene API. PS2 keeps its own body.
-  - Both images keep the eight shell apps. The center tile is the only
-    difference. PALM_APP_GLGEARS is not renumbered.
-  - The framebuffer is the 16-line strip.
-  - Rectangles and the system font are not meshes.
-  - progs.dat is not linked. The device console is the integer command
-    list in start_sim.c.
-  - v1 is silent.
-  - The old "draw the world at 160 and store it 2x" choice is retired.
-    The seven sizes in section 11.2 all stretch to the destination.
-    Direct paint is only the case where render size equals destination.
-  - UART lines picogl gears at 20 FPS and picogl xmb / quake at 12 FPS
-    were targets in the phase plan. They were not measured. The device
-    Quake rates recorded here are the user's: 4 FPS at 320x320, then
-    about 5 FPS at every r_mode with the geometry fixed, then 9-10 FPS
-    at every r_mode on drone1m1, then still 9-10 after the aspect fix,
-    then a solid 10 after the far half. This link is not a new
-    measurement.
+make picocalc: the center tile is XMB. Key 5 opens XMB. Keys 1-4 and
+6-9 are PALM_APP_TERMINAL + (key - '1'). GLGears opens from the XMB
+Applications row. f fills the panel for XMB and GLGears.
+make picocalc-quake: the center tile is Quake. There is no XMB and no
+GLGears. Key 5 stays Quake. PALM_APP_GLGEARS is not renumbered; the
+Quake descriptor occupies that slot on the Quake image only.
 
-11.10 Files
+Both images keep the eight shell apps. The center tile is the only
+difference. TinyGL is on neither link. The Quake blob stays in flash
+and is not copied into SRAM.
+
+Present, dp_pico_present:
+
+  for each dirty band
+    clip = that 16-row strip
+    the inactive strip is the one DMA still owns; do not paint it
+    paint
+    start DMA of this strip
+  wait for the last DMA
+  the generation counter bumps once per present
+
+Quake renders only when the generation changes. Gears redraw when the
+generation or the angle changes. Animated body frames dirty 0x0007FFFC.
+A fullscreen 3D app dirties all 20 bands and the paint returns before
+the Palm widgets.
+
+Idle: the loop yields. 20 ms while typing, 100 ms after 3 s, and the
+idle task sleeps in wfi. The keyboard backlight boots off. The panel
+dims at 60 s and sleeps at 5 min, and a key wakes it. The battery is
+polled every 15 s, not per frame. Animation skips the dim. GLGears and
+the drone are animation. The menu is not, so a resolution change must
+mark the panel dirty itself.
+
+Keyboard, I2C1 at 10 kHz. The driver emits one edge, then repeats on
+the Prefs delay and gap.
+
+  0xB5 up    0xB6 down    0xB4 left    0xB7 right
+  0x0A/0x0D enter    0x08/0x7F backspace    0x09 tab    0x1B esc
+  0x81 F1 home    0x82 F2 menu
+  On the Quake image, tab is the console and F2 returns to the menu
+  from play. Esc closes the console, or leaves the app.
+
+Boot, make picocalc-all builds four artifacts. The default make is the
+RP2040 pair only when the target says so. make picocalc and
+make picocalc-quake with no board flag are RP2040.
+
+  btron-picocalc-rp2040.uf2            0x10000000  family 0xE48BFF56
+  btron-picocalc-rp2040-sdboot.bin     0x10032000
+  btron-picocalc-rp2350.uf2            0x10000000  family 0xE48BFF59
+  btron-picocalc-rp2350-sdboot.bin     0x10032000
+
+RP2350 pads reset with ISO set. Clear ISO on every pin the image uses
+before the first peripheral transfer. RP2350 gates TIMER0 through the
+TICKS block; program it before delays. If SDA is stuck low after reset,
+bang nine clocks and a stop before switching the pins to I2C. A
+HardFault on the device dumps to UART0 and paints a blocking red banner.
+An SD-boot image sets VTOR and resets SPI, I2C, and DMA before it
+trusts them.
+
+The 64 KiB SRAM figure in older notes is the original shell estimate.
+The gate that the links actually meet is section 1.
+
+
+10. Decisions that still hold
+-----------------------------
+
+  The seven R_EEGS calls are the scene API. PS2 keeps its own body.
+  GL_BACKEND_PICOGL is 5. On the device those calls are PicoGL.
+  Gears use the GLES door (picogl_gl_*), not g_gl.
+  Rectangles and the system font are not meshes.
+  The cooked Quake font is compiled out of the device image.
+  pak0.pak is not edited. libc_shim stays.
+  v1 is silent.
+  The framebuffer is the 16-line strip.
+  Direct paint is only render size == destination.
+  The seven stretch-filled sizes in section 4 are the menu.
+  UART lines that once said gears 20, xmb 12, quake 12 were targets.
+  They were not measured. The device Quake rates are section 6.
+  Core 1 is a picogl row in ps, not a second scheduler.
+  Between frames that row is RDY and the queue is 0. That is idle,
+  not a stalled paint. OFF means the wake never landed and core 0
+  paints. ERR means the wake was abandoned after three timeouts.
+  QEMU mps2 is one CPU or leaves CPU1 off. It does not prove the
+  RP2040 wake. make test-picogl-cores is the host stand-in.
+
+Files:
 
   src/desktop/graphics/picogl/picogl.h
-  src/desktop/graphics/picogl/picogl_span.c    bins, span, coverage
-  src/desktop/graphics/picogl/picogl_ctx.c     GLES door
+  src/desktop/graphics/picogl/picogl_span.c     bins, span, coverage
+  src/desktop/graphics/picogl/picogl_ctx.c      GLES door, UART line
   src/desktop/graphics/picogl/picogl_host_core1.c   host pthread only
-  src/drivers/pico/pico_aeabi.c            one-bit software divide
-  src/drivers/pico/pico_core1.c                wake, FIFO, stack
-  src/media/xmb/xmb_pico.c                     make picocalc center
-  src/media/quake/sim/start_sim.c              make picocalc-quake only
+  src/drivers/pico/pico_aeabi.c                 software divide
+  src/drivers/pico/pico_core1.c                 wake, barrier, stack
+  src/drivers/pico/dp_pico.c                    strips, present
+  src/drivers/pico/link_picocalc.ld
+  src/cores/core_segui.c                        pill window, dirty mask
+  src/desktop/industrial/segui/segui_palm.c     fullscreen early return
+  src/media/xmb/xmb_pico.c                      make picocalc center
+  src/media/quake/sim/start_sim.c               the Quake image only
 
 The plan once named picogl_xform.c, picogl_tex.c, picogl_blit.c, and
-picogl_present.c. Those files were not split out. The span and the
-present path live in picogl_span.c and dp_pico.c. The follow-on task
-plan for a background Quake task and a keyboard task is
-doc/md/QUAKE_RP2040.md. It does not own this budget.
+picogl_present.c. They were not split out. doc/md/PICOGL.md was removed
+when this book became the spec. doc/md/QUAKE_RP2040.md is a follow-on
+for a background Quake task and a keyboard task. It does not own this
+budget, and those tasks are not in the images.

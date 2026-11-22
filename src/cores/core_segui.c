@@ -130,6 +130,13 @@ static void title_fps(void)
     if (fps > 999u) fps = 999u;
     s_fps_frames = 0;
     s_fps_win_us = now;
+#if defined(PICOCALC_APP_QUAKE)
+    start_sim_set_fps((int)fps);
+    /* The frame draws this number. Rewriting the Palm title would dirty
+     * the status bands for a caption fullscreen does not paint. */
+    if (start_sim_fullscreen())
+        return;
+#endif
     d0 = (char)('0' + (fps / 100u) % 10u);
     d1 = (char)('0' + (fps / 10u) % 10u);
     d2 = (char)('0' + fps % 10u);
@@ -313,8 +320,9 @@ static void segui_task(void *arg)
         } else if (!lcd_asleep && segui_palm_tick(now)) {
             dirty |= 0x0007FFFCUL; /* Body bands only (skip status & softkey) */
 #if defined(PICOCALC_APP_QUAKE)
-            /* Fullscreen is the whole 320x320 panel, including the bands
-             * the window chrome used to own. */
+            /* The picture covers the title and the softkey. segui_palm_paint
+             * returns before the Palm chrome, so these bands are world
+             * pixels. The rate is the line on the frame, not the title. */
             if (start_sim_fullscreen())
                 dirty |= ALL_BANDS_DIRTY;
 #else

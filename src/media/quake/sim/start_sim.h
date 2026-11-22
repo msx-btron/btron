@@ -39,6 +39,8 @@ void start_sim_paint_band(uint16_t *be, int stride, int band_y, int band_h,
                           int ox, int oy, GDEV *dev);
 int  start_sim_fullscreen(void);
 int  start_sim_console_open(void);
+/* Last closed pill window, 0..999. Fullscreen draws it on the frame. */
+void start_sim_set_fps(int fps);
 /* Play and the drone repaint. The menu stays on the last frame. */
 int  start_sim_moving(void);
 #endif

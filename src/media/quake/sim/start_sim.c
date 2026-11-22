@@ -167,6 +167,40 @@ static uint32_t s_next_fire;
 static int      s_slip;
 static char     s_msg[64];
 #if defined(PICO_REAL_HW)
+/* -1 until the pill window closes. The overlay must not invent a rate. */
+static int s_hud_fps = -1;
+
+void start_sim_set_fps(int fps)
+{
+    if (fps < 0) fps = 0;
+    if (fps > 999) fps = 999;
+    s_hud_fps = fps;
+}
+
+/* Three columns, then " FPS". "--- FPS" until the first window. */
+static void fps_line(char *b, int fps)
+{
+    if (fps < 0) {
+        b[0] = '-';
+        b[1] = '-';
+        b[2] = '-';
+    } else {
+        if (fps > 999) fps = 999;
+        b[0] = (char)('0' + (fps / 100) % 10);
+        b[1] = (char)('0' + (fps / 10) % 10);
+        b[2] = (char)('0' + fps % 10);
+        if (b[0] == '0') {
+            b[0] = ' ';
+            if (b[1] == '0') b[1] = ' ';
+        }
+    }
+    b[3] = ' ';
+    b[4] = 'F';
+    b[5] = 'P';
+    b[6] = 'S';
+    b[7] = 0;
+}
+
 static int put_dec(char *b, int n, int cap, int v)
 {
     char tmp[4];
@@ -2655,6 +2689,16 @@ static void paint_chrome(GDEV *dev, int ox, int oy, int dw, int dh,
     wide = dw >= 240;
     bar_top = dh - 17;
     if (bar_top < 0) bar_top = 0;
+#if defined(PICO_REAL_HW)
+    /* The play line is the bar plus the line above it. A band above that
+     * does not walk glyphs. The menu and the console cover the body. */
+    if (!menu_on && !con_on) {
+        int y0 = oy + bar_top - 16;
+        if (y0 < oy) y0 = oy;
+        if ((int)dev->clip.bottom <= y0 || (int)dev->clip.top >= oy + dh)
+            return;
+    }
+#endif
     if (!con_on && dh >= 17) {
         int tx;
         chrome_fill(dev, ox, oy + bar_top, dw, 1, CHROME_GOLD);
@@ -2665,6 +2709,14 @@ static void paint_chrome(GDEV *dev, int ox, int oy, int dw, int dh,
         chrome_text(dev, tx, oy + bar_top + 1, hud, COLOR_WHITE);
     }
     if (con_on || !menu_on) {
+#if defined(PICO_REAL_HW)
+        /* Fullscreen has no Palm title. This line is the pill. */
+        if (!con_on && full && bar_top >= 16) {
+            char fps[8];
+            fps_line(fps, s_hud_fps);
+            chrome_text(dev, ox + 4, oy + bar_top - 16, fps, COLOR_YELLOW);
+        } else
+#endif
         if (!con_on && msg && msg[0] && bar_top >= 16)
             chrome_text(dev, ox + 4, oy + bar_top - 16, msg, COLOR_YELLOW);
         return;
