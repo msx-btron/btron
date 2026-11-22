@@ -409,28 +409,46 @@ void xmb_pico_anchors(int left, int top, int right, int bottom,
 }
 
 #if defined(PICO_REAL_HW)
-/* Eight by five sheet across the whole window. Far rows are narrow and
- * high, near rows spread, the same side-on ribbon as the original wave
- * with the lattice cut from 32x32. The fill is a lift, so the gradient
- * shows through and overlapping quads stack. */
-#define WAVE_NX 8
-#define WAVE_NY 5
+/* Side-on sheet. The viewpoint and the pixel amplitude stay on the 8×5
+ * curve (lean 5..20, wobble up to ±13*(2..7)). The lattice is 16×12 so
+ * the facets read as a fabric. Two traveling terms plus the cross term
+ * are the original ribbon's cos(2*gx), cos(4*gz) and cos(gz+gx), scaled
+ * back into that same ±13. The lift is white and steeper folds are
+ * brighter, which is glColor(b,b,b) with GL_DST_COLOR, GL_ONE. */
+#define WAVE_NX 16
+#define WAVE_NY 12
+#define WAVE_REF 5
 static const int8_t s_wave_sin[16] = {
     0, 5, 9, 12, 13, 12, 9, 5, 0, -5, -9, -12, -13, -12, -9, -5
 };
 
+static int wave_idx(int n)
+{
+    n &= 15;
+    return n;
+}
+
 static void wave_point(int i, int j, int left, int top, int width, int height,
                        int phase, int *ox, int *oy)
 {
-    int lean = 5 + j * 3;
-    int wob = s_wave_sin[(i * 3 + j + phase) & 15];
-    int sway = s_wave_sin[(j * 2 + phase) & 15];
+    int across = s_wave_sin[wave_idx(i * 2 - phase * 2 + 256)];
+    int along = s_wave_sin[wave_idx(j * 3)];
+    int cross = s_wave_sin[wave_idx(i + j + phase + 256)];
+    int wob = (across * 2 + along + cross) / 4;
+    int sway = s_wave_sin[wave_idx(j * 2 + phase + 256)];
+    int amp = 2 + (j * WAVE_REF) / WAVE_NY;
+    int lean = 5 + (j * 3 * WAVE_REF) / WAVE_NY;
     int y = top + (j * j * height) / (WAVE_NY * WAVE_NY);
     int x = left + width / 2 + (i - WAVE_NX / 2) * (width * lean) / (WAVE_NX * 18);
-    y += wob * (2 + j);
+    y += wob * amp;
     x += sway;
     *ox = x;
     *oy = y;
+}
+
+static int wave_base_y(int j, int top, int height)
+{
+    return top + (j * j * height) / (WAVE_NY * WAVE_NY);
 }
 
 static void wave_surface(int left, int top, int right, int bottom)
@@ -459,7 +477,6 @@ static void wave_surface(int left, int top, int right, int bottom)
     picogl_bind_target(row0 - (y0 - band_y0) * 320, 0, 320, 16, 320);
     picogl_set_depth(0);
     for (j = 0; j < WAVE_NY; j++) {
-        uint16_t lift = (uint16_t)(((1 + (j >> 1)) << 11) | ((2 + j) << 5) | (3 + j));
         for (i = 0; i < WAVE_NX; i++) {
             int xa, ya, xb, yb, xc, yc, xd, yd;
             int ytop, ybot;
@@ -476,10 +493,22 @@ static void wave_surface(int left, int top, int right, int bottom)
             if (yc > ybot) ybot = yc;
             if (yd > ybot) ybot = yd;
             if (ybot < y0 || ytop > y1) continue;
-            picogl_screen_lift(xa, ya - band_y0, xb, yb - band_y0,
-                               xc, yc - band_y0, lift);
-            picogl_screen_lift(xa, ya - band_y0, xc, yc - band_y0,
-                               xd, yd - band_y0, lift);
+            {
+                int gap = wave_base_y(j + 1, top, height) - wave_base_y(j, top, height);
+                int extra = (yc + yd) - (ya + yb) - gap * 2;
+                int bri;
+                uint16_t lift;
+                if (extra < 0) extra = -extra;
+                extra >>= 1;
+                bri = 1;
+                if (extra > 4) bri = 2;
+                if (extra > 12) bri = 3;
+                lift = (uint16_t)((bri << 11) | ((bri * 2) << 5) | bri);
+                picogl_screen_lift(xa, ya - band_y0, xb, yb - band_y0,
+                                   xc, yc - band_y0, lift);
+                picogl_screen_lift(xa, ya - band_y0, xc, yc - band_y0,
+                                   xd, yd - band_y0, lift);
+            }
         }
     }
     picogl_flush_target();

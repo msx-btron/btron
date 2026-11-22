@@ -37,6 +37,8 @@ typedef struct {
 } pv_t;
 
 static float s_mvp[16];
+static int32_t s_mq[16];
+static int   s_mq_ok;
 static int   s_vp_w, s_vp_h;
 static int   s_cull;
 static int   s_depth = 1;
@@ -615,10 +617,22 @@ void picogl_begin_frame(int width, int height)
         s_vp_h = PICOGL_BANDS * PICOGL_BAND_H;
 }
 
+static void mq_capture(void)
+{
+    int i;
+    for (i = 0; i < 16; i++) {
+        float q = s_mvp[i] * 4096.0f;
+        if (q >= 0.0f) s_mq[i] = (int32_t)(q + 0.5f);
+        else s_mq[i] = (int32_t)(q - 0.5f);
+    }
+    s_mq_ok = 1;
+}
+
 void picogl_set_mvp(const float m[16])
 {
     if (!m) return;
     memcpy(s_mvp, m, sizeof s_mvp);
+    mq_capture();
 }
 
 void picogl_set_cull(int enable)
@@ -630,6 +644,8 @@ void picogl_set_depth(int enable)
 {
     s_depth = enable ? 1 : 0;
 }
+
+static void mq_capture(void);
 
 void picogl_set_camera(const float org[3], const float ang[3], int width, int height)
 {
@@ -655,6 +671,7 @@ void picogl_set_camera(const float org[3], const float ang[3], int width, int he
     oy = org ? org[1] : 0.0f;
     oz = org ? org[2] : 0.0f;
     mat_translate(s_mvp, -ox, -oy, -oz);
+    mq_capture();
 }
 
 void picogl_poly(const float *xyz, const float *st, int nverts,
@@ -726,6 +743,138 @@ void picogl_target_pop(void)
     s_vp_h = s_push_vp_h;
     s_depth = s_push_depth;
     s_pushed = 0;
+}
+
+typedef struct { int x, y, z, w; } cw_t;
+
+static void cw_point(int x, int y, int z, cw_t *o)
+{
+    int r;
+    for (r = 0; r < 4; r++) {
+        int64_t s = (int64_t)s_mq[r] * x
+                  + (int64_t)s_mq[r + 4] * y
+                  + (int64_t)s_mq[r + 8] * z
+                  + (int64_t)s_mq[r + 12];
+        int c = (int)(s >> 12);
+        if (r == 0) o->x = c;
+        else if (r == 1) o->y = c;
+        else if (r == 2) o->z = c;
+        else o->w = c;
+    }
+}
+
+static int cw_dist(const cw_t *v, int plane)
+{
+    switch (plane) {
+    case 0: return v->w + v->x;
+    case 1: return v->w - v->x;
+    case 2: return v->w + v->y;
+    case 3: return v->w - v->y;
+    case 4: return v->w + v->z;
+    default: return v->w - v->z;
+    }
+}
+
+static int cw_inside(const cw_t *v)
+{
+    int w = v->w;
+    if (w < 1) return 0;
+    if (v->x < -w || v->x > w) return 0;
+    if (v->y < -w || v->y > w) return 0;
+    if (v->z < -w || v->z > w) return 0;
+    return 1;
+}
+
+static void cw_lerp(cw_t *o, const cw_t *a, const cw_t *b, int da, int db)
+{
+    int den = da - db;
+    if (den == 0) { *o = *b; return; }
+    o->x = a->x + (int)(((int64_t)(b->x - a->x) * da) / den);
+    o->y = a->y + (int)(((int64_t)(b->y - a->y) * da) / den);
+    o->z = a->z + (int)(((int64_t)(b->z - a->z) * da) / den);
+    o->w = a->w + (int)(((int64_t)(b->w - a->w) * da) / den);
+}
+
+static int cw_clip(cw_t *v, int n, int plane)
+{
+    cw_t out[12];
+    int i, m = 0;
+    if (n > 12) n = 12;
+    for (i = 0; i < n; i++) {
+        const cw_t *a = &v[i];
+        const cw_t *b = &v[(i + 1) % n];
+        int da = cw_dist(a, plane);
+        int db = cw_dist(b, plane);
+        int ina = da >= 0;
+        int inb = db >= 0;
+        if (ina && inb) {
+            if (m < 12) out[m++] = *b;
+        } else if (ina && !inb) {
+            if (m < 12) cw_lerp(&out[m++], a, b, da, db);
+        } else if (!ina && inb) {
+            if (m < 12) cw_lerp(&out[m++], a, b, da, db);
+            if (m < 12) out[m++] = *b;
+        }
+    }
+    for (i = 0; i < m; i++) v[i] = out[i];
+    return m;
+}
+
+static int cw_project(const cw_t *v, int *sx, int *sy, int *iz)
+{
+    int w = v->w;
+    int guard = w + (w >> 2);
+    int64_t den, nx, ny;
+    if (w < 1) return 0;
+    if (v->x < -guard || v->x > guard || v->y < -guard || v->y > guard)
+        return 0;
+    den = (int64_t)w << 1;
+    nx = ((int64_t)v->x + w) * s_vp_w;
+    ny = ((int64_t)w - v->y) * s_vp_h;
+    if (nx >= 0) nx += den >> 1; else nx -= den >> 1;
+    if (ny >= 0) ny += den >> 1; else ny -= den >> 1;
+    *sx = (int)(nx / den);
+    *sy = (int)(ny / den);
+    if (w >= PICOGL_Q10) *iz = 1;
+    else *iz = PICOGL_Q10 / w;
+    if (*iz < 1) *iz = 1;
+    return 1;
+}
+
+static void cw_post(const cw_t *a, const cw_t *b, const cw_t *c, uint16_t rgb)
+{
+    int sx0, sy0, iz0, sx1, sy1, iz1, sx2, sy2, iz2, iz;
+    if (!cw_project(a, &sx0, &sy0, &iz0)) return;
+    if (!cw_project(b, &sx1, &sy1, &iz1)) return;
+    if (!cw_project(c, &sx2, &sy2, &iz2)) return;
+    iz = iz0;
+    if (iz1 > iz) iz = iz1;
+    if (iz2 > iz) iz = iz2;
+    picogl_screen_tri(sx0, sy0, sx1, sy1, sx2, sy2, iz, rgb);
+}
+
+void picogl_world_tri(int x0, int y0, int z0, int x1, int y1, int z1,
+                      int x2, int y2, int z2, uint32_t rgba)
+{
+    cw_t v[12];
+    int n, p, i;
+    uint16_t rgb;
+    if (!s_mq_ok || !s_tgt_rgb || s_vp_w <= 0 || s_vp_h <= 0) return;
+    cw_point(x0, y0, z0, &v[0]);
+    cw_point(x1, y1, z1, &v[1]);
+    cw_point(x2, y2, z2, &v[2]);
+    rgb = rgb565(rgba);
+    if (cw_inside(&v[0]) && cw_inside(&v[1]) && cw_inside(&v[2])) {
+        cw_post(&v[0], &v[1], &v[2], rgb);
+        return;
+    }
+    n = 3;
+    for (p = 0; p < 6; p++) {
+        n = cw_clip(v, n, p);
+        if (n < 3) return;
+    }
+    for (i = 1; i < n - 1; i++)
+        cw_post(&v[0], &v[i], &v[i + 1], rgb);
 }
 
 void picogl_screen_tri(int x0, int y0, int x1, int y1, int x2, int y2,

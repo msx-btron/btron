@@ -977,15 +977,129 @@ void start_sim_tick(uint32_t now_ms)
 
 static int s_budget;
 
+#if defined(PICO_REAL_HW)
+/* BSP planes, once. Axial tests stay exact. General planes are Q10. */
+static int s_rex, s_rey, s_rez;
+static int s_rfx, s_rfy, s_rfz;
+static int s_pl_ready;
+static int8_t s_pt[START_NPLANE];
+static int16_t s_pd[START_NPLANE];
+static int16_t s_pn[START_NPLANE][3];
+
+static void plane_cache(void)
+{
+    int i;
+    if (s_pl_ready) return;
+    for (i = 0; i < START_NPLANE; i++) {
+        s_pt[i] = (int8_t)start_plane[i][4];
+        s_pd[i] = (int16_t)start_plane[i][3];
+        s_pn[i][0] = (int16_t)(start_plane[i][0] * 1024.0f);
+        s_pn[i][1] = (int16_t)(start_plane[i][1] * 1024.0f);
+        s_pn[i][2] = (int16_t)(start_plane[i][2] * 1024.0f);
+    }
+    s_pl_ready = 1;
+}
+
+static int plane_i(int plane, int x, int y, int z)
+{
+    int typ, d;
+    if (plane < 0 || plane >= START_NPLANE) return 0;
+    typ = s_pt[plane];
+    d = s_pd[plane];
+    if (typ == 0) return x - d;
+    if (typ == 1) return y - d;
+    if (typ == 2) return z - d;
+    return (int)((((int32_t)s_pn[plane][0] * x
+                 + (int32_t)s_pn[plane][1] * y
+                 + (int32_t)s_pn[plane][2] * z) >> 10) - d);
+}
+
+static int ahead_i(const int16_t mins[3], const int16_t maxs[3])
+{
+    int cx = ((int)mins[0] + (int)maxs[0]) >> 1;
+    int cy = ((int)mins[1] + (int)maxs[1]) >> 1;
+    int cz = ((int)mins[2] + (int)maxs[2]) >> 1;
+    int dx = cx - s_rex, dy = cy - s_rey, dz = cz - s_rez;
+    int rad = ((int)(maxs[0] - mins[0]) + (int)(maxs[1] - mins[1])
+               + (int)(maxs[2] - mins[2])) >> 1;
+    int64_t dot = (int64_t)dx * s_rfx + (int64_t)dy * s_rfy + (int64_t)dz * s_rfz;
+    return dot > -(((int64_t)rad + 32) << 14);
+}
+
+static const int16_t s_sin90[91] = {
+    0,286,572,857,1143,1428,1713,1997,2280,2563,2845,3126,3406,3686,3964,
+    4240,4516,4790,5063,5334,5604,5872,6138,6402,6664,6924,7182,7438,7692,
+    7943,8192,8438,8682,8923,9162,9397,9630,9860,10087,10311,10531,10749,
+    10963,11174,11381,11585,11786,11982,12176,12365,12551,12733,12911,13085,
+    13255,13421,13583,13741,13894,14044,14189,14330,14466,14598,14726,14849,
+    14968,15082,15191,15296,15396,15491,15582,15668,15749,15826,15897,15964,
+    16026,16083,16135,16182,16225,16262,16294,16322,16344,16362,16374,16382,
+    16384
+};
+
+static int isin_deg(int deg)
+{
+    int a = deg % 360;
+    if (a < 0) a += 360;
+    if (a <= 90) return s_sin90[a];
+    if (a <= 180) return s_sin90[180 - a];
+    if (a <= 270) return -s_sin90[a - 180];
+    return -s_sin90[360 - a];
+}
+
+static int q14mul(int a, int b)
+{
+    return (int)(((int64_t)a * b) >> 14);
+}
+
+static void mesh_vert(const int16_t *v, int ox, int oy, int oz,
+                      int cy, int sy, int cp, int sp, int *o)
+{
+    int x = v[0], y = v[1], z = v[2];
+    int fx = q14mul(cp, cy), fy = q14mul(cp, sy), fz = -sp;
+    int rx = sy, ry = -cy;
+    int ux = q14mul(sp, cy), uy = q14mul(sp, sy), uz = cp;
+    o[0] = ox + q14mul(x, fx) - q14mul(y, rx) + q14mul(z, ux);
+    o[1] = oy + q14mul(x, fy) - q14mul(y, ry) + q14mul(z, uy);
+    o[2] = oz + q14mul(x, fz) + q14mul(z, uz);
+}
+#endif
+
 static void emit_face(int fi, float ox, float oy, float oz, const float *eye)
 {
     int ntri, t, k, plane, side;
-    float d, xyz[9];
     uint32_t rgba;
     if (fi < 0 || fi >= START_NFACE || s_budget <= 0) return;
     plane = start_face_plane[fi];
-    d = plane_of(plane, eye);
     side = start_face_side[fi];
+#if defined(PICO_REAL_HW)
+    {
+        int d = plane_i(plane, s_rex, s_rey, s_rez);
+        int oxi = (int)ox, oyi = (int)oy, ozi = (int)oz;
+        (void)eye;
+        if (side) d = -d;
+        if (d < 1) return;
+        ntri = start_face_ntri[fi];
+        rgba = start_face_rgba[fi];
+        for (t = 0; t < ntri && s_budget > 0; t++) {
+            int p[3][3];
+            for (k = 0; k < 3; k++) {
+                int vi = start_idx[(start_face_tri0[fi] + t) * 3 + k];
+                if (vi < 0 || vi >= START_NVERT) return;
+                p[k][0] = (int)start_vert[vi][0] + oxi;
+                p[k][1] = (int)start_vert[vi][1] + oyi;
+                p[k][2] = (int)start_vert[vi][2] + ozi;
+            }
+            picogl_world_tri(p[0][0], p[0][1], p[0][2],
+                             p[1][0], p[1][1], p[1][2],
+                             p[2][0], p[2][1], p[2][2], rgba);
+            s_budget--;
+        }
+    }
+#else
+    {
+    float d, xyz[9];
+    d = plane_of(plane, eye);
     if (side) d = -d;
     if (d < 1.0f) return;
     ntri = start_face_ntri[fi];
@@ -1001,8 +1115,11 @@ static void emit_face(int fi, float ox, float oy, float oz, const float *eye)
         picogl_tris(xyz, NULL, 1, rgba, -1);
         s_budget--;
     }
+    }
+#endif
 }
 
+#if !defined(PICO_REAL_HW)
 static int ahead(const int16_t mins[3], const int16_t maxs[3], const float *eye, const float *fwd)
 {
     float cx, cy, cz, dx, dy, dz, rad, dot;
@@ -1014,6 +1131,7 @@ static int ahead(const int16_t mins[3], const int16_t maxs[3], const float *eye,
     dot = dx * fwd[0] + dy * fwd[1] + dz * fwd[2];
     return dot > -rad - 32.0f;
 }
+#endif
 
 typedef struct { int node, stage, front; } node_fr_t;
 static node_fr_t s_node_fr[128];
@@ -1028,6 +1146,16 @@ static void walk_node(int node, const float *eye, const float *fwd)
         int stage = s_node_fr[sp].stage;
         if (stage == 0) {
             int front;
+#if defined(PICO_REAL_HW)
+            if (n < 0 || s_budget <= 0 || n >= START_NNODE ||
+                !ahead_i(start_node_mins[n], start_node_maxs[n])) {
+                sp--;
+                continue;
+            }
+            front = plane_i(start_node_plane[n], s_rex, s_rey, s_rez) >= 0 ? 0 : 1;
+            (void)eye;
+            (void)fwd;
+#else
             float d, p[3];
             if (n < 0 || s_budget <= 0 || n >= START_NNODE ||
                 !ahead(start_node_mins[n], start_node_maxs[n], eye, fwd)) {
@@ -1037,6 +1165,7 @@ static void walk_node(int node, const float *eye, const float *fwd)
             p[0] = eye[0]; p[1] = eye[1]; p[2] = eye[2];
             d = plane_of(start_node_plane[n], p);
             front = (d >= 0.0f) ? 0 : 1;
+#endif
             s_node_fr[sp].stage = 1;
             s_node_fr[sp].front = front;
             if (sp + 1 >= 128) { sp--; continue; }
@@ -1063,6 +1192,7 @@ static void walk_node(int node, const float *eye, const float *fwd)
     }
 }
 
+#if !defined(PICO_REAL_HW)
 static void xform_vert(const int16_t *v, const float *org,
                       float cy, float sy, float cp, float sp, float *o)
 {
@@ -1074,16 +1204,38 @@ static void xform_vert(const int16_t *v, const float *org,
     o[1] = org[1] + x * fy - y * ry + z * uy;
     o[2] = org[2] + x * fz + z * uz;
 }
+#endif
 
 static void draw_mesh(int mesh, const float *org, float yaw, float pitch)
 {
     int n, i, k;
     uint32_t rgba;
-    float yr, pr, cy, sy, cp, sp;
     if (mesh < 0 || mesh >= START_NMESH || s_budget <= 0) return;
     n = start_mesh_n[mesh];
     rgba = start_mesh_rgba[mesh];
     if (n < 3) return;
+#if defined(PICO_REAL_HW)
+    {
+        int cy = isin_deg((int)yaw + 90);
+        int sy = isin_deg((int)yaw);
+        int cp = isin_deg((int)pitch + 90);
+        int sp = isin_deg((int)pitch);
+        int ox = (int)org[0], oy = (int)org[1], oz = (int)org[2];
+        for (i = 0; i + 2 < n && s_budget > 0; i += 3) {
+            int p[3][3];
+            for (k = 0; k < 3; k++) {
+                const int16_t *v = start_avert[start_mesh_v0[mesh] + i + k];
+                mesh_vert(v, ox, oy, oz, cy, sy, cp, sp, p[k]);
+            }
+            picogl_world_tri(p[0][0], p[0][1], p[0][2],
+                             p[1][0], p[1][1], p[1][2],
+                             p[2][0], p[2][1], p[2][2], rgba);
+            s_budget--;
+        }
+    }
+#else
+    {
+    float yr, pr, cy, sy, cp, sp;
     yr = yaw * (3.14159265f / 180.0f);
     pr = pitch * (3.14159265f / 180.0f);
     cy = cosf(yr);
@@ -1099,6 +1251,8 @@ static void draw_mesh(int mesh, const float *org, float yaw, float pitch)
         picogl_tris(xyz, NULL, 1, rgba, -1);
         s_budget--;
     }
+    }
+#endif
 }
 
 static void draw_box(const float *org, float s, uint32_t rgba)
@@ -1113,6 +1267,27 @@ static void draw_box(const float *org, float s, uint32_t rgba)
         {2,6,7},{2,7,3},{3,7,4},{3,4,0}
     };
     int i;
+#if defined(PICO_REAL_HW)
+    {
+        int p[8][3];
+        int ox = (int)org[0], oy = (int)org[1], oz = (int)org[2];
+        int ss = (int)s;
+        if (ss < 1) ss = 1;
+        for (i = 0; i < 8; i++) {
+            p[i][0] = ox + corner[i][0] * ss;
+            p[i][1] = oy + corner[i][1] * ss;
+            p[i][2] = oz + corner[i][2] * ss;
+        }
+        for (i = 0; i < 12 && s_budget > 0; i++) {
+            picogl_world_tri(p[face[i][0]][0], p[face[i][0]][1], p[face[i][0]][2],
+                             p[face[i][1]][0], p[face[i][1]][1], p[face[i][1]][2],
+                             p[face[i][2]][0], p[face[i][2]][1], p[face[i][2]][2],
+                             rgba);
+            s_budget--;
+        }
+    }
+#else
+    {
     float p[8][3];
     for (i = 0; i < 8; i++) {
         p[i][0] = org[0] + corner[i][0] * s;
@@ -1130,6 +1305,8 @@ static void draw_box(const float *org, float s, uint32_t rgba)
         picogl_tris(xyz, NULL, 1, rgba, -1);
         s_budget--;
     }
+    }
+#endif
 }
 
 static void plot(int x, int y, uint16_t c)
@@ -1191,6 +1368,15 @@ void start_sim_render(void)
         picogl_set_camera(eye, ang, VW, VH);
     }
     angles(fwd, NULL, NULL);
+#if defined(PICO_REAL_HW)
+    plane_cache();
+    s_rex = (int)eye[0];
+    s_rey = (int)eye[1];
+    s_rez = (int)eye[2];
+    s_rfx = (int)(fwd[0] * 16384.0f);
+    s_rfy = (int)(fwd[1] * 16384.0f);
+    s_rfz = (int)(fwd[2] * 16384.0f);
+#endif
     s_budget = TRI_ACTOR;
     if (s_weapon >= 0 && s_weapon < 8) {
         float vorg[3];

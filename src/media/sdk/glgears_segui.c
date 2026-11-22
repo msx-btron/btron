@@ -251,20 +251,50 @@ static void gear_project(int x, int y, int z, int spin, int yaw, int pitch,
     if (*iz < 1) *iz = 1;
 }
 
-static void gear_quad(int x0, int y0, int z0, int x1, int y1, int z1,
+/* Outward normal after the same RotX*RotY*RotZ the vertices use.
+ * A face pointing away from the camera is the one GL_CULL_FACE drops.
+ * nz > 0 is the front disk; walls and the back use the side color. */
+static int gear_face(int x0, int y0, int z0, int x1, int y1, int z1,
+                     int x2, int y2, int z2, int spin, int yaw, int pitch,
+                     uint16_t front, uint16_t side, uint16_t *rgb)
+{
+    int ux = x1 - x0, uy = y1 - y0, uz = z1 - z0;
+    int vx = x2 - x0, vy = y2 - y0, vz = z2 - z0;
+    int64_t nx = (int64_t)uy * vz - (int64_t)uz * vy;
+    int64_t ny = (int64_t)uz * vx - (int64_t)ux * vz;
+    int64_t nz = (int64_t)ux * vy - (int64_t)uy * vx;
+    int cs = icos_deg(spin), ss = isin_deg(spin);
+    int cy = icos_deg(yaw), syaw = isin_deg(yaw);
+    int cx = icos_deg(pitch), sp = isin_deg(pitch);
+    int64_t xr = (nx * cs - ny * ss) >> 14;
+    int64_t yr = (nx * ss + ny * cs) >> 14;
+    int64_t zr = nz;
+    int64_t zr2 = (zr * cy - xr * syaw) >> 14;
+    int64_t z3 = (yr * sp + zr2 * cx) >> 14;
+    if (z3 <= 0) return 0;
+    *rgb = (nz > 0) ? front : side;
+    return 1;
+}
+
+static void gear_emit(int x0, int y0, int z0, int x1, int y1, int z1,
                       int x2, int y2, int z2, int x3, int y3, int z3,
-                      int spin, int yaw, int pitch, int tx, int ty,
-                      int vw, int vh, uint16_t rgb)
+                      int n, int spin, int yaw, int pitch, int tx, int ty,
+                      int vw, int vh, uint16_t front, uint16_t side)
 {
     int s0x, s0y, i0, s1x, s1y, i1, s2x, s2y, i2, s3x, s3y, i3, iz;
+    uint16_t rgb;
+    if (!gear_face(x0, y0, z0, x1, y1, z1, x2, y2, z2,
+                   spin, yaw, pitch, front, side, &rgb))
+        return;
     gear_project(x0, y0, z0, spin, yaw, pitch, tx, ty, vw, vh, &s0x, &s0y, &i0);
     gear_project(x1, y1, z1, spin, yaw, pitch, tx, ty, vw, vh, &s1x, &s1y, &i1);
     gear_project(x2, y2, z2, spin, yaw, pitch, tx, ty, vw, vh, &s2x, &s2y, &i2);
-    gear_project(x3, y3, z3, spin, yaw, pitch, tx, ty, vw, vh, &s3x, &s3y, &i3);
     iz = i0;
     if (i1 > iz) iz = i1;
     if (i2 > iz) iz = i2;
     picogl_screen_tri(s0x, s0y, s1x, s1y, s2x, s2y, iz, rgb);
+    if (n < 4) return;
+    gear_project(x3, y3, z3, spin, yaw, pitch, tx, ty, vw, vh, &s3x, &s3y, &i3);
     iz = i0;
     if (i2 > iz) iz = i2;
     if (i3 > iz) iz = i3;
@@ -277,27 +307,58 @@ static void gear_xy(int radius, int ic, int isin, int *ox, int *oy)
     *oy = (radius * isin) >> 14;
 }
 
+static void gear_xyk(const PRECOMP_GEAR *g, int kind, int i, int *ox, int *oy)
+{
+    int rad, ic, isn;
+    if (kind == 0)      { rad = g->ir0; ic = g->ic0[i]; isn = g->is0[i]; }
+    else if (kind == 1) { rad = g->ir1; ic = g->ic0[i]; isn = g->is0[i]; }
+    else if (kind == 2) { rad = g->ir2; ic = g->ic1[i]; isn = g->is1[i]; }
+    else if (kind == 3) { rad = g->ir2; ic = g->ic2[i]; isn = g->is2[i]; }
+    else                { rad = g->ir1; ic = g->ic3[i]; isn = g->is3[i]; }
+    gear_xy(rad, ic, isn, ox, oy);
+}
+
+/* The same faces as glgears.c gear(): front disk, tooth tops, back disk,
+ * four walls around each tooth, and the inner cylinder. Hidden faces are
+ * not posted. */
 static void draw_gear_int(const PRECOMP_GEAR *g, int spin, int yaw, int pitch,
                           int tx, int ty, int vw, int vh,
                           uint16_t front, uint16_t side)
 {
-    int i, teeth = g->teeth;
+    int i, n = g->teeth;
     int hw = g->ihw;
-    for (i = 0; i < teeth; i++) {
-        int ax, ay, bx, by, cx, cy, dx, dy;
-        int ex, ey, fx, fy;
-        gear_xy(g->ir1, g->ic0[i], g->is0[i], &ax, &ay);
-        gear_xy(g->ir2, g->ic1[i], g->is1[i], &bx, &by);
-        gear_xy(g->ir2, g->ic2[i], g->is2[i], &cx, &cy);
-        gear_xy(g->ir1, g->ic3[i], g->is3[i], &dx, &dy);
-        gear_xy(g->ir0, g->ic0[i], g->is0[i], &ex, &ey);
-        gear_xy(g->ir0, g->ic3[i], g->is3[i], &fx, &fy);
-        gear_quad(ex, ey, hw, ax, ay, hw, dx, dy, hw, fx, fy, hw,
-                  spin, yaw, pitch, tx, ty, vw, vh, front);
-        gear_quad(ax, ay, hw, bx, by, hw, cx, cy, hw, dx, dy, hw,
-                  spin, yaw, pitch, tx, ty, vw, vh, front);
-        gear_quad(bx, by, hw, cx, cy, hw, cx, cy, -hw, bx, by, -hw,
-                  spin, yaw, pitch, tx, ty, vw, vh, side);
+    for (i = 0; i < n; i++) {
+        int ax, ay, bx, by, cx, cy, dx, dy, ex, ey, fx, fy, gx, gy;
+        int i1 = i + 1;
+        gear_xyk(g, 1, i, &ax, &ay);
+        gear_xyk(g, 2, i, &bx, &by);
+        gear_xyk(g, 3, i, &cx, &cy);
+        gear_xyk(g, 4, i, &dx, &dy);
+        gear_xyk(g, 0, i, &ex, &ey);
+        gear_xyk(g, 0, i1, &fx, &fy);
+        gear_xyk(g, 1, i1, &gx, &gy);
+        gear_emit(ex, ey, hw, ax, ay, hw, dx, dy, hw, 0, 0, 0, 3,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(ex, ey, hw, dx, dy, hw, gx, gy, hw, fx, fy, hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(ax, ay, hw, bx, by, hw, cx, cy, hw, dx, dy, hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(ax, ay, -hw, ex, ey, -hw, dx, dy, -hw, 0, 0, 0, 3,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(dx, dy, -hw, ex, ey, -hw, fx, fy, -hw, gx, gy, -hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(dx, dy, -hw, cx, cy, -hw, bx, by, -hw, ax, ay, -hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(ax, ay, hw, ax, ay, -hw, bx, by, -hw, bx, by, hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(bx, by, hw, bx, by, -hw, cx, cy, -hw, cx, cy, hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(cx, cy, hw, cx, cy, -hw, dx, dy, -hw, dx, dy, hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(dx, dy, hw, dx, dy, -hw, gx, gy, -hw, gx, gy, hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
+        gear_emit(ex, ey, -hw, ex, ey, hw, fx, fy, hw, fx, fy, -hw, 4,
+                  spin, yaw, pitch, tx, ty, vw, vh, front, side);
     }
 }
 #endif

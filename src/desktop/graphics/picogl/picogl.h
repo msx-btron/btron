@@ -64,6 +64,11 @@ void picogl_target_push(void);
 void picogl_target_pop(void);
 void picogl_screen_tri(int x0, int y0, int x1, int y1, int x2, int y2,
                        int32_t iz, uint16_t rgb);
+/* One world triangle through the camera from picogl_set_camera. The matrix
+ * is taken once per camera in Q12. Clip and the perspective divide are
+ * integer. rgba is the same R|G<<8|B<<16 packing as picogl_tris. */
+void picogl_world_tri(int x0, int y0, int z0, int x1, int y1, int z1,
+                      int x2, int y2, int z2, uint32_t rgba);
 /* Same triangle, drawn as dst * (1 + src). src is a small RGB565 lift.
  * The gradient stays visible. Overlapping quads stack. */
 void picogl_screen_lift(int x0, int y0, int x1, int y1, int x2, int y2,
