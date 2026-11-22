@@ -101,10 +101,10 @@ def generate_foma_screens_html():
         <section class="audit-card" id="foma-screens">
             <h3><span>HANDHELD — 640×480 の画面</span></h3>
             <p>
-                以下の画面は、実機描画エンジン（C99 Headless Framebuffer Compositor）によりピクセル単位で正確に生成された HANDHELD の画面群である。480×640 VGA 縦画面（Portrait）、5方向キーによるフォーカス遷移、3ソフトキー操作体系、および実身・仮身（Fusen）ハイパーメディアモデルを忠実に再現している。
+                以下の画面は、SDK のフレームバッファが描いた HANDHELD である。480×640 VGA 縦画面（Portrait）、5方向キーによるフォーカス遷移、3ソフトキー、および実身・仮身（Fusen）を、戦術通信機の両手シェルで再現している。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.6rem;">
-                The screenshots below are natively rendered from the C99 framebuffer compositor for the HANDHELD tier on a 480×640 VGA vertical viewport. They demonstrate keypad-driven focus navigation, context-sensitive soft keys, and the authentic Real Body / Virtual Body (実身・仮身) hypermedia environment.
+                The screens below are drawn by the SDK framebuffer for the HANDHELD shell: a 480×640 portrait, keypad focus, three soft keys, and Real Body / Virtual Body (実身・仮身) on the two-hand tactical set.
             </p>
 
             <style>

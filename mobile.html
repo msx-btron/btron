@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>µBTRON Tiers — Desktop, Handheld, Pocket, Band, Calc | B-System</title>
-    <meta name="description" content="One µBTRON fitted to the appliance: DESKTOP from 800×600, HANDHELD at 640×480, and sub-pico POCKET under 320×320, BAND under 128×160, CALC under 100×100.">
+    <title>µBTRON SDK — Tactical Communicators | B-System</title>
+    <meta name="description" content="The µBTRON SDK for tactical communicators. One kit draws five shells: DESKTOP for the command post, HANDHELD for the two-hand set, POCKET under 320×320, BAND under 128×160, and CALC under 100×100.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
@@ -283,7 +283,7 @@
         <li><a href="b-book/index.html">B-Book</a></li>
         <li><a href="conformance.html">B-Spec</a></li>
         <li><a href="virtio.html">VirtIO</a></li>
-        <li><a href="mobile.html" class="active">Tiers</a></li>
+        <li><a href="mobile.html" class="active">SDK</a></li>
         <li><a href="releases.html">Releases</a></li>
         <li><a href="https://github.com/bitedits/btron">GitHub</a></li>
       </ul>
@@ -294,18 +294,18 @@
         <div class="hero-content">
             <br>
             <div class="hero-banner-tag">
-                <span>▣</span> µBTRON · DESKTOP · HANDHELD · POCKET · BAND · CALC
+                <span>▣</span> µBTRON SDK · TACTICAL COMMUNICATORS
             </div>
-            <h1 class="jp-title">µBTRON、五つの器</h1>
-            <p class="hero-subtitle">机と車載計器、両手の通信機、掌のパネル、帯、鍵。要求した解像度が器を選ぶ。<br>
-            <span style="font-size:0.92em; opacity:0.9;">One system for the appliance in front of the operator. The requested resolution selects the tier.</span></p>
+            <h1 class="jp-title">戦術通信機 SDK</h1>
+            <p class="hero-subtitle">指令卓、両手の通信機、掌、帯、鍵。要求した解像度がシェルを選ぶ。<br>
+            <span style="font-size:0.92em; opacity:0.9;">One SDK for the tactical communicator in the operator’s hands. The requested resolution selects the shell.</span></p>
 
             <div class="hero-lead-box">
                 <p>
-                    µBTRON は家電と計器のための一つのシステムである。机、キオスク、車の計器クラスタは DESKTOP。800×600 のワークステーションから 1280×1024 まで、窓を重ねて描く。両手で持つ通信機は HANDHELD。640×480。320×320 の正方形より下は sub-pico として三つに割る。POCKET (&lt;320×320) は掌のパネル、BAND (&lt;128×160) は帯、CALC (&lt;100×100) は鍵と計器盤。同じ実身と文書が、その器の解像度で描かれる。
+                    µBTRON SDK は、戦術通信機の五つのシェルを一つのキットで描く。指令卓と車載席は DESKTOP。800×600 から 1280×1024 まで、窓を重ねて地図と記録を置く。両手で持つ通信機は HANDHELD。基準は 640×480、公開画面は 480×640 の縦位置である。掌は POCKET（&lt;320×320）、帯は BAND（&lt;128×160）、鍵は CALC（&lt;100×100）。同じ実身と文書を、そのシェルの解像度で描く。
                 </p>
                 <p>
-                    <span style="font-size:0.9em; opacity:0.85;">µBTRON is one system for appliances and instruments. The desk, the kiosk, and the vehicle cluster are DESKTOP, from the 800×600 workstation through 1280×1024, drawn as overlapping windows. The communicator held in two hands is HANDHELD, at 640×480. Below a 320×320 square the range is segmented as sub-pico: POCKET for a one-hand panel, BAND under 128×160, and CALC under 100×100. The same real objects and the same documents are drawn at the resolution of that tier.</span>
+                    <span style="font-size:0.9em; opacity:0.85;">The µBTRON SDK draws five shells for a tactical communicator from one kit. The command post and the vehicle mount are DESKTOP, from 800×600 through 1280×1024, with maps and logs in overlapping windows. The set held in two hands is HANDHELD: 640×480 is the reference, and the published frames are the 480×640 portrait. The one-hand set is POCKET, under 320×320. The strap is BAND, under 128×160. The key panel is CALC, under 100×100. The same real objects and the same documents are drawn at that shell’s resolution.</span>
                 </p>
             </div>
         </div>
@@ -313,7 +313,7 @@
 
     <main style="max-width: 1200px; margin: 0 auto; padding: 1rem 1.5rem 4rem 1.5rem;">
 
-        <nav class="desk-nav" aria-label="µBTRON tiers">
+        <nav class="desk-nav" aria-label="µBTRON SDK shells">
             <a href="#desk-desktop">DESKTOP</a>
             <a href="#desk-foma">HANDHELD</a>
             <a href="#segui-screens">POCKET</a>
@@ -325,21 +325,21 @@
         <section class="audit-card" id="resolutions">
             <h3><span>要求解像度 (Requested resolutions)</span></h3>
             <p>
-                器は要求値 <code class="mono">BTRON_RES</code> で決まり、画面の幅からは推測しない。<code class="mono">btron_desk_for_res()</code> が DESKTOP、HANDHELD、POCKET、BAND、CALC を返す。320×320 より下は、128×160 に収まるものを BAND、両辺が 100 より小さいものを CALC、残りを POCKET とする。FOMA の遺産にあって一覧に無かった 240×345、240×400、240×432、480×690、480×854、480×864 は HANDHELD である。240×320 は既にある 320×240 の縦位置で、POCKET のままである。名前の基は <code class="mono">doc/txt/PICO.txt</code>。定義は <code class="mono">include/btron/desktop_res.h</code>。
+                シェルは要求値 <code class="mono">BTRON_RES</code> で決まり、画面の幅からは推測しない。<code class="mono">btron_desk_for_res()</code> が DESKTOP、HANDHELD、POCKET、BAND、CALC を返す。320×320 より下は、128×160 に収まるものを BAND、両辺が 100 より小さいものを CALC、残りを POCKET とする。戦術通信機の旧パネルのうち一覧に無かった 240×345、240×400、240×432、480×690、480×854、480×864 は HANDHELD である。240×320 は既にある 320×240 の縦位置で、POCKET のままである。名前の基は <code class="mono">doc/txt/PICO.txt</code>。定義は <code class="mono">include/btron/desktop_res.h</code>。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                The tier is the requested <code class="mono">BTRON_RES</code>. <code class="mono">btron_desk_for_res()</code> returns DESKTOP, HANDHELD, POCKET, BAND, or CALC. Under the 320×320 square, a mode that fits in 128×160 is BAND, a mode with both sides under 100 is CALC, and the remainder is POCKET. The FOMA panels missing from that list — 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864 — are HANDHELD. 240×320 is the portrait of the existing 320×240 mode and stays POCKET. The names begin from <code class="mono">doc/txt/PICO.txt</code>. The enum is <code class="mono">include/btron/desktop_res.h</code>.
+                The shell is the requested <code class="mono">BTRON_RES</code>. <code class="mono">btron_desk_for_res()</code> returns DESKTOP, HANDHELD, POCKET, BAND, or CALC. Under the 320×320 square, a mode that fits in 128×160 is BAND, a mode with both sides under 100 is CALC, and the remainder is POCKET. The older tactical-set panels missing from that list — 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864 — are HANDHELD. 240×320 is the portrait of the existing 320×240 mode and stays POCKET. The names begin from <code class="mono">doc/txt/PICO.txt</code>. The enum is <code class="mono">include/btron/desktop_res.h</code>.
             </p>
             <table class="conformance-table">
                 <thead>
                     <tr><th>BTRON_RES</th><th>Pixels</th><th>Name</th><th>Engine</th></tr>
                 </thead>
                 <tbody>
-                    <tr class="row-group"><th colspan="4">DESKTOP — 800×600 and larger</th></tr>
+                    <tr class="row-group"><th colspan="4">DESKTOP — command post, 800×600 and larger</th></tr>
                     <tr><td class="mono">BTRON_RES_VESA_1280X1024</td><td>1280×1024</td><td>VESA Desktop</td><td class="res-desktop">DESKTOP</td></tr>
                     <tr><td class="mono">BTRON_RES_WORK_1024X768</td><td>1024×768</td><td>Workspace Desktop</td><td class="res-desktop">DESKTOP</td></tr>
                     <tr><td class="mono">BTRON_RES_WS_800X600</td><td>800×600</td><td>Workstation Desktop</td><td class="res-desktop">DESKTOP</td></tr>
-                    <tr class="row-group"><th colspan="4">HANDHELD — two-hand communicator</th></tr>
+                    <tr class="row-group"><th colspan="4">HANDHELD — two-hand tactical set</th></tr>
                     <tr><td class="mono">BTRON_RES_SVGA_640X480</td><td>640×480</td><td>SVGA Desktop</td><td class="res-handheld">HANDHELD</td></tr>
                     <tr><td class="mono">BTRON_RES_FWVGA_480X864</td><td>480×864</td><td>Full Wide VGA</td><td class="res-handheld">HANDHELD</td></tr>
                     <tr><td class="mono">BTRON_RES_FWVGA_480X854</td><td>480×854</td><td>Full Wide VGA</td><td class="res-handheld">HANDHELD</td></tr>
@@ -347,20 +347,20 @@
                     <tr><td class="mono">BTRON_RES_WQVGA_240X432</td><td>240×432</td><td>Wide QVGA</td><td class="res-handheld">HANDHELD</td></tr>
                     <tr><td class="mono">BTRON_RES_WQVGA_240X400</td><td>240×400</td><td>Wide QVGA</td><td class="res-handheld">HANDHELD</td></tr>
                     <tr><td class="mono">BTRON_RES_QVGAPLUS_240X345</td><td>240×345</td><td>QVGA+</td><td class="res-handheld">HANDHELD</td></tr>
-                    <tr class="row-group"><th colspan="4">POCKET — &lt;320×320</th></tr>
+                    <tr class="row-group"><th colspan="4">POCKET — one-hand set, &lt;320×320</th></tr>
                     <tr><td class="mono">BTRON_RES_VGA_320X240</td><td>320×240</td><td>VGA Desktop</td><td class="res-pocket">POCKET</td></tr>
                     <tr><td class="mono">BTRON_RES_HQVGA_240X160</td><td>240×160</td><td>HQVGA</td><td class="res-pocket">POCKET</td></tr>
                     <tr><td class="mono">BTRON_RES_S40_208X208</td><td>208×208</td><td>Series 40</td><td class="res-pocket">POCKET</td></tr>
                     <tr><td class="mono">BTRON_RES_S60_176X208</td><td>176×208</td><td>Series 60</td><td class="res-pocket">POCKET</td></tr>
                     <tr><td class="mono">BTRON_RES_QCIF_176X144</td><td>176×144</td><td>QCIF</td><td class="res-pocket">POCKET</td></tr>
                     <tr><td class="mono">BTRON_RES_GB_160X144</td><td>160×144</td><td>Game Boy</td><td class="res-pocket">POCKET</td></tr>
-                    <tr class="row-group" id="tier-band"><th colspan="4">BAND — &lt;128×160</th></tr>
+                    <tr class="row-group" id="tier-band"><th colspan="4">BAND — strap, &lt;128×160</th></tr>
                     <tr><td class="mono">BTRON_RES_S30_128X160</td><td>128×160</td><td>Series 30, Nokia 2630, 3500, 6650</td><td class="res-band">BAND</td></tr>
                     <tr><td class="mono">BTRON_RES_QQVGA_160X120</td><td>160×120</td><td>QQVGA</td><td class="res-band">BAND</td></tr>
                     <tr><td class="mono">BTRON_RES_SQVGA_128X128</td><td>128×128</td><td>SQVGA</td><td class="res-band">BAND</td></tr>
                     <tr><td class="mono">BTRON_RES_SQCIF_128X96</td><td>128×96</td><td>SQCIF</td><td class="res-band">BAND</td></tr>
                     <tr><td class="mono">BTRON_RES_ARDUBOY_128X64</td><td>128×64</td><td>Arduboy</td><td class="res-band">BAND</td></tr>
-                    <tr class="row-group" id="tier-calc"><th colspan="4">CALC — &lt;100×100</th></tr>
+                    <tr class="row-group" id="tier-calc"><th colspan="4">CALC — key panel, &lt;100×100</th></tr>
                     <tr><td class="mono">BTRON_RES_N7110_96X60</td><td>96×60</td><td>Nokia 7110</td><td class="res-calc">CALC</td></tr>
                     <tr><td class="mono">BTRON_RES_N1100_96X64</td><td>96×64</td><td>TI-81, Nokia 1100, 3410, 3510i, 6310i</td><td class="res-calc">CALC</td></tr>
                     <tr><td class="mono">BTRON_RES_N1280_96X68</td><td>96×68</td><td>Nokia 1280, 1600, 2600</td><td class="res-calc">CALC</td></tr>
@@ -374,10 +374,10 @@
         <section class="audit-card" id="controls">
             <h3><span>共通コントロール (Common controls)</span></h3>
             <p>
-                同じ文書を、器ごとに載っているコントロールで操作する。下の表は、その器の画面が今描くものだけを示す。BAND と CALC は POCKET と同じ画面である。
+                同じ文書を、シェルごとに載っているコントロールで操作する。下の表は、SDK がそのシェルに今描くものだけを示す。BAND と CALC は POCKET と同じ画面である。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                The same documents are operated with the controls that ship on that tier. The tables list only what that tier's screen draws today. BAND and CALC use the POCKET screen.
+                The same documents are operated with the controls that shell draws. The tables list only what the SDK paints on that shell today. BAND and CALC use the POCKET screen.
             </p>
             <table class="conformance-table ctl-table">
                 <thead>
@@ -446,25 +446,25 @@
                 </tbody>
             </table>
             <p style="font-size:0.9em; opacity:0.85;">
-                設定と計器は机と Pi 400 にある。インストーラの進捗とコンボボックスはワークステーション画像にも入る。掌のスクロールは行送りで、つまみは無い。
+                設定と計器は指令卓と Pi 400 にある。インストーラの進捗とコンボボックスはワークステーション画像にも入る。掌のスクロールは行送りで、つまみは無い。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                Settings and the instrument set are on the desk and on Pi 400. The installer's progress bar and combobox are also on the workstation image. Pocket scrolling moves by rows and has no thumb.
+                Settings and the instrument set are on the command post and on Pi 400. The installer's progress bar and combobox are also on the workstation image. Pocket scrolling moves by rows and has no thumb.
             </p>
 
             <h3><span>計器コントロール (Instrument controls)</span></h3>
             <p>
-                計器一式は DESKTOP の机と Pi 400 に載る。車載クラスタも同じ器である。ワークステーション画像、HANDHELD、POCKET には入らない。
+                計器一式は DESKTOP の指令卓と Pi 400 に載る。車載席も同じシェルである。ワークステーション画像、HANDHELD、POCKET には入らない。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                The instrument set ships on the DESKTOP desk and on Pi 400. The vehicle cluster is the same tier. It is not in the workstation image, on HANDHELD, or on POCKET.
+                The instrument set ships on the DESKTOP command post and on Pi 400. The vehicle mount is the same shell. It is not in the workstation image, on HANDHELD, or on POCKET.
             </p>
             <table class="conformance-table ctl-table">
                 <thead>
                     <tr>
                         <th>コントロール (Control)</th>
                         <th>役割 (Role)</th>
-                        <th>器 (Tier)</th>
+                        <th>シェル (Shell)</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -533,22 +533,22 @@
         </section>
 
         <section class="audit-card" id="desk-desktop">
-            <h3><span>DESKTOP — 机、キオスク、車載計器</span></h3>
+            <h3><span>DESKTOP — 指令卓と車載席</span></h3>
             <p>
-                800×600 のワークステーション、1024×768、1280×1024 は同じ器である。窓を重ねるコンポジタ <code class="mono">BTRON_UI_DESKTOP</code> が描く。このページに新しい机上の写真は置かない。
+                800×600、1024×768、1280×1024 は同じシェルである。窓を重ねるコンポジタ <code class="mono">BTRON_UI_DESKTOP</code> が地図と記録を描く。このページに新しい指令卓の写真は置かない。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                The 800×600 workstation, 1024×768, and 1280×1024 are one tier. The window compositor <code class="mono">BTRON_UI_DESKTOP</code> draws them. This page does not add a desk screenshot set.
+                800×600, 1024×768, and 1280×1024 are one shell. The window compositor <code class="mono">BTRON_UI_DESKTOP</code> draws the maps and the logs. This page does not add a command-post screenshot set.
             </p>
         </section>
 
         <section class="audit-card" id="desk-foma">
-            <h3><span>HANDHELD — 両手の通信機、640×480</span></h3>
+            <h3><span>HANDHELD — 両手の戦術通信機</span></h3>
             <p>
-                要求値が 640×480、または FOMA の 240×345、240×400、240×432、480×690、480×854、480×864 のとき器は HANDHELD である。µBTRON の公開画面は 480×640 の縦位置である。2004–2009 年の FOMA 端末の記録は、掌・帯・鍵の画面の後にある。
+                要求値が 640×480、または 240×345、240×400、240×432、480×690、480×854、480×864 のときシェルは HANDHELD である。SDK の公開画面は 480×640 の縦位置である。2004–2009 年の端末記録は、掌・帯・鍵の画面の後にある。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                640×480, and the FOMA panels 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864, select HANDHELD. The published µBTRON frames are the 480×640 portrait. The 2004–2009 FOMA record follows the pocket, band, and key frames.
+                640×480, and the panels 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864, select HANDHELD. The SDK’s published frames are the 480×640 portrait. The 2004–2009 handset record follows the pocket, strap, and key frames.
             </p>
         </section>
 
@@ -556,10 +556,10 @@
         <section class="audit-card" id="foma-screens">
             <h3><span>HANDHELD — 640×480 の画面</span></h3>
             <p>
-                以下の画面は、実機描画エンジン（C99 Headless Framebuffer Compositor）によりピクセル単位で正確に生成された HANDHELD の画面群である。480×640 VGA 縦画面（Portrait）、5方向キーによるフォーカス遷移、3ソフトキー操作体系、および実身・仮身（Fusen）ハイパーメディアモデルを忠実に再現している。
+                以下の画面は、SDK のフレームバッファが描いた HANDHELD である。480×640 VGA 縦画面（Portrait）、5方向キーによるフォーカス遷移、3ソフトキー、および実身・仮身（Fusen）を、戦術通信機の両手シェルで再現している。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.6rem;">
-                The screenshots below are natively rendered from the C99 framebuffer compositor for the HANDHELD tier on a 480×640 VGA vertical viewport. They demonstrate keypad-driven focus navigation, context-sensitive soft keys, and the authentic Real Body / Virtual Body (実身・仮身) hypermedia environment.
+                The screens below are drawn by the SDK framebuffer for the HANDHELD shell: a 480×640 portrait, keypad focus, three soft keys, and Real Body / Virtual Body (実身・仮身) on the two-hand tactical set.
             </p>
 
             <style>
@@ -940,12 +940,12 @@
 
         <!-- µBTRON-SEGUI Toolkit UI Showcase -->
         <section class="audit-card" id="segui-screens">
-            <h3><span>POCKET · BAND · CALC — sub-pico</span></h3>
+            <h3><span>POCKET · BAND · CALC</span></h3>
             <p>
-                320×320 の正方形より下は一つの帯レイアウトで描く。POCKET は掌、BAND は 128×160 より小さい帯、CALC は 100×100 より小さい鍵。下の画面は掌の基準パネル、PicoCalc の 320×320 である。320×320 自体は要求一覧に無い。帯の値は <code class="mono">segui_profile_picocalc</code>。伸長できる帯は BODY だけ。
+                320×320 未満は一つの帯レイアウトで描く。POCKET は掌の通信機、BAND は 128×160 に収まる帯、CALC は 100×100 未満の鍵である。下の画面は掌の基準パネル、PicoCalc の 320×320 である。320×320 自体は要求一覧に無い。帯の値は <code class="mono">segui_profile_picocalc</code>。伸長できる帯は BODY だけ。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.6rem;">
-                Below a 320×320 square, one band shell draws three tiers. POCKET is the one-hand panel, BAND fits in 128×160, and CALC has both sides under 100. The frames are the pocket reference, the PicoCalc 320×320 panel. 320×320 itself is not a requested mode. Band sizes are <code class="mono">segui_profile_picocalc</code>. Only BODY may stretch.
+                Below 320×320, one band layout draws three shells. POCKET is the one-hand set, BAND is the strap that fits in 128×160, and CALC is the key panel under 100×100. The frames are the pocket reference, the PicoCalc 320×320 panel. 320×320 itself is not a requested mode. Band sizes are <code class="mono">segui_profile_picocalc</code>. Only BODY may stretch.
             </p>
 
             <style>
@@ -1271,12 +1271,12 @@
         </section>
 
         <section class="audit-card" id="matrix">
-            <h3><span>FOMA の遺産 (FOMA legacy, 2004–2009)</span></h3>
+            <h3><span>HANDHELD の端末記録 (2004–2009)</span></h3>
             <p>
-                FOMA は当時の国内向け第3世代通信機である。プロセッサは Texas Instruments OMAP（ARM9 / ARM11）とルネサス SH-Mobile（SuperH、一部は ARM と共存）に分かれる。upstream QEMU で実用になるのは ARM コアを持つ機種で、純 SuperH は対象外である。適合度は公式マシンモデル（<code class="mono">-M virt</code> とレガシー ARM ボード）への命令セットの一致と、ユーザーランドを起動できる見込みで四段階に分ける。メイン画面のドット数は各機種の公表仕様で、一つの行に二つあるときはそのグループの中で画面が分かれている。
+                この表は、HANDHELD シェルが今も対象にする 2004–2009 年の通信機パネルである。プロセッサは Texas Instruments OMAP（ARM9 / ARM11）とルネサス SH-Mobile（SuperH、一部は ARM と共存）に分かれる。upstream QEMU で実用になるのは ARM コアを持つ機種で、純 SuperH は対象外である。適合度は公式マシンモデル（<code class="mono">-M virt</code> とレガシー ARM ボード）への命令セットの一致と、ユーザーランドを起動できる見込みで四段階に分ける。メイン画面のドット数は各機種の公表仕様で、一つの行に二つあるときはそのグループの中で画面が分かれている。
             </p>
             <p style="font-size:0.9em; opacity:0.85;">
-                FOMA was the domestic third-generation communicator of that period. The processors split into TI OMAP (ARM9 / ARM11) and Renesas SH-Mobile (SuperH, sometimes beside an ARM core). Upstream QEMU is practical only where an ARM core is present. A pure SuperH handset stays out of reach. The four grades follow the instruction-set match to an upstream machine model, <code class="mono">-M virt</code> or a legacy ARM board, and whether a userland boot is realistic. Main-panel sizes are the published figures. Two sizes in one row mean the models in that group differ.
+                This table is the 2004–2009 communicator record the HANDHELD shell still targets. The processors split into TI OMAP (ARM9 / ARM11) and Renesas SH-Mobile (SuperH, sometimes beside an ARM core). Upstream QEMU is practical only where an ARM core is present. A pure SuperH handset stays out of reach. The four grades follow the instruction-set match to an upstream machine model, <code class="mono">-M virt</code> or a legacy ARM board, and whether a userland boot is realistic. Main-panel sizes are the published figures. Two sizes in one row mean the models in that group differ.
             </p>
 
             <table class="conformance-table device-table">
@@ -1437,12 +1437,30 @@
 
         <!-- Relation to B-System -->
         <section class="audit-card">
-            <h3><span>B-System マルチアーキテクチャ検証との関係</span></h3>
+            <h3><span>通信機の履歴 (History of the communicator)</span></h3>
             <p>
-                B-System は机上、ワークステーション、HANDHELD の通信機、そして sub-pico の掌・帯・鍵を一つのコードで描く。要求解像度が DESKTOP / HANDHELD / POCKET / BAND / CALC を選ぶ。上の適合性表は HANDHELD の資料である。SuperH 純正構成は現状スコープ外とする。
+                通信機は指令卓の窓から始まる。800×600 から 1280×1024 まで、地図と記録を重ねて置く。これが DESKTOP であり、車載席も同じシェルである。
+            </p>
+            <p>
+                次いで通信機は両手に移った。2004–2009 年の国内端末は、その世代の記録である。プロセッサは TI OMAP の ARM と、ルネサス SH-Mobile の SuperH に分かれ、後者の一部は ARM を併せ持った。画面は 240×320 の掌サイズから、240×345、240×400、240×432 を経て、480×690、480×854、480×864 の縦長なパネルへ広がった。SDK が公開する両手の画面は 480×640 の縦位置である。これらの要求値は HANDHELD である。240×320 は 320×240 の縦位置として POCKET に残る。
+            </p>
+            <p>
+                より小さい面は掌、帯、鍵に残った。320×320 未満が POCKET、128×160 に収まるものが BAND、両辺 100 未満が CALC である。三つのシェルは今も一つの帯レイアウトで描く。
+            </p>
+            <p>
+                upstream QEMU が実用になるのは ARM コアを持つ機種である。純 SuperH の LCDC、キーマトリクス、モデムは未実装のままなので、その構成はキットの外に置く。µBTRON SDK は、この履歴を五つのシェルとして一つのコードに残す。要求した解像度が、操作者の手元のシェルを選ぶ。実身と文書は、その解像度で描かれる。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.8rem;">
-                B-System draws the desk, the workstation, the HANDHELD communicator, and the sub-pico pocket, band, and key panel from one tree. The requested resolution selects DESKTOP, HANDHELD, POCKET, BAND, or CALC. The fitness table above is the HANDHELD note. Pure SuperH configurations remain outside current scope.
+                The communicator begins as a window on the command post. From 800×600 through 1280×1024, maps and logs sit in overlapping windows. That shell is DESKTOP, and the vehicle mount is the same shell.
+            </p>
+            <p style="font-size:0.9em; opacity:0.85;">
+                The set then moved into two hands. The 2004–2009 domestic handsets are the record of that generation. The processors split into TI OMAP on ARM and Renesas SH-Mobile on SuperH, some of the latter beside an ARM core. Panels grew from the 240×320 pocket face through 240×345, 240×400, and 240×432, and on to the tall panels at 480×690, 480×854, and 480×864. The two-hand frame the SDK publishes is the 480×640 portrait. Those requested sizes are HANDHELD. 240×320 remains POCKET, as the portrait of 320×240.
+            </p>
+            <p style="font-size:0.9em; opacity:0.85;">
+                The smaller faces stayed in the hand, on the strap, and on the key panel. Under 320×320 is POCKET, a face that fits in 128×160 is BAND, and a face with both sides under 100 is CALC. Those three shells are still drawn by one band layout.
+            </p>
+            <p style="font-size:0.9em; opacity:0.85;">
+                Upstream QEMU is practical where an ARM core is present. The LCDC, key matrix, and modem of a pure SuperH set remain unimplemented, so that configuration stays outside the kit. The µBTRON SDK keeps this history as five shells in one tree. The requested resolution selects the shell in the operator’s hands. The real objects and the documents are drawn at that resolution.
             </p>
         </section>
 

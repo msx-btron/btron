@@ -171,12 +171,12 @@ def generate_segui_screens_html():
     return f"""
         {MARKER}
         <section class="audit-card" id="segui-screens">
-            <h3><span>POCKET · BAND · CALC — sub-pico</span></h3>
+            <h3><span>POCKET · BAND · CALC</span></h3>
             <p>
-                320×320 の正方形より下は一つの帯レイアウトで描く。POCKET は掌、BAND は 128×160 より小さい帯、CALC は 100×100 より小さい鍵。下の画面は掌の基準パネル、PicoCalc の 320×320 である。320×320 自体は要求一覧に無い。帯の値は <code class="mono">segui_profile_picocalc</code>。伸長できる帯は BODY だけ。
+                320×320 未満は一つの帯レイアウトで描く。POCKET は掌の通信機、BAND は 128×160 に収まる帯、CALC は 100×100 未満の鍵である。下の画面は掌の基準パネル、PicoCalc の 320×320 である。320×320 自体は要求一覧に無い。帯の値は <code class="mono">segui_profile_picocalc</code>。伸長できる帯は BODY だけ。
             </p>
             <p style="font-size:0.9em; opacity:0.85; margin-top:0.6rem;">
-                Below a 320×320 square, one band shell draws three tiers. POCKET is the one-hand panel, BAND fits in 128×160, and CALC has both sides under 100. The frames are the pocket reference, the PicoCalc 320×320 panel. 320×320 itself is not a requested mode. Band sizes are <code class="mono">segui_profile_picocalc</code>. Only BODY may stretch.
+                Below 320×320, one band layout draws three shells. POCKET is the one-hand set, BAND is the strap that fits in 128×160, and CALC is the key panel under 100×100. The frames are the pocket reference, the PicoCalc 320×320 panel. 320×320 itself is not a requested mode. Band sizes are <code class="mono">segui_profile_picocalc</code>. Only BODY may stretch.
             </p>
 
             <style>
