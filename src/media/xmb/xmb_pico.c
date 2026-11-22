@@ -1,11 +1,15 @@
 /*
  * xmb_pico.c — XMB surface for the PicoCalc image.
  *
- * Gradient, a perspective wave of flat triangles, 32x32 P8 cells as
- * SRC_OVER, and A1 labels. The selected category is locked to the center.
- * On the device the wave is screen-space triangles on core 1. Icons,
- * labels, and the gradient stay on core 0. This file does not link
- * xmb.c, xmb_wave.c, or the atlas.
+ * The menu is the PS3 cross from xmb.c (xb_layout, xb_draw_band,
+ * xb_item_y): one horizontal category row, the selected category pinned
+ * at margin_left + spacing_h, and that category's items in a vertical
+ * column on the same x. The sheet is the ribbon from xmb_wave.c
+ * (wv_sheet + wv_project): full-width, screen y = (1 + vy) * h / 2,
+ * with vy the three cosines. The lattice is 8×6, half of 16×12 on each
+ * axis. This file does not link xmb.c, xmb_wave.c, or the atlas.
+ * On the device the wave is screen-space lift triangles on core 1.
+ * Icons, labels, and the gradient stay on core 0.
  */
 #include "xmb_pico.h"
 #include "xmb_pico_icons.h"
@@ -75,7 +79,8 @@ static const xmb_cat_t s_cats[] = {
 
 static int s_cat;
 static int s_item;
-static int s_glow;
+/* Effect time in 1/256. Eleven per tick is the original dt/1600 at ~14 fps. */
+static int s_phase;
 #if defined(PICO_REAL_HW)
 static int s_core;
 #endif
@@ -119,17 +124,6 @@ static void unpack(uint16_t be, int *r, int *g, int *b)
     *r = (v >> 11) & 31;
     *g = (v >> 5) & 63;
     *b = v & 31;
-}
-
-/* DST_COLOR_ONE: move the destination toward white by num/den. */
-static uint16_t brighten(uint16_t be, int num, int den)
-{
-    int r, g, b;
-    unpack(be, &r, &g, &b);
-    r += (31 - r) * num / den;
-    g += (63 - g) * num / den;
-    b += (31 - b) * num / den;
-    return pack_be(r, g, b);
 }
 
 /* SRC_OVER. a == 0 keeps the destination. Ink is the cell's white. */
@@ -185,88 +179,37 @@ static int slen(const char *s)
     return n;
 }
 
+/* xb_gradient() deep blue, corners BL BR TL TR, drawn as TL TR BR BL.
+ * Channels are RGB565. Red quantizes to 0. */
 static void fill_gradient(int left, int top, int right, int bottom)
 {
-    int y, h, x0, x1;
+    int y, h, x0, x1, span;
     if (right > 320) right = 320;
     if (left < 0) left = 0;
     h = bottom - top;
     if (h < 1 || left >= right) return;
     x0 = left;
     x1 = right;
+    span = x1 - x0;
     for (y = top; y < bottom; y++) {
         uint16_t *row = dp_pico_band_row(y);
-        int t, r, g, b, x;
-        uint16_t px;
+        int t, lg, lb, rg, rb, ag, ab, sg, sb, x;
         if (!row) continue;
         t = (y - top) * 256 / h;
         if (t < 0) t = 0;
         if (t > 256) t = 256;
-        r = 4 + ((1 - 4) * t) / 256;
-        g = 12 + ((3 - 12) * t) / 256;
-        b = 18 + ((6 - 18) * t) / 256;
-        if (r < 0) r = 0;
-        if (g < 0) g = 0;
-        if (b < 0) b = 0;
-        px = pack_be(r, g, b);
-        for (x = x0; x < x1; x++) row[x] = px;
-    }
-}
-
-#if !defined(PICO_REAL_HW)
-static void hline_dim(int y, int x0, int x1, int num)
-{
-    uint16_t *row;
-    int x;
-    if (y < 0 || y >= 320 || x0 >= x1) return;
-    row = dp_pico_band_row(y);
-    if (!row) return;
-    if (x0 < 0) x0 = 0;
-    if (x1 > 320) x1 = 320;
-    for (x = x0; x < x1; x++) row[x] = brighten(row[x], num, 8);
-}
-
-/* Integer floor. Lines bunch at the horizon and spread toward the bottom.
- * The icons stay put. s_glow only changes how hard the lines catch light. */
-static void floor_surface(int left, int right, int bottom, int cx, int horizon)
-{
-    int depth = bottom - horizon;
-    int shine = 1 + ((s_glow >> 4) & 1);
-    int i, y;
-    if (depth < 8 || left >= right) return;
-    for (i = 1; i <= 6; i++) {
-        int half;
-        y = horizon + (i * i * depth) / 40;
-        if (y >= bottom || y < 0) continue;
-        half = (y - horizon) * (right - left) / (depth * 2);
-        if (half < 6) half = 6;
-        hline_dim(y, cx - half, cx + half, shine);
-    }
-    for (i = -4; i <= 4; i++) {
-        int x1;
-        if (i == 0) continue;
-        x1 = cx + i * ((right - left) / 10);
-        for (y = horizon; y < bottom; y += 3) {
-            uint16_t *row = dp_pico_band_row(y);
-            int x;
-            if (!row) continue;
-            x = cx + (x1 - cx) * (y - horizon) / depth;
-            if (x >= left && x < right && x >= 0 && x < 320)
-                row[x] = brighten(row[x], shine, 7);
-        }
-    }
-}
-#endif /* !PICO_REAL_HW */
-
-static void pad(int x, int y, int size)
-{
-    int py, px;
-    for (py = y - 2; py < y + size + 2; py++) {
-        uint16_t *row = dp_pico_band_row(py);
-        if (!row) continue;
-        for (px = x - 2; px < x + size + 2; px++) {
-            if (px < 0 || px >= 320) continue;
-            row[px] = brighten(row[px], 1, 3);
+        lg = 23 + ((0 - 23) * t) / 256;
+        lb = 24 + ((8 - 24) * t) / 256;
+        rg = 40 + ((18 - 40) * t) / 256;
+        rb = 31 + ((22 - 31) * t) / 256;
+        ag = lg << 8;
+        ab = lb << 8;
+        sg = ((rg - lg) << 8) / span;
+        sb = ((rb - lb) << 8) / span;
+        for (x = x0; x < x1; x++) {
+            row[x] = pack_be(0, ag >> 8, ab >> 8);
+            ag += sg;
+            ab += sb;
         }
     }
 }
@@ -292,21 +235,20 @@ static void blit_cell(int cell, int x, int y, int size, int selected)
             a = px[a_row + sx];
             dx = x + col;
             if (a == 0 || dx < 0 || dx >= 320) continue;
-            if (!selected) a = (a * 140) >> 8;
+            if (!selected) a = (a * 192) >> 8;
             if (a == 0) continue;
             dst[dx] = src_over(dst[dx], a);
         }
     }
 }
 
-static void label(int cx, int y, const char *s)
+/* Left edge at x, same 8px font. full is the selected row; the rest are dim. */
+static void label_at(int x, int y, const char *s, int full)
 {
     int n = slen(s);
-    int x = cx - n * 4;
     int i;
-    uint16_t pen = pack_be(INK_R, INK_G, INK_B);
+    uint16_t pen = full ? pack_be(INK_R, INK_G, INK_B) : pack_be(18, 40, 18);
     if (n <= 0) return;
-    if (x < 0) x = 0;
     for (i = 0; i < n; i++) {
         unsigned char ch = (unsigned char)s[i];
         int r;
@@ -325,32 +267,39 @@ static void label(int cx, int y, const char *s)
     }
 }
 
-static int wrap_d(int i, int sel, int n)
+/* xb_layout(): PS3 metrics, scale = body width / 1920. */
+static int xmb_sc(int k, int w)
 {
-    int d = i - sel;
-    if (n <= 1) return 0;
-    if (d > n / 2) d -= n;
-    if (d < -(n / 2)) d += n;
-    return d;
+    return (k * w) / 1920;
 }
 
-static int icon_size(int ad)
+/* Cross at the selected category. cx, cy are its icon center.
+ * icon, sph, spv are xb_layout's icon size and the two pitches. */
+static void xmb_metrics(int left, int top, int width,
+                        int *icon, int *sph, int *spv, int *cx, int *cy)
 {
-    int size = 32 - ad * 8;
-    if (size < 16) size = 16;
-    return size;
+    int ic, sh, sv, mt, ml;
+    if (width < 1) width = 1;
+    ic = xmb_sc(128, width);
+    sh = xmb_sc(192, width);
+    sv = xmb_sc(64, width);
+    mt = xmb_sc(272, width);
+    ml = xmb_sc(336, width);
+    if (ic < 1) ic = 1;
+    if (sh < 1) sh = 1;
+    *icon = ic;
+    *sph = sh;
+    *spv = sv;
+    *cx = left + ml + sh;
+    *cy = top + mt + ic / 2;
 }
 
-/* Selected category and the selected item share one x: the body center. */
-static void selected_cell(int left, int top, int right,
-                          int *cat_x, int *cat_y, int *item_x, int *item_y)
+/* xb_item_y(): above_item -1, active_factor 3, under_item 5. Depth stays 1. */
+static int item_yoff(int i, int current, int spv)
 {
-    int cx = left + (right - left) / 2;
-    int x = cx - 16;
-    if (cat_x) *cat_x = x;
-    if (cat_y) *cat_y = top + 36;
-    if (item_x) *item_x = x;
-    if (item_y) *item_y = top + 108;
+    if (i < current) return spv * (i - current - 1);
+    if (i == current) return spv * 3;
+    return spv * (i - current + 5);
 }
 
 void xmb_pico_tick(void)
@@ -362,8 +311,8 @@ void xmb_pico_tick(void)
     }
     picogl_reset_stats();
 #endif
-    s_glow++;
-    if (s_glow > 100000) s_glow = 0;
+    s_phase += 11;
+    if (s_phase > 180000) s_phase = 0;
 }
 
 void xmb_pico_move(int dcat, int ditem)
@@ -395,69 +344,224 @@ void xmb_pico_anchors(int left, int top, int right, int bottom,
                       int *cat_x, int *item_x, int *cat, int *item)
 {
     int nc = (int)(sizeof s_cats / sizeof s_cats[0]);
-    int cx, cy, ix, iy;
+    int icon, sph, spv, cx, cy;
     (void)bottom;
     if (s_cat < 0 || s_cat >= nc) s_cat = 0;
     if (s_item < 0 || s_item >= s_cats[s_cat].n) s_item = 0;
-    selected_cell(left, top, right, &cx, &cy, &ix, &iy);
+    xmb_metrics(left, top, right - left, &icon, &sph, &spv, &cx, &cy);
+    (void)sph;
+    (void)spv;
     (void)cy;
-    (void)iy;
-    if (cat_x) *cat_x = cx;
-    if (item_x) *item_x = ix;
+    if (cat_x) *cat_x = cx - icon / 2;
+    if (item_x) *item_x = cx - icon / 2;
     if (cat) *cat = s_cat;
     if (item) *item = s_item;
 }
 
-#if defined(PICO_REAL_HW)
-/* Side-on sheet. The viewpoint and the pixel amplitude stay on the 8×5
- * curve (lean 5..20, wobble up to ±13*(2..7)). The lattice is 16×12 so
- * the facets read as a fabric. Two traveling terms plus the cross term
- * are the original ribbon's cos(2*gx), cos(4*gz) and cos(gz+gx), scaled
- * back into that same ±13. The lift is white and steeper folds are
- * brighter, which is glColor(b,b,b) with GL_DST_COLOR, GL_ONE. */
-#define WAVE_NX 16
-#define WAVE_NY 12
-#define WAVE_REF 5
-static const int8_t s_wave_sin[16] = {
-    0, 5, 9, 12, 13, 12, 9, 5, 0, -5, -9, -12, -13, -12, -9, -5
+/* wv_sheet + wv_project. gx and gz are Q10 on [-1024, 1024].
+ * One turn of cosine is 256 steps. turn256 converts Q10 radians:
+ * 256/(2*pi)/1024 = 2608/65536. The iq noise term (±1/15) is not
+ * evaluated; the three cosines are the ribbon, within about 2px of
+ * wv_sheet at this size. 8×6 is half of 16×12 on each axis. */
+#define WAVE_NX 8
+#define WAVE_NY 6
+static const int16_t s_cos256[256] = {
+     32767,  32757,  32728,  32678,  32609,  32521,  32412,  32285,
+     32137,  31971,  31785,  31580,  31356,  31113,  30852,  30571,
+     30273,  29956,  29621,  29268,  28898,  28510,  28105,  27683,
+     27245,  26790,  26319,  25832,  25329,  24811,  24279,  23731,
+     23170,  22594,  22005,  21403,  20787,  20159,  19519,  18868,
+     18204,  17530,  16846,  16151,  15446,  14732,  14010,  13279,
+     12539,  11793,  11039,  10278,   9512,   8739,   7962,   7179,
+      6393,   5602,   4808,   4011,   3212,   2410,   1608,    804,
+         0,   -804,  -1608,  -2410,  -3212,  -4011,  -4808,  -5602,
+     -6393,  -7179,  -7962,  -8739,  -9512, -10278, -11039, -11793,
+    -12539, -13279, -14010, -14732, -15446, -16151, -16846, -17530,
+    -18204, -18868, -19519, -20159, -20787, -21403, -22005, -22594,
+    -23170, -23731, -24279, -24811, -25329, -25832, -26319, -26790,
+    -27245, -27683, -28105, -28510, -28898, -29268, -29621, -29956,
+    -30273, -30571, -30852, -31113, -31356, -31580, -31785, -31971,
+    -32137, -32285, -32412, -32521, -32609, -32678, -32728, -32757,
+    -32767, -32757, -32728, -32678, -32609, -32521, -32412, -32285,
+    -32137, -31971, -31785, -31580, -31356, -31113, -30852, -30571,
+    -30273, -29956, -29621, -29268, -28898, -28510, -28105, -27683,
+    -27245, -26790, -26319, -25832, -25329, -24811, -24279, -23731,
+    -23170, -22594, -22005, -21403, -20787, -20159, -19519, -18868,
+    -18204, -17530, -16846, -16151, -15446, -14732, -14010, -13279,
+    -12539, -11793, -11039, -10278,  -9512,  -8739,  -7962,  -7179,
+     -6393,  -5602,  -4808,  -4011,  -3212,  -2410,  -1608,   -804,
+         0,    804,   1608,   2410,   3212,   4011,   4808,   5602,
+      6393,   7179,   7962,   8739,   9512,  10278,  11039,  11793,
+     12539,  13279,  14010,  14732,  15446,  16151,  16846,  17530,
+     18204,  18868,  19519,  20159,  20787,  21403,  22005,  22594,
+     23170,  23731,  24279,  24811,  25329,  25832,  26319,  26790,
+     27245,  27683,  28105,  28510,  28898,  29268,  29621,  29956,
+     30273,  30571,  30852,  31113,  31356,  31580,  31785,  31971,
+     32137,  32285,  32412,  32521,  32609,  32678,  32728,  32757
 };
 
-static int wave_idx(int n)
+static int icos(int idx)
 {
-    n &= 15;
-    return n;
+    return (int)s_cos256[idx & 255];
+}
+
+/* Q10 radians to a 256-step turn. */
+static int turn256(int q10)
+{
+    return (q10 * 2608) >> 16;
 }
 
 static void wave_point(int i, int j, int left, int top, int width, int height,
-                       int phase, int *ox, int *oy)
+                       int *ox, int *oy)
 {
-    int across = s_wave_sin[wave_idx(i * 2 - phase * 2 + 256)];
-    int along = s_wave_sin[wave_idx(j * 3)];
-    int cross = s_wave_sin[wave_idx(i + j + phase + 256)];
-    int wob = (across * 2 + along + cross) / 4;
-    int sway = s_wave_sin[wave_idx(j * 2 + phase + 256)];
-    int amp = 2 + (j * WAVE_REF) / WAVE_NY;
-    int lean = 5 + (j * 3 * WAVE_REF) / WAVE_NY;
-    int y = top + (j * j * height) / (WAVE_NY * WAVE_NY);
-    int x = left + width / 2 + (i - WAVE_NX / 2) * (width * lean) / (WAVE_NX * 18);
-    y += wob * amp;
-    x += sway;
-    *ox = x;
-    *oy = y;
+    int gx = (i * 2048) / WAVE_NX - 1024;
+    int gz = (j * 2048) / WAVE_NY - 1024;
+    int t10 = (s_phase * 1043) >> 16;
+    int th = (s_phase * 5215) >> 16;
+    int row = icos(turn256(gz * 4));
+    int lc = icos(turn256(gx + gz) + t10);
+    int col = icos(turn256(gx * 2) - th);
+    int term1 = (row * lc) >> 23;
+    int term2 = (col / 5) >> 5;
+    int vy = term1 - term2 + 307;
+    *ox = left + ((gx + 1024) * width) / 2048;
+    *oy = top + ((1024 + vy) * height) / 2048;
 }
 
-static int wave_base_y(int j, int top, int height)
+/* 9×7 points. The phase and the body rectangle pick the sheet.
+ * Later bands of the same wave read these and post only the cells
+ * that cross the strip. */
+#define WAVE_PTS_X (WAVE_NX + 1)
+#define WAVE_PTS_Y (WAVE_NY + 1)
+static int16_t s_wx[WAVE_PTS_X * WAVE_PTS_Y];
+static int16_t s_wy[WAVE_PTS_X * WAVE_PTS_Y];
+static int s_wphase = -1;
+static int s_wleft, s_wtop, s_ww, s_wh;
+
+static void wave_cache(int left, int top, int width, int height)
 {
-    return top + (j * j * height) / (WAVE_NY * WAVE_NY);
+    int i, j;
+    if (s_wphase == s_phase && s_wleft == left && s_wtop == top &&
+        s_ww == width && s_wh == height)
+        return;
+    for (j = 0; j <= WAVE_NY; j++) {
+        for (i = 0; i <= WAVE_NX; i++) {
+            int x, y, k;
+            wave_point(i, j, left, top, width, height, &x, &y);
+            k = j * WAVE_PTS_X + i;
+            s_wx[k] = (int16_t)x;
+            s_wy[k] = (int16_t)y;
+        }
+    }
+    s_wphase = s_phase;
+    s_wleft = left;
+    s_wtop = top;
+    s_ww = width;
+    s_wh = height;
+}
+
+#if !defined(PICO_REAL_HW)
+/* Same dst*(1+src) as paint_span_lift, so a host frame matches the panel. */
+static void host_lift_span(int y, int lo, int hi, uint16_t lift)
+{
+    uint16_t *row;
+    unsigned sr, sg, sb;
+    int x;
+    if (lo > hi) {
+        int t = lo;
+        lo = hi;
+        hi = t;
+    }
+    if (y < 0 || y >= 320) return;
+    row = dp_pico_band_row(y);
+    if (!row) return;
+    if (lo < 0) lo = 0;
+    if (hi > 319) hi = 319;
+    sr = (lift >> 11) & 31u;
+    sg = (lift >> 5) & 63u;
+    sb = lift & 31u;
+    for (x = lo; x <= hi; x++) {
+        uint16_t d = (uint16_t)((row[x] >> 8) | (row[x] << 8));
+        unsigned dr = (d >> 11) & 31u;
+        unsigned dg = (d >> 5) & 63u;
+        unsigned db = d & 31u;
+        unsigned out;
+        dr += (dr * sr) >> 4;
+        dg += (dg * sg) >> 5;
+        db += (db * sb) >> 4;
+        if (dr > 31u) dr = 31u;
+        if (dg > 63u) dg = 63u;
+        if (db > 31u) db = 31u;
+        out = (dr << 11) | (dg << 5) | db;
+        row[x] = (uint16_t)((out >> 8) | (out << 8));
+    }
+}
+
+static void host_lift_tri(int x0, int y0, int x1, int y1, int x2, int y2,
+                          uint16_t lift)
+{
+    int y, ymin, ymax;
+    ymin = y0;
+    if (y1 < ymin) ymin = y1;
+    if (y2 < ymin) ymin = y2;
+    ymax = y0;
+    if (y1 > ymax) ymax = y1;
+    if (y2 > ymax) ymax = y2;
+    if (ymin < 0) ymin = 0;
+    if (ymax > 319) ymax = 319;
+    for (y = ymin; y <= ymax; y++) {
+        int xs[3], n, k;
+        int ax[3], ay[3], bx[3], by[3];
+        n = 0;
+        ax[0] = x0; ay[0] = y0; bx[0] = x1; by[0] = y1;
+        ax[1] = x1; ay[1] = y1; bx[1] = x2; by[1] = y2;
+        ax[2] = x2; ay[2] = y2; bx[2] = x0; by[2] = y0;
+        for (k = 0; k < 3; k++) {
+            int ya = ay[k], yb = by[k], xa = ax[k], xb = bx[k];
+            if (ya > yb) {
+                int t = ya; ya = yb; yb = t;
+                t = xa; xa = xb; xb = t;
+            }
+            if (y < ya || y >= yb || yb == ya) continue;
+            xs[n++] = xa + (xb - xa) * (y - ya) / (yb - ya);
+        }
+        if (n >= 2) {
+            int lo = xs[0], hi = xs[0];
+            for (k = 1; k < n; k++) {
+                if (xs[k] < lo) lo = xs[k];
+                if (xs[k] > hi) hi = xs[k];
+            }
+            host_lift_span(y, lo, hi, lift);
+        }
+    }
+}
+#endif
+
+#if defined(PICO_REAL_HW)
+static int s_lift_org;
+#endif
+
+static void emit_lift(int x0, int y0, int x1, int y1, int x2, int y2,
+                      uint16_t lift)
+{
+#if defined(PICO_REAL_HW)
+    picogl_screen_lift(x0, y0 - s_lift_org, x1, y1 - s_lift_org,
+                       x2, y2 - s_lift_org, lift);
+#else
+    host_lift_tri(x0, y0, x1, y1, x2, y2, lift);
+#endif
 }
 
 static void wave_surface(int left, int top, int right, int bottom)
 {
-    int y, y0, y1, band_y0, width, height, phase, j, i;
+    int y, y0, y1, width, height, j, i;
+#if defined(PICO_REAL_HW)
+    int band_y0;
     uint16_t *row0;
+    row0 = 0;
+#endif
     y0 = -1;
     y1 = -1;
-    row0 = 0;
     width = right - left;
     height = bottom - top;
     if (width < 8 || height < 8) return;
@@ -466,24 +570,36 @@ static void wave_surface(int left, int top, int right, int bottom)
         if (!row) continue;
         if (y0 < 0) {
             y0 = y;
+#if defined(PICO_REAL_HW)
             row0 = row;
+#endif
         }
         y1 = y;
     }
-    if (y0 < 0 || !row0) return;
+    if (y0 < 0) return;
+    wave_cache(left, top, width, height);
+#if defined(PICO_REAL_HW)
+    if (!row0) return;
     band_y0 = y0 & ~15;
-    phase = (s_glow >> 1) & 15;
+    s_lift_org = band_y0;
     picogl_target_push();
     picogl_bind_target(row0 - (y0 - band_y0) * 320, 0, 320, 16, 320);
     picogl_set_depth(0);
+#endif
     for (j = 0; j < WAVE_NY; j++) {
         for (i = 0; i < WAVE_NX; i++) {
             int xa, ya, xb, yb, xc, yc, xd, yd;
-            int ytop, ybot;
-            wave_point(i, j, left, top, width, height, phase, &xa, &ya);
-            wave_point(i + 1, j, left, top, width, height, phase, &xb, &yb);
-            wave_point(i + 1, j + 1, left, top, width, height, phase, &xc, &yc);
-            wave_point(i, j + 1, left, top, width, height, phase, &xd, &yd);
+            int ytop, ybot, k, d0, d1, d2, fold, bri;
+            uint16_t lift;
+            k = j * WAVE_PTS_X + i;
+            xa = s_wx[k];
+            ya = s_wy[k];
+            xb = s_wx[k + 1];
+            yb = s_wy[k + 1];
+            xc = s_wx[k + WAVE_PTS_X + 1];
+            yc = s_wy[k + WAVE_PTS_X + 1];
+            xd = s_wx[k + WAVE_PTS_X];
+            yd = s_wy[k + WAVE_PTS_X];
             ytop = ya;
             if (yb < ytop) ytop = yb;
             if (yc < ytop) ytop = yc;
@@ -493,28 +609,26 @@ static void wave_surface(int left, int top, int right, int bottom)
             if (yc > ybot) ybot = yc;
             if (yd > ybot) ybot = yd;
             if (ybot < y0 || ytop > y1) continue;
-            {
-                int gap = wave_base_y(j + 1, top, height) - wave_base_y(j, top, height);
-                int extra = (yc + yd) - (ya + yb) - gap * 2;
-                int bri;
-                uint16_t lift;
-                if (extra < 0) extra = -extra;
-                extra >>= 1;
-                bri = 1;
-                if (extra > 4) bri = 2;
-                if (extra > 12) bri = 3;
-                lift = (uint16_t)((bri << 11) | ((bri * 2) << 5) | bri);
-                picogl_screen_lift(xa, ya - band_y0, xb, yb - band_y0,
-                                   xc, yc - band_y0, lift);
-                picogl_screen_lift(xa, ya - band_y0, xc, yc - band_y0,
-                                   xd, yd - band_y0, lift);
-            }
+            d0 = ya - yb;
+            if (d0 < 0) d0 = -d0;
+            d1 = yd - yc;
+            if (d1 < 0) d1 = -d1;
+            d2 = ya - yd;
+            if (d2 < 0) d2 = -d2;
+            fold = d0 + d1 + d2;
+            bri = 1;
+            if (fold >= 8) bri = 2;
+            if (fold >= 20) bri = 3;
+            lift = (uint16_t)((bri << 11) | ((bri * 2) << 5) | bri);
+            emit_lift(xa, ya, xb, yb, xc, yc, lift);
+            emit_lift(xa, ya, xc, yc, xd, yd, lift);
         }
     }
+#if defined(PICO_REAL_HW)
     picogl_flush_target();
     picogl_target_pop();
-}
 #endif
+}
 
 const char *xmb_pico_label(void)
 {
@@ -530,55 +644,91 @@ void xmb_pico_paint(int left, int top, int right, int bottom)
 {
     const xmb_cat_t *cat;
     int nc = (int)(sizeof s_cats / sizeof s_cats[0]);
-    int i, pass;
-    int cat_x, cat_y, item_x, item_y;
+    int i, pass, width;
+    int icon, sph, spv, cx, cy, mt, ll;
     if (right <= left || bottom <= top) return;
     if (s_cat < 0 || s_cat >= nc) s_cat = 0;
     cat = &s_cats[s_cat];
     if (s_item < 0 || s_item >= cat->n) s_item = 0;
-    selected_cell(left, top, right, &cat_x, &cat_y, &item_x, &item_y);
+    width = right - left;
+    xmb_metrics(left, top, width, &icon, &sph, &spv, &cx, &cy);
+    mt = xmb_sc(272, width);
+    ll = xmb_sc(85, width);
 
     fill_gradient(left, top, right, bottom);
-#if defined(PICO_REAL_HW)
     /* Core 1 fills the sheet while the previous band is still on the SPI.
      * Icons are drawn after the join so they sit on the wave. */
     wave_surface(left, top, right, bottom);
-#else
-    floor_surface(left, right, bottom, cat_x + 16, cat_y - 8);
-#endif
 
-    for (pass = 3; pass >= 0; pass--) {
+    /* Categories share cy. Farther icons are drawn first. The row does not wrap. */
+    for (pass = nc - 1; pass >= 0; pass--) {
         for (i = 0; i < nc; i++) {
-            int d = wrap_d(i, s_cat, nc);
+            int d = i - s_cat;
             int ad = d < 0 ? -d : d;
             int size, x, y;
             if (ad != pass) continue;
-            size = icon_size(ad);
-            x = (cat_x + 16) + d * 40 - size / 2;
-            y = cat_y - ad * 10;
-            if (i == s_cat) pad(x, y, size);
-            blit_cell(s_cats[i].icon, x, y, size, i == s_cat);
+            size = (d == 0) ? icon : icon / 2;
+            x = cx + d * sph - size / 2;
+            y = cy - size / 2;
+            blit_cell(s_cats[i].icon, x, y, size, d == 0);
         }
     }
-    label(cat_x + 16, cat_y + XMB_PICO_CELL + 4, cat->label);
+    label_at(left + xmb_sc(34, width) + (icon * 2) / 5,
+             top + xmb_sc(30, width) + 8, cat->label, 1);
 
-    for (pass = 6; pass >= 0; pass--) {
+    for (pass = cat->n; pass >= 0; pass--) {
         for (i = 0; i < cat->n; i++) {
             int d = i - s_item;
             int ad = d < 0 ? -d : d;
-            int size, x, y;
+            int size, x, y, yoff;
             if (ad != pass) continue;
-            size = icon_size(ad);
-            x = (item_x + 16) - size / 2;
-            y = item_y + d * 44;
+            yoff = item_yoff(i, s_item, spv);
+            size = (d == 0) ? icon : icon / 2;
+            x = cx - size / 2;
+            y = top + mt + yoff + icon / 2 - size / 2;
             if (y + size < top || y >= bottom) continue;
-            if (i == s_item) pad(x, y, size);
-            blit_cell(cat->items[i].icon, x, y, size, i == s_item);
+            blit_cell(cat->items[i].icon, x, y, size, d == 0);
         }
     }
-    if (cat->n > 0)
-        label(item_x + 16, item_y + XMB_PICO_CELL + 4, cat->items[s_item].label);
+    for (i = 0; i < cat->n; i++) {
+        int yoff = item_yoff(i, s_item, spv);
+        int ty = top + mt + yoff + 2;
+        if (ty + 8 < top || ty >= bottom) continue;
+        label_at(cx + ll, ty, cat->items[i].label, i == s_item);
+    }
 #if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
     host_flush(left, top, right, bottom);
 #endif
 }
+
+#if defined(XMB_PICO_TEST)
+int xmb_pico_test_cat_cx(int left, int top, int right, int bottom, int index)
+{
+    int icon, sph, spv, cx, cy;
+    (void)bottom;
+    xmb_metrics(left, top, right - left, &icon, &sph, &spv, &cx, &cy);
+    (void)icon;
+    (void)spv;
+    (void)cy;
+    return cx + (index - s_cat) * sph;
+}
+
+int xmb_pico_test_cat_cy(int left, int top, int right, int bottom, int index)
+{
+    int icon, sph, spv, cx, cy;
+    (void)bottom;
+    (void)index;
+    xmb_metrics(left, top, right - left, &icon, &sph, &spv, &cx, &cy);
+    (void)icon;
+    (void)sph;
+    (void)spv;
+    (void)cx;
+    return cy;
+}
+
+void xmb_pico_test_wave(int i, int j, int left, int top, int right, int bottom,
+                        int *x, int *y)
+{
+    wave_point(i, j, left, top, right - left, bottom - top, x, y);
+}
+#endif

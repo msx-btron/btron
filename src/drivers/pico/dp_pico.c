@@ -28,6 +28,14 @@ static uint16_t s_strip[2][DP_W * DP_BAND_H] __attribute__((aligned(4)));
 static int      s_active_buf = 0;
 static int      s_band_y0    = 0;
 static uint32_t s_present_gen = 1;
+/* Runs after the last band releases CS. The gears frame uses it to join
+ * the back buffer. It must not start another present. */
+static void (*s_frame_tail)(void);
+
+void dp_pico_set_frame_tail(void (*fn)(void))
+{
+    s_frame_tail = fn;
+}
 
 uint32_t dp_pico_present_gen(void)
 {
@@ -198,4 +206,5 @@ void dp_pico_present(GDEV *dev, uint32_t dirty_mask, void (*paint_fn)(GDEV *))
     }
     st7365p_dma_wait();
     dev->clip = (RECT){ 0, 0, DP_W, DP_H };
+    if (s_frame_tail) s_frame_tail();
 }

@@ -2432,6 +2432,14 @@ $(TEST_PICOGLR_BIN): $(TEST_PICOGLR_OBJS) src/desktop/graphics/picogl/picogl.h
 	@mkdir -p .build
 	python3 scripts/cook_quake_start.py assets/quake/pak/pak0.pak .build/start_blob.h .build/start_blob.c
 
+# Picocalc quake image only. The host gate keeps .build/start_blob.* on start.
+.build/quake-e1m1/start_blob.h .build/quake-e1m1/start_blob.c: \
+		scripts/cook_quake_start.py assets/quake/pak/pak0.pak assets/quake/drone1m1.dem
+	@mkdir -p .build/quake-e1m1
+	python3 scripts/cook_quake_start.py assets/quake/pak/pak0.pak \
+		.build/quake-e1m1/start_blob.h .build/quake-e1m1/start_blob.c \
+		maps/e1m1.bsp assets/quake/drone1m1.dem
+
 .build/test_start_sim: verify/tests/test_start_sim.c src/media/quake/sim/start_sim.c \
 		.build/start_blob.c src/desktop/graphics/picogl/picogl_span.c \
 		src/desktop/graphics/picogl/picogl_host_core1.c \
@@ -2448,7 +2456,7 @@ test-start-sim: .build/test_start_sim
 
 .build/test_xmb_pico: verify/tests/test_xmb_pico.c src/media/xmb/xmb_pico.c src/media/xmb/xmb_pico.h
 	@mkdir -p .build
-	$(CC) $(CFLAGS) -Isrc/media/xmb verify/tests/test_xmb_pico.c src/media/xmb/xmb_pico.c -o $@
+	$(CC) $(CFLAGS) -DXMB_PICO_TEST -Isrc/media/xmb verify/tests/test_xmb_pico.c src/media/xmb/xmb_pico.c -o $@
 
 test-xmb-pico: .build/test_xmb_pico
 	@./.build/test_xmb_pico
@@ -4477,8 +4485,17 @@ PICOCALC_COMMON_C := src/drivers/pico/hal_rp2xxx.c \
 # apps stay. Their objects are not the SRAM that the start level needs.
 ifeq ($(PICOCALC_APP),quake)
 PICOCALC_COMMON_C := $(filter-out src/media/sdk/glgears_segui.c src/media/xmb/xmb_pico.c,$(PICOCALC_COMMON_C))
-PICOCALC_COMMON_C += src/media/quake/sim/start_sim.c .build/start_blob.c
-PICOCALC_CFLAGS += -I.build -Isrc/media/quake/sim -Isrc/desktop/graphics/picogl
+PICOCALC_COMMON_C += src/media/quake/sim/start_sim.c .build/quake-e1m1/start_blob.c
+# quake-e1m1 precedes .build so start_blob.h is the e1m1 cook, not the hall.
+PICOCALC_CFLAGS += -I.build/quake-e1m1 -I.build -Isrc/media/quake/sim -Isrc/desktop/graphics/picogl
+endif
+
+# Host tests compile .build/start_blob.c. The quake image compiles the e1m1 cook.
+PICOCALC_BLOB_SRC := .build/start_blob.c
+PICOCALC_BLOB_HDR := .build/start_blob.h
+ifeq ($(PICOCALC_APP),quake)
+PICOCALC_BLOB_SRC := .build/quake-e1m1/start_blob.c
+PICOCALC_BLOB_HDR := .build/quake-e1m1/start_blob.h
 endif
 
 PICOCALC_TGL_C := src/desktop/graphics/tinygl/api.c \
@@ -4627,11 +4644,11 @@ $(PICOCALC_BUILD)/shell_core.o: src/apps/terminal/shell_core.c src/apps/terminal
 	@mkdir -p $(PICOCALC_BUILD)
 	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
 
-$(PICOCALC_BUILD)/start_sim.o: src/media/quake/sim/start_sim.c src/media/quake/sim/start_sim.h .build/start_blob.h
+$(PICOCALC_BUILD)/start_sim.o: src/media/quake/sim/start_sim.c src/media/quake/sim/start_sim.h $(PICOCALC_BLOB_HDR)
 	@mkdir -p $(PICOCALC_BUILD)
 	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Isrc/drivers/pico/libc_shim -c $< -o $@
 
-$(PICOCALC_BUILD)/start_blob.o: .build/start_blob.c .build/start_blob.h
+$(PICOCALC_BUILD)/start_blob.o: $(PICOCALC_BLOB_SRC) $(PICOCALC_BLOB_HDR)
 	@mkdir -p $(PICOCALC_BUILD)
 	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -c $< -o $@
 

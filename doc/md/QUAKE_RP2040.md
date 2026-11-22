@@ -179,7 +179,7 @@ This phase is the one that can change how fast the hall feels. It does not, by i
 - `make picocalc`
 - `make picocalc-quake`
 
-**Done when.** Each of those exits 0. RP2040 `__sram_used__` is recorded in this file from `llvm-nm` of `__sram_used__`. RP2350 is relinked only if a phase touches a file both boards compile. The quake elf has `build_quake`, `start_sim_render`, and the `quake` task symbol, and it has no `build_xmb`. The gears elf has `build_xmb` and the center launch going to `PALM_APP_XMB`. Neither elf gains `ztriangle`, `e1m1`, or `progs.dat`.
+**Done when.** Each of those exits 0. RP2040 `__sram_used__` is recorded in this file from `llvm-nm` of `__sram_used__`. RP2350 is relinked only if a phase touches a file both boards compile. The quake elf has `build_quake`, `start_sim_render`, and the `quake` task symbol, and it has no `build_xmb`. The gears elf has `build_xmb` and the center launch going to `PALM_APP_XMB`. Neither elf gains `ztriangle` or `progs.dat`. The picocalc quake elf names `e1m1` because that image cooks the map and the drone track. The gears elf does not.
 
 ## What stays
 

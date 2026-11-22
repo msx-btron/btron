@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Cook maps/start.bsp and a few mdl frames into one .rodata C blob.
+"""Cook one BSP and a few mdl frames into a .rodata C blob.
 
-The Quake image does not link progs.dat or any map but start. Changelevel
-targets are dropped so the elf does not contain those map names.
+Default is maps/start.bsp. That output still refuses the bytes e1m1.
+The picocalc quake image passes maps/e1m1.bsp plus a drone track:
+
+    cook_quake_start.py pak header c maps/e1m1.bsp assets/quake/drone1m1.dem
+
+The track is stored as int16 poses. The file name is not written out.
+progs.dat and player.mdl are refused in every output.
 """
 import math
 import struct
@@ -320,15 +325,102 @@ def emit_u16(f, name, vals, width=12):
     f.write("};\n\n")
 
 
+def tree_depth(children):
+    """Longest root-to-leaf walk. A negative child is a leaf."""
+    best = 1
+    stack = [(0, 1)]
+    guard = 0
+    while stack:
+        n, d = stack.pop()
+        guard += 1
+        if guard > 2000000:
+            break
+        if d > best:
+            best = d
+        if n < 0 or n >= len(children):
+            continue
+        c0, c1 = children[n]
+        stack.append((c0, d + 1))
+        stack.append((c1, d + 1))
+    return best
+
+
+def load_drone(path, doors):
+    """Camera poses from a drone track. Origin is the eye. Roll is unused.
+
+    Door opens are the sim door whose box the camera comes within 160 units
+    of. The track's use opcodes name progs edicts, which this sim does not
+    number, so they are not copied.
+    """
+    data = open(path, "rb").read()
+    nl = data.find(b"\n")
+    if nl < 0:
+        raise SystemExit("drone track has no header line")
+    ofs = nl + 1
+    poses = []
+    t0 = None
+    while ofs + 16 <= len(data):
+        msglen = struct.unpack_from("<I", data, ofs)[0]
+        if msglen > 1000000 or ofs + 16 + msglen > len(data):
+            break
+        pl = data[ofs + 16:ofs + 16 + msglen]
+        if len(pl) >= 30 and pl[0] == 7 and pl[5] == 200:
+            t = struct.unpack_from("<f", pl, 1)[0]
+            if t0 is None:
+                t0 = t
+            x, y, z, pitch, yaw, _roll = struct.unpack_from("<6f", pl, 6)
+            ms = int(round((t - t0) * 1000.0))
+            if ms < 0:
+                ms = 0
+            if ms > 65535:
+                ms = 65535
+            poses.append((ms, x, y, z, pitch, yaw))
+        ofs += 16 + msglen
+    if len(poses) < 2:
+        raise SystemExit("drone track has %d poses" % len(poses))
+    last = 0
+    fixed = []
+    for ms, x, y, z, pitch, yaw in poses:
+        if ms < last:
+            ms = last
+        last = ms
+        fixed.append((ms, x, y, z, pitch, yaw))
+    events = []
+    opened = set()
+    reach = 160.0
+    reach2 = reach * reach
+    for ms, x, y, z, _pitch, _yaw in fixed:
+        for di, d in enumerate(doors):
+            if di in opened:
+                continue
+            cx = min(max(x, d["mins"][0]), d["maxs"][0])
+            cy = min(max(y, d["mins"][1]), d["maxs"][1])
+            cz = min(max(z, d["mins"][2]), d["maxs"][2])
+            dx, dy, dz = x - cx, y - cy, z - cz
+            if dx * dx + dy * dy + dz * dz <= reach2:
+                events.append((ms, di))
+                opened.add(di)
+    if not events:
+        events.append((65535, -1))
+    print("drone poses", len(fixed), "ms", fixed[0][0], fixed[-1][0],
+          "door opens", sum(1 for _ms, di in events if di >= 0))
+    return fixed, events
+
+
 def main():
-    if len(sys.argv) != 4:
-        print("usage: cook_quake_start.py pak0 header.c-out c-out", file=sys.stderr)
+    if len(sys.argv) == 4:
+        pak_path, hdr_path, c_path = sys.argv[1:]
+        map_name = "maps/start.bsp"
+        dem_path = None
+    elif len(sys.argv) == 6:
+        pak_path, hdr_path, c_path, map_name, dem_path = sys.argv[1:]
+    else:
+        print("usage: cook_quake_start.py pak header c [map dem]", file=sys.stderr)
         return 2
-    pak_path, hdr_path, c_path = sys.argv[1:]
     files = load_pak(pak_path)
-    if "maps/start.bsp" not in files:
-        raise SystemExit("maps/start.bsp missing")
-    bsp = files["maps/start.bsp"]
+    if map_name not in files:
+        raise SystemExit("%s missing" % map_name)
+    bsp = files[map_name]
     L = lumps(bsp)
     pal = files.get("gfx/palette.lmp", b"\x80" * 768)
     if len(pal) < 768:
@@ -622,6 +714,15 @@ def main():
     print("doors", len(doors), "zombies", len(zombies), "pickups", len(picks),
           "trigs", len(trigs), "dests", len(dests), "flames", len(flames),
           "tris", len(idx) // 3, "nodes", len(nodes), "clips", len(clips))
+    print("node depth", tree_depth([(n[1], n[2]) for n in nodes]),
+          "clip depth", tree_depth([(c[1], c[2]) for c in clips]))
+    dist_max = max(abs(p[3]) for p in planes) if planes else 0.0
+    print("plane |dist| max", round(dist_max, 2), "map", map_name)
+
+    drone_poses = None
+    drone_doors = None
+    if dem_path:
+        drone_poses, drone_doors = load_drone(dem_path, doors)
 
     hdr = open(hdr_path, "w")
     hdr.write("/* Generated by scripts/cook_quake_start.py. Do not edit. */\n")
@@ -706,6 +807,14 @@ def main():
     hdr.write("extern const uint16_t start_mesh_n[];\n")
     hdr.write("extern const uint32_t start_mesh_rgba[];\n")
     hdr.write("extern const uint8_t start_font[59][5];\n")
+    if drone_poses is not None:
+        hdr.write("#define START_NDRONE %d\n" % len(drone_poses))
+        hdr.write("#define START_NDRONE_DOOR %d\n" % len(drone_doors))
+        hdr.write("extern const int16_t start_drone_pos[][3];\n")
+        hdr.write("extern const int16_t start_drone_ang[][2];\n")
+        hdr.write("extern const uint16_t start_drone_ms[];\n")
+        hdr.write("extern const uint16_t start_drone_door_ms[];\n")
+        hdr.write("extern const int16_t start_drone_door[];\n")
     hdr.write("\n#endif\n")
     hdr.close()
 
@@ -800,7 +909,8 @@ def main():
     col("start_door_touch", "uint8_t", [d["touch"] for d in doors], "%d")
 
     if not zombies:
-        zombies.append((0, 0, 0, 0))
+        # Outside the map. The sim still wants one row, and this one never wakes.
+        zombies.append((30000.0, 30000.0, 0.0, 0.0))
     out.write("const float start_zombie[%d][4] = {\n" % len(zombies))
     for z in zombies:
         out.write("  {%.4ff,%.4ff,%.4ff,%.4ff},\n" % z)
@@ -838,7 +948,7 @@ def main():
     out.write("};\n\n")
 
     if not flames:
-        flames.append((0, 0, 0))
+        flames.append((30000.0, 30000.0, 0.0))
     out.write("const float start_flame[%d][3] = {\n" % len(flames))
     for p in flames:
         out.write("  {%.4ff,%.4ff,%.4ff},\n" % p)
@@ -857,10 +967,28 @@ def main():
         rows = FONT.get(ch, [0, 0, 0, 0, 0])
         out.write("  {%d,%d,%d,%d,%d},\n" % tuple(rows))
     out.write("};\n")
+    if drone_poses is not None:
+        emit_i16_3(out, "start_drone_pos",
+                   [(i16(round(p[1])), i16(round(p[2])), i16(round(p[3])))
+                    for p in drone_poses])
+        out.write("const int16_t start_drone_ang[%d][2] = {\n" % len(drone_poses))
+        line = []
+        for i, p in enumerate(drone_poses):
+            line.append("{%d,%d}" % (i16(round(p[4])), i16(round(p[5]))))
+            if len(line) == 8 or i + 1 == len(drone_poses):
+                out.write("  " + ",".join(line) + ",\n")
+                line = []
+        out.write("};\n\n")
+        col("start_drone_ms", "uint16_t", [p[0] for p in drone_poses], "%d")
+        col("start_drone_door_ms", "uint16_t", [e[0] for e in drone_doors], "%d")
+        col("start_drone_door", "int16_t", [e[1] for e in drone_doors], "%d")
     out.close()
 
     blob = open(c_path, "rb").read() + open(hdr_path, "rb").read()
-    for banned in (b"e1m1", b"e2m1", b"e3m1", b"e4m1", b"progs.dat", b"player.mdl"):
+    banned_words = [b"progs.dat", b"player.mdl"]
+    if map_name == "maps/start.bsp":
+        banned_words += [b"e1m1", b"e2m1", b"e3m1", b"e4m1"]
+    for banned in banned_words:
         if banned in blob:
             raise SystemExit("banned string %s in blob" % banned)
     print("wrote", hdr_path, c_path, "bytes", len(blob))

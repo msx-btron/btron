@@ -715,7 +715,7 @@ static void build_quake(SEGUI_APP *app, const SEGUI_PROFILE *prof)
     int tab;
     start_sim_init();
     segui_app_init(app, "Quake", prof);
-    tab = segui_add_tab(app, "Start", FALSE);
+    tab = segui_add_tab(app, "e1m1", FALSE);
     segui_add_canvas(app, tab, draw_quake_canvas, NULL);
 }
 #else
@@ -725,10 +725,16 @@ static BOOL    s_gear_paused = FALSE;
 
 extern void glgears_segui_render(GDEV *dev, const RECT *bounds, float angle_deg,
                                  float view_rotx, float view_roty);
+#if defined(PICO_REAL_HW)
+extern void glgears_segui_spin(int angle_q, int yaw_q, int paused);
+#endif
 
 static void draw_glgears_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, void *ctx)
 {
     (void)app; (void)ctx;
+#if defined(PICO_REAL_HW)
+    glgears_segui_spin((int)s_gear_angle, (int)s_gear_yaw, s_gear_paused ? 1 : 0);
+#endif
     glgears_segui_render(dev, bounds, (float)s_gear_angle * 1.4f, 20.0f,
                          (float)s_gear_yaw * 1.4f);
 }

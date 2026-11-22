@@ -1,9 +1,9 @@
 /*
  * xmb_pico.h — PicoCalc XMB surface.
  *
- * The selected category stays at the body center. Neighbours are smaller
- * and higher. Items are a column on that same x. Does not link xmb.c,
- * xmb_wave.c, or the 64px atlas.
+ * The selected category stays on the PS3 cross (margin_left + spacing_h).
+ * Every category shares that row's y. Items are a column on that same x.
+ * Does not link xmb.c, xmb_wave.c, or the 64px atlas.
  */
 #ifndef XMB_PICO_H
 #define XMB_PICO_H
@@ -22,8 +22,8 @@ enum {
 void xmb_pico_tick(void);
 void xmb_pico_move(int dcat, int ditem);
 int  xmb_pico_go(void);
-/* Selected cell origins. cat_x and item_x are the left edge of the 32px
- * cell. Both stay on the body center when the selection moves. */
+/* Selected cell origins. cat_x and item_x are the left edge of the active
+ * icon. Both stay on the PS3 cross when the selection moves. */
 void xmb_pico_anchors(int left, int top, int right, int bottom,
                       int *cat_x, int *item_x, int *cat, int *item);
 const char *xmb_pico_label(void);

@@ -14,7 +14,9 @@
 #   - SD-boot .bin initial MSP and Thumb Reset_Handler (>= 0x10032000)
 #   - Linker SRAM assert: __sram_used__ <= 215040
 #   - RP2040 payload fits in 2 MiB, SD-boot fits in the +200 KiB window
-#   - Neither image contains ztriangle, the string e1m1, or progs.dat
+#   - Gears image contains neither ztriangle, the string e1m1, nor progs.dat
+#   - Quake image contains the string e1m1 (the cooked map) and neither
+#     ztriangle nor progs.dat
 #
 set -euo pipefail
 
@@ -133,17 +135,28 @@ check_elf() {
     echo "  [PASS] $elf __sram_used__ $dec <= $SRAM_LIMIT"
 
     blob="$("$LLVM_STRINGS" "$elf")"
-    for bad in ztriangle e1m1 progs.dat; do
+    for bad in ztriangle progs.dat; do
         if printf '%s\n' "$blob" | grep -F -q -- "$bad"; then
             echo "[FAIL] $elf contains '$bad'"
             exit 1
         fi
     done
+    if [ "$kind" = "quake" ]; then
+        if ! printf '%s\n' "$blob" | grep -F -q -- "e1m1"; then
+            echo "[FAIL] $elf is missing the e1m1 map name"
+            exit 1
+        fi
+        echo "  [PASS] $elf names e1m1 and has no ztriangle or progs.dat"
+    elif printf '%s\n' "$blob" | grep -F -q -- "e1m1"; then
+        echo "[FAIL] $elf contains 'e1m1'"
+        exit 1
+    fi
     forbid_sym "$elf" ztriangle
 
     if [ "$kind" = "quake" ]; then
         need_sym "$elf" build_quake
         need_sym "$elf" start_sim_render
+        need_sym "$elf" start_drone_pos
         need_sym "$elf" build_terminal
         need_sym "$elf" build_cabinet
         forbid_sym "$elf" build_glgears

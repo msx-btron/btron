@@ -27,6 +27,14 @@
 #define ST_COLMOD   0x3Au
 
 static volatile int s_dma_busy = 0;
+/* One slice of work while the busy bit is set. It must return without
+ * touching SPI, DMA, or GPIO. A null slice leaves the wait as a spin. */
+static void (*s_wait_slice)(void);
+
+void st7365p_set_wait_slice(void (*fn)(void))
+{
+    s_wait_slice = fn;
+}
 
 static void spi1_wait_idle(void)
 {
@@ -50,7 +58,10 @@ static void spi1_tx_byte(uint8_t b)
 void st7365p_dma_wait(void)
 {
     if (!s_dma_busy) return;
-    while (DMA_CH0_CTRL_TRIG & DMA_CTRL_BUSY_BIT) { }
+    while (DMA_CH0_CTRL_TRIG & DMA_CTRL_BUSY_BIT) {
+        void (*fn)(void) = s_wait_slice;
+        if (fn) fn();
+    }
     spi1_wait_idle();
     pico_gpio_put(PICOCALC_LCD_CS, 1);
     s_dma_busy = 0;

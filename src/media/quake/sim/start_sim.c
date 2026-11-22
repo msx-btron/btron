@@ -1,6 +1,8 @@
 /*
- * start_sim.c — playable maps/start.bsp without progs.dat.
+ * start_sim.c — playable cooked BSP without progs.dat.
  *
+ * The host gate cooks maps/start.bsp. The picocalc quake image cooks
+ * maps/e1m1.bsp and a drone camera track, and opens on a two-row menu.
  * Collision is the player clip hull. Doors, walls, and gates are the other
  * hulls. The picture is flat-shaded BSP faces plus a few cooked mdl frames,
  * drawn through PicoGL into a 128x96 target.
@@ -32,6 +34,23 @@ static int32_t  s_iz[VW * VH];
 static int      s_bound;
 static int      s_lit;
 static int      s_ready;
+
+#if defined(PICO_REAL_HW)
+/* The quake image boots into this menu. Fire runs the highlighted row.
+ * M (or F2) leaves play or the drone and comes back here. The drone camera
+ * is the cooked track: the eye is the recorded origin, and the player hull
+ * does not walk, so triggers along the route do not fire. */
+#define MODE_MENU  0
+#define MODE_PLAY  1
+#define MODE_DRONE 2
+static int      s_mode;
+static int      s_menu_row = 1;
+static int      s_cam_eye;
+static uint32_t s_drone_t0;
+static int      s_drone_i;
+static int      s_drone_door_i;
+static uint8_t  s_drone_hold[START_NDOOR];
+#endif
 
 static float    s_org[3];
 static float    s_vel[3];
@@ -844,6 +863,98 @@ static void respawn(void)
     memcpy(s_msg, start_title, strlen(start_title) + 1);
 }
 
+#if defined(PICO_REAL_HW)
+static void drone_reset_doors(void)
+{
+    memset(s_door_pos, 0, sizeof s_door_pos);
+    memset(s_door_state, 0, sizeof s_door_state);
+    memset(s_door_wait, 0, sizeof s_door_wait);
+    memset(s_drone_hold, 0, sizeof s_drone_hold);
+    s_drone_i = 0;
+    s_drone_door_i = 0;
+}
+
+/* t is milliseconds from the start of this loop of the track. */
+static void drone_pose(uint32_t t)
+{
+    int i, n, a, b, d;
+    float u, x, y, z, pitch, yaw;
+    n = START_NDRONE;
+    if (n < 1) return;
+    i = s_drone_i;
+    if (i < 0 || i >= n) i = 0;
+    while (i + 1 < n && start_drone_ms[i + 1] <= t) i++;
+    while (i > 0 && start_drone_ms[i] > t) i--;
+    s_drone_i = i;
+    a = i;
+    b = (i + 1 < n) ? i + 1 : i;
+    u = 0.0f;
+    if (b != a && start_drone_ms[b] > start_drone_ms[a]) {
+        u = (float)(t - start_drone_ms[a]) /
+            (float)(start_drone_ms[b] - start_drone_ms[a]);
+    }
+    if (u < 0.0f) u = 0.0f;
+    if (u > 1.0f) u = 1.0f;
+    x = (float)start_drone_pos[a][0] +
+        u * ((float)start_drone_pos[b][0] - (float)start_drone_pos[a][0]);
+    y = (float)start_drone_pos[a][1] +
+        u * ((float)start_drone_pos[b][1] - (float)start_drone_pos[a][1]);
+    z = (float)start_drone_pos[a][2] +
+        u * ((float)start_drone_pos[b][2] - (float)start_drone_pos[a][2]);
+    pitch = (float)start_drone_ang[a][0] +
+            u * ((float)start_drone_ang[b][0] - (float)start_drone_ang[a][0]);
+    yaw = (float)start_drone_ang[a][1] +
+          u * ((float)start_drone_ang[b][1] - (float)start_drone_ang[a][1]);
+    s_org[0] = x;
+    s_org[1] = y;
+    s_org[2] = z;
+    s_pitch = pitch;
+    s_yaw = yaw;
+    s_vel[0] = s_vel[1] = s_vel[2] = 0.0f;
+    while (s_drone_door_i < START_NDRONE_DOOR &&
+           start_drone_door_ms[s_drone_door_i] <= t) {
+        d = start_drone_door[s_drone_door_i];
+        if (d >= 0 && d < START_NDOOR) {
+            open_door(d);
+            s_drone_hold[d] = 1;
+        }
+        s_drone_door_i++;
+    }
+}
+
+static void begin_play(void)
+{
+    int i;
+    s_mode = MODE_PLAY;
+    s_cam_eye = 0;
+    s_bits = 0;
+    memset(s_hold, 0, sizeof s_hold);
+    respawn();
+    for (i = 0; i < 20; i++) physics(0.05f);
+}
+
+static void begin_drone(void)
+{
+    s_mode = MODE_DRONE;
+    s_cam_eye = 1;
+    s_bits = 0;
+    memset(s_hold, 0, sizeof s_hold);
+    drone_reset_doors();
+    s_drone_t0 = 0;
+    drone_pose(0);
+    memcpy(s_msg, "drone e1m1", 11);
+}
+
+static void enter_menu(void)
+{
+    s_mode = MODE_MENU;
+    s_cam_eye = 0;
+    s_bits = 0;
+    memset(s_hold, 0, sizeof s_hold);
+    respawn();
+}
+#endif
+
 static int bit_of(int key)
 {
     if (key == 'w' || key == 'W') return BIT_FWD;
@@ -874,6 +985,24 @@ void start_sim_key(int key, int down)
 {
     int bit, idx, w;
     if (!s_ready) start_sim_init();
+#if defined(PICO_REAL_HW)
+    if (s_mode == MODE_MENU) {
+        if (!down) return;
+        if (key == 0xB5 || key == 'w' || key == 'W') { s_menu_row = 0; return; }
+        if (key == 0xB6 || key == 's' || key == 'S') { s_menu_row = 1; return; }
+        if (key == 0x0A || key == ' ' || key == START_KEY_FIRE ||
+            key == 'f' || key == 'F') {
+            if (s_menu_row == 1) begin_drone();
+            else begin_play();
+        }
+        return;
+    }
+    if (down && (key == 'm' || key == 'M' || key == 0x82)) {
+        enter_menu();
+        return;
+    }
+    if (s_mode == MODE_DRONE) return;
+#endif
     if (down && key >= '1' && key <= '8') {
         w = key - '1';
         if (s_weapons & (1 << w)) s_weapon = w;
@@ -933,6 +1062,11 @@ void start_sim_init(void)
     s_ready = 1;
     respawn();
     for (i = 0; i < 20; i++) physics(0.05f);
+#if defined(PICO_REAL_HW)
+    s_mode = MODE_MENU;
+    s_cam_eye = 0;
+    s_menu_row = 1;
+#endif
 }
 
 void start_sim_tick(uint32_t now_ms)
@@ -962,6 +1096,31 @@ void start_sim_tick(uint32_t now_ms)
             s_hold[i] = 0;
         }
     }
+#if defined(PICO_REAL_HW)
+    if (s_mode == MODE_MENU) return;
+    if (s_mode == MODE_DRONE) {
+        uint32_t t, dur;
+        int di;
+        if (START_NDRONE > 0) {
+            if (s_drone_t0 == 0 || s_now < s_drone_t0)
+                s_drone_t0 = s_now ? s_now : 1u;
+            t = s_now - s_drone_t0;
+            dur = start_drone_ms[START_NDRONE - 1];
+            if (t > dur) {
+                s_drone_t0 = s_now ? s_now : 1u;
+                drone_reset_doors();
+                t = 0;
+            }
+            drone_pose(t);
+        }
+        doors(dt);
+        for (di = 0; di < START_NDOOR; di++) {
+            if (s_drone_hold[di] && s_door_state[di] == 2)
+                s_door_wait[di] = 999.0f;
+        }
+        return;
+    }
+#endif
     if (s_dead) {
         if (s_now >= s_dead_until) respawn();
         return;
@@ -1347,7 +1506,7 @@ static const int s_viewmesh[8] = {
 void start_sim_render(void)
 {
     float eye[3], fwd[3], local[3];
-    int i, x;
+    int i;
     char hud[40];
     if (!s_ready) start_sim_init();
     if (!s_bound) {
@@ -1361,7 +1520,14 @@ void start_sim_render(void)
     picogl_set_cull(0);
     picogl_set_depth(1);
     picogl_clear_target(1, 1, CLEAR_RGB);
-    eye[0] = s_org[0]; eye[1] = s_org[1]; eye[2] = s_org[2] + 22.0f;
+    eye[0] = s_org[0];
+    eye[1] = s_org[1];
+#if defined(PICO_REAL_HW)
+    /* Drone samples are the eye. Play keeps the standing view height. */
+    eye[2] = s_cam_eye ? s_org[2] : s_org[2] + 22.0f;
+#else
+    eye[2] = s_org[2] + 22.0f;
+#endif
     {
         float ang[3];
         ang[0] = s_pitch; ang[1] = s_yaw; ang[2] = 0.0f;
@@ -1471,8 +1637,28 @@ void start_sim_render(void)
     }
     draw_text(2, 2, hud, 0xFFFFu);
     draw_text(2, VH - 12, s_msg, 0xFFE0u);
+#if defined(PICO_REAL_HW)
+    if (s_mode == MODE_MENU) {
+        draw_text(4, 28, "e1m1", 0xFFFFu);
+        draw_text(4, 40, s_menu_row == 0 ? "> play" : "  play", 0xFFE0u);
+        draw_text(4, 48, s_menu_row == 1 ? "> drone" : "  drone", 0xFFE0u);
+        draw_text(4, 60, "fire starts", 0xFFFFu);
+        draw_text(4, 68, "m menu", 0xBDF7u);
+    } else {
+        draw_text(96, 10, "m menu", 0xBDF7u);
+    }
+#endif
+#if !defined(PICO_REAL_HW)
+    /* The host gate counts lit pixels. The device scan walked every
+     * pixel after the picture was already on the panel. */
+    {
+        int x;
+        s_lit = 0;
+        for (x = 0; x < VW * VH; x++) if (s_rgb[x] != CLEAR_RGB) s_lit++;
+    }
+#else
     s_lit = 0;
-    for (x = 0; x < VW * VH; x++) if (s_rgb[x] != CLEAR_RGB) s_lit++;
+#endif
 }
 
 const uint16_t *start_sim_pixels(void) { return s_rgb; }
