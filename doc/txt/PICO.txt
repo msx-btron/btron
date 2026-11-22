@@ -11,6 +11,33 @@ Policy: Minimal, spec-driven clean code (-Os --gc-sections -Wall -Wextra -Werror
         Battery-first execution (WFI idle, 0 FPS static dirty-band, peripheral gating).
         Zero pixel coordinates in any application; legacy segui_demo/segui_phone removed.
 
+BTRON B-System supported screen resolutions across HMI FOMA SEGUI workbench shell UI applications:
+
+============================ DESKTOP =================================
+1280 x 1024 VESA Desktop
+1024 x 768 Workspace Desktop
+================================= FOMA RETRO GAME CONSOLE ============
+800 x 600 Workstation Desktop
+640 x 480 SVGA Desktop
+=========================== PICO SEGUI ===============================
+320 x 240 VGA Desktop
+240 x 160 HQVGA
+208 x 208 Series 40
+176 x 208 Series 60
+176 x 144 QCIF
+160 x 144 Game Boy
+128 x 160 Series 30, Nokia 2630, 3500, 6650
+160 x 120 QQVGA
+128 x 128 SQVGA
+128 x 96 SQCIF
+128 x 64 Arduboy
+96 x 60 Nokia 7110
+96 x 64 TI-81, Nokia 1100, 3410, 3510i, 6310i
+96 x 68 Nokia 1280, 1600, 2600
+88 x 72 QQCIF
+84 x 84 Nokia 5110i
+84 x 48 Nokia 3310, 3330, 5110, 8210
+======================================================================
 
 0. Scope & Design Invariants
 ----------------------------

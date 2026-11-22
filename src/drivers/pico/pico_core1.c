@@ -6,8 +6,9 @@
  * entered Reset_Handler, that park takes one thumb pointer instead.
  *
  * Core 0 posts triangles with snd and does not wait inside the ring. A full
- * ring refuses and counts the refusal. The completion check is reap, at the
- * next yield (a full ring, or the frame being read), not on every triangle.
+ * ring refuses. The producer then waits for one free slot, not for the
+ * whole queue, so transform keeps running beside the span. The frame join
+ * is reap, before the pixels are read. Core 1 does not touch DMA or SPI.
  * The integer span does not use the hardware divider. If the wake fails,
  * core 0 paints the same span.
  */

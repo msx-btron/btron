@@ -60,6 +60,8 @@ run_profile() {
         "SRAM static used :"
         "ID PRI STATE SWITCH C NAME"
         "CORE STATE QUEUED REF NAME"
+        # CPU1 never leaves reset: an385 is one CPU, an521 has no power
+        # control for the second core. Scene overlap is test-picogl-cores.
         "   1 OFF"
     )
 

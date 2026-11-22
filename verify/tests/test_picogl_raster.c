@@ -251,6 +251,46 @@ static int queue_does_not_drop(void)
     return picogl_drop() == 0;
 }
 
+static int screen_tri_matches(void)
+{
+    enum { W = 32, H = 24 };
+    uint16_t *rgb = (uint16_t *)calloc((size_t)W * H, sizeof(uint16_t));
+    int32_t *iz = (int32_t *)calloc((size_t)W * H, sizeof(int32_t));
+    picogl_tri_t t;
+    int x, y, mismatches = 0;
+    if (!rgb || !iz) return 0;
+    memset(&t, 0, sizeof t);
+    t.x0 = 2; t.y0 = 2;
+    t.x1 = 28; t.y1 = 4;
+    t.x2 = 8; t.y2 = 20;
+    t.iz = 10;
+    t.rgb = 0xF800;
+    picogl_bind_target(rgb, iz, W, H, W);
+    picogl_set_cull(0);
+    picogl_set_depth(1);
+    picogl_clear_target(1, 1, 0);
+    picogl_screen_tri(t.x0, t.y0, t.x1, t.y1, t.x2, t.y2, t.iz, t.rgb);
+    picogl_flush_target();
+    for (y = 0; y < H; y++) {
+        for (x = 0; x < W; x++) {
+            int inside = ref_inside(&t, x, y);
+            uint16_t got = rgb[y * W + x];
+            if ((inside && got != t.rgb) || (!inside && got == t.rgb)) {
+                if (mismatches < 4)
+                    printf("  screen mismatch %d,%d got %04x inside %d\n",
+                           x, y, got, inside);
+                mismatches++;
+            }
+        }
+    }
+    check("a posted screen triangle matches the center test", mismatches == 0);
+    check("the host consumer ran that triangle", pico_core1_state() != 0);
+    picogl_bind_target(NULL, NULL, 0, 0, 0);
+    free(rgb);
+    free(iz);
+    return mismatches == 0 && pico_core1_state() != 0;
+}
+
 int main(void)
 {
     printf("==========================================================\n");
@@ -259,6 +299,7 @@ int main(void)
     depth_band();
     door_cull_and_depth();
     queue_does_not_drop();
+    screen_tri_matches();
     printf("  checks=%d failures=%d\n", s_checks, s_fail);
     if (s_fail == 0) {
         printf("[CI-TEST] SUCCESS - the depth winner matches the software band\n");

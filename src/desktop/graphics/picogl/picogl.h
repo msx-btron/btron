@@ -29,6 +29,7 @@
 
 #define PICOGL_FLAT      1u
 #define PICOGL_TEX       2u
+#define PICOGL_LIFT      4u
 
 typedef struct {
     int16_t  x0, y0, x1, y1, x2, y2;
@@ -55,6 +56,18 @@ void picogl_string(int x, int y, const char *str, const uint8_t font[96][8]);
  * meaning closer. stride is in pixels. The pointer stays owned by the caller. */
 void picogl_bind_target(uint16_t *rgb, int32_t *iz, int w, int h, int stride);
 void picogl_clear_target(int color, int depth, uint16_t rgb);
+
+/* One-deep save so the XMB wave can bind a band strip and put the
+ * caller's target back. screen_tri is already in screen pixels. rgb is
+ * stored as given (the strip wants the panel byte order). */
+void picogl_target_push(void);
+void picogl_target_pop(void);
+void picogl_screen_tri(int x0, int y0, int x1, int y1, int x2, int y2,
+                       int32_t iz, uint16_t rgb);
+/* Same triangle, drawn as dst * (1 + src). src is a small RGB565 lift.
+ * The gradient stays visible. Overlapping quads stack. */
+void picogl_screen_lift(int x0, int y0, int x1, int y1, int x2, int y2,
+                        uint16_t lift);
 
 /* Raster one band from the bins into rgb[band rows * stride]. iz_row is
  * width ints and is cleared at each scanline. Host tests call this on the
@@ -114,9 +127,9 @@ void picogl_gl_shade_model(int mode);
 void picogl_gl_light_fv(int light, int pname, const float *params);
 void picogl_gl_material_fv(int face, int pname, const float *params);
 
-/* Core 0 wakes core 1. A host build leaves these undefined and weak, so the
- * span paints on the calling core. state is 0 off, 1 ready, 2 painting, 3
- * give-up. reap waits for the ring at a yield. sev wakes the consumer. */
+/* Core 0 wakes core 1. The host file is a pthread with the same states.
+ * state is 0 off, 1 ready, 2 painting, 3 give-up. reap waits for the ring
+ * at a yield. sev wakes the consumer. */
 void     pico_core1_launch(void);
 int      pico_core1_run_flush(void);
 void     pico_core1_reap(void);

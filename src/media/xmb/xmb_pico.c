@@ -1,9 +1,11 @@
 /*
  * xmb_pico.c — XMB surface for the PicoCalc image.
  *
- * Gradient, a fixed perspective floor, 32x32 P8 cells as SRC_OVER, and
- * A1 labels. The selected category is locked to the center. Rectangles
- * stay on core 0. This file does not link xmb.c, xmb_wave.c, or the atlas.
+ * Gradient, a perspective wave of flat triangles, 32x32 P8 cells as
+ * SRC_OVER, and A1 labels. The selected category is locked to the center.
+ * On the device the wave is screen-space triangles on core 1. Icons,
+ * labels, and the gradient stay on core 0. This file does not link
+ * xmb.c, xmb_wave.c, or the atlas.
  */
 #include "xmb_pico.h"
 #include "xmb_pico_icons.h"
@@ -211,6 +213,7 @@ static void fill_gradient(int left, int top, int right, int bottom)
     }
 }
 
+#if !defined(PICO_REAL_HW)
 static void hline_dim(int y, int x0, int x1, int num)
 {
     uint16_t *row;
@@ -253,6 +256,7 @@ static void floor_surface(int left, int right, int bottom, int cx, int horizon)
         }
     }
 }
+#endif /* !PICO_REAL_HW */
 
 static void pad(int x, int y, int size)
 {
@@ -404,6 +408,85 @@ void xmb_pico_anchors(int left, int top, int right, int bottom,
     if (item) *item = s_item;
 }
 
+#if defined(PICO_REAL_HW)
+/* Eight by five sheet across the whole window. Far rows are narrow and
+ * high, near rows spread, the same side-on ribbon as the original wave
+ * with the lattice cut from 32x32. The fill is a lift, so the gradient
+ * shows through and overlapping quads stack. */
+#define WAVE_NX 8
+#define WAVE_NY 5
+static const int8_t s_wave_sin[16] = {
+    0, 5, 9, 12, 13, 12, 9, 5, 0, -5, -9, -12, -13, -12, -9, -5
+};
+
+static void wave_point(int i, int j, int left, int top, int width, int height,
+                       int phase, int *ox, int *oy)
+{
+    int lean = 5 + j * 3;
+    int wob = s_wave_sin[(i * 3 + j + phase) & 15];
+    int sway = s_wave_sin[(j * 2 + phase) & 15];
+    int y = top + (j * j * height) / (WAVE_NY * WAVE_NY);
+    int x = left + width / 2 + (i - WAVE_NX / 2) * (width * lean) / (WAVE_NX * 18);
+    y += wob * (2 + j);
+    x += sway;
+    *ox = x;
+    *oy = y;
+}
+
+static void wave_surface(int left, int top, int right, int bottom)
+{
+    int y, y0, y1, band_y0, width, height, phase, j, i;
+    uint16_t *row0;
+    y0 = -1;
+    y1 = -1;
+    row0 = 0;
+    width = right - left;
+    height = bottom - top;
+    if (width < 8 || height < 8) return;
+    for (y = 0; y < 320; y++) {
+        uint16_t *row = dp_pico_band_row(y);
+        if (!row) continue;
+        if (y0 < 0) {
+            y0 = y;
+            row0 = row;
+        }
+        y1 = y;
+    }
+    if (y0 < 0 || !row0) return;
+    band_y0 = y0 & ~15;
+    phase = (s_glow >> 1) & 15;
+    picogl_target_push();
+    picogl_bind_target(row0 - (y0 - band_y0) * 320, 0, 320, 16, 320);
+    picogl_set_depth(0);
+    for (j = 0; j < WAVE_NY; j++) {
+        uint16_t lift = (uint16_t)(((1 + (j >> 1)) << 11) | ((2 + j) << 5) | (3 + j));
+        for (i = 0; i < WAVE_NX; i++) {
+            int xa, ya, xb, yb, xc, yc, xd, yd;
+            int ytop, ybot;
+            wave_point(i, j, left, top, width, height, phase, &xa, &ya);
+            wave_point(i + 1, j, left, top, width, height, phase, &xb, &yb);
+            wave_point(i + 1, j + 1, left, top, width, height, phase, &xc, &yc);
+            wave_point(i, j + 1, left, top, width, height, phase, &xd, &yd);
+            ytop = ya;
+            if (yb < ytop) ytop = yb;
+            if (yc < ytop) ytop = yc;
+            if (yd < ytop) ytop = yd;
+            ybot = ya;
+            if (yb > ybot) ybot = yb;
+            if (yc > ybot) ybot = yc;
+            if (yd > ybot) ybot = yd;
+            if (ybot < y0 || ytop > y1) continue;
+            picogl_screen_lift(xa, ya - band_y0, xb, yb - band_y0,
+                               xc, yc - band_y0, lift);
+            picogl_screen_lift(xa, ya - band_y0, xc, yc - band_y0,
+                               xd, yd - band_y0, lift);
+        }
+    }
+    picogl_flush_target();
+    picogl_target_pop();
+}
+#endif
+
 const char *xmb_pico_label(void)
 {
     const xmb_cat_t *c;
@@ -427,7 +510,13 @@ void xmb_pico_paint(int left, int top, int right, int bottom)
     selected_cell(left, top, right, &cat_x, &cat_y, &item_x, &item_y);
 
     fill_gradient(left, top, right, bottom);
+#if defined(PICO_REAL_HW)
+    /* Core 1 fills the sheet while the previous band is still on the SPI.
+     * Icons are drawn after the join so they sit on the wave. */
+    wave_surface(left, top, right, bottom);
+#else
     floor_surface(left, right, bottom, cat_x + 16, cat_y - 8);
+#endif
 
     for (pass = 3; pass >= 0; pass--) {
         for (i = 0; i < nc; i++) {

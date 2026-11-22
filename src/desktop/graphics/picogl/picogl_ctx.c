@@ -226,8 +226,12 @@ void picogl_gl_end(void)
 {
     s_in_begin = 0;
     s_vn = 0;
-    /* Leave the ring queued. picogl_flush_target is the join before a
-     * read. Reaping here stalled core 0 at the end of every gear strip. */
+    /* On the device the ring stays queued so the three gears overlap
+     * core 1. The join is the flush before the panel read. Host tests
+     * read the target at glEnd, so they join here. */
+#if !defined(PICO_REAL_HW)
+    picogl_flush_target();
+#endif
 }
 
 void picogl_gl_vertex3f(GLfloat x, GLfloat y, GLfloat z)

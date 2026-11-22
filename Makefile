@@ -2453,6 +2453,56 @@ test-start-sim: .build/test_start_sim
 test-xmb-pico: .build/test_xmb_pico
 	@./.build/test_xmb_pico
 
+.build/test_picogl_gears_fps: verify/tests/test_picogl_gears_fps.c \
+		src/desktop/graphics/picogl/picogl_span.c \
+		src/desktop/graphics/picogl/picogl_ctx.c \
+		src/desktop/graphics/picogl/picogl_host_core1.c \
+		src/desktop/graphics/picogl/picogl.h
+	@mkdir -p .build
+	$(CC) $(CFLAGS) -Isrc/desktop/graphics/picogl \
+		verify/tests/test_picogl_gears_fps.c \
+		src/desktop/graphics/picogl/picogl_span.c \
+		src/desktop/graphics/picogl/picogl_ctx.c \
+		src/desktop/graphics/picogl/picogl_host_core1.c \
+		-o $@ -lm
+
+test-picogl-gears-fps: .build/test_picogl_gears_fps
+	@./.build/test_picogl_gears_fps
+
+.build/test_picogl_quake_fps: verify/tests/test_picogl_quake_fps.c \
+		src/media/quake/sim/start_sim.c .build/start_blob.c \
+		src/desktop/graphics/picogl/picogl_span.c \
+		src/desktop/graphics/picogl/picogl_host_core1.c \
+		.build/start_blob.h src/media/quake/sim/start_sim.h \
+		src/desktop/graphics/picogl/picogl.h
+	$(CC) $(CFLAGS) -I.build -Isrc/desktop/graphics/picogl -Isrc/media/quake/sim \
+		verify/tests/test_picogl_quake_fps.c src/media/quake/sim/start_sim.c \
+		.build/start_blob.c src/desktop/graphics/picogl/picogl_span.c \
+		src/desktop/graphics/picogl/picogl_host_core1.c \
+		-o $@ -lm
+
+test-picogl-quake-fps: .build/test_picogl_quake_fps
+	@./.build/test_picogl_quake_fps
+
+# Dual-core stand-in for the three scenes. QEMU itself cannot start CPU1.
+.build/test_picogl_cores: verify/tests/test_picogl_cores.c \
+		src/media/quake/sim/start_sim.c .build/start_blob.c \
+		src/desktop/graphics/picogl/picogl_span.c \
+		src/desktop/graphics/picogl/picogl_ctx.c \
+		src/desktop/graphics/picogl/picogl_host_core1.c \
+		.build/start_blob.h src/media/quake/sim/start_sim.h \
+		src/desktop/graphics/picogl/picogl.h
+	@mkdir -p .build
+	$(CC) $(CFLAGS) -I.build -Isrc/desktop/graphics/picogl -Isrc/media/quake/sim \
+		verify/tests/test_picogl_cores.c src/media/quake/sim/start_sim.c \
+		.build/start_blob.c src/desktop/graphics/picogl/picogl_span.c \
+		src/desktop/graphics/picogl/picogl_ctx.c \
+		src/desktop/graphics/picogl/picogl_host_core1.c \
+		-o $@ -lm
+
+test-picogl-cores: .build/test_picogl_cores
+	@./.build/test_picogl_cores
+
 # LANE 12f gate (a): batch grid map projection bit-identical check vs TinyGL vertex walk.
 TEST_GRIDMAP_SRCS = verify/tests/test_grid_map.c src/desktop/graphics/gles/gl_dispatch.c src/desktop/graphics/gles/backend_tinygl.c \
                     src/desktop/graphics/virgl/backend_virgl.c $(TINYGL_SRCS) src/media/xmb/xmb_wave.c
@@ -4699,4 +4749,4 @@ serial-picocalc:
 	echo "[SERIAL] Attaching to $$PORT @ 115200 8N1 (Ctrl-A then K to exit)..."; \
 	screen "$$PORT" 115200
 
-.PHONY: picocalc picocalc-all picocalc-quake flash-picocalc test-picocalc test-segui-cores serial-picocalc test-start-sim test-xmb-pico
+.PHONY: picocalc picocalc-all picocalc-quake flash-picocalc test-picocalc test-segui-cores serial-picocalc test-start-sim test-xmb-pico test-picogl-gears-fps test-picogl-quake-fps test-picogl-cores

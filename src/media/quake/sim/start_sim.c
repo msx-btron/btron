@@ -1063,11 +1063,9 @@ static void walk_node(int node, const float *eye, const float *fwd)
     }
 }
 
-static void xform_vert(const int16_t *v, const float *org, float yaw, float pitch, float *o)
+static void xform_vert(const int16_t *v, const float *org,
+                      float cy, float sy, float cp, float sp, float *o)
 {
-    float yr = yaw * (3.14159265f / 180.0f);
-    float pr = pitch * (3.14159265f / 180.0f);
-    float cy = cosf(yr), sy = sinf(yr), cp = cosf(pr), sp = sinf(pr);
     float x = (float)v[0], y = (float)v[1], z = (float)v[2];
     float fx = cp * cy, fy = cp * sy, fz = -sp;
     float rx = sy, ry = -cy;
@@ -1081,15 +1079,22 @@ static void draw_mesh(int mesh, const float *org, float yaw, float pitch)
 {
     int n, i, k;
     uint32_t rgba;
+    float yr, pr, cy, sy, cp, sp;
     if (mesh < 0 || mesh >= START_NMESH || s_budget <= 0) return;
     n = start_mesh_n[mesh];
     rgba = start_mesh_rgba[mesh];
     if (n < 3) return;
+    yr = yaw * (3.14159265f / 180.0f);
+    pr = pitch * (3.14159265f / 180.0f);
+    cy = cosf(yr);
+    sy = sinf(yr);
+    cp = cosf(pr);
+    sp = sinf(pr);
     for (i = 0; i + 2 < n && s_budget > 0; i += 3) {
         float xyz[9];
         for (k = 0; k < 3; k++) {
             const int16_t *v = start_avert[start_mesh_v0[mesh] + i + k];
-            xform_vert(v, org, yaw, pitch, xyz + k * 3);
+            xform_vert(v, org, cy, sy, cp, sp, xyz + k * 3);
         }
         picogl_tris(xyz, NULL, 1, rgba, -1);
         s_budget--;
