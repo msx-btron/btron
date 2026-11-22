@@ -335,6 +335,11 @@ static void segui_task(void *arg)
                 uint32_t mask = dirty;
                 int bands = 0;
                 dp_pico_present(&s_screen, dirty, segui_palm_paint);
+#if defined(PICOCALC_APP_QUAKE)
+                /* The build kicked on the first band has to finish
+                 * before the next tick writes the pose. */
+                start_sim_join_build();
+#endif
                 while (mask) {
                     bands += (int)(mask & 1u);
                     mask >>= 1;

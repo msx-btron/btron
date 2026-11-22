@@ -490,10 +490,18 @@ gl_ops_t g_picogl_ops = {
     picogl_gl_ortho
 };
 
+#if defined(PICO_REAL_HW)
+__attribute__((weak)) void picogl_log_extra(char **pp, char *end)
+{
+    (void)pp;
+    (void)end;
+}
+#endif
+
 void picogl_log_frame(const char *client, uint32_t ms, int bands)
 {
 #if defined(PICO_REAL_HW)
-    char buf[96];
+    char buf[128];
     char *p = buf;
     char *end = buf + (int)sizeof buf - 2;
     unsigned vals[4];
@@ -535,6 +543,7 @@ void picogl_log_frame(const char *client, uint32_t ms, int bands)
         while (v && n < 10) { tmp[n++] = (char)('0' + (v % 10u)); v /= 10u; }
         while (n > 0 && p < end) *p++ = tmp[--n];
     }
+    picogl_log_extra(&p, end);
     *p++ = '\n';
     *p = '\0';
     pico_hal_uart_puts(buf);

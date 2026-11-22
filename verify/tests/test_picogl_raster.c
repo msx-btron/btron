@@ -296,7 +296,7 @@ static int screen_tri_matches(void)
  * that does not start on a band. */
 static int resume_matches(void)
 {
-    picogl_tri_t tris[3];
+    picogl_tri_t tris[4];
     enum { W = 80, BANDS = 4, BH = 16, H = BANDS * BH };
     uint16_t *fresh;
     uint16_t *kept;
@@ -318,26 +318,33 @@ static int resume_matches(void)
     tris[2].x1 = 60; tris[2].y1 = 30;
     tris[2].x2 = 28; tris[2].y2 = 36;
     tris[2].iz = 10; tris[2].rgb = 0x001F; tris[2].flags = (uint8_t)PICOGL_SEAL;
+    /* One pixel of height across the view. step/d is past the old 48-step
+     * repair, so the precomputed row delta has to match a fresh divide. */
+    tris[3].x0 = 0;  tris[3].y0 = 6;
+    tris[3].x1 = 79; tris[3].y1 = 7;
+    tris[3].x2 = 10; tris[3].y2 = 58;
+    tris[3].iz = 5; tris[3].rgb = 0xFFE0; tris[3].flags = (uint8_t)PICOGL_FLAT;
     fresh = (uint16_t *)calloc((size_t)H * W, sizeof(uint16_t));
     kept = (uint16_t *)calloc((size_t)H * W, sizeof(uint16_t));
     iz = (int32_t *)calloc((size_t)BH * W, sizeof(int32_t));
     if (!fresh || !kept || !iz) return 0;
     bad = 0;
     picogl_set_depth(1);
+    picogl_set_edge_step(0, 0);
     for (cover = 0; cover < 2; cover++) {
         for (oy = 0; oy <= 8; oy += 8) {
             picogl_set_cover(cover);
             picogl_set_edge_resume(0, 0, 0, 0);
             for (band = 0; band < BANDS; band++) {
                 memset(iz, 0, (size_t)BH * W * sizeof(int32_t));
-                picogl_paint_band(tris, 3, fresh + band * BH * W, W,
+                picogl_paint_band(tris, 4, fresh + band * BH * W, W,
                                   band * BH, BH, 0, oy, W, H, iz, 0x0000);
             }
             memset(ey, 0xff, sizeof ey);
             picogl_set_edge_resume(q, r, ey, 8);
             for (band = 0; band < BANDS; band++) {
                 memset(iz, 0, (size_t)BH * W * sizeof(int32_t));
-                picogl_paint_band(tris, 3, kept + band * BH * W, W,
+                picogl_paint_band(tris, 4, kept + band * BH * W, W,
                                   band * BH, BH, 0, oy, W, H, iz, 0x0000);
             }
             for (i = 0; i < H * W; i++) {
@@ -346,12 +353,253 @@ static int resume_matches(void)
         }
     }
     picogl_set_edge_resume(0, 0, 0, 0);
+    picogl_set_edge_step(0, 0);
     picogl_set_cover(0);
     free(fresh);
     free(kept);
     free(iz);
     check("a resumed edge matches a fresh divide", bad == 0);
     return bad == 0;
+}
+
+/* Left pair covers x 0..49. The far triangle owns the right side.
+ * Stopping when the left bbox is full would drop that hole. */
+static int cover_keeps_a_hole(void)
+{
+    picogl_tri_t tris[3];
+    uint16_t *rgb;
+    int32_t *iz;
+    int wall, hole;
+    uint16_t near_rgb, far_rgb;
+    memset(tris, 0, sizeof tris);
+    tris[0].x0 = 0;  tris[0].y0 = 0;
+    tris[0].x1 = 49; tris[0].y1 = 0;
+    tris[0].x2 = 0;  tris[0].y2 = 15;
+    tris[0].iz = 40; tris[0].rgb = 0xF800; tris[0].flags = (uint8_t)PICOGL_FLAT;
+    tris[1].x0 = 49; tris[1].y0 = 0;
+    tris[1].x1 = 49; tris[1].y1 = 15;
+    tris[1].x2 = 0;  tris[1].y2 = 15;
+    tris[1].iz = 40; tris[1].rgb = 0xF800; tris[1].flags = (uint8_t)PICOGL_FLAT;
+    tris[2].x0 = 40; tris[2].y0 = 0;
+    tris[2].x1 = 79; tris[2].y1 = 0;
+    tris[2].x2 = 79; tris[2].y2 = 15;
+    tris[2].iz = 10; tris[2].rgb = 0x001F; tris[2].flags = (uint8_t)PICOGL_FLAT;
+    rgb = (uint16_t *)calloc(16u * 80u, sizeof(uint16_t));
+    iz = (int32_t *)calloc(16u * 80u, sizeof(int32_t));
+    if (!rgb || !iz) return 0;
+    picogl_set_cover(1);
+    picogl_set_edge_resume(0, 0, 0, 0);
+    picogl_paint_band(tris, 3, rgb, 80, 0, 16, 0, 0, 80, 16, iz, 0x0000);
+    /* The band stores panel byte order. */
+    near_rgb = (uint16_t)((0xF800 >> 8) | (0xF800 << 8));
+    far_rgb = (uint16_t)((0x001F >> 8) | (0x001F << 8));
+    wall = rgb[8 * 80 + 10] == near_rgb;
+    hole = rgb[8 * 80 + 70] == far_rgb;
+    if (!wall || !hole)
+        printf("  cover hole wall %04x hole %04x\n",
+               rgb[8 * 80 + 10], rgb[8 * 80 + 70]);
+    picogl_set_cover(0);
+    free(rgb);
+    free(iz);
+    check("a filled span leaves the uncovered side", wall && hole);
+    return wall && hole;
+}
+
+static int span_box(const picogl_tri_t *t, int n, int *w, int *h)
+{
+    int i, minx, maxx, miny, maxy;
+    if (n < 1) return 0;
+    minx = maxx = t[0].x0;
+    miny = maxy = t[0].y0;
+    for (i = 0; i < n; i++) {
+        int xs[3], ys[3], k;
+        xs[0] = t[i].x0; xs[1] = t[i].x1; xs[2] = t[i].x2;
+        ys[0] = t[i].y0; ys[1] = t[i].y1; ys[2] = t[i].y2;
+        for (k = 0; k < 3; k++) {
+            if (xs[k] < minx) minx = xs[k];
+            if (xs[k] > maxx) maxx = xs[k];
+            if (ys[k] < miny) miny = ys[k];
+            if (ys[k] > maxy) maxy = ys[k];
+        }
+    }
+    *w = maxx - minx;
+    *h = maxy - miny;
+    return *w > 0 && *h > 0;
+}
+
+static int count_diff(const uint16_t *a, const uint16_t *b, int n, int w,
+                      const char *tag)
+{
+    int i, bad = 0;
+    for (i = 0; i < n; i++) {
+        if (a[i] == b[i]) continue;
+        if (bad < 4)
+            printf("  %s %d,%d %04x %04x\n", tag, i % w, i / w, a[i], b[i]);
+        bad++;
+    }
+    return bad;
+}
+
+static void fill_resume_tris(picogl_tri_t *tris)
+{
+    memset(tris, 0, 4 * sizeof *tris);
+    tris[0].x0 = 2;  tris[0].y0 = 0;
+    tris[0].x1 = 70; tris[0].y1 = 0;
+    tris[0].x2 = 20; tris[0].y2 = 50;
+    tris[0].iz = 40; tris[0].rgb = 0xF800; tris[0].flags = (uint8_t)PICOGL_SEAL;
+    tris[1].x0 = 8;  tris[1].y0 = 18;
+    tris[1].x1 = 40; tris[1].y1 = 22;
+    tris[1].x2 = 12; tris[1].y2 = 48;
+    tris[1].iz = 20; tris[1].rgb = 0x07E0; tris[1].flags = (uint8_t)PICOGL_FLAT;
+    tris[2].x0 = 30; tris[2].y0 = 4;
+    tris[2].x1 = 60; tris[2].y1 = 30;
+    tris[2].x2 = 28; tris[2].y2 = 36;
+    tris[2].iz = 10; tris[2].rgb = 0x001F; tris[2].flags = (uint8_t)PICOGL_SEAL;
+    tris[3].x0 = 0;  tris[3].y0 = 6;
+    tris[3].x1 = 79; tris[3].y1 = 7;
+    tris[3].x2 = 10; tris[3].y2 = 58;
+    tris[3].iz = 5; tris[3].rgb = 0xFFE0; tris[3].flags = (uint8_t)PICOGL_FLAT;
+}
+
+/* The later half paints another band, then holes take that pixel or
+ * sky. On the host both halves run here. The picture has to match one
+ * paint_band, including a saved row step. */
+static int split_matches(void)
+{
+    picogl_tri_t tris[4];
+    enum { W = 80, BANDS = 4, BH = 16, H = BANDS * BH, N = 8 };
+    uint16_t *one;
+    uint16_t *two;
+    uint16_t *far;
+    int32_t *iz;
+    int q[N * 3];
+    int r[N * 3];
+    int16_t ey[N];
+    int16_t dq[N * 3];
+    uint16_t dr[N * 3];
+    int oy, band, bad_step, bad_split, bad_hole, wall, hole;
+    uint16_t near_rgb, far_rgb;
+    picogl_core1_job();
+    check("an idle far-half job stays idle", picogl_core1_busy() == 0);
+    fill_resume_tris(tris);
+    one = (uint16_t *)calloc((size_t)H * W, sizeof(uint16_t));
+    two = (uint16_t *)calloc((size_t)H * W, sizeof(uint16_t));
+    far = (uint16_t *)calloc((size_t)BH * W, sizeof(uint16_t));
+    iz = (int32_t *)calloc((size_t)BH * W, sizeof(int32_t));
+    if (!one || !two || !far || !iz) return 0;
+    bad_step = 0;
+    bad_split = 0;
+    picogl_set_depth(1);
+    picogl_set_cover(1);
+    for (oy = 0; oy <= 8; oy += 8) {
+        picogl_set_edge_resume(0, 0, 0, 0);
+        picogl_set_edge_step(0, 0);
+        for (band = 0; band < BANDS; band++) {
+            memset(iz, 0, (size_t)BH * W * sizeof(int32_t));
+            picogl_paint_band(tris, 4, one + band * BH * W, W,
+                              band * BH, BH, 0, oy, W, H, iz, 0x0000);
+        }
+        memset(ey, 0xff, sizeof ey);
+        memset(dq, 0, sizeof dq);
+        memset(dr, 0, sizeof dr);
+        picogl_set_edge_resume(q, r, ey, N);
+        picogl_set_edge_step(dq, dr);
+        for (band = 0; band < BANDS; band++) {
+            memset(iz, 0, (size_t)BH * W * sizeof(int32_t));
+            picogl_paint_band(tris, 4, two + band * BH * W, W,
+                              band * BH, BH, 0, oy, W, H, iz, 0x0000);
+        }
+        bad_step += count_diff(one, two, H * W, W, "step");
+        memset(ey, 0xff, sizeof ey);
+        memset(dq, 0, sizeof dq);
+        memset(dr, 0, sizeof dr);
+        for (band = 0; band < BANDS; band++) {
+            memset(iz, 0, (size_t)BH * W * sizeof(int32_t));
+            memset(far, 0xA5, (size_t)BH * W * sizeof(uint16_t));
+            picogl_paint_band_split(tris, 4, two + band * BH * W, far, W,
+                                    band * BH, BH, 0, oy, W, H, iz, 0x0000);
+        }
+        bad_split += count_diff(one, two, H * W, W, "split");
+    }
+    /* Three triangles, no resume. The cut is 1, so the right side is
+     * the far half. A poisoned far band must not leak into a hole. */
+    memset(tris, 0, sizeof tris);
+    tris[0].x0 = 0;  tris[0].y0 = 0;
+    tris[0].x1 = 49; tris[0].y1 = 0;
+    tris[0].x2 = 0;  tris[0].y2 = 15;
+    tris[0].iz = 40; tris[0].rgb = 0xF800; tris[0].flags = (uint8_t)PICOGL_FLAT;
+    tris[1].x0 = 49; tris[1].y0 = 0;
+    tris[1].x1 = 49; tris[1].y1 = 15;
+    tris[1].x2 = 0;  tris[1].y2 = 15;
+    tris[1].iz = 40; tris[1].rgb = 0xF800; tris[1].flags = (uint8_t)PICOGL_FLAT;
+    tris[2].x0 = 40; tris[2].y0 = 0;
+    tris[2].x1 = 79; tris[2].y1 = 0;
+    tris[2].x2 = 79; tris[2].y2 = 15;
+    tris[2].iz = 10; tris[2].rgb = 0x001F; tris[2].flags = (uint8_t)PICOGL_FLAT;
+    picogl_set_edge_resume(0, 0, 0, 0);
+    picogl_set_edge_step(0, 0);
+    picogl_set_cover(1);
+    memset(one, 0, (size_t)BH * W * sizeof(uint16_t));
+    memset(two, 0, (size_t)BH * W * sizeof(uint16_t));
+    memset(far, 0xA5, (size_t)BH * W * sizeof(uint16_t));
+    memset(iz, 0, (size_t)BH * W * sizeof(int32_t));
+    picogl_paint_band(tris, 3, one, W, 0, BH, 0, 0, W, BH, iz, 0x0000);
+    picogl_paint_band_split(tris, 3, two, far, W, 0, BH, 0, 0, W, BH, iz, 0x0000);
+    bad_hole = count_diff(one, two, BH * W, W, "hole");
+    near_rgb = (uint16_t)((0xF800 >> 8) | (0xF800 << 8));
+    far_rgb = (uint16_t)((0x001F >> 8) | (0x001F << 8));
+    wall = two[8 * W + 10] == near_rgb;
+    hole = two[8 * W + 70] == far_rgb;
+    if (!wall || !hole)
+        printf("  split hole wall %04x hole %04x\n",
+               two[8 * W + 10], two[8 * W + 70]);
+    picogl_set_edge_resume(0, 0, 0, 0);
+    picogl_set_edge_step(0, 0);
+    picogl_set_cover(0);
+    free(one);
+    free(two);
+    free(far);
+    free(iz);
+    check("a saved row step matches a fresh divide", bad_step == 0);
+    check("a split band matches one core", bad_split == 0 && bad_hole == 0);
+    check("a split band keeps the far side of a hole", wall && hole);
+    return bad_step == 0 && bad_split == 0 && bad_hole == 0 && wall && hole;
+}
+
+/* 160x320 render stretched onto a square. The world square must be
+ * about twice as tall as it is wide in the render buffer. Viewport
+ * aspect leaves it square, which the stretch then widens. */
+static int display_aspect(void)
+{
+    picogl_tri_t cap[8];
+    float org[3] = {0.0f, 0.0f, 0.0f};
+    float ang[3] = {0.0f, 0.0f, 0.0f};
+    int n, w = 0, h = 0, ok_dest, ok_view;
+    picogl_bind_target(0, 0, 0, 0, 0);
+    picogl_set_cull(0);
+    picogl_capture(cap, 8);
+    picogl_begin_frame(160, 320);
+    picogl_set_display(320, 320);
+    picogl_set_camera(org, ang, 160, 320);
+    picogl_world_tri(64, -8, -8, 64, 8, -8, 64, 8, 8, 0xFF0000FFu);
+    picogl_world_tri(64, -8, -8, 64, 8, 8, 64, -8, 8, 0xFF0000FFu);
+    n = picogl_captured();
+    ok_dest = span_box(cap, n, &w, &h) && h > w + w / 2;
+    if (!ok_dest)
+        printf("  dest aspect n=%d w=%d h=%d\n", n, w, h);
+    picogl_begin_frame(160, 320);
+    picogl_set_display(0, 0);
+    picogl_set_camera(org, ang, 160, 320);
+    picogl_world_tri(64, -8, -8, 64, 8, -8, 64, 8, 8, 0xFF0000FFu);
+    picogl_world_tri(64, -8, -8, 64, 8, 8, 64, -8, 8, 0xFF0000FFu);
+    n = picogl_captured();
+    ok_view = span_box(cap, n, &w, &h) && h * 2 > w && w * 2 > h;
+    if (!ok_view)
+        printf("  view aspect n=%d w=%d h=%d\n", n, w, h);
+    picogl_capture(0, 0);
+    picogl_set_display(0, 0);
+    check("destination aspect keeps a stretched square", ok_dest && ok_view);
+    return ok_dest && ok_view;
 }
 
 int main(void)
@@ -364,6 +612,9 @@ int main(void)
     queue_does_not_drop();
     screen_tri_matches();
     resume_matches();
+    cover_keeps_a_hole();
+    split_matches();
+    display_aspect();
     printf("  checks=%d failures=%d\n", s_checks, s_fail);
     if (s_fail == 0) {
         printf("[CI-TEST] SUCCESS - the depth winner matches the software band\n");

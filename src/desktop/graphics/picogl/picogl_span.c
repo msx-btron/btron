@@ -5,7 +5,8 @@
  * Core 1 runs the same fill when a target is bound. The host test calls
  * picogl_raster_band on this core. The edge divide stays in software.
  * A captured list can keep each edge's remainder, so a later band steps
- * it instead of dividing again. The SIO divider result is undefined
+ * it instead of dividing again. Each later row adds a quotient computed
+ * once per edge, and does not divide. The SIO divider result is undefined
  * until 8 cycles after the divisor write, and reading it early tore
  * the spans.
  */
@@ -20,6 +21,9 @@
 #include <string.h>
 #if !defined(PICO_REAL_HW)
 #include <sched.h>
+#endif
+#if defined(PICO_REAL_HW)
+#include "pico_regs.h"
 #endif
 
 /* 128 slots cover one Quake hall submit (~116 tris) and a burst of a
@@ -44,6 +48,8 @@ static float s_mvp[16];
 static int32_t s_mq[16];
 static int   s_mq_ok;
 static int   s_vp_w, s_vp_h;
+/* Destination of the stretch. 0 means the frustum uses the viewport. */
+static int   s_disp_w, s_disp_h;
 static int   s_cull;
 static int   s_depth = 1;
 static volatile int s_drop;
@@ -57,10 +63,6 @@ static picogl_tri_t s_band[PICOGL_BANDS][PICOGL_BAND_CAP];
 static uint16_t *s_tgt_rgb;
 static int32_t  *s_tgt_iz;
 static int       s_tgt_w, s_tgt_h, s_tgt_stride;
-static uint16_t *s_out_rgb;
-static int32_t  *s_out_iz;
-static int       s_out_stride, s_out_w, s_out_h;
-static int       s_out_xoff, s_out_yoff, s_out_vw, s_out_vh, s_out_swap;
 static picogl_tri_t *s_cap;
 static int       s_cap_n, s_cap_max;
 static int       s_from_world;
@@ -74,12 +76,35 @@ static volatile uint32_t s_span_done;
  * is set, and only for a band no wider than 320. */
 static int s_cover;
 static uint32_t s_cov[16][10];
+/* Far half of a Quake band. Core 1 writes this. Core 0 keeps s_cov. */
+static uint32_t s_cov_far[16][10];
 /* Quake keeps these. Gears leave them unset, so a gear triangle still
- * divides at the row it starts on. y < 0 means that slot has no remainder. */
+ * divides at the row it starts on. y < 0 means that slot has no remainder.
+ * dq,dr are the row step. They depend on the edge, not the row, so a
+ * later band installs them and does not divide. */
 static int *s_edge_q;
 static int *s_edge_r;
 static int16_t *s_edge_y;
+static int16_t *s_edge_dq;
+static uint16_t *s_edge_dr;
 static int s_edge_n;
+
+/* One band paint. Two of these run together: core 0 writes the near
+ * half into the DMA strip, core 1 writes the far half into another
+ * band. Coverage and the pixel buffer are not shared. */
+typedef struct span_px {
+    uint16_t *rgb;
+    int32_t *iz;
+    int stride;
+    int dest_w, dest_h;
+    int xoff, yoff;
+    int vw, vh;
+    int swap;
+    int cover;
+    uint32_t (*cov)[10];
+    int cov_left;
+    volatile int *span_ctr;
+} span_px;
 
 static void mat_ident(float *m)
 {
@@ -255,27 +280,59 @@ static inline __attribute__((always_inline)) int floor_div_pos(int n, int d)
 }
 
 /* c = dx*(py-ay) - dy*((2*x+1)-ax) >= 0, with doubled vertex coordinates.
- * The first row divides once per edge. Later rows add 2*dx to the numerator. */
+ * The first row divides once per edge. Later rows add dq, and dr which
+ * stays in [0, d), so one compare puts the remainder back. */
 typedef struct {
     int kind; /* 1 = x max, 2 = x min, 3 = horizontal */
     int q, r, d, step;
+    int dq, dr;
     int ky, dx;
 } span_edge_t;
 
+/* dq*d + dr == step, and 0 <= dr < d. A row is then one add. */
+static void edge_prep(span_edge_t *e)
+{
+    int step = e->step;
+    int d = e->d;
+    int dq;
+    if (d <= 0) {
+        e->dq = 0;
+        e->dr = 0;
+        return;
+    }
+    if (step >= 0 && step < d) {
+        e->dq = 0;
+        e->dr = step;
+        return;
+    }
+    if (step < 0 && step > -d) {
+        e->dq = -1;
+        e->dr = step + d;
+        return;
+    }
+    dq = floor_div_pos(step, d);
+    e->dq = dq;
+    e->dr = step - dq * d;
+}
+
 /* have = 0 divides. have = 1 installs the remainder saved at this py.
  * That remainder is what edge_init would produce, so the half-planes
- * do not move. A horizontal edge recomputes ky and ignores q, r. */
+ * do not move. A horizontal edge recomputes ky and ignores q, r.
+ * A resumed non-horizontal edge does not recompute ky. */
+/* have_step installs dq,dr from the previous band. 0xFFFF in sdr means
+ * the step did not fit in the stored pair and this band divides. */
 static void edge_at(span_edge_t *e, int ax, int ay, int bx, int by, int py,
-                    int have, int sq, int sr)
+                    int have, int sq, int sr, int have_step, int sdq, int sdr)
 {
     int dx = bx - ax;
     int dy = by - ay;
-    int ky = dx * (py - ay) - dy * (1 - ax);
     e->kind = 0;
     e->q = e->r = e->d = e->step = 0;
-    e->ky = ky;
+    e->dq = e->dr = 0;
+    e->ky = 0;
     e->dx = dx;
     if (dy == 0) {
+        e->ky = dx * (py - ay);
         e->kind = 3;
         return;
     }
@@ -288,14 +345,14 @@ static void edge_at(span_edge_t *e, int ax, int ay, int bx, int by, int py,
             e->q = sq;
             e->r = sr;
         } else {
+            int ky = dx * (py - ay) - dy * (1 - ax);
             int q = floor_div_pos(ky, d);
+            e->ky = ky;
             e->q = q;
             e->r = ky - q * d;
         }
     } else {
-        int n = -ky;
         int d = (-dy) << 1;
-        int m = n + d - 1;
         e->kind = 2;
         e->d = d;
         e->step = -(dx << 1);
@@ -303,43 +360,63 @@ static void edge_at(span_edge_t *e, int ax, int ay, int bx, int by, int py,
             e->q = sq;
             e->r = sr;
         } else {
+            int ky = dx * (py - ay) - dy * (1 - ax);
+            int n = -ky;
+            int m = n + d - 1;
             int q = floor_div_pos(m, d);
+            e->ky = ky;
             e->q = q;
             e->r = m - q * d;
         }
     }
+    if (have && have_step && sdr != 0xFFFF) {
+        e->dq = sdq;
+        e->dr = sdr;
+        return;
+    }
+    edge_prep(e);
 }
 
 static void edge_init(span_edge_t *e, int ax, int ay, int bx, int by, int py)
 {
-    edge_at(e, ax, ay, bx, by, py, 0, 0, 0);
+    edge_at(e, ax, ay, bx, by, py, 0, 0, 0, 0, 0, 0);
+}
+
+static void edge_step_save(int slot, const span_edge_t *e0,
+                           const span_edge_t *e1, const span_edge_t *e2)
+{
+    const span_edge_t *e[3];
+    int k;
+    if (!s_edge_dq || !s_edge_dr || slot < 0) return;
+    e[0] = e0;
+    e[1] = e1;
+    e[2] = e2;
+    for (k = 0; k < 3; k++) {
+        int i = slot * 3 + k;
+        int dq = e[k]->dq;
+        int dr = e[k]->dr;
+        if (dq != (int)(int16_t)dq || dr < 0 || dr > 65534) {
+            s_edge_dq[i] = 0;
+            s_edge_dr[i] = 0xFFFFu;
+        } else {
+            s_edge_dq[i] = (int16_t)dq;
+            s_edge_dr[i] = (uint16_t)dr;
+        }
+    }
 }
 
 static void edge_advance(span_edge_t *e)
 {
-    int guard;
     if (e->kind == 3) {
         e->ky += e->dx << 1;
         return;
     }
     if (e->kind == 0 || e->d <= 0) return;
-    e->r += e->step;
-    guard = 0;
-    while (e->r >= e->d && guard < 48) {
+    e->q += e->dq;
+    e->r += e->dr;
+    if (e->r >= e->d) {
         e->r -= e->d;
         e->q++;
-        guard++;
-    }
-    while (e->r < 0 && guard < 48) {
-        e->r += e->d;
-        e->q--;
-        guard++;
-    }
-    if (e->r >= e->d || e->r < 0) {
-        int n = e->q * e->d + e->r;
-        int q = floor_div_pos(n, e->d);
-        e->q = q;
-        e->r = n - q * e->d;
     }
 }
 
@@ -354,22 +431,23 @@ static void edge_apply(const span_edge_t *e, int *lo, int *hi)
     }
 }
 
-static int cover_live(void)
+static int cover_live(const span_px *px)
 {
-    return s_cover && s_out_rgb && s_out_h > 0 && s_out_h <= 16
-        && s_out_w > 0 && s_out_w <= 320;
+    return px && px->cover && px->rgb && px->cov
+        && px->dest_h > 0 && px->dest_h <= 16
+        && px->dest_w > 0 && px->dest_w <= 320;
 }
 
 /* 1 when every bit in [lo, hi] on this band row is already written. */
-static int span_full(int dy, int lo, int hi)
+static int span_full(const span_px *px, int dy, int lo, int hi)
 {
     uint32_t *bits;
     int x;
-    if ((unsigned)dy >= 16u) return 0;
+    if (!px || !px->cov || (unsigned)dy >= 16u) return 0;
     if (lo < 0) lo = 0;
     if (hi > 319) hi = 319;
     if (lo > hi) return 1;
-    bits = s_cov[dy];
+    bits = px->cov[dy];
     x = lo;
     while (x <= hi) {
         int bit = x & 31;
@@ -383,7 +461,7 @@ static int span_full(int dy, int lo, int hi)
     return 1;
 }
 
-static int cover_full(int x0, int x1, int y0, int y1)
+static int cover_full(const span_px *px, int x0, int x1, int y0, int y1)
 {
     int y;
     if (x0 < 0) x0 = 0;
@@ -392,7 +470,7 @@ static int cover_full(int x0, int x1, int y0, int y1)
     if (y1 > 15) y1 = 15;
     if (x0 > x1 || y0 > y1) return 1;
     for (y = y0; y <= y1; y++) {
-        if (!span_full(y, x0, x1)) return 0;
+        if (!span_full(px, y, x0, x1)) return 0;
     }
     return 1;
 }
@@ -426,16 +504,18 @@ __attribute__((section(".scratch_x"), noinline))
  * stores, not a uint32 alias of the row. A mixed word walks bits.
  * The bit is set only for a pixel this call writes. LIFT does not
  * come here. iz is not loaded or stored. */
-static void paint_span_cover(uint16_t *row, int32_t *iz, int lo, int hi,
-                             int32_t izv, uint16_t rgb, int swap, int dy)
+static void paint_span_cover(span_px *px, int lo, int hi,
+                             int32_t izv, uint16_t rgb, int dy)
 {
     int x, wrote = 0;
-    uint16_t pix = swap ? (uint16_t)((rgb >> 8) | (rgb << 8)) : rgb;
+    uint16_t *row;
+    uint16_t pix;
     uint32_t *bits;
-    (void)iz;
     (void)izv;
-    if ((unsigned)dy >= 16u || lo > hi) return;
-    bits = s_cov[dy];
+    if (!px || !px->rgb || !px->cov || (unsigned)dy >= 16u || lo > hi) return;
+    row = px->rgb + dy * px->stride;
+    pix = px->swap ? (uint16_t)((rgb >> 8) | (rgb << 8)) : rgb;
+    bits = px->cov[dy];
     x = lo;
     while (x <= hi) {
         int bit = x & 31;
@@ -464,26 +544,29 @@ static void paint_span_cover(uint16_t *row, int32_t *iz, int lo, int hi,
             }
             *wordp = word | mask;
             wrote = 1;
+            px->cov_left -= n;
             x += n;
             continue;
         }
         {
-            int i;
+            int i, nwrite = 0;
             uint32_t dirty = 0;
             for (i = 0; i < n; i++) {
                 uint32_t m = 1u << (bit + i);
                 if (word & m) continue;
                 row[x + i] = pix;
                 dirty |= m;
+                nwrite++;
             }
             if (dirty) {
                 *wordp = word | dirty;
                 wrote = 1;
+                px->cov_left -= nwrite;
             }
             x += n;
         }
     }
-    if (wrote) s_spans++;
+    if (wrote && px->span_ctr) (*px->span_ctr)++;
 }
 
 #if defined(PICO_REAL_HW)
@@ -515,39 +598,27 @@ static void paint_span_lift(uint16_t *row, int lo, int hi, uint16_t lift)
     if (wrote) s_spans++;
 }
 
-static void paint_tri_target(const picogl_tri_t *t, int slot)
+static void paint_tri_target(const picogl_tri_t *t, int slot, span_px *px)
 {
-    int y, ymin, ymax, py, area, have;
+    int y, ymin, ymax, py, area, have, have_step;
     int x0, y0, x1, y1, x2, y2;
     int view_w, view_h, xoff, yoff, dest_w, dest_h, stride, swap;
+    int sdq0, sdr0, sdq1, sdr1, sdq2, sdr2;
     uint16_t *rgb;
     int32_t *izbase;
     span_edge_t e0, e1, e2;
-    if (s_out_rgb) {
-        rgb = s_out_rgb;
-        izbase = s_out_iz;
-        stride = s_out_stride;
-        dest_w = s_out_w;
-        dest_h = s_out_h;
-        view_w = s_out_vw;
-        view_h = s_out_vh;
-        xoff = s_out_xoff;
-        yoff = s_out_yoff;
-        swap = s_out_swap;
-    } else {
-        if (!s_tgt_rgb || s_tgt_w <= 0 || s_tgt_h <= 0) return;
-        rgb = s_tgt_rgb;
-        izbase = s_tgt_iz;
-        stride = s_tgt_stride;
-        dest_w = s_tgt_w;
-        dest_h = s_tgt_h;
-        view_w = s_tgt_w;
-        view_h = s_tgt_h;
-        xoff = 0;
-        yoff = 0;
-        swap = 0;
-    }
-    if (s_depth && !izbase) return;
+    if (!px || !px->rgb) return;
+    rgb = px->rgb;
+    izbase = px->iz;
+    stride = px->stride;
+    dest_w = px->dest_w;
+    dest_h = px->dest_h;
+    view_w = px->vw;
+    view_h = px->vh;
+    xoff = px->xoff;
+    yoff = px->yoff;
+    swap = px->swap;
+    if (s_depth && !izbase && !px->cover) return;
     ymin = t->y0;
     if (t->y1 < ymin) ymin = t->y1;
     if (t->y2 < ymin) ymin = t->y2;
@@ -570,7 +641,7 @@ static void paint_tri_target(const picogl_tri_t *t, int slot)
         if (ymin > ymax) return;
     }
     /* A nearer triangle already owns this sealed box. Skip the divides. */
-    if (cover_live() && (t->flags & PICOGL_LIFT) == 0) {
+    if (cover_live(px) && (t->flags & PICOGL_LIFT) == 0) {
         int bx0 = t->x0;
         int bx1 = t->x0;
         if (t->x1 < bx0) bx0 = t->x1;
@@ -583,7 +654,7 @@ static void paint_tri_target(const picogl_tri_t *t, int slot)
         }
         if (bx0 < 0) bx0 = 0;
         if (bx1 >= view_w) bx1 = view_w - 1;
-        if (cover_full(bx0 + xoff, bx1 + xoff, ymin + yoff, ymax + yoff))
+        if (cover_full(px, bx0 + xoff, bx1 + xoff, ymin + yoff, ymax + yoff))
             return;
     }
     x0 = t->x0 * 2; y0 = t->y0 * 2;
@@ -595,34 +666,55 @@ static void paint_tri_target(const picogl_tri_t *t, int slot)
     /* The saved remainder is the state edge_init would compute at ymin.
      * Bands run downward, so the next band of this triangle steps it. */
     have = 0;
+    have_step = 0;
+    sdq0 = sdr0 = sdq1 = sdr1 = sdq2 = sdr2 = 0;
     if (slot >= 0 && s_edge_y && s_edge_y[slot] == (int16_t)ymin)
         have = 1;
+    if (have && s_edge_dq && s_edge_dr && slot < s_edge_n) {
+        int b = slot * 3;
+        have_step = 1;
+        sdq0 = s_edge_dq[b];
+        sdr0 = s_edge_dr[b];
+        sdq1 = s_edge_dq[b + 1];
+        sdr1 = s_edge_dr[b + 1];
+        sdq2 = s_edge_dq[b + 2];
+        sdr2 = s_edge_dr[b + 2];
+    }
     if (area > 0) {
         edge_at(&e0, x0, y0, x1, y1, py, have,
-                have ? s_edge_q[slot * 3] : 0, have ? s_edge_r[slot * 3] : 0);
+                have ? s_edge_q[slot * 3] : 0, have ? s_edge_r[slot * 3] : 0,
+                have_step, sdq0, sdr0);
         edge_at(&e1, x1, y1, x2, y2, py, have,
-                have ? s_edge_q[slot * 3 + 1] : 0, have ? s_edge_r[slot * 3 + 1] : 0);
+                have ? s_edge_q[slot * 3 + 1] : 0, have ? s_edge_r[slot * 3 + 1] : 0,
+                have_step, sdq1, sdr1);
         edge_at(&e2, x2, y2, x0, y0, py, have,
-                have ? s_edge_q[slot * 3 + 2] : 0, have ? s_edge_r[slot * 3 + 2] : 0);
+                have ? s_edge_q[slot * 3 + 2] : 0, have ? s_edge_r[slot * 3 + 2] : 0,
+                have_step, sdq2, sdr2);
     } else {
         edge_at(&e0, x1, y1, x0, y0, py, have,
-                have ? s_edge_q[slot * 3] : 0, have ? s_edge_r[slot * 3] : 0);
+                have ? s_edge_q[slot * 3] : 0, have ? s_edge_r[slot * 3] : 0,
+                have_step, sdq0, sdr0);
         edge_at(&e1, x2, y2, x1, y1, py, have,
-                have ? s_edge_q[slot * 3 + 1] : 0, have ? s_edge_r[slot * 3 + 1] : 0);
+                have ? s_edge_q[slot * 3 + 1] : 0, have ? s_edge_r[slot * 3 + 1] : 0,
+                have_step, sdq1, sdr1);
         edge_at(&e2, x0, y0, x2, y2, py, have,
-                have ? s_edge_q[slot * 3 + 2] : 0, have ? s_edge_r[slot * 3 + 2] : 0);
+                have ? s_edge_q[slot * 3 + 2] : 0, have ? s_edge_r[slot * 3 + 2] : 0,
+                have_step, sdq2, sdr2);
     }
+    {
+        int box_lo = t->x0;
+        int box_hi = t->x0;
+        if (t->x1 < box_lo) box_lo = t->x1;
+        if (t->x2 < box_lo) box_lo = t->x2;
+        if (t->x1 > box_hi) box_hi = t->x1;
+        if (t->x2 > box_hi) box_hi = t->x2;
+        if (box_lo < 0) box_lo = 0;
+        if (box_hi >= view_w) box_hi = view_w - 1;
     for (y = ymin; y <= ymax; y++) {
-        int lo = t->x0;
-        int hi = t->x0;
+        int lo = box_lo;
+        int hi = box_hi;
         int dy = y + yoff;
         int draw = 1;
-        if (t->x1 < lo) lo = t->x1;
-        if (t->x2 < lo) lo = t->x2;
-        if (t->x1 > hi) hi = t->x1;
-        if (t->x2 > hi) hi = t->x2;
-        if (lo < 0) lo = 0;
-        if (hi >= view_w) hi = view_w - 1;
         edge_apply(&e0, &lo, &hi);
         edge_apply(&e1, &lo, &hi);
         edge_apply(&e2, &lo, &hi);
@@ -642,14 +734,15 @@ static void paint_tri_target(const picogl_tri_t *t, int slot)
             int32_t *iz = izbase ? izbase + dy * stride : 0;
             if (t->flags & PICOGL_LIFT)
                 paint_span_lift(row, lo, hi, t->rgb);
-            else if (!cover_live())
+            else if (!cover_live(px))
                 paint_span_write(row, iz, lo, hi, t->iz, t->rgb, swap);
             else
-                paint_span_cover(row, iz, lo, hi, t->iz, t->rgb, swap, dy);
+                paint_span_cover(px, lo, hi, t->iz, t->rgb, dy);
         }
         edge_advance(&e0);
         edge_advance(&e1);
         edge_advance(&e2);
+    }
     }
     if (slot >= 0 && s_edge_q && s_edge_r && s_edge_y) {
         s_edge_q[slot * 3] = e0.q;
@@ -659,7 +752,21 @@ static void paint_tri_target(const picogl_tri_t *t, int slot)
         s_edge_q[slot * 3 + 2] = e2.q;
         s_edge_r[slot * 3 + 2] = e2.r;
         s_edge_y[slot] = (int16_t)(ymax + 1);
+        edge_step_save(slot, &e0, &e1, &e2);
     }
+}
+
+static void px_target(span_px *px)
+{
+    memset(px, 0, sizeof *px);
+    px->rgb = s_tgt_rgb;
+    px->iz = s_tgt_iz;
+    px->stride = s_tgt_stride;
+    px->dest_w = s_tgt_w;
+    px->dest_h = s_tgt_h;
+    px->vw = s_tgt_w;
+    px->vh = s_tgt_h;
+    px->span_ctr = &s_spans;
 }
 
 void picogl_span_drain(void)
@@ -667,6 +774,8 @@ void picogl_span_drain(void)
     /* The slot stays owned by the consumer until the paint finishes.
      * Tail moves after the write, so the producer cannot reuse it and
      * the triangle is not copied out of the ring. */
+    span_px px;
+    px_target(&px);
     for (;;) {
         uint32_t t = s_span_ring.tail;
         uint32_t h = s_span_ring.head;
@@ -674,7 +783,7 @@ void picogl_span_drain(void)
         if (t == h) return;
         NEXUS_BARRIER();
         tri = &s_span_ring.slot[t & (PICOGL_SPAN_SLOTS - 1)];
-        paint_tri_target(tri, -1);
+        paint_tri_target(tri, -1, &px);
         NEXUS_BARRIER();
         s_span_ring.tail = t + 1u;
         s_span_done = t + 1u;
@@ -736,7 +845,11 @@ static void post_target(const picogl_tri_t *tri)
             return;
         }
     }
-    paint_tri_target(tri, -1);
+    {
+        span_px px;
+        px_target(&px);
+        paint_tri_target(tri, -1, &px);
+    }
 }
 
 void picogl_flush_target_now(void)
@@ -867,6 +980,16 @@ void picogl_begin_frame(int width, int height)
         s_vp_h = PICOGL_BANDS * PICOGL_BAND_H;
 }
 
+void picogl_begin_capture(int width, int height)
+{
+    s_tris = 0;
+    s_cap_n = 0;
+    if (width > 0) s_vp_w = width;
+    if (height > 0) s_vp_h = height;
+    if (s_vp_h > PICOGL_BANDS * PICOGL_BAND_H)
+        s_vp_h = PICOGL_BANDS * PICOGL_BAND_H;
+}
+
 static void mq_capture(void)
 {
     int i;
@@ -897,6 +1020,12 @@ void picogl_set_depth(int enable)
 
 static void mq_capture(void);
 
+void picogl_set_display(int w, int h)
+{
+    s_disp_w = w > 0 ? w : 0;
+    s_disp_h = h > 0 ? h : 0;
+}
+
 void picogl_set_camera(const float org[3], const float ang[3], int width, int height)
 {
     float aspect, ox, oy, oz, ax, ay, az;
@@ -905,7 +1034,13 @@ void picogl_set_camera(const float org[3], const float ang[3], int width, int he
     if (s_vp_h > PICOGL_BANDS * PICOGL_BAND_H)
         s_vp_h = PICOGL_BANDS * PICOGL_BAND_H;
     if (s_vp_w <= 0 || s_vp_h <= 0) return;
-    aspect = (float)s_vp_w / (float)s_vp_h;
+    /* A non-square render stretched onto a different rectangle uses the
+     * destination aspect. The viewport stays the render size, so the
+     * projector still writes render-buffer pixels. */
+    if (s_disp_w > 0 && s_disp_h > 0)
+        aspect = (float)s_disp_w / (float)s_disp_h;
+    else
+        aspect = (float)s_vp_w / (float)s_vp_h;
     mat_frustum(s_mvp, -PICOGL_NEAR * aspect, PICOGL_NEAR * aspect,
                 -PICOGL_NEAR, PICOGL_NEAR, PICOGL_NEAR, PICOGL_FAR);
     /* Quake camera: X forward, Y left, Z up. Same turns as R_EEGS_SetCamera. */
@@ -997,13 +1132,37 @@ void picogl_target_pop(void)
 
 typedef struct { int x, y, z, w; } cw_t;
 
+/* Signed 32x32 to 64. Same bits as a widening multiply. The device
+ * has no 64-bit multiply, and a call per product dominated this dot. */
+static int64_t mul_i32(int a, int b)
+{
+#if defined(PICO_REAL_HW)
+    uint32_t a0 = (uint32_t)a & 0xffffu;
+    uint32_t a1 = (uint32_t)a >> 16;
+    uint32_t b0 = (uint32_t)b & 0xffffu;
+    uint32_t b1 = (uint32_t)b >> 16;
+    uint32_t p00 = a0 * b0;
+    uint32_t p01 = a0 * b1;
+    uint32_t p10 = a1 * b0;
+    uint32_t p11 = a1 * b1;
+    uint32_t mid = (p00 >> 16) + (p01 & 0xffffu) + (p10 & 0xffffu);
+    uint32_t lo = (p00 & 0xffffu) | (mid << 16);
+    uint32_t hi = p11 + (p01 >> 16) + (p10 >> 16) + (mid >> 16);
+    if (a < 0) hi -= (uint32_t)b;
+    if (b < 0) hi -= (uint32_t)a;
+    return (int64_t)(((uint64_t)hi << 32) | lo);
+#else
+    return (int64_t)a * (int64_t)b;
+#endif
+}
+
 static void cw_point(int x, int y, int z, cw_t *o)
 {
     int r;
     for (r = 0; r < 4; r++) {
-        int64_t s = (int64_t)s_mq[r] * x
-                  + (int64_t)s_mq[r + 4] * y
-                  + (int64_t)s_mq[r + 8] * z
+        int64_t s = mul_i32(s_mq[r], x)
+                  + mul_i32(s_mq[r + 4], y)
+                  + mul_i32(s_mq[r + 8], z)
                   + (int64_t)s_mq[r + 12];
         int c = (int)(s >> 12);
         if (r == 0) o->x = c;
@@ -1046,6 +1205,10 @@ static int cw_round_div(int64_t num, int den)
     if (den == 0) return 0;
     if (num >= 0) num += (int64_t)den >> 1;
     else num -= (int64_t)den >> 1;
+    /* Same nearest quotient. A numerator that fits in int32 takes the
+     * 32-bit divide. The rounding above is unchanged. */
+    if (num <= 2147483647LL && num >= (-2147483647LL - 1))
+        return (int)((int32_t)num / den);
     return (int)(num / den);
 }
 
@@ -1222,16 +1385,228 @@ void picogl_set_edge_resume(int *q, int *r, int16_t *y, int n)
     s_edge_n = s_edge_q ? n : 0;
 }
 
+void picogl_set_edge_step(int16_t *dq, uint16_t *dr)
+{
+    s_edge_dq = (dq && dr) ? dq : 0;
+    s_edge_dr = s_edge_dq ? dr : 0;
+}
+
+static void px_bind(span_px *px, uint16_t *be, int32_t *iz, int stride,
+                    int band_h, int ox, int oy, int vw, int vh,
+                    uint32_t (*cov)[10], volatile int *span_ctr, int cover)
+{
+    memset(px, 0, sizeof *px);
+    px->rgb = be;
+    px->iz = iz;
+    px->stride = stride;
+    px->dest_w = stride;
+    px->dest_h = band_h;
+    px->xoff = ox;
+    px->yoff = oy;
+    px->vw = vw;
+    px->vh = vh;
+    px->swap = 1;
+    px->cover = cover;
+    px->cov = cov;
+    px->span_ctr = span_ctr;
+}
+
+/* Count the view pixels, then walk [i0, i1). A full view stops this
+ * half. The other half has its own bits, so the stop does not drop a
+ * pixel that this half never covered. */
+static void paint_range(span_px *px, const picogl_tri_t *tris, int i0, int i1,
+                        int band_y, int oy)
+{
+    int y, i;
+    if (!px || !px->rgb) return;
+    if (px->cover && px->cov && px->dest_h > 0 && px->dest_h <= 16) {
+        memset(px->cov, 0, (size_t)px->dest_h * sizeof px->cov[0]);
+        px->cov_left = 0;
+        for (y = 0; y < px->dest_h; y++) {
+            int sy = band_y + y;
+            int lo, hi;
+            if (sy < oy || sy >= oy + px->vh) continue;
+            lo = px->xoff;
+            hi = px->xoff + px->vw - 1;
+            if (lo < 0) lo = 0;
+            if (hi >= px->stride) hi = px->stride - 1;
+            if (lo <= hi) px->cov_left += hi - lo + 1;
+        }
+    }
+    if (!tris || i0 >= i1) return;
+    /* yoff was the origin. The band walk wants it relative to band_y. */
+    px->yoff = oy - band_y;
+    for (i = i0; i < i1; i++) {
+        int ymin = tris[i].y0;
+        int ymax = tris[i].y0;
+        if (tris[i].y1 < ymin) ymin = tris[i].y1;
+        if (tris[i].y2 < ymin) ymin = tris[i].y2;
+        if (tris[i].y1 > ymax) ymax = tris[i].y1;
+        if (tris[i].y2 > ymax) ymax = tris[i].y2;
+        if (ymax < 0 || ymin >= px->vh) continue;
+        if (oy + ymax < band_y || oy + ymin >= band_y + px->dest_h) continue;
+        if (px->cover && px->cov_left <= 0) break;
+        paint_tri_target(&tris[i],
+                         (s_edge_q && s_edge_y && i < s_edge_n) ? i : -1, px);
+    }
+}
+
+/* Holes in the near coverage take the far pixel, or sky. Near wins.
+ * The far list is the later half of the same front-to-back order. */
+static void composite_far(uint16_t *dst, const uint16_t *far,
+                          const uint32_t (*nc)[10], const uint32_t (*fc)[10],
+                          int stride, int band_h,
+                          int ox, int oy, int vw, int vh, int band_y,
+                          uint16_t clear_rgb, int use_far)
+{
+    uint16_t sky = (uint16_t)((clear_rgb >> 8) | (clear_rgb << 8));
+    int y;
+    for (y = 0; y < band_h; y++) {
+        int sy = band_y + y;
+        int lo, hi, x;
+        uint16_t *row;
+        const uint16_t *frow;
+        const uint32_t *nb;
+        const uint32_t *fb;
+        if (sy < oy || sy >= oy + vh) continue;
+        lo = ox;
+        hi = ox + vw - 1;
+        if (lo < 0) lo = 0;
+        if (hi >= stride) hi = stride - 1;
+        if (lo > hi) continue;
+        row = dst + y * stride;
+        frow = far ? far + y * stride : 0;
+        nb = nc ? nc[y] : 0;
+        fb = (use_far && fc) ? fc[y] : 0;
+        x = lo;
+        while (x <= hi) {
+            int bit = x & 31;
+            int n = 32 - bit;
+            int wi = x >> 5;
+            uint32_t care, nmask, fmask;
+            if (x + n - 1 > hi) n = hi - x + 1;
+            care = (n == 32) ? 0xffffffffu : (((1u << n) - 1u) << bit);
+            nmask = nb ? (nb[wi] & care) : 0;
+            if (nmask == care) {
+                x += n;
+                continue;
+            }
+            fmask = fb ? (fb[wi] & care) : 0;
+            if (nmask == 0 && fmask == care && frow) {
+                uint16_t *d = row + x;
+                const uint16_t *s = frow + x;
+                int i = n;
+                while (i--) *d++ = *s++;
+                x += n;
+                continue;
+            }
+            if (nmask == 0 && fmask == 0) {
+                uint16_t *d = row + x;
+                int i = n;
+                while (i--) *d++ = sky;
+                x += n;
+                continue;
+            }
+            {
+                int i;
+                for (i = 0; i < n; i++) {
+                    uint32_t m = 1u << (bit + i);
+                    if (nmask & m) continue;
+                    if ((fmask & m) && frow) row[x + i] = frow[x + i];
+                    else row[x + i] = sky;
+                }
+                x += n;
+            }
+        }
+    }
+}
+
+static struct {
+    const picogl_tri_t *tris;
+    int i0, i1;
+    int band_y, oy;
+    volatile int spans;
+    span_px px;
+} s_far_job;
+
+static volatile int s_far_go;
+static volatile int s_far_done;
+
+/* The quake image overrides these. A direct call stays, so the linker
+ * can retarget it. Inlining the empty body would ignore that override. */
+__attribute__((weak, noinline)) void picogl_core1_extra(void)
+{
+}
+
+__attribute__((weak, noinline)) int picogl_core1_extra_busy(void)
+{
+    return 0;
+}
+
+int picogl_core1_busy(void)
+{
+    if (s_far_go) return 1;
+    if (picogl_core1_extra_busy()) return 1;
+    return 0;
+}
+
+void picogl_core1_job(void)
+{
+    picogl_core1_extra();
+    if (!s_far_go) return;
+    NEXUS_BARRIER();
+    paint_range(&s_far_job.px, s_far_job.tris, s_far_job.i0, s_far_job.i1,
+                s_far_job.band_y, s_far_job.oy);
+    NEXUS_BARRIER();
+    s_far_done = 1;
+    NEXUS_BARRIER();
+    s_far_go = 0;
+}
+
+static int far_kick(void)
+{
+#if defined(PICO_REAL_HW)
+    int st;
+    if (s_far_go) return 0;
+    st = pico_core1_state();
+    if (st != 1 && st != 2) return 0;
+    s_far_done = 0;
+    NEXUS_BARRIER();
+    s_far_go = 1;
+    NEXUS_BARRIER();
+    pico_core1_sev();
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+static int far_join(void)
+{
+#if defined(PICO_REAL_HW)
+    uint32_t t0 = TIMER0_TIMERAWL;
+    while (!s_far_done) {
+        if ((TIMER0_TIMERAWL - t0) > 200000u) return 0;
+        pico_core1_sev();
+    }
+    NEXUS_BARRIER();
+    return 1;
+#else
+    return 0;
+#endif
+}
+
 void picogl_paint_band(const picogl_tri_t *tris, int ntri,
                        uint16_t *be, int stride,
                        int band_y, int band_h,
                        int ox, int oy, int vw, int vh,
                        int32_t *iz, uint16_t clear_rgb)
 {
-    int y, x, i;
+    int y, x;
     int cover_on;
-    (void)band_y;
-    if (!be || !iz || stride <= 0 || band_h <= 0 || vw <= 0 || vh <= 0) return;
+    span_px px;
+    if (!be || stride <= 0 || band_h <= 0 || vw <= 0 || vh <= 0) return;
+    if (!iz && !s_cover) return;
     /* Coverage is the depth test. Skip the sky and iz clear: each covered
      * pixel is written once by its nearest triangle, and the pass below
      * fills the holes. The z-test path still clears both. */
@@ -1247,35 +1622,14 @@ void picogl_paint_band(const picogl_tri_t *tris, int ntri,
                 int sx = ox + x;
                 if ((unsigned)sx >= (unsigned)stride) continue;
                 row[sx] = sky;
-                iz[y * stride + sx] = 0;
+                if (iz) iz[y * stride + sx] = 0;
             }
         }
     }
-    s_out_rgb = be;
-    s_out_iz = iz;
-    s_out_stride = stride;
-    s_out_w = stride;
-    s_out_h = band_h;
-    s_out_xoff = ox;
-    s_out_yoff = oy - band_y;
-    s_out_vw = vw;
-    s_out_vh = vh;
-    s_out_swap = 1;
-    if (s_cover && band_h <= 16 && stride <= 320)
-        memset(s_cov, 0, (size_t)band_h * sizeof s_cov[0]);
-    for (i = 0; i < ntri; i++) {
-        int ymin = tris[i].y0;
-        int ymax = tris[i].y0;
-        if (tris[i].y1 < ymin) ymin = tris[i].y1;
-        if (tris[i].y2 < ymin) ymin = tris[i].y2;
-        if (tris[i].y1 > ymax) ymax = tris[i].y1;
-        if (tris[i].y2 > ymax) ymax = tris[i].y2;
-        if (ymax < 0 || ymin >= vh) continue;
-        if (oy + ymax < band_y || oy + ymin >= band_y + band_h) continue;
-        paint_tri_target(&tris[i],
-                         (s_edge_q && s_edge_y && i < s_edge_n) ? i : -1);
-    }
-    if (cover_on) {
+    px_bind(&px, be, iz, stride, band_h, ox, oy, vw, vh,
+            cover_on ? s_cov : 0, &s_spans, cover_on);
+    paint_range(&px, tris, 0, ntri, band_y, oy);
+    if (cover_on && px.cov_left > 0) {
         for (y = 0; y < band_h; y++) {
             int sy = band_y + y;
             int lo, hi;
@@ -1285,11 +1639,64 @@ void picogl_paint_band(const picogl_tri_t *tris, int ntri,
             if (lo < 0) lo = 0;
             if (hi >= stride) hi = stride - 1;
             if (lo <= hi)
-                paint_span_cover(be + y * stride, 0, lo, hi, 1, clear_rgb, 1, y);
+                paint_span_cover(&px, lo, hi, 1, clear_rgb, y);
         }
     }
-    s_out_rgb = 0;
-    s_out_swap = 0;
+}
+
+void picogl_paint_band_split(const picogl_tri_t *tris, int ntri,
+                             uint16_t *be, uint16_t *far_be, int stride,
+                             int band_y, int band_h,
+                             int ox, int oy, int vw, int vh,
+                             int32_t *iz, uint16_t clear_rgb)
+{
+    span_px near;
+    int mid, kicked, use_far, cover_on;
+    if (!be || !s_cover || !far_be || !tris || ntri < 2 ||
+        band_h > 16 || stride > 320 || stride <= 0) {
+        picogl_paint_band(tris, ntri, be, stride, band_y, band_h,
+                          ox, oy, vw, vh, iz, clear_rgb);
+        return;
+    }
+    cover_on = 1;
+    mid = ntri >> 1;
+    /* Adjacent int16 edge slots share a word. An even cut keeps each
+     * core on its own words. */
+    if (s_edge_y && (mid & 1)) mid--;
+    if (mid < 1) {
+        picogl_paint_band(tris, ntri, be, stride, band_y, band_h,
+                          ox, oy, vw, vh, iz, clear_rgb);
+        return;
+    }
+    px_bind(&near, be, iz, stride, band_h, ox, oy, vw, vh,
+            s_cov, &s_spans, cover_on);
+    kicked = 0;
+    use_far = 0;
+    /* A late core 1 still owns s_far_job. Do not rewrite it. */
+    if (!s_far_go) {
+        s_far_job.spans = 0;
+        px_bind(&s_far_job.px, far_be, 0, stride, band_h, ox, oy, vw, vh,
+                s_cov_far, &s_far_job.spans, cover_on);
+        s_far_job.tris = tris;
+        s_far_job.i0 = mid;
+        s_far_job.i1 = ntri;
+        s_far_job.band_y = band_y;
+        s_far_job.oy = oy;
+        kicked = far_kick();
+    }
+    paint_range(&near, tris, 0, mid, band_y, oy);
+    if (kicked) {
+        use_far = far_join();
+        if (use_far) s_spans += s_far_job.spans;
+    } else if (!s_far_go) {
+        paint_range(&s_far_job.px, tris, mid, ntri, band_y, oy);
+        s_spans += s_far_job.spans;
+        use_far = 1;
+    } else {
+        use_far = 0;
+    }
+    composite_far(be, far_be, s_cov, s_cov_far, stride, band_h,
+                  ox, oy, vw, vh, band_y, clear_rgb, use_far);
 }
 
 void picogl_bind_target(uint16_t *rgb, int32_t *iz, int w, int h, int stride)

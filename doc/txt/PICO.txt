@@ -493,7 +493,11 @@ kill, pause, map, changelevel, r_mode, fullscreen). changelevel stays on
 e1m1. The menu and the status bar are the 8x16 system font in destination
 pixels, so r_mode does not scale them. Boot is the drone row at 160x160.
 f toggles fullscreen. Every r_mode stretch-fills the window, or the whole
-panel when fullscreen. There is no letterbox.
+panel when fullscreen. There is no letterbox. The frustum aspect is the
+destination width over the destination height, so a 160x320 or 320x160
+or 128x96 picture stays round after that stretch. The viewport stays
+the render size. A square destination already matched, and still does.
+Gears leave the aspect on the viewport.
 
 Menu rows, in order:
 
@@ -575,49 +579,70 @@ is 20 bands at every r_mode. Section 11.5 replaces it with the flat
 
 11.5 Fullscreen timings
 
-Panel term held at 52.43 ms.
+Panel term held at 52.43 ms. The pill is wall time per present. 9 FPS
+is about 111 ms. 10 FPS is about 100 ms. DMA overlaps the next band, so
+a 100 ms pill is about 100 ms of CPU. A CPU already under 52.43 ms
+would sit on the wire ceiling, 18.7 FPS with the 1 ms delay.
 
-  frame_ms = max(52.43, cpu_ms) + 1
-  derived  = 1000 / frame_ms
+The user measured the resume image (one-bit divider, edge remainder
+kept across bands) at 9-10 FPS on drone1m1 at every r_mode. That
+retires the earlier derivation. That derivation charged 170 ms of a
+flat 200 ms to the per-band edge divide and, after paying the divide
+once, put every cpu_ms under the panel, so every row derived 18.7.
+The resume image removed about half of the 200 ms and stayed above
+the panel. 18.7 remains the wire ceiling. It is not the prediction
+for the image that read 9-10, and it is not a pill reading.
 
-The measured column is the user's pill on the image that still divided
-each edge on every destination band: about 5 FPS, about 200 ms, at
-every size. 320x320 had been 4 FPS before that. The derived column is
-this link. It has not been read off the pill.
+One step of that pill is about 11 ms. A gap from 80x80 to 320x320 that
+still reads 9 or 10 is at most about 15 ms. Call that the scalable
+part (source rows, pixels, the scale copy). The other ~90 ms is flat:
+fullscreen is 20 destination bands at every r_mode, and the BSP and
+the projection run once per frame at every r_mode.
 
-At most 30 ms of the 200 ms can scale with the picture and still hide
-inside one step of a pill that read 5 at both 320x320 and 80x80. The
-other 170 ms was the edge init, paid once per destination band. Twenty
-bands is 8.5 ms a band. This link pays that init once. The 30 ms is
-split into a height term and an area term:
+  size       area    measured   scalable   flat    pure area   wire*area
+  320x320    1.00    9-10       <=15 ms    ~90 ms    4.0         19
+  160x320    0.50    9-10       <=15 ms    ~90 ms    8.0         38
+  320x160    0.50    9-10       <=15 ms    ~90 ms    8.0         38
+  160x160    0.25    9-10       <=15 ms    ~90 ms   16.0         76
+  128x128    0.16    9-10       <=15 ms    ~90 ms   25.0        119
+  128x96     0.12    9-10       <=15 ms    ~90 ms   33.3        159
+  80x80      0.0625  9-10       <=15 ms    ~90 ms   64.0        306
 
-  cpu_ms(Rw, Rh) = 8.5
-                 + 15 * (Rh / 320)
-                 + 15 * (Rw * Rh) / (320 * 320)
+measured is the user's pill. It was 9-10 on the resume image, and
+again on the image that added the destination aspect, the precomputed
+row step, and the full-band coverage stop. The ratio on that second
+image is fixed for the non-square modes. The far-half link then read
+a solid 10 at every r_mode. That is one step of the pill, about 11 ms.
+pure area = 4 / area and
+wire*area = 19.1 / area are the linear laws this panel does not
+follow. 15 FPS is 66.7 ms. Reaching it from ~105 ms means about 35 ms
+out of the flat ~90 ms. Removing the scalable 15 ms would land near
+11 FPS, still short of 15, and that 15 ms is an upper bound, not a
+stopwatch.
 
-8.5 + 15 + 15 = 38.5 ms at 320x320. At 80x80 the same formula is
-8.5 + 3.75 + 0.94 = 13.2 ms. The 25 ms gap fits in the step that read
-5 for both. The one-bit divider makes the 8.5 ms smaller and is not
-given a further factor. A cpu_ms already under 52.43 cannot derive
-above the wire ceiling.
+The full-band stop does not fire on drone1m1. The sky leaves a hole,
+so every overlapping triangle is still entered on all 20 destination
+bands. That entry is the flat part. The row step and the inlined
+multiply sit in the scalable part, which is already inside one step
+of the pill.
 
-  size       area    cpu ms   frame ms   derived   measured   pure area   wire*area
-  320x320    1.00     38.5      53.4       18.7      5           4.0         19
-  160x320    0.50     31.0      53.4       18.7      5           8.0         38
-  320x160    0.50     23.5      53.4       18.7      5           8.0         38
-  160x160    0.25     19.8      53.4       18.7      5          16.0         76
-  128x128    0.16     16.9      53.4       18.7      5          25.0        119
-  128x96     0.12     14.8      53.4       18.7      5          33.3        159
-  80x80      0.0625   13.2      53.4       18.7      5          64.0        306
+The far-half link did not take the flat cost out. Core 1 painted the
+later triangles into an empty band, so it could not see the near
+coverage and it filled pixels the near half already owned. Both cores
+also fetched the painter from the one XIP cache. The wall time stayed
+a solid 10.
 
-Every derived rate is 18.7 because every cpu_ms is under the panel.
-18.7 is 1000/53.4, the fullscreen ceiling with the 1 ms delay. It is
-not a pill reading. pure area = 4 / (Rw*Rh/320/320) and
-wire*area = 19.1 / (Rw*Rh/320/320) are the linear laws this panel does
-not follow. A window of about 17 bands is 44.6 ms. The same cpu_ms then
-derives near 22 when the CPU is under that window. A pill well under
-18.7 at fullscreen 320x320 means a large share of the 200 ms was once
-per frame, projection and the BSP, rather than the per-band edge init.
+This link stops using core 1 for that half. Core 0 paints the whole
+sorted list, so coverage applies to every triangle. Core 1 builds the
+next list into the other 896-slot buffer while that paint runs. The
+picture is one pose behind. The far band and the stored row step came
+out to pay for the second list. An edge divides on the first band of
+the frame and again on a later band. The join sits inside the present,
+before the next tick writes the pose. UART adds wai= beside ren= and
+ras=. ren is the build. ras is the band walk. wai is the join after
+the bands. If core 1 is down, the build stays on core 0 and there is
+no extra pose latency. This link's pill is unread. 15 FPS stays
+unclaimed. 18.7 stays the wire ceiling.
 
 11.6 15 FPS at a real 320x320
 
@@ -662,17 +687,20 @@ so one 32-bit divide was on the order of a thousand cycles. Projection
 used the same 64-bit divide. Pixel loops shrink with r_mode. That
 setup did not.
 
-This link keeps the edge algebra and steps a saved remainder. The first
-band a triangle touches divides. Later bands reuse q and r when the
-next ymin is the row those remainders were left for, and edge_advance
-walks the rest. A gap re-divides. Horizontal edges still recompute.
+The resume image keeps the edge algebra and steps a saved remainder.
+The first band a triangle touches divides. Later bands reuse q and r
+when the next ymin is the row those remainders were left for. A gap
+re-divides. Horizontal edges still recompute. This link's row step
+adds that edge's precomputed quotient and does not divide on the row.
 The divider shifts one bit at a time. cw_project uses a 32-bit divide
 when the already-rounded numerator and the denominator fit in a signed
-32-bit value. cw_lerp is unchanged. The SIO divider stays unused. Quake
-spans stay on core 0. There is no second 320 framebuffer. Clocks are
-unchanged. The resume tables are 896*3*2 ints plus 896 int16s, 23296
-bytes, cleared after the nearer-first sort. Gears do not call
-picogl_set_edge_resume.
+32-bit value. cw_lerp is unchanged. The SIO divider stays unused.
+Quake triangles are still not posted to the span ring. Core 1 builds
+the next captured list. There is no second 320 framebuffer. The
+320x16 iz band is gone. The private far band and the stored row step
+are gone on this link. Clocks are unchanged. The resume tables are
+896*3*2 ints plus 896 int16s, 23296 bytes, cleared when core 0 starts
+the paint. Gears do not call picogl_set_edge_resume or picogl_set_cover.
 
 RP2350-Quake and frank-quake2 each build a polygon's edges once and
 then fill a framebuffer this SRAM cannot hold. frank-quake2 is Quake
@@ -691,48 +719,61 @@ matched inside the view, including each 32-pixel residue and a window
 that does not start at the origin. An unsorted pair diverged, which is
 what the sort invariant requires.
 
-This link does not claim 15 FPS. Section 11.5 derives 18.7 for every
-fullscreen size because the CPU term falls under the 52.4 ms panel.
-That 18.7 is the wire ceiling, not a pill reading. The recorded device
-rates are the user's: 4 FPS at 320x320, then about 5 FPS at every r_mode on
-the torn SIO image, then geometry fixed and still about 5 FPS at every
-r_mode after the software divide returned. Flash
-btron-picocalc-quake-rp2040.uf2 by hand and read the pill at fullscreen
-320x320 and at a small r_mode.
+This link does not claim 15 FPS. The user measured the resume image
+at 9-10 FPS, then the aspect image at the same 9-10 with the ratio
+fixed, then the far-half link at a solid 10 at every r_mode. This
+link's pill is unread. 18.7 is the wire ceiling when the CPU hides
+behind the panel. The recorded device rates are the user's: 4 FPS at
+320x320, then about 5 FPS at every r_mode on the torn SIO image, then
+geometry fixed and still about 5 FPS, then 9-10 FPS at every r_mode
+on drone1m1 after the one-bit divider and the edge remainder, then
+still 9-10 after the aspect fix, then a solid 10 after the far half.
+Copy btron-picocalc-quake-rp2040.uf2 by hand. Read the pill at
+fullscreen 320x320, at one non-square r_mode, and at 80x80. Square
+modes should look unchanged. The non-square ratio should stay fixed.
+The drone is one pose behind the tick. If the UART line is visible,
+ren= against ras= and wai= says whether the build or the band walk
+is the longer side.
 
-Core 1 is not given Quake spans. The strip is also SegUI's. A row split
-would race that strip. Clocks stay where they are. A retained 320x320
-color-plus-depth picture does not fit: after this link Quake has 11716
-bytes free under 215040, and 320x320 RGB565 plus int32 depth is
-204800 + 409600.
+The strip is also SegUI's, so core 1 does not paint it. A row split
+would build every edge twice, and the row count is the part that
+already scales. Clocks stay where they are. A retained 320x320
+color-plus-depth picture does not fit. The second triangle list is
+21504 bytes. It fits because the far band (10240) and the step tables
+(5376 + 5376) came out. Core 1's stack is the whole of scratch Y,
+4096 bytes, because the build nests the camera and a world triangle.
 
 11.7 SRAM of the 2026-11-23 links
 
 Gate: __sram_used__ <= 215040. Scratch X is 4 KiB at 0x20040000.
-Core 1 stack top is 0x20041400.
+Core 1 stack top is 0x20042000.
 
-  Quake RP2040, after the one-bit divider and the edge resume.
+  Quake RP2040, core 1 builds the next list, core 0 paints.
   Not flashed. Not a measured frame rate.
-    text 829180   data 2892   bss 200432
-    __sram_used__ 0x31a3c = 203324, free 11716
-    __bss_end__ 0x20031a40
-    UF2 btron-picocalc-quake-rp2040.uf2 1664512 bytes, 3251 blocks
-    SD-boot bin 831816 bytes at 0x10032000
-    scratch X ends 0x20040564 (1380 bytes): paint_span_cover,
-    paint_span_lift, and paint_span_write
-    The 23296-byte remainder tables are the bss growth. Scratch is
-    unchanged.
+    text 834700   data 2892   bss 201592
+    __sram_used__ 0x31ec4 = 204484, free 10556
+    __bss_end__ 0x20031ec8
+    UF2 btron-picocalc-quake-rp2040.uf2 1675264 bytes, 3272 blocks
+    SD-boot bin 837336 bytes at 0x10032000
+    scratch X ends 0x20040528 (1320 bytes): paint_span_cover at
+    0x20040000, paint_span_lift at 0x2004021c, paint_span_write
+    at 0x200404ac
+    The far band, the step tables, and the far coverage came out.
+    The second 896-triangle list went in. paint_tri_target's frame
+    is 352 bytes. Core 1's stack is scratch Y, 4096 bytes, top
+    0x20042000. start_sim_render's frame is 240 bytes and
+    picogl_world_tri's is 456. That nest fits.
 
-  Gears / XMB RP2040, relinked because picogl_span.c and pico_aeabi.c
-  are shared. Not flashed.
-    text 467300   data 2896   bss 188544
-    __sram_used__ 0x2ebd0 = 191440, free 23600
-    UF2 btron-picocalc-rp2040.uf2 940544 bytes, 1837 blocks
-    SD-boot bin 469940 bytes at 0x10032000
-    Gears do not allocate the remainder tables. Coverage stays off.
-    The span divide is the one-bit software divide on both cores.
-    Gears color stays two 112x96 RGB565 buffers plus one int32 iz.
-    The gear resolution is unchanged.
+  Gears / XMB RP2040, relinked because picogl_span.c is shared.
+  Not flashed.
+    text 471704   data 2896   bss 187960
+    __sram_used__ 0x2e988 = 190856, free 24184
+    UF2 btron-picocalc-rp2040.uf2 949248 bytes, 1854 blocks
+    SD-boot bin 474344 bytes at 0x10032000
+    Gears do not call the band painter, so the linker drops both
+    coverage arrays. The ring and the core 1 wake stay. Coverage
+    stays off. Gears color stays two 112x96 RGB565 buffers plus
+    one int32 iz. The gear resolution is unchanged.
 
 Phase 1 had measured data 3268 + bss 198924 = 202192, free 12848, and
 chose one bucket set of 16 triangles a band (7680 bytes) with iz on the
@@ -740,9 +781,13 @@ triangle. That bucket set is still the bin table. Quake does not raster
 from it: the device captures up to 896 triangles and paints each band
 from that list. A 48-wide bin and a second bucket set stay out.
 
-make test-picogl-raster after the edge resume: 11 checks, 0 failures.
-paint_one_row is unchanged. The new check is a resumed edge against a
-fresh divide. RP2350 was not relinked.
+make test-picogl-raster: 17 checks, 0 failures. paint_one_row is
+unchanged. The checks include a resumed edge against a fresh divide
+(including a 1-pixel-tall edge), a covered span that leaves the far
+side, a saved row step against that fresh divide, a split band
+against one core (including the hole at x=70), and a 160x320 render
+whose frustum uses the 320x320 destination. The host runs both
+halves on the calling thread. RP2350 was not relinked.
 
 11.8 Pipeline
 
@@ -750,11 +795,14 @@ fresh divide. RP2350 was not relinked.
   1 Submit      seven R_EEGS_* calls, or the GLES door for gears
   2 Transform   one camera matrix, then an integer clip and divide
   3 Bin         gears and XMB post to the span ring; Quake captures
-  core 0, each dirty band (Quake spans are not posted to core 1)
-  4 Raster      edge walk, seal. Quake divides an edge on the first
-                    band and steps the remainder after that. Coverage
-                    skips a filled word. Otherwise a strict iz test
-                    (larger iz wins)
+  core 0 paints, core 1 builds the next list
+  4 Raster      Quake: core 0 paints the whole sorted list into the
+                    strip. Coverage skips a filled word. An edge
+                    divides on the first band of the frame. Core 1
+                    builds the next list and does not paint. Gears and
+                    XMB still post to the ring. The strip, SPI, DMA,
+                    and GPIO stay on core 0. A strict iz test remains
+                    where coverage is off (larger iz wins)
   5 Cover       system-font menu, HUD, status bar
   6 Scan        DMA channel 0
 
@@ -764,7 +812,9 @@ picogl_world_tri with PICOGL_SEAL. Gears use picogl_screen_tri and do
 not set the seal. The span walks pixel centers. A shared edge can miss
 both faces; the seal covers one extra pixel on a world triangle.
 cw_lerp rounds to nearest. Core 1 wakes so ps can show the picogl row.
-Quake paints on core 0 because the strip is SegUI's as well.
+Quake's build is the only Quake work core 1 runs. The strip stays
+on core 0 because SegUI uses it too. The far-half painter remains in
+the span for the host raster test. The device image does not call it.
 
 The triangle is 24 bytes. The span ring is 128 slots, 3072 bytes, and
 is not a second bin table. A full ring waits for one slot. Core 1 never
@@ -786,8 +836,10 @@ programs SPI, DMA, or GPIO.
   - UART lines picogl gears at 20 FPS and picogl xmb / quake at 12 FPS
     were targets in the phase plan. They were not measured. The device
     Quake rates recorded here are the user's: 4 FPS at 320x320, then
-    about 5 FPS at every r_mode with the geometry fixed. This link is
-    not a new measurement.
+    about 5 FPS at every r_mode with the geometry fixed, then 9-10 FPS
+    at every r_mode on drone1m1, then still 9-10 after the aspect fix,
+    then a solid 10 after the far half. This link is not a new
+    measurement.
 
 11.10 Files
 

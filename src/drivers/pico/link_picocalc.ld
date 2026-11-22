@@ -60,8 +60,9 @@ SECTIONS
     }
 
     __stack_top__ = 0x20000000 + BTRON_RAM_LENGTH;
-    /* Core 1 stack is 1 KB at the bottom of scratch bank Y. */
-    __core1_stack_top__ = 0x20000000 + BTRON_RAM_LENGTH + 4096 + 1024;
+    /* Core 1 stack is scratch bank Y. The Quake build nests the camera,
+     * a world triangle, and soft-float. One kilobyte was short of that. */
+    __core1_stack_top__ = 0x20000000 + BTRON_RAM_LENGTH + 4096 + 4096;
     __sram_used__ = (__data_end__ - __data_start__) + (__bss_end__ - __bss_start__);
     ASSERT(__sram_used__ <= 215040, "PicoCalc SRAM budget exceeded (> 210 KiB)!")
     ASSERT(__bss_end__ <= (__stack_top__ - 4096), "SRAM overflow into MSP stack!")

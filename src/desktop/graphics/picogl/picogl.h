@@ -44,7 +44,14 @@ typedef struct {
 } picogl_tri_t;
 
 void picogl_begin_frame(int width, int height);
+/* Viewport and the capture count. Does not reap and does not clear the
+ * span counter. The Quake build on core 1 calls this while core 0 paints. */
+void picogl_begin_capture(int width, int height);
 void picogl_set_camera(const float org[3], const float ang[3], int width, int height);
+/* Frustum aspect. w and h are the rectangle the render is stretched
+ * into. Both positive: aspect is w/h. Either one not positive: aspect
+ * stays the viewport, which is what gears and the host tests use. */
+void picogl_set_display(int w, int h);
 void picogl_set_mvp(const float m[16]);
 void picogl_set_cull(int enable);
 void picogl_set_depth(int enable);
@@ -85,6 +92,26 @@ void picogl_set_cover(int on);
  * what gears and the host raster test do. The caller clears y after
  * the triangle list changes. Bands must be painted downward. */
 void picogl_set_edge_resume(int *q, int *r, int16_t *y, int n);
+
+/* dq is n*3 int16, dr is n*3 uint16. The row step of an edge. A later
+ * band installs it instead of dividing. Null keeps the divide. dr
+ * 0xFFFF means that edge did not fit and must divide. */
+void picogl_set_edge_step(int16_t *dq, uint16_t *dr);
+
+/* Nearer half into be, farther half into far_be, then holes are filled
+ * from far_be or from sky. far_be is a second band of the same stride
+ * and height, not the DMA strip. Null far_be, or coverage off, paints
+ * on one core. Pixels match picogl_paint_band. */
+void picogl_paint_band_split(const picogl_tri_t *tris, int ntri,
+                             uint16_t *be, uint16_t *far_be, int stride,
+                             int band_y, int band_h,
+                             int ox, int oy, int vw, int vh,
+                             int32_t *iz, uint16_t clear_rgb);
+
+/* Core 1: the Quake build hook, then a far-half paint if one was posted.
+ * The hook is empty in the gears image. Neither writes the DMA strip. */
+void picogl_core1_job(void);
+int  picogl_core1_busy(void);
 
 void picogl_bind_target(uint16_t *rgb, int32_t *iz, int w, int h, int stride);
 void picogl_clear_target(int color, int depth, uint16_t rgb);

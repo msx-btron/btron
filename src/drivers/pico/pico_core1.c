@@ -60,8 +60,13 @@ void pico_core1_body(void)
     s_ready = 1;
     sev();
     for (;;) {
+        /* Quake's build hook runs here, then a far-half paint if one
+         * was posted. Neither writes the DMA strip. The ring stays the
+         * gears and XMB path. */
+        picogl_core1_job();
         picogl_span_drain();
-        if (picogl_span_finished() == picogl_span_posted())
+        if (!picogl_core1_busy() &&
+            picogl_span_finished() == picogl_span_posted())
             wfe();
     }
 }

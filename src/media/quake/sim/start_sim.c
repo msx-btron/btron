@@ -15,6 +15,9 @@
 #include "start_sim.h"
 #include "start_blob.h"
 #include "picogl.h"
+#if defined(PICO_REAL_HW)
+#include "pico_regs.h"
+#endif
 
 #include <math.h>
 #include <string.h>
@@ -89,8 +92,23 @@ static int      s_vw = 160;
 static int      s_vh = 160;
 static int      s_dw = 160;
 static int      s_dh = 160;
-static picogl_tri_t s_cap_tri[CAP_TRI];
-static int      s_cap_n;
+/* Two captured lists. Core 0 paints s_paint. Core 1 fills the other
+ * slot with the next pose. The far band and the stored row step came
+ * out to pay for the second list. q and r stay, one paint at a time. */
+static picogl_tri_t s_cap_tri[2][CAP_TRI];
+static int      s_cap_n[2];
+static int      s_slot_vw[2];
+static int      s_slot_vh[2];
+static int      s_paint;
+static volatile int s_bs;
+static int      s_on_core1;
+static int      s_have_paint;
+static int      s_have_build;
+static int      s_built;
+static int      s_build_kicked;
+static int      s_edges_armed;
+static int      s_gl_armed;
+static volatile int s_build_go;
 static uint16_t s_ord[CAP_TRI];
 static uint16_t s_ord_tmp[CAP_TRI];
 /* Edge remainder for the next source row. Three edges per triangle.
@@ -98,7 +116,9 @@ static uint16_t s_ord_tmp[CAP_TRI];
 static int      s_edge_q[CAP_TRI * 3];
 static int      s_edge_r[CAP_TRI * 3];
 static int16_t  s_edge_y[CAP_TRI];
-static int32_t  s_band_iz[320 * 16];
+static volatile uint32_t s_us_ren;
+static uint32_t s_us_ras, s_us_wai;
+#define BUILD_BARRIER() __asm__ volatile("dmb sy" ::: "memory")
 /* One band of a picture that is not already the destination. 320x16
  * RGB565. A matching size paints the strip and skips this. */
 static uint16_t s_scale_rgb[320 * 16];
@@ -1710,7 +1730,13 @@ void start_sim_init(void)
     s_vh = 160;
     s_dw = 160;
     s_dh = 160;
-    s_cap_n = 0;
+    s_cap_n[0] = 0;
+    s_cap_n[1] = 0;
+    s_paint = 0;
+    s_have_paint = 0;
+    s_have_build = 0;
+    s_build_kicked = 0;
+    s_edges_armed = 0;
     s_dev = 0;
 #endif
 }
@@ -1745,6 +1771,8 @@ void start_sim_tick(uint32_t now_ms)
 #if defined(PICO_REAL_HW)
     if (s_mode == MODE_MENU) return;
     if (s_pause) return;
+    /* A build that outlived the join still reads this pose. */
+    if (s_build_go) return;
     if (s_mode == MODE_DRONE) {
         uint32_t t, dur;
         int di;
@@ -2173,7 +2201,7 @@ static const int s_viewmesh[8] = {
 #if defined(PICO_REAL_HW)
 /* Nearer iz first. Equal iz keeps the earlier capture so a shared edge
  * pixel does not swap owners between frames. */
-static void permute_tris(uint16_t *p, int n)
+static void permute_tris(uint16_t *p, int n, int slot)
 {
     int i;
     for (i = 0; i < n; i++) {
@@ -2186,33 +2214,30 @@ static void permute_tris(uint16_t *p, int n)
             p[i] |= 0x8000u;
             continue;
         }
-        hold = s_cap_tri[i];
+        hold = s_cap_tri[slot][i];
         j = i;
         steps = 0;
         while (steps++ < n) {
             uint16_t from = (uint16_t)(p[j] & 0x7fffu);
             p[j] |= 0x8000u;
             if (from == (uint16_t)i) {
-                s_cap_tri[j] = hold;
+                s_cap_tri[slot][j] = hold;
                 break;
             }
             if (from >= (uint16_t)n) break;
-            s_cap_tri[j] = s_cap_tri[from];
+            s_cap_tri[slot][j] = s_cap_tri[slot][from];
             j = (int)from;
         }
     }
 }
 
-static void sort_near(void)
+static void sort_near(int slot)
 {
     uint16_t *a = s_ord;
     uint16_t *b = s_ord_tmp;
-    int n = s_cap_n;
+    int n = s_cap_n[slot];
     int i, w;
-    if (n < 2 || n > CAP_TRI) {
-        picogl_set_cover(0);
-        return;
-    }
+    if (n < 2 || n > CAP_TRI) return;
     for (i = 0; i < n; i++) a[i] = (uint16_t)i;
     for (w = 1; w < n; w *= 2) {
         int lo;
@@ -2226,8 +2251,8 @@ static void sort_near(void)
             i1 = mid;
             o = lo;
             while (i0 < mid && i1 < hi) {
-                int32_t z0 = s_cap_tri[a[i0]].iz;
-                int32_t z1 = s_cap_tri[a[i1]].iz;
+                int32_t z0 = s_cap_tri[slot][a[i0]].iz;
+                int32_t z1 = s_cap_tri[slot][a[i1]].iz;
                 if (z0 >= z1) b[o++] = a[i0++];
                 else b[o++] = a[i1++];
             }
@@ -2240,8 +2265,7 @@ static void sort_near(void)
             b = t;
         }
     }
-    permute_tris(a, n);
-    picogl_set_cover(1);
+    permute_tris(a, n, slot);
 }
 #endif
 
@@ -2249,23 +2273,27 @@ void start_sim_render(void)
 {
     float eye[3], fwd[3], local[3];
     int i;
+#if defined(PICO_REAL_HW)
+    uint32_t t_ren;
+    int slot;
+#endif
     if (!s_ready) start_sim_init();
 #if defined(PICO_REAL_HW)
-    /* Record the frame. Each band paints the same list into the strip.
-     * Core 1 stays awake so ps shows it ready. Quake spans are not posted:
-     * the strip is also SegUI's, and a core-1 paint would race that fill. */
-    picogl_capture(s_cap_tri, CAP_TRI);
-    pico_core1_launch();
+    /* Fill s_bs. Core 0 paints the other list. begin_frame stays on
+     * core 0 so this does not clear the span count or reap the ring. */
+    t_ren = TIMER0_TIMERAWL;
+    slot = s_bs;
+    if (slot < 0 || slot > 1) slot = 0;
+    picogl_capture(s_cap_tri[slot], CAP_TRI);
+    picogl_begin_capture(view_w(), view_h());
 #else
     if (!s_bound) {
         picogl_bind_target(s_rgb, s_iz, VW, VH, VW);
         s_bound = 1;
     }
-#endif
     picogl_begin_frame(view_w(), view_h());
     picogl_set_cull(0);
     picogl_set_depth(1);
-#if !defined(PICO_REAL_HW)
     picogl_clear_target(1, 1, CLEAR_RGB);
 #endif
     eye[0] = s_org[0];
@@ -2279,6 +2307,11 @@ void start_sim_render(void)
     {
         float ang[3];
         ang[0] = s_pitch; ang[1] = s_yaw; ang[2] = 0.0f;
+#if defined(PICO_REAL_HW)
+        /* The render size is not the panel. Stretch-fill keeps circles
+         * circular when the frustum uses the destination. */
+        picogl_set_display(s_dw, s_dh);
+#endif
         picogl_set_camera(eye, ang, view_w(), view_h());
     }
     angles(fwd, NULL, NULL);
@@ -2358,16 +2391,21 @@ void start_sim_render(void)
     }
     s_budget = TRI_WORLD;
     walk_node(0, eye, fwd);
+#if defined(PICO_REAL_HW)
+    /* reap waits on the ring. Core 1 must not wait for itself. */
+    if (!s_on_core1)
+        picogl_flush_target();
+#else
     picogl_flush_target();
+#endif
 
 #if defined(PICO_REAL_HW)
-    s_cap_n = picogl_captured();
+    s_cap_n[slot] = picogl_captured();
+    s_slot_vw[slot] = view_w();
+    s_slot_vh[slot] = view_h();
     picogl_capture(0, 0);
-    sort_near();
-    /* Cold remainders. The next paint of each triangle divides once,
-     * then each later band of this frame steps that edge. */
-    memset(s_edge_y, 0xff, sizeof s_edge_y);
-    picogl_set_edge_resume(s_edge_q, s_edge_r, s_edge_y, CAP_TRI);
+    sort_near(slot);
+    s_us_ren = TIMER0_TIMERAWL - t_ren;
     s_lit = 0;
 #else
     /* The host gate counts lit pixels. The device scan walked every
@@ -2408,6 +2446,106 @@ void start_sim_render(void)
     }
 #endif
 }
+
+#if defined(PICO_REAL_HW)
+/* Core 1 builds the next list. Gears keep the empty hook in the span. */
+void picogl_core1_extra(void)
+{
+    if (!s_build_go) return;
+    BUILD_BARRIER();
+    s_on_core1 = 1;
+    start_sim_render();
+    s_on_core1 = 0;
+    BUILD_BARRIER();
+    s_build_go = 0;
+}
+
+int picogl_core1_extra_busy(void)
+{
+    return s_build_go ? 1 : 0;
+}
+
+static int build_kick(int slot)
+{
+    int st;
+    if (s_build_go) return 0;
+    if (slot < 0 || slot > 1) return 0;
+    st = pico_core1_state();
+    if (st != 1 && st != 2) return 0;
+    s_built = slot;
+    s_bs = slot;
+    BUILD_BARRIER();
+    s_build_go = 1;
+    BUILD_BARRIER();
+    pico_core1_sev();
+    return 1;
+}
+
+void start_sim_acquire(void)
+{
+    int st;
+    s_us_ras = 0;
+    s_edges_armed = 0;
+    /* The other slot is still being written. Keep painting this one. */
+    if (s_build_go) return;
+    if (s_build_kicked) {
+        BUILD_BARRIER();
+        s_have_build = 1;
+        s_build_kicked = 0;
+    }
+    if (!s_gl_armed) {
+        picogl_set_cull(0);
+        picogl_set_depth(1);
+        s_gl_armed = 1;
+    }
+    pico_core1_launch();
+    picogl_begin_frame(view_w(), view_h());
+    st = pico_core1_state();
+    if (st != 1 && st != 2) {
+        s_bs = 0;
+        s_on_core1 = 0;
+        start_sim_render();
+        s_paint = 0;
+        s_have_paint = 1;
+        s_have_build = 0;
+        s_build_kicked = 0;
+        return;
+    }
+    if (s_have_build) {
+        s_paint = s_built;
+        s_have_paint = 1;
+        s_have_build = 0;
+    } else if (!s_have_paint) {
+        s_bs = 0;
+        s_on_core1 = 0;
+        start_sim_render();
+        s_paint = 0;
+        s_have_paint = 1;
+    }
+    s_build_kicked = build_kick(s_paint ^ 1);
+}
+
+void start_sim_join_build(void)
+{
+    uint32_t t0;
+    if (!s_build_kicked) {
+        s_us_wai = 0;
+        return;
+    }
+    t0 = TIMER0_TIMERAWL;
+    while (s_build_go) {
+        if ((TIMER0_TIMERAWL - t0) > 200000u) {
+            s_us_wai = TIMER0_TIMERAWL - t0;
+            return;
+        }
+        pico_core1_sev();
+    }
+    BUILD_BARRIER();
+    s_us_wai = TIMER0_TIMERAWL - t0;
+    s_have_build = 1;
+    s_build_kicked = 0;
+}
+#endif
 
 #if defined(PICO_REAL_HW) || defined(SEGUI_HOST_QUAKE)
 /* Menu and status bar in destination pixels. r_mode does not scale them. */
@@ -2655,9 +2793,9 @@ static void raster_rows(int sy0, int ns, int rw, int rh)
     if (sy0 < 0) sy0 = 0;
     if (sy0 >= rh) return;
     if (sy0 + ns > rh) ns = rh - sy0;
-    picogl_paint_band(s_cap_tri, s_cap_n, s_scale_rgb, rw,
+    picogl_paint_band(s_cap_tri[s_paint], s_cap_n[s_paint], s_scale_rgb, rw,
                       sy0, ns, 0, 0, rw, rh,
-                      s_band_iz, (uint16_t)CLEAR_RGB);
+                      0, (uint16_t)CLEAR_RGB);
 }
 
 /* Exact 2x or 4x. Each source pixel is copied k times, no divider. */
@@ -2765,19 +2903,65 @@ static void paint_scaled(uint16_t *be, int stride, int band_y, int band_h,
     }
 }
 
+static void log_u(char **pp, char *end, const char *tag, uint32_t v)
+{
+    char tmp[10];
+    int n = 0;
+    char *p;
+    if (!pp || !*pp) return;
+    p = *pp;
+    while (*tag && p < end) *p++ = *tag++;
+    if (v == 0) tmp[n++] = '0';
+    while (v && n < 10) {
+        tmp[n++] = (char)('0' + (v % 10u));
+        v /= 10u;
+    }
+    while (n > 0 && p < end) *p++ = tmp[--n];
+    *pp = p;
+}
+
+void picogl_log_extra(char **pp, char *end)
+{
+    log_u(pp, end, " ren=", s_us_ren / 1000u);
+    log_u(pp, end, " ras=", s_us_ras / 1000u);
+    log_u(pp, end, " wai=", s_us_wai / 1000u);
+}
+
+static void arm_paint(void)
+{
+    if (s_edges_armed) return;
+    s_edges_armed = 1;
+    /* Coverage is the whole list again. Core 0 paints every triangle.
+     * The row step is not stored. A later band divides that edge. */
+    picogl_set_cover(1);
+    memset(s_edge_y, 0xff, sizeof s_edge_y);
+    picogl_set_edge_resume(s_edge_q, s_edge_r, s_edge_y, CAP_TRI);
+    picogl_set_edge_step(0, 0);
+}
+
 void start_sim_paint_band(uint16_t *be, int stride, int band_y, int band_h,
                           int ox, int oy, GDEV *dev)
 {
+    int rw, rh;
+    uint32_t t0;
     if (!be || stride <= 0 || stride > 320 || band_h <= 0 || band_h > 16)
         return;
-    if (s_vw == s_dw && s_vh == s_dh) {
+    rw = s_slot_vw[s_paint];
+    rh = s_slot_vh[s_paint];
+    if (rw < 1) rw = s_vw;
+    if (rh < 1) rh = s_vh;
+    arm_paint();
+    t0 = TIMER0_TIMERAWL;
+    if (rw == s_dw && rh == s_dh) {
         /* The render size is the destination. One write per pixel. */
-        picogl_paint_band(s_cap_tri, s_cap_n, be, stride, band_y, band_h,
-                          ox, oy, s_vw, s_vh, s_band_iz, (uint16_t)CLEAR_RGB);
-    } else if (s_vw > 0 && s_vw <= 320 && s_vh > 0) {
+        picogl_paint_band(s_cap_tri[s_paint], s_cap_n[s_paint], be, stride,
+                          band_y, band_h, ox, oy, rw, rh,
+                          0, (uint16_t)CLEAR_RGB);
+    } else if (rw > 0 && rw <= 320 && rh > 0) {
         paint_scaled(be, stride, band_y, band_h, ox, oy,
-                     s_dw, s_dh, s_vw, s_vh);
+                     s_dw, s_dh, rw, rh);
     }
+    s_us_ras += TIMER0_TIMERAWL - t0;
     s_ox = ox;
     s_oy = oy;
     s_dev = dev;

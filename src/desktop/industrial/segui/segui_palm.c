@@ -708,7 +708,7 @@ static void draw_quake_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, voi
         if (g != s_gen) {
             s_gen = g;
             start_sim_set_dest(dw, dh);
-            start_sim_render();
+            start_sim_acquire();
         }
         strip = dp_pico_band_ptr(&by, &bh, &stride);
         if (strip)

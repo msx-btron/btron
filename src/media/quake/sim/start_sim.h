@@ -29,6 +29,12 @@ int  start_sim_view_h(void);
 #if defined(PICO_REAL_HW)
 #include <btron/dp.h>
 void start_sim_set_dest(int dw, int dh);
+/* Swap in the list core 1 finished, then kick the next build. The
+ * picture is one pose behind after the first frame. */
+void start_sim_acquire(void);
+/* Block until that build finishes, so the next tick can write the pose.
+ * Call this inside the present, after the last band. */
+void start_sim_join_build(void);
 void start_sim_paint_band(uint16_t *be, int stride, int band_y, int band_h,
                           int ox, int oy, GDEV *dev);
 int  start_sim_fullscreen(void);
