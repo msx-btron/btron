@@ -82,8 +82,10 @@ static const xmb_cat_t s_cats[] = {
 
 static int s_cat;
 static int s_item;
-/* Effect time in 1/256. Eleven per tick is the original dt/1600 at ~14 fps. */
+/* Effect time. Eleven per tick is the original dt/1600 at ~14 fps.
+ * The ribbon runs at 3/2 of that: s_phase_n counts half-steps. */
 static int s_phase;
+static int s_phase_n;
 #if defined(PICO_REAL_HW)
 static int s_core;
 #endif
@@ -323,7 +325,9 @@ static void xmb_metrics(int left, int top, int width,
     *icon = ic;
     *sph = sh;
     *spv = sv;
-    *cx = left + ml + sh;
+    /* PS3 cross is margin_left + spacing_h. The large selected item
+     * sits a quarter pitch left of that pin. */
+    *cx = left + ml + sh - sh / 1;
     *cy = top + mt + ic / 2;
 }
 
@@ -391,8 +395,12 @@ void xmb_pico_tick(void)
     }
     picogl_reset_stats();
 #endif
-    s_phase += 11;
-    if (s_phase > 180000) s_phase = 0;
+    s_phase_n += 33;
+    s_phase = s_phase_n >> 1;
+    if (s_phase > 180000) {
+        s_phase = 0;
+        s_phase_n = 0;
+    }
     follow_step();
 }
 

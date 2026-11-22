@@ -44,7 +44,7 @@ int main(void)
         int w = 320;
         int icon = (128 * w / 1920) * 2;
         int pitch = (192 * w / 1920) * 2;
-        int cross = 336 * w / 1920 + pitch;
+        int cross = 336 * w / 1920 + pitch - pitch / 4;
         int x, y;
         expect(cat_x == cross - icon / 2, "selected category is the PS3 cross");
         expect(xmb_pico_test_cat_cy(0, 40, 320, 300, 0)
