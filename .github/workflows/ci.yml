@@ -32,15 +32,13 @@ jobs:
             llvm \
             libsdl2-dev \
             zlib1g-dev \
-            elixir \
-            erlang-base \
             qemu-system-arm \
             qemu-system-misc
 
       - name: Install Dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
-          brew install sdl2 qemu llvm lld elixir
+          brew install sdl2 qemu llvm lld
           echo "/opt/homebrew/opt/llvm/bin" >> "$GITHUB_PATH"
           echo "/opt/homebrew/bin" >> "$GITHUB_PATH"
           echo "/usr/local/opt/llvm/bin" >> "$GITHUB_PATH"
@@ -48,7 +46,6 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3 scripts/tool_html2tad.py --test
           python3 scripts/tool_book2tad.py --test
 
       - name: Tree Structure Checks
@@ -121,7 +118,6 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3 scripts/tool_html2tad.py --test
           python3 scripts/tool_book2tad.py --test
 
       - name: Build POSIX Desktop
@@ -200,7 +196,6 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3 scripts/tool_html2tad.py --test
           python3 scripts/tool_book2tad.py --test
 
       - name: Build POSIX Desktop
@@ -254,7 +249,6 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3.13 scripts/tool_html2tad.py --test
           python3.13 scripts/tool_book2tad.py --test
 
       - name: Build POSIX Desktop
@@ -317,7 +311,6 @@ jobs:
 
       - name: Python TAD Compiler Self-Tests
         run: |
-          python3.12 scripts/tool_html2tad.py --test
           python3.12 scripts/tool_book2tad.py --test
 
       - name: Build POSIX Desktop
