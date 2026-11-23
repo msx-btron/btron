@@ -891,7 +891,7 @@ int teditor_scan_fs_dir(const char *dir_path, TMenuTreeItem *out_items, int max_
 #endif
         if (count == 0) {
             const char *sys_docs[] = {
-                "BOOK.md", "CLU.md", "FS.md", "README.md", "SYS.md"
+                "DOC-BOOK.md", "APPS-CLU.md", "FS.md", "TAD.md", "TIP.md"
             };
             for (size_t i = 0; i < sizeof(sys_docs)/sizeof(sys_docs[0]) && count < max_items; i++) {
                 strncpy(out_items[count].name, sys_docs[i], sizeof(out_items[count].name) - 1);

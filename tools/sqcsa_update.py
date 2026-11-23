@@ -19,7 +19,7 @@ For each folder the script runs:
        that exceed the interactive time budget — noted in the report)
 
 It then rewrites the matching  "── sec-<name>  (<folder>/)"  block inside
-doc/txt/SQCSA.txt, or appends a new block when none exists, and updates the
+doc/txt/VERIFY-SQCSA.txt, or appends a new block when none exists, and updates the
 summary table row for that target.
 
 Run from the project root:
@@ -38,7 +38,7 @@ from pathlib import Path
 # ─── configuration ────────────────────────────────────────────────────────────
 
 ROOT = Path(__file__).resolve().parent.parent   # project root
-SQCSA = ROOT / "doc" / "txt" / "SQCSA.txt"
+SQCSA = ROOT / "doc" / "txt" / "VERIFY-SQCSA.txt"
 
 # Extra include flags per top-level folder (additive on top of always-includes)
 INCLUDE_EXTRAS: dict[str, list[str]] = {

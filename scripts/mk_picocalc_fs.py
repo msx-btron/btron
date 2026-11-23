@@ -23,7 +23,7 @@ MANIFEST = [
     ("KHRUS.TAD",       "tad_bin/osal/khrus.tad",               0x01),
     ("DGE_BSNGO.TAD",   "tad_bin/osal/dge_bsngo.tad",           0x01),
     ("HEART_SUTRA.TAD", "assets/texts/Heart_Sutra_Tibetan.txt", 0x01),
-    ("PICO.TXT",        "doc/txt/PICO.txt",                     0x00),
+    ("PICO.TXT",        "doc/txt/CORES-PICO.txt",               0x00),
 ]
 
 

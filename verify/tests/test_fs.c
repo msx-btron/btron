@@ -1036,16 +1036,16 @@ static void test_packed_markdown_files(void)
     clu_fs_cmd("", capture_fn, &cb);
     CHECK(cb.n >= 14, "fs on btron_sys.vol must list header + 14 manifest entries");
 
-    int found_fs = 0, found_clu = 0, found_readme = 0, found_tad = 0;
+    int found_fs = 0, found_clu = 0, found_book = 0, found_tad = 0;
     for (int i = 0; i < cb.n; i++) {
-        if (strstr(cb.lines[i], "FS.md"))     found_fs = 1;
-        if (strstr(cb.lines[i], "CLU.md"))    found_clu = 1;
-        if (strstr(cb.lines[i], "README.md")) found_readme = 1;
-        if (strstr(cb.lines[i], "TAD.md"))    found_tad = 1;
+        if (strstr(cb.lines[i], "FS.md"))        found_fs = 1;
+        if (strstr(cb.lines[i], "APPS-CLU.md"))  found_clu = 1;
+        if (strstr(cb.lines[i], "DOC-BOOK.md"))  found_book = 1;
+        if (strstr(cb.lines[i], "TAD.md"))       found_tad = 1;
     }
     CHECK(found_fs, "FS.md missing from fs listing");
-    CHECK(found_clu, "CLU.md missing from fs listing");
-    CHECK(found_readme, "README.md missing from fs listing");
+    CHECK(found_clu, "APPS-CLU.md missing from fs listing");
+    CHECK(found_book, "DOC-BOOK.md missing from fs listing");
     CHECK(found_tad, "TAD.md missing from fs listing");
 
     /* 2. tp on FS.md must output markdown content */

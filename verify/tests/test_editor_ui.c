@@ -1023,13 +1023,13 @@ static void test_volume_and_markdown_file_operations(void) {
     TMenuTreeItem sys_items[64];
     int sys_cnt = teditor_scan_fs_dir("/SYS", sys_items, 64);
     TEST_ASSERT(sys_cnt >= 2, "SYS System Docs contains markdown documents");
-    BOOL found_fs_md = FALSE, found_readme_md = FALSE;
+    BOOL found_fs_md = FALSE, found_book_md = FALSE;
     for (int i = 0; i < sys_cnt; i++) {
         if (strcmp(sys_items[i].name, "FS.md") == 0) found_fs_md = TRUE;
-        if (strcmp(sys_items[i].name, "README.md") == 0) found_readme_md = TRUE;
+        if (strcmp(sys_items[i].name, "DOC-BOOK.md") == 0) found_book_md = TRUE;
     }
     TEST_ASSERT(found_fs_md, "Discovered FS.md inside SYS System Docs");
-    TEST_ASSERT(found_readme_md, "Discovered README.md inside SYS System Docs");
+    TEST_ASSERT(found_book_md, "Discovered DOC-BOOK.md inside SYS System Docs");
 
     /* 3. Test opening FS.md directly into editor */
     TEditor ed;
@@ -1057,10 +1057,10 @@ static void test_volume_and_markdown_file_operations(void) {
             vol_has_fs = TRUE;
             vol_fs_idx = i;
         }
-        if (strcmp(vol_sys_items[i].name, "CLU.md") == 0) vol_has_clu = TRUE;
+        if (strcmp(vol_sys_items[i].name, "APPS-CLU.md") == 0) vol_has_clu = TRUE;
     }
     TEST_ASSERT(vol_has_fs, "Volume /SYS container contains FS.md");
-    TEST_ASSERT(vol_has_clu, "Volume /SYS container contains CLU.md");
+    TEST_ASSERT(vol_has_clu, "Volume /SYS container contains APPS-CLU.md");
 
     /* 5. Cascading menu click simulation on volume-backed FS.md inside [/SYS] */
     WND *wnd = open_t_editor_window();

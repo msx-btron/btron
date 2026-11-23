@@ -2326,7 +2326,7 @@ test-ps2-pointer: $(TEST_PTRSTROKE_BIN) $(TEST_PTRACCUM_BIN)
 	@echo "=========================================================="
 	@./$(TEST_PTRACCUM_BIN)
 
-$(TEST_PTRSTROKE_BIN): $(TEST_PTRSTROKE_OBJS) src/cores/ps2_ptr_stroke.h
+$(TEST_PTRSTROKE_BIN): $(TEST_PTRSTROKE_OBJS) verify/tests/ps2_ptr_stroke.h
 	@mkdir -p ./.build
 	$(CC) $(TEST_PTRSTROKE_OBJS) -o $@ $(LDFLAGS)
 
@@ -4844,7 +4844,7 @@ flash-picocalc: picocalc
 	    echo "[FLASH] Done! PicoCalc will reboot into B-System immediately."; \
 	fi
 
-PICOCALC_FS_SOURCES := assets/texts/BTRON3_Report.txt tad_bin/osal/index.tad tad_bin/osal/smon_lam.tad tad_bin/osal/khrus.tad tad_bin/osal/dge_bsngo.tad assets/texts/Heart_Sutra_Tibetan.txt doc/txt/PICO.txt
+PICOCALC_FS_SOURCES := assets/texts/BTRON3_Report.txt tad_bin/osal/index.tad tad_bin/osal/smon_lam.tad tad_bin/osal/khrus.tad tad_bin/osal/dge_bsngo.tad assets/texts/Heart_Sutra_Tibetan.txt doc/txt/CORES-PICO.txt
 src/apps/cabinet/picocalc_fs_image.h: scripts/mk_picocalc_fs.py $(PICOCALC_FS_SOURCES)
 	@python3 scripts/mk_picocalc_fs.py .build/picocalc_fs.img $@
 

@@ -12,29 +12,27 @@ FILE "Graphics & Display" TAD   -
 FILE "Applications & HMI" TAD   -
 FILE "TRASH"              LINK  0
 
-# doc/md — Documentation (alphabetical).  One exception: the PS2 book is carried as
-# doc/txt/PS2.txt, the single normative text for that port, and no doc/md/PS2.md exists.
-FILE "BOOK.md"            MD    doc/md/BOOK.md
-FILE "BOPOMOFO.md"        MD    doc/md/BOPOMOFO.md
-FILE "CERTIFICATION.md"   MD    doc/md/CERTIFICATION.md
-FILE "CHAT.md"            MD    doc/md/CHAT.md
-FILE "CLU.md"             MD    doc/md/CLU.md
-FILE "DOCOPS.md"          MD    doc/md/DOCOPS.md
-FILE "EVENTING.md"        MD    doc/md/EVENTING.md
-FILE "FOMA.md"            MD    doc/md/FOMA.md
-FILE "FS.md"              MD    doc/md/FS.md
-FILE "GUI.md"             MD    doc/md/GUI.md
-FILE "HYPERMEDIA.md"      MD    doc/md/HYPERMEDIA.md
-FILE "IME.md"             MD    doc/md/IME.md
-FILE "MENU.md"            MD    doc/md/MENU.md
-FILE "PORTING.md"         MD    doc/md/PORTING.md
-FILE "PS2.txt"            TXT   doc/txt/PS2.txt
-FILE "MSX.txt"            TXT   doc/txt/MSX.txt
-FILE "PUBLISH.md"         MD    doc/md/PUBLISH.md
-FILE "README.md"          MD    doc/md/README.md
-FILE "SMP.md"             MD    doc/md/SMP.md
-FILE "TAD.md"             MD    doc/md/TAD.md
-FILE "OSAL.md"            MD    doc/md/OSAL.md
+# Documentation.  Cabinet names are the repo basenames.  The prefix is the
+# source area: APPS, CORES, DESKTOP, DOC, FS, MEDIA, MSX, TAD, TIP, VERIFY.
+# GUI.md, HYPERMEDIA.md, PORTING.md, and README.md left with the reindex.
+FILE "APPS-CHAT.md"                  MD    doc/md/APPS-CHAT.md
+FILE "APPS-CLU.md"                   MD    doc/md/APPS-CLU.md
+FILE "CORES-PS2.txt"                 TXT   doc/txt/CORES-PS2.txt
+FILE "CORES-UEFI-SMP.md"             MD    doc/md/CORES-UEFI-SMP.md
+FILE "DESKTOP-INDUSTRIAL-HANDHELD.md" MD   doc/md/DESKTOP-INDUSTRIAL-HANDHELD.md
+FILE "DESKTOP-WINDOW-MENU.md"        MD    doc/md/DESKTOP-WINDOW-MENU.md
+FILE "DESKTOP-WINDOW.md"             MD    doc/md/DESKTOP-WINDOW.md
+FILE "DOC-BOOK.md"                   MD    doc/md/DOC-BOOK.md
+FILE "DOC-DOCOPS.md"                 MD    doc/md/DOC-DOCOPS.md
+FILE "DOC-PUBLISH.md"                MD    doc/md/DOC-PUBLISH.md
+FILE "FS.md"                         MD    doc/md/FS.md
+FILE "FS-CHOKANJI.md"                MD    doc/md/FS-CHOKANJI.md
+FILE "MSX.txt"                       TXT   doc/txt/MSX.txt
+FILE "TAD-OSAL.md"                   MD    doc/md/TAD-OSAL.md
+FILE "TAD.md"                        MD    doc/md/TAD.md
+FILE "TIP-BOPOMOFO.md"               MD    doc/md/TIP-BOPOMOFO.md
+FILE "TIP.md"                        MD    doc/md/TIP.md
+FILE "VERIFY-BTRON.md"               MD    doc/md/VERIFY-BTRON.md
 
 # Longchen Osal Tibetan Texts (for Clarity DTP & in-OS TAD construction)
 FILE "dkar.chag.txt"          TXT   assets/osal/dkar.chag.txt

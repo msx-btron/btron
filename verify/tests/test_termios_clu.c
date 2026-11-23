@@ -341,8 +341,8 @@ static void test_in_window_sc_and_tv_sessions(void)
     sc_session_close();
 
     /* Test TV session initialization */
-    int tv_rc = tv_session_init("/SYS/BOOK.md", 1, 25, 80);
-    CHECK(tv_rc == 0, "tv_session_init should succeed for /SYS/BOOK.md");
+    int tv_rc = tv_session_init("/SYS/DOC-BOOK.md", 1, 25, 80);
+    CHECK(tv_rc == 0, "tv_session_init should succeed for /SYS/DOC-BOOK.md");
 
     /* Verify cells populated in term 2D screen buffer for TV */
     got_cell = term_get_cell(0, 0, &cp, &style);
@@ -369,7 +369,7 @@ static void test_in_window_sc_and_tv_sessions(void)
     CHECK(sc_is_tv_active() == 0, "TV should not be active initially in SC");
 
     /* Launch TV inside SC */
-    int launch_rc = sc_launch_tv("/SYS/BOOK.md", 1);
+    int launch_rc = sc_launch_tv("/SYS/DOC-BOOK.md", 1);
     CHECK(launch_rc == 0, "sc_launch_tv should succeed");
     CHECK(sc_is_tv_active() == 1, "sc_is_tv_active must report 1 after launching TV");
 
@@ -451,11 +451,11 @@ static void test_multi_instance_isolation(void)
 
     term_set_context(term1);
     tv_set_context(tv1);
-    CHECK(tv_session_init("/SYS/README.md", 1, 20, 40) == 0, "tv1 init should succeed");
+    CHECK(tv_session_init("/SYS/FS.md", 1, 20, 40) == 0, "tv1 init should succeed");
 
     term_set_context(term2);
     tv_set_context(tv2);
-    CHECK(tv_session_init("/SYS/CLU.md", 0, 35, 90) == 0, "tv2 init should succeed");
+    CHECK(tv_session_init("/SYS/APPS-CLU.md", 0, 35, 90) == 0, "tv2 init should succeed");
 
     /* Move cursor down in tv1 */
     term_set_context(term1);
@@ -556,7 +556,7 @@ static void test_reactive_modal_dialogs(void)
 
     /* 3. TV Modal Exit Dialog on Modified Buffer */
     tv_set_context(tv);
-    CHECK(tv_session_init("/SYS/README.md", 0, 25, 80) == 0, "TV init should succeed");
+    CHECK(tv_session_init("/SYS/FS.md", 0, 25, 80) == 0, "TV init should succeed");
 
     /* If not modified, F10 exits immediately */
     running = tv_session_step(K_F10);
@@ -564,7 +564,7 @@ static void test_reactive_modal_dialogs(void)
     tv_session_close();
 
     /* Re-init and modify */
-    CHECK(tv_session_init("/SYS/README.md", 0, 25, 80) == 0, "TV re-init should succeed");
+    CHECK(tv_session_init("/SYS/FS.md", 0, 25, 80) == 0, "TV re-init should succeed");
     tv_session_step('X'); /* Insert character to mark modified */
 
     running = tv_session_step(K_F10);
