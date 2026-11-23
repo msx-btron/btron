@@ -492,7 +492,7 @@ static void test_btron3_picture_figure_segments(void) {
 
     /* 4. Render and Verify Direct PNG Decoding to Framebuffer */
     memset(fb, 0, sizeof(fb));
-    int png_res = decode_and_draw_png(&dev, "tad_bin/b-system/img/virtio.png", 10, 10, 400, 300);
+    int png_res = decode_and_draw_png(&dev, "img/virtio.png", 10, 10, 400, 300);
     TEST_ASSERT(png_res == 0, "Successfully executed native PNG decoder on specification diagram");
 
     int png_drawn = 0;
