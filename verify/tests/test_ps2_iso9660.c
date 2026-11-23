@@ -149,9 +149,10 @@ static void test_real_iso(void)
     uint8_t *dir;
     int n, i, found_e1m1 = 0, found_progs = 0;
 
-    f = fopen("btron-ps2.iso", "rb");
+    f = fopen("downloads/playstation-2/btron-ps2.iso", "rb");
+    if (!f) f = fopen("btron-ps2.iso", "rb");
     if (!f) {
-        printf("  [SKIP] btron-ps2.iso not in cwd — synthetic path only\n");
+        printf("  [SKIP] downloads/playstation-2/btron-ps2.iso not found — synthetic path only\n");
         return;
     }
 

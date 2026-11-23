@@ -5,8 +5,8 @@
 
 set -euo pipefail
 
-ELF="btron-ps2.elf"
-ISO="btron-ps2.iso"
+ELF="downloads/playstation-2/btron-ps2.elf"
+ISO="downloads/playstation-2/btron-ps2.iso"
 READELF="mipsel-linux-gnu-readelf -W"
 OBJDUMP="mipsel-linux-gnu-objdump"
 

@@ -255,3 +255,134 @@ h2.jp-title {
     color: var(--rice-gold);
     margin: 2rem 0 0.8rem;
 }
+
+.rice-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: var(--rice-plate);
+    border: 1px solid var(--rice-rule);
+    border-radius: 2px;
+    margin: 0.75rem 0 2.25rem;
+    font-size: 0.94rem;
+    box-shadow: 0 1px 2px rgba(20, 23, 26, 0.04);
+}
+
+.rice-table th,
+.rice-table td {
+    padding: 0.72rem 1rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--rice-rule);
+    line-height: 1.6;
+}
+
+.rice-table tr:last-child th,
+.rice-table tr:last-child td {
+    border-bottom: none;
+}
+
+.rice-table th {
+    width: 11.5rem;
+    background: var(--rice-paper-2);
+    color: var(--rice-ink);
+    font-family: var(--rice-mono);
+    font-size: 0.82rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    border-right: 1px solid var(--rice-rule);
+    white-space: nowrap;
+}
+
+.rice-table td {
+    color: var(--rice-ink-2);
+}
+
+.rice-table td a {
+    color: var(--rice-teal);
+    font-family: var(--rice-mono);
+    font-size: 0.88rem;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(0, 128, 128, 0.3);
+}
+
+.rice-table td a:hover {
+    color: var(--rice-ink);
+    border-bottom-color: var(--rice-teal);
+}
+
+.rice-table code {
+    font-family: var(--rice-mono);
+    font-size: 0.84em;
+    background: var(--rice-paper-2);
+    padding: 0.1rem 0.35rem;
+    border-radius: 2px;
+    color: var(--rice-ink);
+}
+
+.rice-dl-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.rice-dl-note {
+    font-size: 0.84rem;
+    color: var(--rice-ink-3);
+    margin-left: 0.45rem;
+}
+
+@media (max-width: 640px) {
+    .rice-table th {
+        width: 7.5rem;
+        white-space: normal;
+        padding: 0.6rem 0.7rem;
+    }
+    .rice-table td {
+        padding: 0.6rem 0.7rem;
+    }
+}
+
+/* ── Footer (matches index.html ink footer) ──────────────────────────── */
+footer {
+    background: var(--rice-ink) !important;
+    border-top: 0 !important;
+    padding: clamp(2.5rem, 6vw, 4rem) clamp(1.25rem, 5vw, 3.5rem) 3rem !important;
+    color: #98a1a9;
+}
+
+.footer-bottom {
+    text-align: center;
+    font-size: 0.84rem;
+    color: var(--rice-ink-3);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1.6rem;
+}
+
+.footer-legal {
+    max-width: 920px;
+    margin: 0 auto;
+    line-height: 1.8;
+    font-size: 0.77rem;
+    color: #78838d;
+    text-align: center;
+}
+
+.footer-legal b {
+    color: #b8c0c8;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+.footer-legal a {
+    color: #98a1a9;
+    text-decoration: underline;
+}
+
+.footer-legal a:hover {
+    color: var(--rice-teal);
+}

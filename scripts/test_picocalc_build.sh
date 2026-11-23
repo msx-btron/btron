@@ -58,8 +58,8 @@ echo "=========================================================="
 echo " [TEST-PICOCALC] Verifying UF2 and boot headers..."
 echo "=========================================================="
 for kind in "" "-quake"; do
-    python3 scripts/tool_mk_uf2.py --board rp2350 --verify "btron-picocalc${kind}-rp2350.uf2"
-    python3 scripts/tool_mk_uf2.py --board rp2040 --verify "btron-picocalc${kind}-rp2040.uf2"
+    python3 scripts/tool_mk_uf2.py --board rp2350 --verify "downloads/picocalc/btron-picocalc${kind}-rp2350.uf2"
+    python3 scripts/tool_mk_uf2.py --board rp2040 --verify "downloads/picocalc/btron-picocalc${kind}-rp2040.uf2"
 done
 
 echo "=========================================================="
@@ -70,7 +70,7 @@ import struct, sys
 
 for kind in ("", "-quake"):
     for board, ram_top in (("rp2350", 0x20080000), ("rp2040", 0x20040000)):
-        path = f"btron-picocalc{kind}-{board}-sdboot.bin"
+        path = f"downloads/picocalc/btron-picocalc{kind}-{board}-sdboot.bin"
         with open(path, "rb") as f:
             hdr = f.read(16)
         msp, reset = struct.unpack("<II", hdr[:8])
@@ -162,7 +162,7 @@ check_elf() {
         forbid_sym "$elf" build_glgears
         forbid_sym "$elf" build_xmb
         bin=".build/picocalc-quake-${board}/btron-picocalc-quake-${board}.bin"
-        sd="btron-picocalc-quake-${board}-sdboot.bin"
+        sd="downloads/picocalc/btron-picocalc-quake-${board}-sdboot.bin"
     else
         need_sym "$elf" build_glgears
         need_sym "$elf" build_xmb
@@ -171,7 +171,7 @@ check_elf() {
         forbid_sym "$elf" build_quake
         forbid_sym "$elf" start_sim_render
         bin=".build/picocalc-${board}/btron-picocalc-${board}.bin"
-        sd="btron-picocalc-${board}-sdboot.bin"
+        sd="downloads/picocalc/btron-picocalc-${board}-sdboot.bin"
     fi
 
     if [ "$board" = "rp2040" ]; then

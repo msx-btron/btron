@@ -72,7 +72,7 @@ GIT_REV=$(git rev-parse --short HEAD 2>/dev/null || echo unknown)
 GIT_TREE=$(git status --porcelain 2>/dev/null | shasum -a 1 | cut -c1-12)
 
 make ps2 >"$OUTDIR/build.log" 2>&1
-ELF=btron-ps2.elf
+ELF=downloads/playstation-2/btron-ps2.elf
 ELF_SHA=$(shasum -a 1 "$ELF" | cut -c1-40)
 # The raw hash is not an identity: the image embeds __DATE__ " " __TIME__ twice (src/cores/core_ps2.c
 # 5160 and 9598), so two builds of the SAME source differ -- measured 2026-10-17: relinking twice with
@@ -104,7 +104,7 @@ for i in $(seq 1 "$RUNS"); do
     echo "run $i: bench exit $rc, log $OUTDIR/run$i.log"
 done
 fi
-ELF=btron-ps2.elf
+ELF=downloads/playstation-2/btron-ps2.elf
 
 # ── 3. the grades ────────────────────────────────────────────────────────────────────────────
 LOG="$OUTDIR/run${RUNS}.log"

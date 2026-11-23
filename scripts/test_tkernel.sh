@@ -15,7 +15,7 @@ else
     exit 1
 fi
 
-ELF_PATH="btron-arm-baremetal.elf"
+ELF_PATH="downloads/pi-2/btron-arm-baremetal.elf"
 if [ ! -f "$ELF_PATH" ]; then
     echo "[CI-TEST] Building $ELF_PATH..."
     make "$ELF_PATH" >/dev/null 2>&1 || make arm-elf

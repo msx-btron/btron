@@ -11,7 +11,7 @@ if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
     exit 1
 fi
 
-ELF_PATH=".build/btron-uchida.elf"
+ELF_PATH="downloads/intel-uefi/btron-uchida.elf"
 if [ ! -f "$ELF_PATH" ]; then
     echo "[CI-TEST] Building $ELF_PATH..."
     make uefi >/dev/null 2>&1
@@ -30,7 +30,7 @@ trap 'rm -f "$LOG_USB"' EXIT
     -M q35,accel=tcg -cpu qemu64 -smp cores=4,threads=1,sockets=1 -m 1G \
     -display none \
     -device virtio-vga \
-    -drive file=.build/btron-uefi-usb.img,if=none,id=bootusb,format=raw,file.locking=off \
+    -drive file=downloads/intel-uefi/btron-uefi-usb.img,if=none,id=bootusb,format=raw,file.locking=off \
     -device virtio-blk-pci,drive=bootusb,bootindex=1 \
     -drive file=.build/target_hdd.img,if=none,id=targethd,format=raw,file.locking=off \
     -device virtio-blk-pci,drive=targethd \
@@ -74,7 +74,7 @@ trap 'rm -f "$LOG_USB" "$LOG_HDD"' EXIT
     -M q35,accel=tcg -cpu qemu64 -smp cores=4,threads=1,sockets=1 -m 1G \
     -display none \
     -device virtio-vga \
-    -drive file=.build/btron-uefi-hdd.img,if=none,id=systemhd,format=raw,file.locking=off \
+    -drive file=downloads/intel-uefi/btron-uefi-hdd.img,if=none,id=systemhd,format=raw,file.locking=off \
     -device virtio-blk-pci,drive=systemhd,bootindex=1 \
     -kernel "$ELF_PATH" \
     -serial stdio > "$LOG_HDD" 2>&1) &
@@ -114,7 +114,7 @@ trap 'rm -f "$LOG_USB" "$LOG_HDD" "$LOG_CD"' EXIT
     -M q35,accel=tcg -cpu qemu64 -smp cores=4,threads=1,sockets=1 -m 1G \
     -display none \
     -device virtio-vga \
-    -cdrom .build/btron-uefi-cd.iso -boot d \
+    -cdrom downloads/intel-uefi/btron-uefi-cd.iso -boot d \
     -drive file=.build/target_hdd.img,if=none,id=targethd,format=raw,file.locking=off \
     -device virtio-blk-pci,drive=targethd \
     -kernel "$ELF_PATH" \

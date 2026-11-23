@@ -11,7 +11,7 @@ if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
     exit 1
 fi
 
-ELF_PATH=".build/btron-morris.elf"
+ELF_PATH="downloads/pc98/btron-morris.elf"
 if [ ! -f "$ELF_PATH" ]; then
     echo "[CI-TEST] Building $ELF_PATH..."
     make pc98 >/dev/null 2>&1

@@ -25,12 +25,66 @@
   </div>
 </nav>
   <header class="rice-hero">
+    <p class="rice-kicker">Downloads · Broadcom ARM32</p>
     <h1>Raspberry Pi 2</h1>
     <div class="rice-rule"></div>
-    <p class="rice-lede">Broadcom ARM port.</p>
+    <p class="rice-lede">Broadcom BCM2836 ARMv7 port (<code>make arm-elf</code>, <code>make run-kernel</code> on QEMU <code>raspi2b</code>).</p>
   </header>
   <main class="rice-main">
-    <p>Pi 2 is the 32-bit ARM side of the same Broadcom tree (<code>make arm-elf</code> builds the ARM32 kernel). There is no separate Pi 2 card image target.</p>
+    <p class="rice-section-label">Technical Characteristics of the Computer/Console</p>
+    <table class="rice-table">
+      <tbody>
+        <tr><th>Chipset</th><td>Broadcom BCM2836 (Quad-core ARM Cortex-A7 @ 900 MHz, ARMv7-A / VFPv4, T-Kernel 2.0)</td></tr>
+        <tr><th>Bus</th><td>AXI / APB peripheral bus, DWC2 USB 2.0 (<code>src/drivers/broadcom/dwc2.c</code>), VideoCore Mailbox, SDIO</td></tr>
+        <tr><th>Video</th><td>VideoCore IV GPU, Mailbox linear framebuffer (<code>src/drivers/broadcom/</code>)</td></tr>
+        <tr><th>Display</th><td>Full-size HDMI; B-System LAPTOP shell (800×600 / 1024×768, 32-bpp)</td></tr>
+        <tr><th>Sound</th><td>HDMI audio, 3.5 mm PWM audio, USB Audio Class 1 (<code>src/drivers/broadcom/usb_audio_uac1.c</code>)</td></tr>
+        <tr><th>Input</th><td>USB HID keyboard &amp; mouse via DWC2 (<code>src/drivers/broadcom/dwc2.c</code>)</td></tr>
+        <tr><th>Memory</th><td>1 GB LPDDR2 SDRAM</td></tr>
+        <tr><th>Communications</th><td>100 Mbps Ethernet (LAN9514 USB hub), PL011 UART serial</td></tr>
+      </tbody>
+    </table>
+
+    <p class="rice-section-label">Firmware and Images to Download</p>
+    <table class="rice-table">
+      <tbody>
+        <tr>
+          <th>BIN</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="btron-arm-baremetal.elf">btron-arm-baremetal.elf</a><span class="rice-dl-note"><code>make arm-elf</code> — ARM32 bare-metal ELF</span></li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>VOL</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="../../btron_sys.vol">btron_sys.vol</a><span class="rice-dl-note"><code>make btron_sys.vol</code> — BTRON /SYS volume</span></li>
+              <li><a href="../../btron_anders.vol">btron_anders.vol</a><span class="rice-dl-note"><code>make btron_anders.vol</code> — BTRON /ANDERS volume</span></li>
+            </ul>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </main>
+  <footer>
+    <div class="footer-bottom">
+      <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+        <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+      </a>
+      <div class="footer-legal">
+        <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+          &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+        </p>
+        <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+          <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; and VideoCore&reg; are trademarks of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. HDMI&reg; is a trademark of HDMI Licensing Administrator, Inc. All other manufacturer designations and silicon architectures cited on this page are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial hardware documentation and cleanroom interoperability engineering. B-System contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+        </p>
+        <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+          btron.pro &nbsp;&middot;&nbsp; Raspberry Pi 2 (BCM2836 ARMv7) &nbsp;&middot;&nbsp; Under ISC / DHARMA License &nbsp;&middot;&nbsp; Conforming to NASA/JPL Power of Ten Rules
+        </p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

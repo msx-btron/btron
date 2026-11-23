@@ -768,10 +768,10 @@ TKERNEL_TARGET = ./.build/btron-tkernel.elf
 SAKAMURA_TARGET = ./.build/btron-sakamura.elf
 FOMA_TARGET     = ./.build/btron-foma.elf
 TEST_FOMA_BIN   = ./.build/test_foma_ui
-UEFI_TARGET     = ./.build/btron-uchida.elf
-PC98_TARGET     = ./.build/btron-morris.elf
-ARM32_TARGET   = btron-arm-baremetal.elf
-ARM64_TARGET   = btron-aarch64-baremetal.elf
+UEFI_TARGET     = downloads/intel-uefi/btron-uchida.elf
+PC98_TARGET     = downloads/pc98/btron-morris.elf
+ARM32_TARGET   = downloads/pi-2/btron-arm-baremetal.elf
+ARM64_TARGET   = downloads/pi-400/btron-aarch64-baremetal.elf
 DEFAULT_TARGET = ./.build/btron
 
 TKERNEL_INC = -D_RPI_BCM283x_ -DTYPE_RPI=2 \
@@ -1197,6 +1197,7 @@ uefi: tad_bin $(UEFI_TARGET)
 	@echo "=========================================================="
 
 $(UEFI_TARGET): $(UEFI_OBJS) $(UEFI_LD)
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Building B-System X86_64 / EMT64 UEFI SMP Kernel: $@"
 	@echo "=========================================================="
@@ -1204,9 +1205,9 @@ $(UEFI_TARGET): $(UEFI_OBJS) $(UEFI_LD)
 	@echo "[UEFI-ELF] Built: $@"
 	@file $@
 
-USB_IMG         = .build/btron-uefi-usb.img
-HDD_IMG         = .build/btron-uefi-hdd.img
-CD_ISO          = .build/btron-uefi-cd.iso
+USB_IMG         = downloads/intel-uefi/btron-uefi-usb.img
+HDD_IMG         = downloads/intel-uefi/btron-uefi-hdd.img
+CD_ISO          = downloads/intel-uefi/btron-uefi-cd.iso
 TARGET_HDD1_IMG = .build/target_hdd1.img
 TARGET_HDD2_IMG = .build/target_hdd2.img
 TARGET_HDD_IMG  = .build/target_hdd.img
@@ -1319,6 +1320,7 @@ pc98: tad_bin $(PC98_TARGET)
 	@echo "=========================================================="
 
 $(PC98_TARGET): $(PC98_OBJS) $(UEFI_LD)
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Building B-System NEC PC-98 Kernel: $@"
 	@echo "=========================================================="
@@ -1352,7 +1354,7 @@ test-pc98: $(PC98_TARGET)
 # ═══════════════════════════════════════════════════════════════════
 # Motorola 68040 Macintosh Quadra 800 Kernel (q800)
 # ═══════════════════════════════════════════════════════════════════
-M68K_TARGET     = ./.build/btron-m68k.elf
+M68K_TARGET     = downloads/quadra-800/btron-m68k.elf
 M68K_LD_SCRIPT  = src/drivers/m68k/m68k_q800.ld
 M68K_CFLAGS     = -O2 -Wall -Wextra -std=c99 -mcpu=68040 -ffreestanding -nostdlib -DBTRON_TARGET=7 -DBTRON_M68K_TARGET $(COMMON_INCLUDES)
 M68K_STARTUP    = src/cores/core_m68k.c
@@ -1372,6 +1374,7 @@ M68K_OBJS       = src/drivers/m68k/boot_m68k.m68k.o $(M68K_SRCS:.c=.m68k.o)
 m68k: $(M68K_TARGET)
 
 $(M68K_TARGET): $(M68K_OBJS) $(M68K_LD_SCRIPT)
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Building B-System M68K Quadra 800 Kernel: $@"
 	@echo "=========================================================="
@@ -1414,8 +1417,8 @@ PS2_GL          ?= eegs
 ifeq (,$(filter $(PS2_GL),tinygl virgl eegs))
 $(error PS2_GL=$(PS2_GL) is not one of tinygl, virgl, eegs)
 endif
-PS2_TARGET     = btron-ps2.elf
-PS2_ISO        = btron-ps2.iso
+PS2_TARGET     = downloads/playstation-2/btron-ps2.elf
+PS2_ISO        = downloads/playstation-2/btron-ps2.iso
 PS2_LD_SCRIPT  = src/drivers/playstation2/ps2.ld
 PS2_CFLAGS     = -O2 -Wall -Wextra -std=c99 -ffreestanding -nostdlib \
                  -DBTRON_TARGET=8 -DBTRON_PS2_TARGET -DBTRON_AUTO_GUI=$(AUTO_GUI) \
@@ -1671,6 +1674,7 @@ $(PS2_BENCH_TARGET): $(PS2_BENCH_OBJS) $(PS2_LD_SCRIPT)
 ps2: $(PS2_TARGET) $(PS2_ISO)
 
 $(PS2_TARGET): $(PS2_OBJS) $(PS2_LD_SCRIPT)
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Building B-System PS2 Kernel: $@"
 	@echo "=========================================================="
@@ -1682,6 +1686,7 @@ $(PS2_TARGET): $(PS2_OBJS) $(PS2_LD_SCRIPT)
 # Retail PS2 model: the ELF is the RAM working set; PAK/ROMs live on the
 # disc (CD ~700 MiB, DVD ~4 GiB).  Do not incbin pak0 into the ELF.
 $(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt assets/quake/pak/pak0.pak $(wildcard assets/quake/drone1m*.dem)
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Packaging Bootable PS2 Disc ISO: $@"
 	@echo "=========================================================="
@@ -2769,6 +2774,7 @@ arm-elf: tad_bin $(ARM32_TARGET)
 	$(ARM32_CC) $(ARM_CFLAGS) -c $< -o $@
 
 $(ARM32_TARGET): $(ARM32_OBJS) $(BAREMETAL_LD)
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Building ARM32 ELF — BCM283x Pi 2B (Cortex-A7, ARMv7)"
 	@echo " Startup: $(BAREMETAL_STARTUP)"
@@ -2786,6 +2792,7 @@ arm64-elf: tad_bin $(ARM64_TARGET)
 	$(ARM64_CC) $(ARM64_CFLAGS) -c $< -o $@
 
 $(ARM64_TARGET): $(ARM64_OBJS) $(BAREMETAL_LD)
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Building AArch64 ELF — Pi 4B (Cortex-A72, BCM2711)"
 	@echo " Startup: $(BAREMETAL_STARTUP)"
@@ -2799,12 +2806,12 @@ $(ARM64_TARGET): $(ARM64_OBJS) $(BAREMETAL_LD)
 # Target 6 (aarch64-bcm2711) Takanori Yokoyama — T-Kernel 2.0
 #
 # Usage:
-#   make pi400              — build btron-pi400.img (64 MiB FAT32)
+#   make pi400              — build downloads/pi-400/btron-pi400.img (64 MiB FAT32)
 #   make flash-pi400        — auto-detect SD card & flash with dd
 #   make flash-pi400 PI400_SDCARD=/dev/diskN  — explicit device
 #   make fetch-pi400-fw     — download start4.elf + fixup4.dat
 # ═══════════════════════════════════════════════════════════════════
-PI400_IMG      = btron-pi400.img
+PI400_IMG      = downloads/pi-400/btron-pi400.img
 PI400_IMG_SIZE = 192
 PI400_FW_DIR   = third_party/pi400
 PI400_CFG_DIR  = src/drivers/broadcom/pi400
@@ -2859,6 +2866,7 @@ $(PI400_KERNEL8): $(ARM64_TARGET)
 pi400-payload: $(PI400_PAYLOAD) $(PI400_KERNEL8)
 
 $(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) $(PI400_PAYLOAD) $(PI400_KERNEL8) btron_sys.vol btron_msx.vol
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " BTRON Pi 400 — SD Card Image Builder"
 	@echo " ELF     : $(ARM64_TARGET)"
@@ -4473,9 +4481,9 @@ test-pico:
 PICOCALC_BUILD      := .build/picocalc-$(PICO_BOARD)
 PICOCALC_UF2_ELF    := $(PICOCALC_BUILD)/btron-picocalc-$(PICO_BOARD).elf
 PICOCALC_UF2_BIN    := $(PICOCALC_BUILD)/btron-picocalc-$(PICO_BOARD).bin
-PICOCALC_UF2        := btron-picocalc-$(PICO_BOARD).uf2
+PICOCALC_UF2        := downloads/picocalc/btron-picocalc-$(PICO_BOARD).uf2
 PICOCALC_SDBOOT_ELF := $(PICOCALC_BUILD)/btron-picocalc-$(PICO_BOARD)-sdboot.elf
-PICOCALC_SDBOOT_BIN := btron-picocalc-$(PICO_BOARD)-sdboot.bin
+PICOCALC_SDBOOT_BIN := downloads/picocalc/btron-picocalc-$(PICO_BOARD)-sdboot.bin
 PICOCALC_LD         := src/drivers/pico/link_picocalc.ld
 
 # make picocalc-quake is a sibling elf. It does not reuse the gears objects.
@@ -4483,9 +4491,9 @@ ifeq ($(PICOCALC_APP),quake)
 PICOCALC_BUILD      := .build/picocalc-quake-$(PICO_BOARD)
 PICOCALC_UF2_ELF    := $(PICOCALC_BUILD)/btron-picocalc-quake-$(PICO_BOARD).elf
 PICOCALC_UF2_BIN    := $(PICOCALC_BUILD)/btron-picocalc-quake-$(PICO_BOARD).bin
-PICOCALC_UF2        := btron-picocalc-quake-$(PICO_BOARD).uf2
+PICOCALC_UF2        := downloads/picocalc/btron-picocalc-quake-$(PICO_BOARD).uf2
 PICOCALC_SDBOOT_ELF := $(PICOCALC_BUILD)/btron-picocalc-quake-$(PICO_BOARD)-sdboot.elf
-PICOCALC_SDBOOT_BIN := btron-picocalc-quake-$(PICO_BOARD)-sdboot.bin
+PICOCALC_SDBOOT_BIN := downloads/picocalc/btron-picocalc-quake-$(PICO_BOARD)-sdboot.bin
 endif
 
 # make picocalc-tkernel links the T-Kernel syscall objects beside core_pico.
@@ -4517,9 +4525,9 @@ ifeq ($(PICOCALC_APP),tkernel)
 PICOCALC_BUILD      := .build/picocalc-tkernel-$(PICO_BOARD)
 PICOCALC_UF2_ELF    := $(PICOCALC_BUILD)/btron-picocalc-tkernel-$(PICO_BOARD).elf
 PICOCALC_UF2_BIN    := $(PICOCALC_BUILD)/btron-picocalc-tkernel-$(PICO_BOARD).bin
-PICOCALC_UF2        := btron-picocalc-tkernel-$(PICO_BOARD).uf2
+PICOCALC_UF2        := downloads/picocalc/btron-picocalc-tkernel-$(PICO_BOARD).uf2
 PICOCALC_SDBOOT_ELF := $(PICOCALC_BUILD)/btron-picocalc-tkernel-$(PICO_BOARD)-sdboot.elf
-PICOCALC_SDBOOT_BIN := btron-picocalc-tkernel-$(PICO_BOARD)-sdboot.bin
+PICOCALC_SDBOOT_BIN := downloads/picocalc/btron-picocalc-tkernel-$(PICO_BOARD)-sdboot.bin
 PICOCALC_TK_OBJS    := $(PICOCALC_TK_SRC:src/kernel/%.c=$(PICOCALC_BUILD)/tk_%.o) \
                        $(PICOCALC_BUILD)/tk_glue.o
 PICOCALC_TK_LDFLAGS := -Wl,--undefined=pico_tk_retain
@@ -4754,6 +4762,7 @@ $(PICOCALC_BUILD)/tk_glue.o: src/drivers/pico/tk_glue.c
 	$(PICO_CC) $(PICOCALC_CFLAGS) -c $< -o $@
 
 $(PICOCALC_UF2): $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) $(PICOCALC_TK_OBJS) $(PICO_RT_OBJS) $(PICOCALC_LD) scripts/tool_mk_uf2.py
+	@mkdir -p $(dir $@)
 	$(PICO_CC) $(PICO_LDFLAGS) $(PICOCALC_TK_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
 	    -Wl,--defsym=BTRON_FLASH_ORIGIN=0x10000000 \
 	    -Wl,--defsym=BTRON_RAM_LENGTH=$(PICOCALC_RAM_LEN) \
@@ -4762,11 +4771,12 @@ $(PICOCALC_UF2): $(PICOCALC_BUILD)/boot_hdr.o $(PICOCALC_COMMON_OBJS) $(PICOCALC
 	python3 scripts/tool_mk_uf2.py --board $(PICO_BOARD) $(PICOCALC_UF2_FLAGS) \
 	    $(PICOCALC_UF2_BIN) $@
 ifeq ($(PICOCALC_APP),)
-	@ln -sf $@ btron-picocalc.uf2
+	@ln -sf $(notdir $@) downloads/picocalc/btron-picocalc.uf2
 endif
 	@llvm-size $(PICOCALC_UF2_ELF) 2>/dev/null || /opt/homebrew/opt/llvm/bin/llvm-size $(PICOCALC_UF2_ELF) 2>/dev/null || true
 
 $(PICOCALC_SDBOOT_BIN): $(PICOCALC_COMMON_OBJS) $(PICOCALC_TK_OBJS) $(PICO_RT_OBJS) $(PICOCALC_LD)
+	@mkdir -p $(dir $@)
 	$(PICO_CC) $(PICO_LDFLAGS) $(PICOCALC_TK_LDFLAGS) -Wl,-T,$(PICOCALC_LD) \
 	    -Wl,--defsym=BTRON_FLASH_ORIGIN=0x10032000 \
 	    -Wl,--defsym=BTRON_RAM_LENGTH=$(PICOCALC_RAM_LEN) \

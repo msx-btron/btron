@@ -23,7 +23,7 @@
 set -u
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
-SHIP="$ROOT/btron-ps2.elf"
+SHIP="$ROOT/downloads/playstation-2/btron-ps2.elf"
 BENCH="$ROOT/btron-ps2-bench.elf"
 ELF=""
 LOG=""

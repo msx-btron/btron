@@ -13,7 +13,7 @@ if ! command -v "$QEMU_BIN" > /dev/null 2>&1; then
     exit 1
 fi
 
-ELF_PATH=".build/btron-m68k.elf"
+ELF_PATH="downloads/quadra-800/btron-m68k.elf"
 if [ ! -f "$ELF_PATH" ]; then
     echo "[CI-TEST] Building $ELF_PATH..."
     make m68k > /dev/null 2>&1

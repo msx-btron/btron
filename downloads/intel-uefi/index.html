@@ -25,12 +25,83 @@
   </div>
 </nav>
   <header class="rice-hero">
+    <p class="rice-kicker">Downloads · x86-64 UEFI SMP</p>
     <h1>Intel UEFI</h1>
     <div class="rice-rule"></div>
-    <p class="rice-lede">make uefi builds the UEFI kernel.</p>
+    <p class="rice-lede"><code>make uefi</code> builds the x86-64 UEFI SMP kernel; <code>make storage-images</code> builds USB, HDD, and CD media.</p>
   </header>
   <main class="rice-main">
-    <p><code>make uefi</code> builds the x86-64 UEFI SMP kernel. Drivers are <code>src/drivers/uefi/</code> and <code>src/drivers/vesa/</code>.</p>
+    <p class="rice-section-label">Technical Characteristics of the Computer/Console</p>
+    <table class="rice-table">
+      <tbody>
+        <tr><th>Chipset</th><td>x86-64 / EMT64 SMP (4 cores via ACPI 6.5 MADT &amp; Local APIC, <code>src/cores/core_smp.c</code>, T-Kernel 2.0)</td></tr>
+        <tr><th>Bus</th><td>PCIe / Intel Q35 chipset, VirtIO-PCI (<code>src/drivers/virtio/</code>), VirtIO-Block / AHCI</td></tr>
+        <tr><th>Video</th><td>VirtIO-GPU 2D &amp; VESA VBE linear framebuffer (<code>src/drivers/vesa/</code>), TinyGL 3D rasterizer</td></tr>
+        <tr><th>Display</th><td>1024×768 / 1280×1024 / 800×600 @ 32-bpp ARGB; B-System LAPTOP shell</td></tr>
+        <tr><th>Sound</th><td>AC'97 / Intel HDA / PC speaker</td></tr>
+        <tr><th>Input</th><td>PS/2 keyboard &amp; mouse (<code>src/drivers/uefi/ps2_mouse.c</code>), USB HID</td></tr>
+        <tr><th>Memory</th><td>1 GB+ linear 64-bit address space</td></tr>
+        <tr><th>Communications</th><td>16550A COM1 UART serial, VirtIO-Net Ethernet</td></tr>
+      </tbody>
+    </table>
+
+    <p class="rice-section-label">Firmware and Images to Download</p>
+    <table class="rice-table">
+      <tbody>
+        <tr>
+          <th>BIN</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="btron-uchida.elf">btron-uchida.elf</a><span class="rice-dl-note"><code>make uefi</code> — x86-64 UEFI SMP bare-metal ELF</span></li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>ISO</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="btron-uefi-cd.iso">btron-uefi-cd.iso</a><span class="rice-dl-note"><code>make storage-images</code> — El Torito bootable CD-ROM (<code>make run-uefi-cd</code>)</span></li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>VOL</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="../../btron_sys.vol">btron_sys.vol</a><span class="rice-dl-note"><code>make btron_sys.vol</code> — BTRON /SYS volume</span></li>
+              <li><a href="../../btron_anders.vol">btron_anders.vol</a><span class="rice-dl-note"><code>make btron_anders.vol</code> — BTRON /ANDERS volume</span></li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>DSK</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="btron-uefi-usb.img">btron-uefi-usb.img</a><span class="rice-dl-note"><code>make storage-images</code> — 64 MiB Live USB image with ESP + <code>/SYS</code> + <code>/ANDERS</code> (<code>make run-uefi-usb</code>)</span></li>
+              <li><a href="btron-uefi-hdd.img">btron-uefi-hdd.img</a><span class="rice-dl-note"><code>make storage-images</code> — 64 MiB installed workstation HDD image (<code>make run-uefi-hdd</code>)</span></li>
+            </ul>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </main>
+  <footer>
+    <div class="footer-bottom">
+      <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+        <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+      </a>
+      <div class="footer-legal">
+        <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+          &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+        </p>
+        <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+          <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Intel&reg; and Intel&reg; 64 (EMT64) are registered trademarks of Intel Corporation. UEFI&reg; and ACPI&reg; are registered trademarks of UEFI Forum, Inc. PCIe&reg; is a registered trademark of PCI-SIG. VESA&reg; is a registered trademark of Video Electronics Standards Association. PS/2&reg; is a registered trademark of International Business Machines Corporation. VirtIO&trade; is a specification of OASIS Open. All other manufacturer designations and silicon architectures cited on this page are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial hardware documentation and cleanroom interoperability engineering. B-System contains no proprietary vendor firmware ROMs, microcode, or copyrighted assets.
+        </p>
+        <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+          btron.pro &nbsp;&middot;&nbsp; Intel UEFI SMP (x86-64 / EMT64) &nbsp;&middot;&nbsp; Under ISC / DHARMA License &nbsp;&middot;&nbsp; Conforming to NASA/JPL Power of Ten Rules
+        </p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

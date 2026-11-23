@@ -25,12 +25,66 @@
   </div>
 </nav>
   <header class="rice-hero">
+    <p class="rice-kicker">Downloads · Motorola 68040</p>
     <h1>Quadra 800</h1>
     <div class="rice-rule"></div>
-    <p class="rice-lede">make m68k builds the Macintosh Quadra kernel.</p>
+    <p class="rice-lede"><code>make m68k</code> builds the Macintosh Quadra 800 kernel (<code>make run-m68k</code> on QEMU <code>q800</code>).</p>
   </header>
   <main class="rice-main">
-    <p><code>make m68k</code> builds the Quadra port. The linker script is <code>src/drivers/m68k/m68k_q800.ld</code>.</p>
+    <p class="rice-section-label">Technical Characteristics of the Computer/Console</p>
+    <table class="rice-table">
+      <tbody>
+        <tr><th>Chipset</th><td>Motorola 68040 @ 33 MHz (integrated MMU &amp; FPU, Cleanroom µITRON 3.0 / BTRON 3.20)</td></tr>
+        <tr><th>Bus</th><td>32-bit NuBus (3 slots + PDS), Apple Desktop Bus (ADB), MOS 6522 VIA1 / VIA2, NCR 53C96 ESP SCSI</td></tr>
+        <tr><th>Video</th><td>NuBus Slot 9 DAFB / MacFB linear framebuffer (<code>src/drivers/m68k/</code>)</td></tr>
+        <tr><th>Display</th><td>800×600 @ 8-bpp indexed (DA-15 Apple display / QEMU <code>q800</code>)</td></tr>
+        <tr><th>Sound</th><td>Apple Sound Chip (EASC) 8-bit stereo PCM</td></tr>
+        <tr><th>Input</th><td>ADB keyboard &amp; mouse via MOS 6522 VIA1 / VIA2 controllers</td></tr>
+        <tr><th>Memory</th><td>8–136 MB 72-pin SIMM DRAM (128 MB under QEMU <code>q800</code>)</td></tr>
+        <tr><th>Communications</th><td>Zilog Z8530 ESCC Dual UART (Port A active), SONIC 10 Mbps Ethernet (AAUI-15), LocalTalk</td></tr>
+      </tbody>
+    </table>
+
+    <p class="rice-section-label">Firmware and Images to Download</p>
+    <table class="rice-table">
+      <tbody>
+        <tr>
+          <th>BIN</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="btron-m68k.elf">btron-m68k.elf</a><span class="rice-dl-note"><code>make m68k</code> — Motorola 68040 bare-metal ELF</span></li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>VOL</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="../../btron_sys.vol">btron_sys.vol</a><span class="rice-dl-note"><code>make btron_sys.vol</code> — BTRON /SYS volume</span></li>
+              <li><a href="../../btron_anders.vol">btron_anders.vol</a><span class="rice-dl-note"><code>make btron_anders.vol</code> — BTRON /ANDERS volume</span></li>
+            </ul>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </main>
+  <footer>
+    <div class="footer-bottom">
+      <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+        <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+      </a>
+      <div class="footer-legal">
+        <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+          &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+        </p>
+        <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+          <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, &mu;ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Apple&reg;, Macintosh&reg;, Quadra&reg;, Apple Desktop Bus&reg; (ADB), and LocalTalk&reg; are registered trademarks or trademarks of Apple Inc. Motorola&reg; is a registered trademark of Motorola Trademark Holdings, LLC. NuBus&reg; is a trademark of Texas Instruments Incorporated. Zilog&reg; is a registered trademark of Zilog, Inc. / Littelfuse, Inc. NCR&reg; is a registered trademark of NCR Voyix Corporation. All other manufacturer designations and silicon architectures cited on this page are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System contains no proprietary Macintosh ROMs, vendor microcode, or copyrighted assets.
+        </p>
+        <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+          btron.pro &nbsp;&middot;&nbsp; Apple Macintosh Quadra 800 (Motorola 68040) &nbsp;&middot;&nbsp; Under ISC / DHARMA License &nbsp;&middot;&nbsp; Conforming to NASA/JPL Power of Ten Rules
+        </p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

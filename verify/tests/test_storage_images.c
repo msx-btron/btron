@@ -18,7 +18,7 @@ int main(void) {
     printf("=== Validating Generated Storage Images ===\n");
 
     /* 1. Open USB image with blk_file */
-    BlkDev *usb_dev = blk_file_create(".build/btron-uefi-usb.img", 0, 0);
+    BlkDev *usb_dev = blk_file_create("downloads/intel-uefi/btron-uefi-usb.img", 0, 0);
     assert(usb_dev != NULL);
     /* blk_file defaults to 1024; set block_size to 512 for sector scanning */
     usb_dev->block_size = 512;
@@ -49,7 +49,7 @@ int main(void) {
     blk_file_close(usb_dev);
 
     /* 4. Validate installed HDD image */
-    BlkDev *hdd_dev = blk_file_create(".build/btron-uefi-hdd.img", 0, 0);
+    BlkDev *hdd_dev = blk_file_create("downloads/intel-uefi/btron-uefi-hdd.img", 0, 0);
     assert(hdd_dev != NULL);
     hdd_dev->block_size = 512;
     hdd_dev->nblocks   *= 2;

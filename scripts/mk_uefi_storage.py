@@ -239,7 +239,7 @@ def build_cd_iso(output_path):
         import shutil
         shutil.copyfile(anders_vol_path, os.path.join(iso_dir, "boot", "btron_anders.vol"))
 
-    elf_path = ".build/btron-uchida.elf"
+    elf_path = "downloads/intel-uefi/btron-uchida.elf"
     if os.path.exists(elf_path):
         import shutil
         shutil.copyfile(elf_path, os.path.join(iso_dir, "boot", "btron-uchida.elf"))
@@ -354,15 +354,16 @@ def main():
             out_override = sys.argv[oi + 1]
 
     os.makedirs(".build", exist_ok=True)
+    os.makedirs("downloads/intel-uefi", exist_ok=True)
 
     if cmd in ("all", "disk"):
         build_raw_disk(out_override or "btron_disk.img", is_installed=True, use_gpt=use_gpt)
     if cmd in ("all", "usb"):
-        build_raw_disk(out_override or ".build/btron-uefi-usb.img", is_installed=False, use_gpt=use_gpt)
+        build_raw_disk(out_override or "downloads/intel-uefi/btron-uefi-usb.img", is_installed=False, use_gpt=use_gpt)
     if cmd in ("all", "hdd"):
-        build_raw_disk(out_override or ".build/btron-uefi-hdd.img", is_installed=True, use_gpt=use_gpt)
+        build_raw_disk(out_override or "downloads/intel-uefi/btron-uefi-hdd.img", is_installed=True, use_gpt=use_gpt)
     if cmd in ("all", "cd"):
-        build_cd_iso(".build/btron-uefi-cd.iso")
+        build_cd_iso("downloads/intel-uefi/btron-uefi-cd.iso")
     if cmd == "all":
         build_blank_target_disk(".build/target_hdd1.img", force=False)
         build_blank_target_disk(".build/target_hdd2.img", force=False)

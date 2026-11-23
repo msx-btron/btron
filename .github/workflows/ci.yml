@@ -91,8 +91,8 @@ jobs:
             btron-qemu.elf
             btron-tkernel.elf
             btron-sakamura.elf
-            btron-arm-baremetal.elf
-            btron-aarch64-baremetal.elf
+            downloads/pi-2/btron-arm-baremetal.elf
+            downloads/pi-400/btron-aarch64-baremetal.elf
           if-no-files-found: ignore
 
   # ── Alpine Linux (musl libc) ─────────────────────────────────────────────────

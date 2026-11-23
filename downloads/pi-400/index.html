@@ -25,12 +25,75 @@
   </div>
 </nav>
   <header class="rice-hero">
+    <p class="rice-kicker">Downloads · Broadcom ARM64</p>
     <h1>Raspberry Pi 400</h1>
     <div class="rice-rule"></div>
-    <p class="rice-lede">make pi400 writes btron-pi400.img.</p>
+    <p class="rice-lede"><code>make pi400</code> builds <code>btron-pi400.img</code>; <code>make flash-pi400</code> writes an SD card.</p>
   </header>
   <main class="rice-main">
-    <p><code>make pi400</code> builds <code>btron-pi400.img</code>, a FAT image with the ARM64 kernel. <code>make flash-pi400</code> writes an SD card. Firmware fetch is <code>make fetch-pi400-fw</code>. The board files are <code>src/drivers/broadcom/pi400/</code>.</p>
+    <p class="rice-section-label">Technical Characteristics of the Computer/Console</p>
+    <table class="rice-table">
+      <tbody>
+        <tr><th>Chipset</th><td>Broadcom BCM2711C0 (Quad-core ARM Cortex-A72 @ 1.8 GHz, AArch64, T-Kernel 2.0)</td></tr>
+        <tr><th>Bus</th><td>PCIe Gen 2 ×1 (<code>pcie_bcm2711.c</code>), VL805 xHCI USB 3.0 (<code>xhci.c</code>), DWC2 USB 2.0 (<code>dwc2.c</code>), BCM2711 DMA (<code>bcm2711_dma.c</code>)</td></tr>
+        <tr><th>Video</th><td>VideoCore VI (V3D 4.2 — <code>v3d_init.c</code>, <code>v3d_cl.c</code>, <code>v3d_qpu.c</code>) + Mailbox framebuffer</td></tr>
+        <tr><th>Display</th><td>Dual micro-HDMI; B-System LAPTOP shell (1280×1024 / 1024×768 / 800×600, 32-bpp)</td></tr>
+        <tr><th>Sound</th><td>BCM2711 HDMI digital audio (<code>bcm2711_hdmi_audio.c</code>), USB Audio Class 1 (<code>usb_audio_uac1.c</code>)</td></tr>
+        <tr><th>Input</th><td>Integrated USB keyboard, USB HID mouse (xHCI / DWC2), Bluetooth HID</td></tr>
+        <tr><th>Memory</th><td>4 GB LPDDR4-3200 SDRAM</td></tr>
+        <tr><th>Communications</th><td>Gigabit Ethernet, Wi-Fi 802.11ac, Bluetooth 5.0 (<code>src/drivers/bluetooth/</code>), PL011 UART</td></tr>
+      </tbody>
+    </table>
+
+    <p class="rice-section-label">Firmware and Images to Download</p>
+    <table class="rice-table">
+      <tbody>
+        <tr>
+          <th>BIN</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="btron-aarch64-baremetal.elf">btron-aarch64-baremetal.elf</a><span class="rice-dl-note"><code>make arm64-elf</code> — AArch64 bare-metal ELF</span></li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>VOL</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="../../btron_sys.vol">btron_sys.vol</a><span class="rice-dl-note"><code>make btron_sys.vol</code> — BTRON /SYS volume</span></li>
+              <li><a href="../../btron_anders.vol">btron_anders.vol</a><span class="rice-dl-note"><code>make btron_anders.vol</code> — BTRON /ANDERS volume</span></li>
+              <li><a href="../../btron_msx.vol">btron_msx.vol</a><span class="rice-dl-note"><code>make btron_msx.vol</code> — BTRON /MSX volume</span></li>
+            </ul>
+          </td>
+        </tr>
+        <tr>
+          <th>DSK</th>
+          <td>
+            <ul class="rice-dl-list">
+              <li><a href="btron-pi400.img">btron-pi400.img</a><span class="rice-dl-note"><code>make pi400</code> — 192 MiB FAT32 SD card image (requires <code>make fetch-pi400-fw</code>)</span></li>
+            </ul>
+          </td>
+        </tr>
+      </tbody>
+    </table>
   </main>
+  <footer>
+    <div class="footer-bottom">
+      <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+        <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+      </a>
+      <div class="footer-legal">
+        <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+          &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+        </p>
+        <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+          <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Raspberry Pi&reg; and Raspberry Pi 400&trade; are trademarks of Raspberry Pi Ltd. Broadcom&reg; and VideoCore&reg; are trademarks of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. PCIe&reg; is a registered trademark of PCI-SIG. HDMI&reg; is a trademark of HDMI Licensing Administrator, Inc. Wi-Fi&reg; is a registered trademark of Wi-Fi Alliance. Bluetooth&reg; is a registered trademark of Bluetooth SIG, Inc. MSX&trade; is a trademark of MSX Licensing Corporation and ASCII Corporation. All other manufacturer designations and silicon architectures cited on this page are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial hardware documentation and cleanroom interoperability engineering. Proprietary Broadcom GPU firmware blobs (<code>start4.elf</code>, <code>fixup4.dat</code>) are not redistributed in this repository and are fetched separately by the user.
+        </p>
+        <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+          btron.pro &nbsp;&middot;&nbsp; Raspberry Pi 400 (BCM2711 AArch64) &nbsp;&middot;&nbsp; Under ISC / DHARMA License &nbsp;&middot;&nbsp; Conforming to NASA/JPL Power of Ten Rules
+        </p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

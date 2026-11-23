@@ -11,7 +11,7 @@ if ! command -v "$QEMU_BIN" >/dev/null 2>&1; then
     exit 1
 fi
 
-ELF_PATH=".build/btron-uchida.elf"
+ELF_PATH="downloads/intel-uefi/btron-uchida.elf"
 if [ ! -f "$ELF_PATH" ]; then
     echo "[CI-TEST] Building $ELF_PATH..."
     make uefi >/dev/null 2>&1
