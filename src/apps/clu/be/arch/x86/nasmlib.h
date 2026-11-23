@@ -331,7 +331,7 @@ char *nasm_zap_spaces_fwd(char *p);
 char *nasm_zap_spaces_rev(char *p);
 char *nasm_trim_spaces(char *p);
 char *nasm_get_word(char *p, char **tail);
-char *nasm_opt_val(char *p, char **opt, char **val);
+char *nasm_opt_val(char *p, char **val, char **next);
 
 /*
  * Converts a relative pathname rel_path into an absolute path name.
@@ -446,8 +446,8 @@ static inline bool const_func overflow_unsigned(int64_t value, int bytes)
 static inline int64_t const_func signed_bits(int64_t value, int bits)
 {
     if (bits < 64) {
-        value &= ((int64_t)1 << bits) - 1;
-        if (value & (int64_t)1 << (bits - 1))
+        value &= (int64_t)(((uint64_t)1 << bits) - 1);
+        if (value & (int64_t)((uint64_t)1 << (bits - 1)))
             value |= (int64_t)((uint64_t)-1 << bits);
     }
     return value;

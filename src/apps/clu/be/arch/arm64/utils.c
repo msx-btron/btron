@@ -90,8 +90,12 @@ unsigned long replicate(unsigned long num, int nbits, int cnt){
     unsigned long result = 0;
 
     for(int i=0; i<cnt; i++){
-        result <<= nbits;
-        result |= num;
+        if (nbits >= (int)(sizeof(unsigned long) * CHAR_BIT))
+            result = num;
+        else {
+            result <<= nbits;
+            result |= num;
+        }
     }
 
     return result;

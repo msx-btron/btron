@@ -32,7 +32,7 @@ static void vblk_uart_dec(uint32_t v) {
     char buf[12]; int i = 10; buf[11] = '\0';
     if (v == 0) { uart_puts_raw("0"); return; }
     while (v > 0 && i >= 0) { buf[i--] = (char)('0' + v % 10); v /= 10; }
-    uart_puts_raw(buf + i + 1);
+    uart_puts_raw(buf + (i + 1));
 }
 
 static inline void cpu_relax(void) {

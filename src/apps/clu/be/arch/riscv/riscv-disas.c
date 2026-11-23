@@ -1599,10 +1599,10 @@ static int32_t operand_imm20(rv_inst inst) {
 }
 
 static int32_t operand_jimm20(rv_inst inst) {
-    return (((int64_t)inst << 32) >> 63) << 20 |
-        ((inst << 33) >> 54) << 1 |
-        ((inst << 43) >> 63) << 11 |
-        ((inst << 44) >> 56) << 12;
+    return (int32_t)(((uint64_t)(-(int64_t)((inst >> 31) & 1ULL)) << 20) |
+        (((inst << 33) >> 54) << 1) |
+        (((inst << 43) >> 63) << 11) |
+        (((inst << 44) >> 56) << 12));
 }
 
 static int32_t operand_simm12(rv_inst inst) {
@@ -1611,10 +1611,10 @@ static int32_t operand_simm12(rv_inst inst) {
 }
 
 static int32_t operand_sbimm12(rv_inst inst) {
-    return (((int64_t)inst << 32) >> 63) << 12 |
-        ((inst << 33) >> 58) << 5 |
-        ((inst << 52) >> 60) << 1 |
-        ((inst << 56) >> 63) << 11;
+    return (int32_t)(((uint64_t)(-(int64_t)((inst >> 31) & 1ULL)) << 12) |
+        (((inst << 33) >> 58) << 5) |
+        (((inst << 52) >> 60) << 1) |
+        (((inst << 56) >> 63) << 11));
 }
 
 static uint32_t operand_cimmsh6(rv_inst inst) {
@@ -1623,13 +1623,13 @@ static uint32_t operand_cimmsh6(rv_inst inst) {
 }
 
 static int32_t operand_cimmi(rv_inst inst) {
-    return (((int64_t)inst << 51) >> 63) << 5 |
-        (inst << 57) >> 59;
+    return (int32_t)(((uint64_t)(-(int64_t)((inst >> 12) & 1ULL)) << 5) |
+        ((inst << 57) >> 59));
 }
 
 static int32_t operand_cimmui(rv_inst inst) {
-    return (((int64_t)inst << 51) >> 63) << 17 |
-        ((inst << 57) >> 59) << 12;
+    return (int32_t)(((uint64_t)(-(int64_t)((inst >> 12) & 1ULL)) << 17) |
+        (((inst << 57) >> 59) << 12));
 }
 
 static uint32_t operand_cimmlwsp(rv_inst inst) {
@@ -1651,30 +1651,30 @@ static uint32_t operand_cimmlqsp(rv_inst inst) {
 }
 
 static int32_t operand_cimm16sp(rv_inst inst) {
-    return (((int64_t)inst << 51) >> 63) << 9 |
-        ((inst << 57) >> 63) << 4 |
-        ((inst << 58) >> 63) << 6 |
-        ((inst << 59) >> 62) << 7 |
-        ((inst << 61) >> 63) << 5;
+    return (int32_t)(((uint64_t)(-(int64_t)((inst >> 12) & 1ULL)) << 9) |
+        (((inst << 57) >> 63) << 4) |
+        (((inst << 58) >> 63) << 6) |
+        (((inst << 59) >> 62) << 7) |
+        (((inst << 61) >> 63) << 5));
 }
 
 static int32_t operand_cimmj(rv_inst inst) {
-    return (((int64_t)inst << 51) >> 63) << 11 |
-        ((inst << 52) >> 63) << 4 |
-        ((inst << 53) >> 62) << 8 |
-        ((inst << 55) >> 63) << 10 |
-        ((inst << 56) >> 63) << 6 |
-        ((inst << 57) >> 63) << 7 |
-        ((inst << 58) >> 61) << 1 |
-        ((inst << 61) >> 63) << 5;
+    return (int32_t)(((uint64_t)(-(int64_t)((inst >> 12) & 1ULL)) << 11) |
+        (((inst << 52) >> 63) << 4) |
+        (((inst << 53) >> 62) << 8) |
+        (((inst << 55) >> 63) << 10) |
+        (((inst << 56) >> 63) << 6) |
+        (((inst << 57) >> 63) << 7) |
+        (((inst << 58) >> 61) << 1) |
+        (((inst << 61) >> 63) << 5));
 }
 
 static int32_t operand_cimmb(rv_inst inst) {
-    return (((int64_t)inst << 51) >> 63) << 8 |
-        ((inst << 52) >> 62) << 3 |
-        ((inst << 57) >> 62) << 6 |
-        ((inst << 59) >> 62) << 1 |
-        ((inst << 61) >> 63) << 5;
+    return (int32_t)(((uint64_t)(-(int64_t)((inst >> 12) & 1ULL)) << 8) |
+        (((inst << 52) >> 62) << 3) |
+        (((inst << 57) >> 62) << 6) |
+        (((inst << 59) >> 62) << 1) |
+        (((inst << 61) >> 63) << 5));
 }
 
 static uint32_t operand_cimmswsp(rv_inst inst) {

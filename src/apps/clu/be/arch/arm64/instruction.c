@@ -4,6 +4,7 @@
 
 struct instruction *instruction_new(unsigned int opcode, unsigned long PC){
     struct instruction *i = malloc(sizeof(struct instruction));
+    if (!i) return NULL;
 
     i->opcode = opcode;
     i->PC = PC;

@@ -137,7 +137,8 @@ uint32_t v3d_qpu_get_shader_phys(v3d_shader_type_t type) {
     if ((int)type < 0 || (int)type >= V3D_SHADER_COUNT) {
         return 0;
     }
-    return (uint32_t)(uintptr_t)s_programs[type].bytecode;
+    uintptr_t addr = (uintptr_t)s_programs[type].bytecode;
+    return (uint32_t)addr;
 }
 
 const v3d_shader_program_t *v3d_qpu_get_program(v3d_shader_type_t type) {

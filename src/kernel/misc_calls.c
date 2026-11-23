@@ -64,16 +64,16 @@ SYSCALL ER _tk_ref_ver( T_RVER *pk_rver )
 
 	MEMCPY(pk_rver, &kernel_version, sizeof(T_RVER));
 
-	if ( (n = _tk_get_cfn(SCTAG_MAKER, info, 1)) >= 1 ) {
+	if ( _tk_get_cfn(SCTAG_MAKER, info, 1) >= 1 ) {
 		pk_rver->maker = (UH)info[0];	/* OS manufacturer */
 	}
-	if ( (n = _tk_get_cfn(SCTAG_PRODUCTID, info, 1)) >= 1) {
+	if ( _tk_get_cfn(SCTAG_PRODUCTID, info, 1) >= 1 ) {
 		pk_rver->prid = (UH)info[0];	/* OS identification number */
 	}
-	if ( (n = _tk_get_cfn(SCTAG_SPECVER, info, 1)) >= 1) {
+	if ( _tk_get_cfn(SCTAG_SPECVER, info, 1) >= 1 ) {
 		pk_rver->spver = (UH)info[0];	/* Specification version */
 	}
-	if ( (n = _tk_get_cfn(SCTAG_PRODUCTVER, info, 1)) >= 1) {
+	if ( _tk_get_cfn(SCTAG_PRODUCTVER, info, 1) >= 1 ) {
 		pk_rver->prver = (UH)info[0];	/* OS product version */
 	}
 	if ( (n = _tk_get_cfn(SCTAG_PRODUCTNO, info, RVER_PRNO_SIZE)) >= 1) {

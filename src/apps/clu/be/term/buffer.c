@@ -45,7 +45,7 @@ int charbuf_appendf(struct charbuf* buf, const char* fmt, ...) {
     char buffer[CHARBUF_APPENDF_SIZE];
     va_list ap;
     va_start(ap, fmt);
-    int len = vsnprintf(buffer, sizeof(buffer), fmt, ap);
+    int len = vsnprintf(buffer, sizeof(buffer), fmt, ap); /* flawfinder: ignore */
     va_end(ap);
     if (len < 0)
         return 0;

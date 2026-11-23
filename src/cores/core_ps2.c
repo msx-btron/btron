@@ -427,7 +427,7 @@ extern unsigned char ps2_sys_vol_image_end[];
 /* btron_core_hfds_log - mount the /SYS volume carried in .data. */
 void btron_core_hfds_log(void)
 {
-    const long bytes = ps2_sys_vol_image_end - ps2_sys_vol_image;
+    const long bytes = (long)((uintptr_t)ps2_sys_vol_image_end - (uintptr_t)ps2_sys_vol_image);
     BlkDev *dev;
 
     if (!g_sys_vol) {

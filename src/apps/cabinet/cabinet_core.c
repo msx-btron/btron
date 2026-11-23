@@ -130,10 +130,11 @@ void cabinet_bootlog_append(const char *s)
 {
     if (!s) return;
     while (*s) {
-        if (s_bootlog_len + 1u >= CAB_BOOTLOG_CAP) {
+        if (s_bootlog_len >= CAB_BOOTLOG_CAP - 1u) {
             /* Keep tail: shift second half down so newest hardware logs stay visible */
             uint32_t drop = CAB_BOOTLOG_CAP / 2u;
-            uint32_t rem  = s_bootlog_len - drop;
+            uint32_t cur  = (s_bootlog_len < CAB_BOOTLOG_CAP) ? s_bootlog_len : (CAB_BOOTLOG_CAP - 1u);
+            uint32_t rem  = (cur > drop) ? (cur - drop) : 0u;
             uint32_t i;
             for (i = 0; i < rem; i++) s_bootlog_buf[i] = s_bootlog_buf[drop + i];
             s_bootlog_len = rem;

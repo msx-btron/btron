@@ -496,10 +496,10 @@ static void tgl_clear_color(GLfloat r, GLfloat g,
 static void tgl_enable(GLenum cap)                        { glEnable((GLint)cap); }
 static void tgl_disable(GLenum cap)                       { glDisable((GLint)cap); }
 static void tgl_shade_model(GLenum mode)                  { glShadeModel((GLint)mode); }
-static void tgl_light_fv(GLenum l, GLenum p,
-                          const GLfloat *v)               { glLightfv((GLint)l, (GLint)p, (GLfloat *)v); }
-static void tgl_material_fv(GLenum f, GLenum p,
-                             const GLfloat *v)            { glMaterialfv((GLint)f, (GLint)p, (GLfloat *)v); }
+static void tgl_light_fv(GLenum light, GLenum pname,
+                          const GLfloat *p)               { glLightfv((GLint)light, (GLint)pname, (GLfloat *)p); }
+static void tgl_material_fv(GLenum face, GLenum pname,
+                             const GLfloat *p)            { glMaterialfv((GLint)face, (GLint)pname, (GLfloat *)p); }
 static GLuint tgl_gen_lists(GLsizei range)                { return (GLuint)glGenLists((GLint)range); }
 static void tgl_new_list(GLuint list, GLenum mode)        { glNewList((GLint)list, (GLint)mode); }
 static void tgl_end_list(void)                            { glEndList(); }

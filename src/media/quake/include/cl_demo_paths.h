@@ -46,7 +46,7 @@ static inline int Demo_PathCandidates(const char *demoname,
 #define DEMO_ADD(fmt, arg)                                                 \
     do {                                                                   \
         if (n < max) {                                                     \
-            snprintf(out[n], DEMO_PATH_LEN, fmt, arg);                     \
+            snprintf(out[n], DEMO_PATH_LEN, fmt, arg); /* flawfinder: ignore */ \
             n++;                                                           \
         }                                                                  \
     } while (0)

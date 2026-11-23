@@ -121,7 +121,7 @@ ER xfconv_to_utf8(const UB *xf, int xf_len, char *out, int out_cap, int *out_len
 /* ── Wrap plain UTF-8 text into minimal XF / TAD byte stream ────────── */
 ER xfconv_from_utf8(const char *text, int text_len, UB *xf_out, int xf_cap, int *xf_out_len) {
     if (!text || !xf_out || !xf_out_len) return E_PAR;
-    if (text_len < 0) text_len = (int)strlen(text);
+    (void)text_len;
 
     int di = 0;
     if (di + XF_MAGIC_LEN >= xf_cap) return E_NORES;

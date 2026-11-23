@@ -72,7 +72,7 @@ static const char *s_canonical_chapters[] = {
 void clarity_get_pecha_dimensions(ClarityPechaSize size, int *w_mm, int *h_mm, const char **name_out)
 {
     int w = 700, h = 180;
-    const char *name = "Derge Woodblock (700x180 mm)";
+    const char *name;
 
     switch (size) {
         case PECHA_SIZE_KANGYUR:
@@ -96,6 +96,7 @@ void clarity_get_pecha_dimensions(ClarityPechaSize size, int *w_mm, int *h_mm, c
             name = "Derge Wide Woodblock (720x200 mm)";
             break;
         default:
+            name = "Derge Woodblock (700x180 mm)";
             break;
     }
     if (w_mm) *w_mm = w;
@@ -155,6 +156,7 @@ int clarity_check_file_integrity(const char *path, ClarityFileIntegrity *out_inf
             a = (a + buf[i]) % 65521;
             b = (b + a) % 65521;
         }
+        if (n < sizeof(buf)) break;
     }
     fclose(fp);
 
@@ -813,8 +815,12 @@ int clarity_book_open_dir(ClarityBook *book, const char *dir_path, ClarityPechaS
                              c >= ch->transl_title && (*c == ' ' || *c == '\r' || *c == '\n'); c--) *c = '\0';
                     }
                 }
-                if (l_cnt <= 4 && strlen(ch->text_preview) + strlen(line_buf) < sizeof(ch->text_preview) - 1) {
-                    strcat(ch->text_preview, line_buf);
+                if (l_cnt <= 4) {
+                    size_t plen = strlen(ch->text_preview);
+                    size_t llen = strlen(line_buf);
+                    if (plen + llen < sizeof(ch->text_preview) - 1) {
+                        memcpy(ch->text_preview + plen, line_buf, llen + 1);
+                    }
                 }
             }
             ch->line_count = l_cnt;
@@ -1008,8 +1014,9 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
         snprintf(head, sizeof(head),
                  "[PECHA %s]\n༄༅། །%s །%s\n────────────────────────────────────────\n",
                  ch->filename, ch->tibetan_title, ch->transl_title);
-        raw_lines[raw_count] = (char*)malloc(strlen(head) + 1);
-        if (raw_lines[raw_count]) { strcpy(raw_lines[raw_count], head); raw_count++; }
+        size_t head_len = strlen(head);
+        raw_lines[raw_count] = (char*)malloc(head_len + 1);
+        if (raw_lines[raw_count]) { memcpy(raw_lines[raw_count], head, head_len + 1); raw_count++; }
     }
 
     int file_lines = 0;
@@ -1021,8 +1028,9 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
             strncpy(conv, line_buf, 2048 - 1);
             conv[2048 - 1] = '\0';
         }
-        raw_lines[raw_count] = (char*)malloc(strlen(conv) + 1);
-        if (raw_lines[raw_count]) { strcpy(raw_lines[raw_count], conv); raw_count++; }
+        size_t conv_len = strlen(conv);
+        raw_lines[raw_count] = (char*)malloc(conv_len + 1);
+        if (raw_lines[raw_count]) { memcpy(raw_lines[raw_count], conv, conv_len + 1); raw_count++; }
     }
     fclose(fp);
     free(line_buf);
@@ -1043,13 +1051,16 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
 
         while (line_cursor < raw_count) {
             const char *ln = raw_lines[line_cursor];
+            if (!ln) { line_cursor++; continue; }
             int vlines_here = estimate_visual_lines(ln, inner_w);
             int rem_lines = lines_per_page - lines_on_page;
             if (rem_lines <= 0) break;
 
             if (vlines_here <= rem_lines) {
-                if (strlen(page_buf) + strlen(ln) < 16384 - 2) {
-                    strcat(page_buf, ln);
+                size_t pblen = strlen(page_buf);
+                size_t lnlen = strlen(ln);
+                if (pblen + lnlen < 16384 - 2) {
+                    memcpy(page_buf + pblen, ln, lnlen + 1);
                     lines_on_page += vlines_here;
                     line_cursor++;
                 } else {
@@ -1070,22 +1081,26 @@ int clarity_book_load_chapter_into_doc(ClarityBook *book, int chapter_idx, Clari
                     memcpy(head_buf, ln, hlen);
                     head_buf[hlen] = '\0';
                     if (head_buf[hlen - 1] != '\n') {
-                        strcat(head_buf, "\n");
+                        head_buf[hlen++] = '\n';
+                        head_buf[hlen] = '\0';
                     }
-                    if (strlen(page_buf) + strlen(head_buf) < 16384 - 2) {
-                        strcat(page_buf, head_buf);
-                        lines_on_page += rem_lines;
+                    size_t pblen = strlen(page_buf);
+                    if (pblen + (size_t)hlen < 16384 - 2) {
+                        memcpy(page_buf + pblen, head_buf, (size_t)hlen + 1);
                     }
 
-                    char *tail = strdup(ln + cut_pos);
+                    size_t tail_len = strlen(ln + cut_pos);
+                    char *tail = (char *)malloc(tail_len + 1);
+                    if (tail) memcpy(tail, ln + cut_pos, tail_len + 1);
                     free(raw_lines[line_cursor]);
                     raw_lines[line_cursor] = tail;
                 } else if (lines_on_page > 0) {
                     break;
                 } else {
-                    if (strlen(page_buf) + strlen(ln) < 16384 - 2) {
-                        strcat(page_buf, ln);
-                        lines_on_page += vlines_here;
+                    size_t pblen = strlen(page_buf);
+                    size_t lnlen = strlen(ln);
+                    if (pblen + lnlen < 16384 - 2) {
+                        memcpy(page_buf + pblen, ln, lnlen + 1);
                         line_cursor++;
                     }
                 }
@@ -1351,7 +1366,7 @@ static UW append_vobj_seg(UB *buf, UW pos, UW target_id, const char *label, cons
     tad_write_u16(&p[off], lb_len);   off += 2;
     memcpy(&p[off], label, lb_len);   off += lb_len;
     tad_write_u16(&p[off], pb_len);   off += 2;
-    memcpy(&p[off], path, pb_len);    off += pb_len;
+    memcpy(&p[off], path, pb_len);
 
     pos = append_segment(buf, pos, 0xFFA8, p, plen);
     free(p);

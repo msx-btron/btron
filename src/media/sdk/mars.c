@@ -121,6 +121,7 @@ static int cr05_subroutine(uint8_t center_val, int step_size) {
 static uint8_t cr03_subroutine(uint8_t *buf, unsigned int src_idx,
                                unsigned int dst_idx, uint8_t half_step, unsigned int ref_val) {
     assert(buf != NULL);
+    if (!buf) return 0;
     if (buf[dst_idx] != 0xff) {
         return buf[src_idx];
     }
@@ -149,6 +150,7 @@ static void diamond_square_iter(uint8_t *buf) {
 
     while (sp > 0) {
         sp--;
+        if (sp >= 32) break;
         DsQuad q = stack[sp];
         uint16_t half_step = q.full_size / 2;
         unsigned int x = q.start_x;
@@ -175,7 +177,7 @@ static void diamond_square_iter(uint8_t *buf) {
         y = (y - half_step) % 256; pos = MAP_IDX(x, y);
         mid_pos = pos;
         y = (y - half_step) % 256; pos = MAP_IDX(x, y);
-        corner_val = cr03_subroutine(buf, pos, mid_pos, (uint8_t)half_step, corner_val);
+        (void)cr03_subroutine(buf, pos, mid_pos, (uint8_t)half_step, corner_val);
 
         uint16_t corner_sum = buf[MAP_IDX(q.start_x, q.start_y)];
         x = (x + step_twice) % 256; pos = MAP_IDX(x, y); corner_sum += buf[pos];

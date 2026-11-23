@@ -172,7 +172,7 @@ int PR_LoadProgs(const char *path) {
     g_prvm.fielddefs    = (ddef_t *)(data + hdr->ofs_fielddefs);
     g_prvm.functions    = (dfunction_t *)(data + hdr->ofs_functions);
     g_prvm.strings      = (char *)(data + hdr->ofs_strings);
-    g_prvm.globals      = (float *)(data + hdr->ofs_globals);
+    g_prvm.globals      = (float *)(void *)(data + hdr->ofs_globals);
 
     /* Zero all edicts */
     memset(g_prvm.edicts, 0, sizeof(g_prvm.edicts));
@@ -796,7 +796,7 @@ void PR_ExecuteProgram(int fnum) {
         case OP_STOREP_V: {
             int byte_ofs = OPB->i;
             if (byte_ofs >= 0 && byte_ofs + (int)sizeof(vec3_t) <= (int)sizeof(g_prvm.edicts)) {
-                float *ptr = (float *)((byte *)g_prvm.edicts + byte_ofs);
+                float *ptr = (float *)(void *)((byte *)g_prvm.edicts + byte_ofs);
                 ptr[0] = V_OPA[0];
                 ptr[1] = V_OPA[1];
                 ptr[2] = V_OPA[2];

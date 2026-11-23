@@ -1272,7 +1272,7 @@ void UI_Draw(int width, int height) {
                 Draw_String(cx, item_y, buf);
             }
 
-            snprintf(live, sizeof(live),
+            snprintf(live, sizeof(live), /* flawfinder: ignore */
                      s_renderer_pref == 0
                      ? "LIVE: EEGS  (GS / VU0)"
                      : "LIVE: TINYGL  (MESA SOFTWARE)");

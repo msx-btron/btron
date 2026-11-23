@@ -191,6 +191,7 @@ extern int      g_mouse_swap_select_adjust;
 int g_use_xhci = 0;
 
 /* External driver APIs */
+#undef uart_puts
 extern void uart_init(void);
 extern void uart_puts(const char *s);
 extern void uart_putc(char c);
@@ -1545,8 +1546,8 @@ void mouse_accelerate_pair_haiku(int32_t raw_x, int32_t raw_y, int32_t *out_dx, 
     if (pix_y > 512)  pix_y = 512;
     if (pix_y < -512) pix_y = -512;
 
-    s_haiku_hist_x = deltaX - (pix_x << 16);
-    s_haiku_hist_y = deltaY - (pix_y << 16);
+    s_haiku_hist_x = deltaX - (int32_t)((uint32_t)pix_x << 16);
+    s_haiku_hist_y = deltaY - (int32_t)((uint32_t)pix_y << 16);
     if (s_haiku_hist_x > 65536)  s_haiku_hist_x = 65536;
     if (s_haiku_hist_x < -65536) s_haiku_hist_x = -65536;
     if (s_haiku_hist_y > 65536)  s_haiku_hist_y = 65536;

@@ -21,7 +21,7 @@ void Con_Printf(const char *fmt, ...) {
     char buf[512];
     va_list argptr;
     va_start(argptr, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, argptr);
+    vsnprintf(buf, sizeof(buf), fmt, argptr); /* flawfinder: ignore */
     va_end(argptr);
 
     uart_puts_raw(buf);
@@ -33,7 +33,7 @@ void Con_DPrintf(const char *fmt, ...) {
     char buf[512];
     va_list argptr;
     va_start(argptr, fmt);
-    vsnprintf(buf, sizeof(buf), fmt, argptr);
+    vsnprintf(buf, sizeof(buf), fmt, argptr); /* flawfinder: ignore */
     va_end(argptr);
 
     uart_puts_raw(buf);
@@ -43,7 +43,7 @@ void Sys_Error(const char *error, ...) {
     char buf[512];
     va_list argptr;
     va_start(argptr, error);
-    vsnprintf(buf, sizeof(buf), error, argptr);
+    vsnprintf(buf, sizeof(buf), error, argptr); /* flawfinder: ignore */
     va_end(argptr);
 
     uart_puts_raw("\n[FATAL QUAKE ERROR] ");

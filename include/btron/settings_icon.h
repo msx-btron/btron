@@ -279,6 +279,7 @@ static inline BOOL draw_setting_gif_icon_scaled(GDEV *dev, const char *id_str, i
                     s_si_gif_stack[stack_top++] = s_si_gif_suffix[cur_code];
                     cur_code = s_si_gif_prefix[cur_code];
                 }
+                if (cur_code < 0 || cur_code >= SI_LZW_DICT) break;
                 first_char = s_si_gif_suffix[cur_code];
                 s_si_gif_stack[stack_top++] = (uint8_t)first_char;
 

@@ -9,9 +9,13 @@
 #  define _POSIX_C_SOURCE 200809L
 #endif
 
-#if defined(__has_include_next) && __has_include_next(<termios.h>)
-#  include_next <termios.h>
-#else
+#if !defined(__CPPCHECK__) && defined(__has_include_next)
+#  if __has_include_next(<termios.h>)
+#    include_next <termios.h>
+#    define _BTRON_HOST_TERMIOS_USED 1
+#  endif
+#endif
+#ifndef _BTRON_HOST_TERMIOS_USED
 
 #ifndef _BTRON_RT_TERMIOS_H_
 #define _BTRON_RT_TERMIOS_H_

@@ -6,7 +6,7 @@
 typedef struct _PICO_FILE FILE;
 extern FILE *stderr;
 extern FILE *stdout;
-static inline int printf(const char *fmt, ...) { (void)fmt; return 0; }
-static inline int fprintf(FILE *f, const char *fmt, ...) { (void)f; (void)fmt; return 0; }
-static inline int vfprintf(FILE *f, const char *fmt, va_list ap) { (void)f; (void)fmt; (void)ap; return 0; }
+static inline int printf(const char *fmt, ...) { (void)fmt; return 0; } /* flawfinder: ignore */
+static inline int fprintf(FILE *f, const char *fmt, ...) { (void)f; (void)fmt; return 0; } /* flawfinder: ignore */
+static inline int vfprintf(FILE *f, const char *fmt, va_list ap) { (void)f; (void)fmt; (void)ap; return 0; } /* flawfinder: ignore */
 #endif

@@ -30,7 +30,7 @@ extern WND* open_t_editor_window(void);
 #include <sys/stat.h>
 #endif
 
-#if defined(__APPLE__) || defined(__linux__)
+#if (defined(__APPLE__) || defined(__linux__)) && !defined(__CPPCHECK__)
 #if defined(__has_include)
 #if __has_include(<SDL2/SDL.h>)
 #include <SDL2/SDL.h>
@@ -1016,7 +1016,7 @@ static void toc_event(WND *wnd, const EVT *evt)
         int visible_rows = (view_h > 0) ? (view_h / TOC_ENTRY_H) : 1;
         if (visible_rows < 1) visible_rows = 1;
         int cur = bk->active_chapter_idx;
-        int next_ch = cur;
+        int next_ch;
 
         if (key == BTRON_KEY_UP || key == 'k') {
             next_ch = cur - 1;

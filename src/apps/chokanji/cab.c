@@ -137,7 +137,7 @@ static void cab_compute_layout(H client_w) {
     const int num_cols = (cols > 0) ? cols : 1;
     g_cab.num_cols = num_cols;
 
-    for (int i = 0; i < g_cab.count && i < CAB_LOOP_BOUND; i++) {
+    for (int i = 0; i < g_cab.count && i < CAB_MAX_ENTRIES; i++) {
         CabEntry *e = &g_cab.entries[i];
         const int col = i % num_cols;
         const int row = i / num_cols;
@@ -208,7 +208,7 @@ void cab_paint(WND *wnd, GDEV *dev) {
     pmc_draw_folder_tab(dev, &tab_r, g_cab.current_drawer, TRUE);
 
     /* 3. Grid of Virtual Objects */
-    for (int i = 0; i < g_cab.count && i < CAB_LOOP_BOUND; i++) {
+    for (int i = 0; i < g_cab.count && i < CAB_MAX_ENTRIES; i++) {
         CabEntry *e = &g_cab.entries[i];
 
         /* Windows-style caret: a dotted focus frame around the whole cell. */
@@ -366,7 +366,7 @@ static void cab_handle_key(UW key) {
 }
 
 void cab_handle_click(H rel_x, H rel_y, bool is_double_click) {
-    for (int i = 0; i < g_cab.count && i < CAB_LOOP_BOUND; i++) {
+    for (int i = 0; i < g_cab.count && i < CAB_MAX_ENTRIES; i++) {
         CabEntry *e = &g_cab.entries[i];
         if ((rel_x >= e->icon_rect.left && rel_x <= e->icon_rect.right &&
              rel_y >= e->icon_rect.top  && rel_y <= e->icon_rect.bottom) ||

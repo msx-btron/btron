@@ -183,7 +183,7 @@ static size_t ppc_written(int n, size_t cap)
  * is a literal at every use: the old static const char *fmt / fmt+1 pairs
  * handed sprintf a non-literal format and no bound at all. */
 #define PPC_APP(s, cap, ...) do { \
-    size_t ppc_w_ = ppc_written(snprintf((s), (cap), __VA_ARGS__), (cap)); \
+    size_t ppc_w_ = ppc_written(snprintf((s), (cap), __VA_ARGS__), (cap)); /* flawfinder: ignore */ \
     (s) += ppc_w_; \
     (cap) -= ppc_w_; \
 } while (0)

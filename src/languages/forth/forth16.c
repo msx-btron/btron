@@ -81,7 +81,7 @@ int main(int argc, char **argv) {
 
     char line[FORTH_TIB_MAX];
     while (!s_forth16_vm.halted) {
-        printf(s_forth16_vm.state ? "] " : "ok ");
+        printf("%s", s_forth16_vm.state ? "] " : "ok ");
         fflush(stdout);
         if (!fgets(line, sizeof(line), stdin)) break;
 

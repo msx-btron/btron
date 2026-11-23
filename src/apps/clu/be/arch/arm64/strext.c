@@ -65,7 +65,11 @@ static int _concat_internal(char **dst, const char *src, va_list args){
     }
 
     tight = realloc(dst1, strlen(dst1) + 1);
-    *dst = tight ? tight : dst1;
+    if (tight) {
+        *dst = tight;
+    } else {
+        *dst = dst1;
+    }
 
     return w;
 }

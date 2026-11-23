@@ -237,14 +237,14 @@ int mozc_hiragana_to_halfwidth_katakana(const char *hiragana, char *out_hkana, i
     if (!hiragana || !out_hkana || max_len <= 0) return 0;
     out_hkana[0] = '\0';
 
-    char kata_buf[256];
+    char kata_buf[256] = {0};
     mozc_hiragana_to_katakana(hiragana, kata_buf, sizeof(kata_buf));
 
     const unsigned char *p = (const unsigned char *)kata_buf;
     int out_idx = 0;
 
     while (*p && out_idx < max_len - 6) {
-        if (p[0] == 0xE3) {
+        if (p[0] == 0xE3 && p[1] && p[2]) {
             UW cp = ((p[0] & 0x0F) << 12) | ((p[1] & 0x3F) << 6) | (p[2] & 0x3F);
             p += 3;
 

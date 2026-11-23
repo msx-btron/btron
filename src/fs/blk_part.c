@@ -554,7 +554,8 @@ ER blk_mount_disk_partitions(BlkDev *disk_512, int preferred_slot)
         BlkDev *part = blk_mbr_find_btron_partition_idx(disk_512, idx, BTRON_BLOCK_SIZE);
         if (!part) {
             if (idx == 0 && mounted_count == 0) {
-                (void)blk_mbr_find_btron_partition_ex(disk_512, 0, BTRON_BLOCK_SIZE, &er);
+                BlkDev *probe = blk_mbr_find_btron_partition_ex(disk_512, 0, BTRON_BLOCK_SIZE, &er);
+                if (probe) blk_partition_release(probe);
                 first_err = er;
             }
             break;

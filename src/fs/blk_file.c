@@ -76,8 +76,8 @@ BlkDev *blk_file_create(const char *path, int create_new, UW nblocks)
             fclose(fp);
             return NULL;
         }
-        /* Zero-fill (fseek+fputc already extends; rewind to fill) */
-        rewind(fp);
+        /* Zero-fill (fseek+fputc already extends; seek back to fill) */
+        if (fseek(fp, 0, SEEK_SET) != 0) { fclose(fp); return NULL; }
         {
             unsigned char zbuf[BTRON_BLOCK_SIZE];
             memset(zbuf, 0, sizeof(zbuf));
@@ -89,7 +89,7 @@ BlkDev *blk_file_create(const char *path, int create_new, UW nblocks)
             }
         }
         fflush(fp);
-        rewind(fp);
+        if (fseek(fp, 0, SEEK_SET) != 0) { fclose(fp); return NULL; }
         derived_nblocks = nblocks;
     } else {
         /* Open existing file */
@@ -100,7 +100,7 @@ BlkDev *blk_file_create(const char *path, int create_new, UW nblocks)
         long fsize = ftell(fp);
         if (fsize <= 0) { fclose(fp); return NULL; }
         derived_nblocks = (UW)((unsigned long)fsize / BTRON_BLOCK_SIZE);
-        rewind(fp);
+        if (fseek(fp, 0, SEEK_SET) != 0) { fclose(fp); return NULL; }
     }
 
     BlkDev  *dev = (BlkDev  *)malloc(sizeof(BlkDev));

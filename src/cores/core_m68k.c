@@ -163,6 +163,7 @@ char scc_getc(void) {
     return (char)s_escc[ESCC_CHNA_DATA];
 }
 
+#undef uart_puts
 void uart_puts(const char *s) {
     scc_puts(s);
 }

@@ -497,7 +497,7 @@ void* memmove(void *dst, const void *src, size_t n) __attribute__((weak, alias("
 int   memcmp(const void *s1, const void *s2, size_t n) __attribute__((weak, alias("tkl_memcmp")));
 size_t strlen(const char *s) __attribute__((weak, alias("tkl_strlen")));
 size_t strnlen(const char *s, size_t n) __attribute__((weak, alias("tkl_strnlen")));
-char*  strcpy(char *dst, const char *src) __attribute__((weak, alias("tkl_strcpy")));
+char*  strcpy(char *dst, const char *src) __attribute__((weak, alias("tkl_strcpy"))); /* flawfinder: ignore */
 char*  strncpy(char *dst, const char *src, size_t n) __attribute__((weak, alias("tkl_strncpy")));
 int    strcmp(const char *s1, const char *s2) __attribute__((weak, alias("tkl_strcmp")));
 int    strncmp(const char *s1, const char *s2, size_t n) __attribute__((weak, alias("tkl_strncmp")));
@@ -519,7 +519,7 @@ char* tkl_strncat(char *dst, const char *src, size_t n) {
 }
 
 #if !defined(__STDC_HOSTED__) || __STDC_HOSTED__ == 0
-char* strcat(char *dst, const char *src) __attribute__((weak, alias("tkl_strcat")));
+char* strcat(char *dst, const char *src) __attribute__((weak, alias("tkl_strcat"))); /* flawfinder: ignore */
 char* strncat(char *dst, const char *src, size_t n) __attribute__((weak, alias("tkl_strncat")));
 char* strchr(const char *s, int c) __attribute__((weak, alias("tkl_strchr")));
 char* strrchr(const char *s, int c) __attribute__((weak, alias("tkl_strrchr")));
@@ -934,7 +934,7 @@ __attribute__((weak)) int tkl_snprintf(char *str, size_t size, const char *forma
 }
 
 #if !defined(__STDC_HOSTED__) || __STDC_HOSTED__ == 0
-int snprintf(char *str, size_t size, const char *format, ...) __attribute__((weak, alias("tkl_snprintf")));
+int snprintf(char *str, size_t size, const char *format, ...) __attribute__((weak, alias("tkl_snprintf"))); /* flawfinder: ignore */
 #endif
 
 /* Standard strtoul implementation */

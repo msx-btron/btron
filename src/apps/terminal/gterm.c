@@ -13,6 +13,7 @@
 #include "../clu/clu.h"
 #include "../clu/term.h"
 #include "../clu/lang.h"
+#undef SC_INTERNAL
 #include "../clu/sc/sokhatsky.h"
 #include "../clu/tv/tv.h"
 #include "../clu/be/native.h"
@@ -1502,7 +1503,7 @@ static void handle_gterm_event(WND *wnd, const EVT *evt) {
                 if (commit_buf[0] != '\0') {
                     int clen = (int)strlen(commit_buf);
                     if (st->input_len + clen < GTERM_MAX_COLS - (int)strlen(st->prompt) - 2) {
-                        strcat(st->input_buf, commit_buf);
+                        memcpy(st->input_buf + st->input_len, commit_buf, (size_t)clen + 1);
                         st->input_len += clen;
                     }
                 }

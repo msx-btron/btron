@@ -798,7 +798,7 @@ int forth_repl(ForthVM *vm) {
     printf("Type 'BYE' or 'exit' to return to shell.\n\n");
 
     while (!vm->halted) {
-        printf(vm->state ? "] " : "ok ");
+        printf("%s", vm->state ? "] " : "ok ");
         fflush(stdout);
         if (!fgets(line, sizeof(line), stdin)) break;
 

@@ -512,7 +512,7 @@ static int icos(int idx)
 /* Q10 radians to a 256-step turn. */
 static int turn256(int q10)
 {
-    return (q10 * 2608) >> 16;
+    return (q10 * 2608) / 65536;
 }
 
 static void wave_point(int i, int j, int left, int top, int width, int height,

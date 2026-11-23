@@ -272,10 +272,12 @@ TermContext *term_get_context(void)
 
 void term_style(int id, const char *sgr)
 {
-    size_t i = 0;
+    size_t len;
     if (id <= 0 || id >= TERM_STYLES || sgr == NULL) return;
-    while (sgr[i] != '\0' && i < 31u) { g_sgr[id][i] = sgr[i]; i++; }
-    g_sgr[id][i] = '\0';
+    len = strlen(sgr);
+    if (len > 31u) len = 31u;
+    memcpy(g_sgr[id], sgr, len);
+    g_sgr[id][len] = '\0';
 }
 
 void term_draw_function_bar(int row, const char *const labels[10])

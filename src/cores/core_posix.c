@@ -305,7 +305,8 @@ ID cre_tsk(const T_CTSK *pk_ctsk) {
 
 static void* task_wrapper(void *arg) {
     ITRON_TASK *tsk = (ITRON_TASK*)arg;
-    if (tsk && tsk->config.task) {
+    if (!tsk) return NULL;
+    if (tsk->config.task) {
         tsk->config.task(tsk->config.exinf);
     }
     tsk->active = FALSE;

@@ -35,7 +35,9 @@ struct multiboot_header {
     uint32_t checksum;
 } __attribute__((packed));
 
+#if !defined(__APPLE__)
 __attribute__((section(".multiboot"), used))
+#endif
 const struct multiboot_header g_multiboot_header = {
     MULTIBOOT_HEADER_MAGIC,
     MULTIBOOT_HEADER_FLAGS,
@@ -43,13 +45,22 @@ const struct multiboot_header g_multiboot_header = {
 };
 
 static inline void outb(uint16_t port, uint8_t val) {
+#if defined(__i386__) || defined(__x86_64__)
     __asm__ volatile("outb %0, %1" : : "a"(val), "Nd"(port));
+#else
+    (void)port; (void)val;
+#endif
 }
 
 static inline uint8_t inb(uint16_t port) {
+#if defined(__i386__) || defined(__x86_64__)
     uint8_t ret;
     __asm__ volatile("inb %1, %0" : "=a"(ret) : "Nd"(port));
     return ret;
+#else
+    (void)port;
+    return 0;
+#endif
 }
 
 #define COM1_PORT 0x3F8
@@ -1501,7 +1512,11 @@ void kernel_main(void) {
     }
 }
 
+#if defined(__x86_64__) || defined(__i386__)
 __attribute__((naked, weak)) void _start(void) {
+#else
+__attribute__((weak)) void _start(void) {
+#endif
 #if defined(__x86_64__)
     __asm__ volatile(
         "movq %0, %%rsp\n"

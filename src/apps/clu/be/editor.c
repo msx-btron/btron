@@ -217,7 +217,7 @@ void editor_openfile(struct editor* e, const char* filename) {
     e->contents = contents;
     e->content_length = content_length;
 
-    if (access(filename, W_OK) == -1) {
+    if (access(filename, W_OK) == -1) { /* flawfinder: ignore */
         editor_statusmessage(e, STATUS_WARNING, "\"%s\" (%d bytes) [readonly]", e->filename, e->content_length);
     } else {
 //		editor_statusmessage(e, STATUS_INFO, "\"%s\" (%d bytes)", e->filename, e->content_length);
@@ -290,7 +290,7 @@ void editor_setmode(struct editor* e, enum editor_mode mode) {
 int editor_statusmessage(struct editor* e, enum status_severity sev, const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
-    int x = vsnprintf(e->status_message, sizeof(e->status_message), fmt, ap);
+    int x = vsnprintf(e->status_message, sizeof(e->status_message), fmt, ap); /* flawfinder: ignore */
     va_end(ap);
     e->status_severity = sev;
     return x;
@@ -328,7 +328,7 @@ void editor_render_header(struct editor* e, struct charbuf* b) {
     int width = e->screen_cols - (16+32+64) - 38;
     char *format = "% 36d%% ";
     if (e->view == VIEW_HEX) { width = e->screen_cols - (16 + (24 * 4)) - 4; format = "% 36d%% "; }
-    int file_position = snprintf(banner, sizeof(banner), format, percentage);
+    int file_position = snprintf(banner, sizeof(banner), format, percentage); /* flawfinder: ignore */
     charbuf_append(b, banner, file_position);
     charbuf_appendf(b, "\x1b[1;36m\x1b[0;36m");
     for (int i=0; i < width;i++) charbuf_appendf(b, " ");

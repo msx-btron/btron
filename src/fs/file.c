@@ -1565,7 +1565,7 @@ static FilHier *hier_build(Volume *v)
     UW acc = 0;
     for (UW f = 0; f < nfmax; f++) { UW c = h->out_start[f]; h->out_start[f] = acc; acc += c; }
     h->out_start[nfmax] = acc;
-    h->out_dst = (FID *)malloc((nedge ? nedge : 1) * sizeof(FID));
+    h->out_dst = (FID *)calloc(nedge ? nedge : 1, sizeof(FID));
     UW *cur = (UW *)malloc(nfmax * sizeof(UW));
     if (!h->out_dst || !cur) {
         free(cur); free(edges); free(seen); free(queue);

@@ -109,7 +109,7 @@ int decode_png_rgba(const char *filepath, UB **out_pixels, H *out_w, H *out_h) {
     }
     free(idat_buf);
 
-    UB *scan_buf = (UB *)malloc((size_t)img_h * row_bytes);
+    UB *scan_buf = (UB *)calloc((size_t)img_h, (size_t)row_bytes);
     if (!scan_buf) {
         free(raw_buf);
         return -1;
@@ -241,12 +241,11 @@ int decode_gif_rgba(const char *filepath, UB **out_pixels, H *out_w, H *out_h) {
 
     int trans_idx = -1;
     int img_w = 0, img_h = 0;
-    BOOL img_read = FALSE;
 
     static UH s_gif_prefix[4096];
     static UB s_gif_suffix[4096];
     static UB s_gif_pixel_stack[4096 + 1];
-    UB *gif_raw = (UB *)malloc(MAX_GIF_PIXELS);
+    UB *gif_raw = (UB *)calloc(1, MAX_GIF_PIXELS);
     if (!gif_raw) {
         fclose(fp);
         return -1;
@@ -258,26 +257,31 @@ int decode_gif_rgba(const char *filepath, UB **out_pixels, H *out_w, H *out_h) {
 
         if (b == 0x21) {
             int ext_label = fgetc(fp);
+            if (ext_label == EOF) break;
+            int ext_err = 0;
             if (ext_label == 0xF9) {
                 int blk_sz = fgetc(fp);
+                if (blk_sz == EOF) break;
                 if (blk_sz == 4) {
                     UB gce[4];
-                    if (fread(gce, 1, 4, fp) == 4) {
-                        if (gce[0] & 0x01) trans_idx = gce[3];
-                    }
+                    if (fread(gce, 1, 4, fp) != 4) break;
+                    if (gce[0] & 0x01) trans_idx = gce[3];
                 }
                 while (1) {
                     int sub_sz = fgetc(fp);
-                    if (sub_sz <= 0 || sub_sz == EOF) break;
-                    fseek(fp, sub_sz, SEEK_CUR);
+                    if (sub_sz == EOF) { ext_err = 1; break; }
+                    if (sub_sz <= 0) break;
+                    if (fseek(fp, sub_sz, SEEK_CUR) != 0) { ext_err = 1; break; }
                 }
             } else {
                 while (1) {
                     int sub_sz = fgetc(fp);
-                    if (sub_sz <= 0 || sub_sz == EOF) break;
-                    fseek(fp, sub_sz, SEEK_CUR);
+                    if (sub_sz == EOF) { ext_err = 1; break; }
+                    if (sub_sz <= 0) break;
+                    if (fseek(fp, sub_sz, SEEK_CUR) != 0) { ext_err = 1; break; }
                 }
             }
+            if (ext_err) break;
         } else if (b == 0x2C) {
             UB desc[9];
             if (fread(desc, 1, 9, fp) != 9) break;
@@ -293,13 +297,12 @@ int decode_gif_rgba(const char *filepath, UB **out_pixels, H *out_w, H *out_h) {
             if (has_lct) {
                 int lct_size = 1 << ((iflags & 0x07) + 1);
                 UB lct_raw[768];
-                if (fread(lct_raw, 1, lct_size * 3, fp) == (size_t)(lct_size * 3)) {
-                    for (int i = 0; i < lct_size; i++) {
-                        UB r = lct_raw[i * 3 + 0];
-                        UB g = lct_raw[i * 3 + 1];
-                        UB b = lct_raw[i * 3 + 2];
-                        palette[i] = (r << 16) | (g << 8) | b;
-                    }
+                if (fread(lct_raw, 1, lct_size * 3, fp) != (size_t)(lct_size * 3)) break;
+                for (int i = 0; i < lct_size; i++) {
+                    UB r = lct_raw[i * 3 + 0];
+                    UB g = lct_raw[i * 3 + 1];
+                    UB b = lct_raw[i * 3 + 2];
+                    palette[i] = (r << 16) | (g << 8) | b;
                 }
             } else if (!has_gct) {
                 palette[0] = 0x00FFFFFF;
@@ -307,6 +310,7 @@ int decode_gif_rgba(const char *filepath, UB **out_pixels, H *out_w, H *out_h) {
             }
 
             int min_code_size = fgetc(fp);
+            if (min_code_size == EOF) break;
             if (min_code_size < 2 || min_code_size > 8) min_code_size = 8;
 
             int clear_code = 1 << min_code_size;
@@ -384,9 +388,7 @@ int decode_gif_rgba(const char *filepath, UB **out_pixels, H *out_w, H *out_h) {
                 break;
             }
 
-gif_done_frame:
-            img_read = TRUE;
-
+gif_done_frame:;
             /* Convert indexed pixels to RGBA */
             UB *out = (UB *)malloc((size_t)img_w * img_h * 4);
             if (!out) {
@@ -423,7 +425,7 @@ gif_done_frame:
 
     free(gif_raw);
     fclose(fp);
-    return img_read ? 0 : -1;
+    return -1;
 }
 
 #pragma GCC diagnostic push

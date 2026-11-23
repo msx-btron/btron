@@ -24,6 +24,7 @@
  *	whole output is one buffer, so the window is the output itself.
  */
 
+#include <string.h>
 #include <btron/bpk.h>
 #include <btron/troncode.h>
 
@@ -268,6 +269,7 @@ EXPORT INT lh5_decode( BPKLH5 *z, const UB *in, UINT inlen, UB *out, UINT outlen
 	z->bitcount = 0;
 	z->blocksize = 0;
 	z->bad = FALSE;
+	if ( outlen > 0 ) memset(out, 0, (size_t)outlen);
 	fillbuf(z, 16);
 
 	while ( pos < outlen ) {
@@ -312,6 +314,7 @@ EXPORT INT lh5_decode( BPKLH5 *z, const UB *in, UINT inlen, UB *out, UINT outlen
  *	record lists the applications that open the object.
  */
 
+#include <string.h>
 #include <btron/bpk.h>
 #include <btron/troncode.h>
 #include <stdio.h>
@@ -741,6 +744,7 @@ EXPORT void bpk_free( BPKARC *a )
  *	0xD800 + n, n indexing bpk_tron_multi.
  */
 
+#include <string.h>
 #include <btron/bpk.h>
 #include <btron/troncode.h>
 #include <string.h>
@@ -1023,6 +1027,7 @@ EXPORT INT bpk_utf8_tron( const char *s, UH *out, INT max )
  *	Text that grows, and colours
  */
 
+#include <string.h>
 #include <btron/bpk.h>
 #include <btron/troncode.h>
 #include <stdarg.h>
@@ -1090,7 +1095,7 @@ EXPORT void bpk_buf_printf( BPKBUF *b, const char *fmt, ... )
 	INT	n;
 
 	va_start(ap, fmt);
-	n = vsnprintf(tmp, sizeof(tmp), fmt, ap);
+	n = vsnprintf(tmp, sizeof(tmp), fmt, ap); /* flawfinder: ignore */
 	va_end(ap);
 	if ( n < 0 ) return;
 	if ( n < (INT)sizeof(tmp) ) {
@@ -1099,7 +1104,7 @@ EXPORT void bpk_buf_printf( BPKBUF *b, const char *fmt, ... )
 	}
 	if ( !room(b, n) ) return;
 	va_start(ap, fmt);
-	(void)vsnprintf(b->s + b->n, (size_t)n + 1, fmt, ap);
+	(void)vsnprintf(b->s + b->n, (size_t)n + 1, fmt, ap); /* flawfinder: ignore */
 	va_end(ap);
 	b->n += n;
 }
@@ -1134,7 +1139,7 @@ EXPORT void bpk_buf_json( BPKBUF *b, const char *s )
 
 EXPORT void bpk_buf_cp( BPKBUF *b, UINT cp )
 {
-	char	o[4];
+	char	o[4] = {0};
 
 	bpk_buf_putn(b, o, bpk_utf8(cp, o));
 }
@@ -1197,6 +1202,7 @@ EXPORT void bpk_colour( UINT raw, const UINT *cmap, INT ncmap, char out[8] )
  *	The character sets of TRON code's first plane, made by tools/gen_jis.py bpk
  */
 
+#include <string.h>
 #include <btron/bpk.h>
 #include <btron/troncode.h>
 

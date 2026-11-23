@@ -85,9 +85,7 @@ static int clarity_compute_visual_lines_hltr(const ClarityFrame *f, int inner_w,
                 line_count++;
                 y += GLYPH_H + 3;
                 line_start = i;
-                last_break = -1;
                 cur_w = 0;
-                prev_tc = 0;
             }
 
             cur_w += bw + 4;

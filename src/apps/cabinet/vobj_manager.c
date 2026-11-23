@@ -1325,7 +1325,7 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
         } else {
             int visible_rows = (dev_h > CAB_GRID_TOP + 24) ? (dev_h - CAB_GRID_TOP - 24) / 22 : 1;
             if (visible_rows < 1) visible_rows = 1;
-            int ns = (g_cabinet.selected_idx < 0) ? 0 : g_cabinet.selected_idx;
+            int ns;
             if (g_cabinet.selected_idx < 0) {
                 ns = 0;
             } else if (key == BTRON_KEY_UP || key == 'k') {

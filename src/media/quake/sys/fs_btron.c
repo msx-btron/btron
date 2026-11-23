@@ -788,8 +788,8 @@ int FS_Init(void) {
             return 1;
         }
     }
-    if (ps2_pak0_image && ps2_pak0_image_end > ps2_pak0_image) {
-        int n = (int)(ps2_pak0_image_end - ps2_pak0_image);
+    if (ps2_pak0_image && (uintptr_t)ps2_pak0_image_end > (uintptr_t)ps2_pak0_image) {
+        int n = (int)((uintptr_t)ps2_pak0_image_end - (uintptr_t)ps2_pak0_image);
         if (fs_map_pak_image(ps2_pak0_image, n, "ps2_pak0_image"))
             return 1;
     }

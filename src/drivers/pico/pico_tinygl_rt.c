@@ -98,7 +98,7 @@ int strncmp(const char *a, const char *b, size_t n)
     return n ? ((int)(uint8_t)*a - (int)(uint8_t)*b) : 0;
 }
 
-char *strcpy(char *dst, const char *src)
+char *strcpy(char *dst, const char *src) /* flawfinder: ignore */
 {
     char *d = dst;
     while ((*d++ = *src++) != '\0') { }
@@ -113,7 +113,7 @@ char *strncpy(char *dst, const char *src, size_t n)
     return dst;
 }
 
-char *strcat(char *dst, const char *src)
+char *strcat(char *dst, const char *src) /* flawfinder: ignore */
 {
     char *d = dst;
     while (*d) d++;
@@ -150,7 +150,7 @@ char *strchr(const char *s, int c)
     return (c == 0) ? (char *)s : NULL;
 }
 
-int snprintf(char *buf, size_t cap, const char *fmt, ...)
+int snprintf(char *buf, size_t cap, const char *fmt, ...) /* flawfinder: ignore */
 {
     (void)fmt;
     if (buf && cap > 0) buf[0] = '\0';

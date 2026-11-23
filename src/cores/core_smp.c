@@ -3,6 +3,9 @@
  * Dedicated in honor of Kota Uchida (内田 公太, author of MikanOS).
  */
 
+#if !defined(_POSIX_C_SOURCE) && !defined(__APPLE__)
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <stdint.h>
 #include <stddef.h>
 #include <btron/types.h>
@@ -38,7 +41,7 @@ static void smp_uart_dec(uint32_t v) {
     char buf[12]; int i = 10; buf[11] = '\0';
     if (v == 0) { uart_puts_raw("0"); return; }
     while (v > 0 && i >= 0) { buf[i--] = (char)('0' + v % 10); v /= 10; }
-    uart_puts_raw(buf + i + 1);
+    uart_puts_raw(buf + (i + 1));
 }
 
 /* ── IA32_APIC_BASE MSR read (bare-metal only) ───────────────────────── */
@@ -62,6 +65,7 @@ static uint32_t smp_cpuid_apic_id(void) {
 #include <pthread.h>
 #include <unistd.h>
 #include <sys/time.h>
+#include <time.h>
 #include <stdio.h>
 #define SMP_HOSTED 1
 #else
@@ -539,7 +543,12 @@ ER get_tim(SYSTIME *p_time) {
 
 void dly_tsk(W dlytim) {
 #if SMP_HOSTED
-    if (dlytim > 0) usleep((unsigned int)dlytim * 1000U);
+    if (dlytim > 0) {
+        struct timespec ts;
+        ts.tv_sec  = dlytim / 1000;
+        ts.tv_nsec = (long)(dlytim % 1000) * 1000000L;
+        nanosleep(&ts, NULL);
+    }
 #else
     if (dlytim <= 0) return;
     int idx = s_current_task_idx;

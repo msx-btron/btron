@@ -7,14 +7,15 @@
 
 #include <rt/libstr.h>
 #include <stdarg.h>
+#include <stdint.h>
 
 #ifndef NULL
 #define NULL 0
 #endif
 
 typedef void FILE;
-#define stderr ((FILE *)2)
-#define stdout ((FILE *)1)
+#define stderr ((FILE *)(uintptr_t)2u)
+#define stdout ((FILE *)(uintptr_t)1u)
 
 extern void uart_puts_raw(const char *s);
 extern int tkl_vsnprintf(char *str, size_t size, const char *format, va_list ap);

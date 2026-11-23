@@ -142,7 +142,7 @@ void forth_words(ForthVM *vm) {
     if (!vm) return;
     forth_cell_t cur = vm->latest;
     int col = 0;
-    while (cur != 0 && cur < FORTH_ARENA_MAX) {
+    while (cur != 0 && cur + (forth_cell_t)sizeof(forth_cell_t) < FORTH_ARENA_MAX) {
         forth_cell_t link = *(forth_cell_t *)&vm->arena[cur];
         forth_cell_t p = cur + (forth_cell_t)sizeof(forth_cell_t);
         uint8_t flen = vm->arena[p++];
@@ -232,7 +232,7 @@ static void dict_create_word(ForthVM *vm, const char *name, uint8_t token, uint8
 
 static forth_cell_t dict_find(ForthVM *vm, const char *name, uint8_t len, uint8_t *out_flags, uint8_t *out_token) {
     forth_cell_t cur = vm->latest;
-    while (cur != 0 && cur < FORTH_ARENA_MAX) {
+    while (cur != 0 && cur + (forth_cell_t)sizeof(forth_cell_t) < FORTH_ARENA_MAX) {
         forth_cell_t link = *(forth_cell_t *)&vm->arena[cur];
         forth_cell_t p = cur + (forth_cell_t)sizeof(forth_cell_t);
         uint8_t flen = vm->arena[p++];
@@ -277,7 +277,7 @@ int forth_eval_fcode(ForthVM *vm, const uint8_t *stream, size_t len) {
     vm->ip_limit = stream + len;
     vm->halted = false;
 
-#if defined(__GNUC__) || defined(__clang__)
+#if (defined(__GNUC__) || defined(__clang__)) && !defined(__CPPCHECK__)
     /* Computed goto jump table */
     static const void *const dispatch_table[256] = {
         [FORTH_TOK_END]        = &&lbl_end,

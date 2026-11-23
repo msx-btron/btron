@@ -38,7 +38,7 @@ static int dia(int midi)
     if (midi < 0) midi = 0;
     if (midi > 127) midi = 127;
     o = midi / 12;
-    p = midi - o * 12;
+    p = midi % 12;
     return o * 7 + (int)t[p];
 }
 

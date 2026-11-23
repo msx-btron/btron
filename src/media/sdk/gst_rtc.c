@@ -12,6 +12,10 @@
 #include <glib-unix.h>
 #include <unistd.h>
 
+#ifndef G_GINT64_FORMAT
+#define G_GINT64_FORMAT "lld"
+#endif
+
 #define WIDTH 1920
 #define HEIGHT 1080
 
@@ -117,7 +121,7 @@ static void handle_signaling_message(const gchar *json_str);
 static const gchar *get_wsl_gateway_ip(void) {
     static gchar gw_ip[64] = {0};
     if (gw_ip[0] != '\0') return gw_ip;
-    FILE *f = popen("ip route show default 2>/dev/null", "r");
+    FILE *f = popen("ip route show default 2>/dev/null", "r"); /* flawfinder: ignore */
     if (f) {
         char buf[256] = {0};
         if (fgets(buf, sizeof(buf), f)) {

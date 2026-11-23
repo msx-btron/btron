@@ -14,7 +14,7 @@ static int sps_fprintf(FILE *out, const char *fmt, ...) {
     char buf[512];
     va_list ap;
     va_start(ap, fmt);
-    int n = vsnprintf(buf, sizeof(buf), fmt, ap);
+    int n = vsnprintf(buf, sizeof(buf), fmt, ap); /* flawfinder: ignore */
     va_end(ap);
     if (n > 0) {
         size_t w = (size_t)n;

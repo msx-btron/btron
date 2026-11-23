@@ -10,6 +10,10 @@
 #include <limits.h>
 #include <ctype.h>
 
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
 #define SH_MAX_INPUT 1024
 #define MAX_ARGS 64
 #define MAX_ALIASES 32
@@ -48,8 +52,21 @@ void parse_and_execute(char *input);
 
 char *strdup_safe(const char *s) {
     if (!s) return NULL;
-    char *dup = malloc(strlen(s) + 1);
-    if (dup) strcpy(dup, s);
+    size_t len = strlen(s);
+    char *dup = malloc(len + 1);
+    if (dup) memcpy(dup, s, len + 1);
+    return dup;
+}
+
+static char *strndup_safe(const char *s, size_t n) {
+    if (!s) return NULL;
+    size_t len = 0;
+    while (len < n && s[len] != '\0') len++;
+    char *dup = malloc(len + 1);
+    if (dup) {
+        memcpy(dup, s, len);
+        dup[len] = '\0';
+    }
     return dup;
 }
 
@@ -178,7 +195,7 @@ int execute(char **args) {
 
     pid_t pid = fork();
     if (pid == 0) {
-        execvp(args[0], args);
+        execvp(args[0], args); /* flawfinder: ignore */
         error("execvp");
     } else if (pid > 0) {
         int status;
@@ -226,7 +243,7 @@ Token *tokenize(char *input) {
             toks[i].type = TOK_WORD;
             char *start = p;
             while (*p && *p != ' ' && *p != '\t' && *p != '\n' && *p != ';' && *p != '&' && *p != '|' && *p != ')') p++;
-            toks[i].value = strndup(start, p - start);
+            toks[i].value = strndup_safe(start, (size_t)(p - start));
         }
         i++;
     }
@@ -362,11 +379,10 @@ int parse_statement() {
 void parse_and_execute(char *input) {
     tokens = tokenize(input);
     token_pos = 0;
-    Token *t;
-    while ((t = next_token())->type != TOK_EOF) {
+    while (next_token()->type != TOK_EOF) {
         token_pos--;
         parse_statement();
-        t = next_token();
+        Token *t = next_token();
         if (t->type == TOK_SEMI || t->type == TOK_SEMISEMI) continue;
         token_pos--;
     }

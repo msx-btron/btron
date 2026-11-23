@@ -538,7 +538,7 @@ static int add_event(uint8_t track, uint8_t key, uint8_t vel, uint32_t start)
     OrchEvent ev;
     orch_check(v != 0, __LINE__);
     orch_check(s_size <= ORCH_SMF_CAP, __LINE__);
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     if (key > 127u || vel == 0u || vel > 127u) return 0;
     if (track >= v->track_count) return 0;
     fill_event(&ev, track, key, vel, start);
@@ -787,7 +787,7 @@ static int seed_tracks(void)
     (void)orch_cmd_family(ORCH_FAM_ROCK);
     s_seeded = 1u;
     v = gst_view();
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     return v->track_count > 0u;
 }
 
@@ -795,7 +795,7 @@ static int seed_if_empty(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     orch_check(v->track_count <= ORCH_MAX_TRACKS, __LINE__);
     if (v->track_count > 0u) return 1;
     return seed_tracks();
@@ -910,7 +910,7 @@ static int finish_load(int res)
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
     orch_check(res == ST_OK || res == ST_END || res == ST_BAD, __LINE__);
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     if (res != ST_OK) {
         snap_restore();
         return refuse_smf();
@@ -967,7 +967,7 @@ static void put_chunk_head(uint32_t at, uint32_t len)
 {
     orch_check(at < ORCH_SMF_CAP, __LINE__);
     orch_check(ORCH_SMF_CAP - at >= SMF_CHUNK, __LINE__);
-    if (at >= ORCH_SMF_CAP || ORCH_SMF_CAP - at < SMF_CHUNK) return;
+    if (at > ORCH_SMF_CAP - SMF_CHUNK) return;
     s_smf[at] = 'M';
     s_smf[at + 1u] = 'T';
     s_smf[at + 2u] = 'r';
@@ -1121,7 +1121,7 @@ static int out_fill(int trk)
     uint32_t i = 0;
     orch_check(v != 0, __LINE__);
     orch_check(trk >= 0 && trk < ORCH_MAX_TRACKS, __LINE__);
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     s_out_n = 0;
     for (i = 0; i < v->event_count && i < ORCH_MAX_EVENTS; i++) {
         uint32_t end = 0;
@@ -1181,7 +1181,7 @@ static int track_channel(int trk, uint32_t *ch)
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
     orch_check(ch != 0, __LINE__);
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     if (trk < 0 || trk >= ORCH_MAX_TRACKS) return 0;
     if (trk >= (int)v->track_count) return 0;
     *ch = (uint32_t)v->trk[trk].channel;
@@ -1225,7 +1225,7 @@ static int write_chunks(void)
     int i = 0;
     int r = 0;
     orch_check(v != 0, __LINE__);
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     orch_check(v->track_count <= ORCH_MAX_TRACKS, __LINE__);
     if (v->track_count == 0u) return 0;
     for (i = 0; i < (int)v->track_count && i < ORCH_MAX_TRACKS; i++) {
@@ -1255,7 +1255,7 @@ static uint32_t build_smf(void)
     OrchView *v = gst_view();
     int n = 0;
     orch_check(v != 0, __LINE__);
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     orch_check(v->track_count <= ORCH_MAX_TRACKS, __LINE__);
     memset_all(s_smf, ORCH_SMF_CAP);
     s_cursor = SMF_HDR;
@@ -1286,7 +1286,7 @@ int orch_cmd_smf_load(void)
     OrchView *v = gst_view();
     int res = 0;
     orch_check(v != 0, __LINE__);
-    if (!view_ok(v)) return 0;
+    if (!v || !view_ok(v)) return 0;
     orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (playing()) return refuse_smf();
     resolve_mid_path();

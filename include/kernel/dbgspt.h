@@ -77,19 +77,6 @@ typedef struct td_calinf {
 
 
 #endif /* __TK_DBGSPT_COMMON_H__ */
-
-
-/*----------------------------------------------------------------------*/
-#if 0
-#|History of "dbgspt_common.h"
-#|----------------------------
-#|* 2015/11/25	[app_sh7760]用に、APP_SH7760 処理の追加
-#|* 2016/03/01	[rpi_bcm283x]用に、RPI_BCM283x 処理の追加
-#|* 2016/03/14	[app_rzt1]用に、APP_RZT1 処理の追加
-#|
-#endif
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif

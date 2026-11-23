@@ -248,7 +248,7 @@ int GetSysConf(const uint8_t *name, int *val) { (void)name; if (val) val[0] = 0;
 
 int SDefDevice(const void *ddev, void *idev, void **sdi) {
     (void)ddev; (void)idev;
-    if (sdi) *sdi = (void*)1;
+    if (sdi) *sdi = (void*)(uintptr_t)1u;
     return 0;
 }
 

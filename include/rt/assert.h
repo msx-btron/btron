@@ -11,6 +11,9 @@
 extern int btron_assert_count;
 extern int btron_assert_line;
 
+#ifdef __CPPCHECK__
+#define assert(expr) ((void)(expr))
+#else
 #define assert(expr)                                                          \
     do {                                                                      \
         if (!(expr)) {                                                        \
@@ -18,6 +21,7 @@ extern int btron_assert_line;
             btron_assert_line = __LINE__;                                     \
         }                                                                     \
     } while (0)
+#endif
 
 #endif /* _GL_ASSERT_H_ */
 #endif /* HOSTED */

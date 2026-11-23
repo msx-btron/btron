@@ -69,7 +69,7 @@
 #define SIGN(x)   (((x) > 0) - ((x) < 0))
 /* Allocate values on the stack if they are small enough, else spill to heap. */
 #define STACK_ALLOC(var, type, thresh, count) \
-	type var##_stack_[thresh]; \
+	type var##_stack_[thresh] = {0}; \
 	var = (count) <= (thresh) ? var##_stack_ : calloc(sizeof(type), count);
 #define STACK_FREE(var) \
 	if (var != var##_stack_) free(var);
@@ -1218,6 +1218,7 @@ simple_outline(SFT_Font *font, uint_fast32_t offset, unsigned int numContours, O
 		if (grow_points(outl) < 0)
 			goto failure;
 	}
+	memset(outl->points + basePoint, 0, numPts * sizeof(*outl->points));
 	
 	STACK_ALLOC(endPts, uint_fast16_t, 16, numContours);
 	if (endPts == NULL)

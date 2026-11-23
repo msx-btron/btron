@@ -1356,7 +1356,7 @@ static void port0(void)
         g.port[i].is_input = 0;
         g.port[i].is_active = 0;
     }
-    for (i = 0; name[i] && i < 31; i++) g.port[0].name[i] = name[i];
+    for (i = 0; i < (int)(sizeof(name) - 1) && i < 31; i++) g.port[0].name[i] = name[i];
     g.port[0].name[i] = 0;
     g.port[0].is_input = 1;
     g.port[0].is_active = 1;

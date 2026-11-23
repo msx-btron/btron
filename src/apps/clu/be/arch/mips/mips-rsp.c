@@ -79,7 +79,9 @@ char *decodeVector(uint32_t operation)
     uint8_t vs = (uint8_t)((operation >> 11) & 0x1F);
     uint8_t vd = (uint8_t)((operation >> 6) & 0x1F);
 
-    snprintf(str_vecop, sizeof(str_vecop), "%s f%i, f%i, f%s", (rsp_vec[opcode] == 0 ? unknown : rsp_vec[opcode]),
+    const char *opname = (opcode < (uint8_t)(sizeof(rsp_vec) / sizeof(rsp_vec[0])) && rsp_vec[opcode] != 0)
+                         ? rsp_vec[opcode] : unknown;
+    snprintf(str_vecop, sizeof(str_vecop), "%s f%i, f%i, f%s", opname,
        vd, vs, decodeVectorElement(vt, e));
     return str_vecop;
 }

@@ -143,7 +143,6 @@ int ps2_iopram_claim(ps2_iopram_t *out)
         if (cand < 0x1F8000u && cand + PS2_IOP_SHADOW_SIZE > 0x1F0000u)
             continue;
         if (block_is_zero(cand)) { p.off = cand; break; }
-        if (cand < PS2_IOP_SHADOW_SIZE) break;
     }
 #endif
 

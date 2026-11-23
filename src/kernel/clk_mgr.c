@@ -1,8 +1,11 @@
-﻿/*
+/*
  * B-TRON Clock & Calendar Subsystem: clk_mgr.c
  * Cleanroom implementation of BTRON 3.20 Real-Time Clock Engine.
  */
 
+#if !defined(_POSIX_C_SOURCE) && !defined(__APPLE__)
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <btron/clk.h>
 #include <btron/types.h>
 #include <btron/error.h>

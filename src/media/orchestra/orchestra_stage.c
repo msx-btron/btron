@@ -86,7 +86,6 @@ static void place_stack(int *g, int w, int h)
     y += 28;
     if (y + 56 < h - 30) {
         place_scenes(g, 8, y, w - 16, 1);
-        y += 56;
     }
     put(g, B_STAT, 8, h - 28, w - 48, 22, 1);
     if (h >= 220) {

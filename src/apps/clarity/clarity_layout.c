@@ -646,7 +646,8 @@ int clarity_frame_load_image(ClarityFrame *f, const char *path, ID robj_id)
 
 int clarity_doc_send_to_back(ClarityDoc *doc, int frame_idx)
 {
-    if (!doc || frame_idx <= 0 || frame_idx >= doc->frame_count) return -1;
+    if (!doc || frame_idx <= 0 || frame_idx >= doc->frame_count ||
+        frame_idx >= (int)(sizeof(doc->frames) / sizeof(doc->frames[0]))) return -1;
     ClarityFrame target = doc->frames[frame_idx];
     memmove(&doc->frames[1], &doc->frames[0], (size_t)frame_idx * sizeof(ClarityFrame));
     doc->frames[0] = target;
@@ -669,7 +670,8 @@ int clarity_doc_send_to_front(ClarityDoc *doc, int frame_idx)
 
 int clarity_doc_send_backward(ClarityDoc *doc, int frame_idx)
 {
-    if (!doc || frame_idx <= 0 || frame_idx >= doc->frame_count) return -1;
+    if (!doc || frame_idx <= 0 || frame_idx >= doc->frame_count ||
+        frame_idx >= (int)(sizeof(doc->frames) / sizeof(doc->frames[0]))) return -1;
     ClarityFrame tmp = doc->frames[frame_idx];
     doc->frames[frame_idx] = doc->frames[frame_idx - 1];
     doc->frames[frame_idx - 1] = tmp;
@@ -797,7 +799,6 @@ int clarity_frame_load_text(ClarityFrame *f, const char *path, ID robj_id, const
         UW bytes = 0;
         if (rd_vobj_data(r, raw_buf, (UW)(raw_cap - 1), &bytes) == E_OK && bytes > 0) {
             raw_buf[bytes] = '\0';
-            nread = bytes;
             read_ok = TRUE;
         }
         cls_robj(r);

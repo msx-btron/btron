@@ -63,7 +63,7 @@ static ER sjis_to_eucjp(const UB *in, int in_len,
             const UB b1 = in[si++];
             if (di + 2 > out_cap) return E_NORES;
             UB row = (b0 < 0xA0U) ? (UB)(b0 - 0x70U) : (UB)(b0 - 0xB0U);
-            UB col = b1;
+            UB col;
             if (row % 2U == 1U) {
                 col = (b1 < 0x9FU) ? (UB)(b1 - (b1 <= 0x7EU ? 0x1FU : 0x20U))
                                     : (UB)(b1 - 0x7EU);

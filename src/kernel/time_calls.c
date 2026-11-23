@@ -552,6 +552,7 @@ SYSCALL ER _tk_ref_cyc( ID cycid, T_RCYC* pk_rcyc )
 	ER	ercd;
 
 	ercd = _tk_ref_cyc_u(cycid, &lrcyc);
+	if ( ercd < E_OK ) return ercd;
 
 	pk_rcyc->exinf	 = lrcyc.exinf;
 	pk_rcyc->lfttim	 = to_msec(lrcyc.lfttim_u);
@@ -661,6 +662,7 @@ SYSCALL ER _td_ref_cyc( ID cycid, TD_RCYC* pk_rcyc )
 	ER		ercd;
 
 	ercd = _td_ref_cyc_u(cycid, &lrcyc);
+	if ( ercd < E_OK ) return ercd;
 
 	pk_rcyc->exinf	 = lrcyc.exinf;
 	pk_rcyc->lfttim	 = to_msec(lrcyc.lfttim_u);
@@ -977,6 +979,7 @@ SYSCALL ER _tk_ref_alm( ID almid, T_RALM *pk_ralm )
 	ER	ercd;
 
 	ercd = _tk_ref_alm_u(almid, &lralm);
+	if ( ercd < E_OK ) return ercd;
 
 	pk_ralm->exinf	 = lralm.exinf;
 	pk_ralm->lfttim	 = to_msec(lralm.lfttim_u);
@@ -1085,6 +1088,7 @@ SYSCALL ER _td_ref_alm( ID almid, TD_RALM *pk_ralm )
 	ER		ercd;
 
 	ercd = _td_ref_alm_u(almid, &lralm);
+	if ( ercd < E_OK ) return ercd;
 
 	pk_ralm->exinf	 = lralm.exinf;
 	pk_ralm->lfttim	 = to_msec(lralm.lfttim_u);

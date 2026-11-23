@@ -999,26 +999,33 @@ int decode_and_draw_gif(GDEV *dev, const char *filepath, int dst_x, int dst_y, i
         if (b == 0x21) {
             /* Extension block */
             int ext_label = fgetc(fp);
+            if (ext_label == EOF) break;
+            int ext_err = 0;
             if (ext_label == 0xF9) {
                 int block_size = fgetc(fp);
+                if (block_size == EOF) break;
                 if (block_size == 4) {
                     UB gce[4];
-                    if (fread(gce, 1, 4, fp) == 4 && (gce[0] & 0x01)) {
+                    if (fread(gce, 1, 4, fp) != 4) break;
+                    if (gce[0] & 0x01) {
                         trans_idx = gce[3];
                     }
                 }
                 while (1) {
                     int sub_len = fgetc(fp);
+                    if (sub_len == EOF) { ext_err = 1; break; }
                     if (sub_len <= 0) break;
-                    fseek(fp, sub_len, SEEK_CUR);
+                    if (fseek(fp, sub_len, SEEK_CUR) != 0) { ext_err = 1; break; }
                 }
             } else {
                 while (1) {
                     int sub_len = fgetc(fp);
+                    if (sub_len == EOF) { ext_err = 1; break; }
                     if (sub_len <= 0) break;
-                    fseek(fp, sub_len, SEEK_CUR);
+                    if (fseek(fp, sub_len, SEEK_CUR) != 0) { ext_err = 1; break; }
                 }
             }
+            if (ext_err) break;
         } else if (b == 0x2C) {
             /* Image Descriptor */
             UB desc[9];
@@ -1035,13 +1042,12 @@ int decode_and_draw_gif(GDEV *dev, const char *filepath, int dst_x, int dst_y, i
             if (has_lct) {
                 int lct_size = 1 << ((iflags & 0x07) + 1);
                 UB lct_raw[768];
-                if (fread(lct_raw, 1, lct_size * 3, fp) == (size_t)(lct_size * 3)) {
-                    for (int i = 0; i < lct_size; i++) {
-                        UB r = lct_raw[i * 3 + 0];
-                        UB g = lct_raw[i * 3 + 1];
-                        UB b = lct_raw[i * 3 + 2];
-                        palette[i] = (r << 16) | (g << 8) | b;
-                    }
+                if (fread(lct_raw, 1, lct_size * 3, fp) != (size_t)(lct_size * 3)) break;
+                for (int i = 0; i < lct_size; i++) {
+                    UB r = lct_raw[i * 3 + 0];
+                    UB g = lct_raw[i * 3 + 1];
+                    UB b = lct_raw[i * 3 + 2];
+                    palette[i] = (r << 16) | (g << 8) | b;
                 }
             } else if (!has_gct) {
                 palette[0] = 0x00FFFFFF;
@@ -1049,6 +1055,7 @@ int decode_and_draw_gif(GDEV *dev, const char *filepath, int dst_x, int dst_y, i
             }
 
             int min_code_size = fgetc(fp);
+            if (min_code_size == EOF) break;
             if (min_code_size < 2 || min_code_size > 8) min_code_size = 8;
 
             int clear_code = 1 << min_code_size;
@@ -1075,19 +1082,20 @@ int decode_and_draw_gif(GDEV *dev, const char *filepath, int dst_x, int dst_y, i
             int sub_len = 0;
             int sub_pos = 0;
 
-            while (pixel_count < total_pixels) {
+            int sub_eof = 0;
+            while (pixel_count < total_pixels && !sub_eof) {
                 while (bit_count < code_size) {
                     if (sub_pos >= sub_len) {
                         sub_len = fgetc(fp);
-                        if (sub_len <= 0) break;
-                        if (fread(sub_buf, 1, sub_len, fp) != (size_t)sub_len) break;
+                        if (sub_len <= 0) { sub_eof = 1; break; }
+                        if (fread(sub_buf, 1, sub_len, fp) != (size_t)sub_len) { sub_eof = 1; break; }
                         sub_pos = 0;
                     }
                     bit_buf |= (sub_buf[sub_pos++] << bit_count);
                     bit_count += 8;
                 }
 
-                if (bit_count < code_size) break;
+                if (sub_eof || bit_count < code_size) break;
 
                 int code = bit_buf & code_mask;
                 bit_buf >>= code_size;

@@ -89,6 +89,7 @@ typedef struct {
 } paint_view_t;
 
 static void paint_compute(const PaintViewer *pv, GDEV *dev, paint_view_t *v) {
+    if (!dev) { memset(v, 0, sizeof(*v)); return; }
     int hsb_present = (dev->width >= 120) ? PAINT_SB_W : 0;
     v->view_x = 0;
     v->view_y = PAINT_MENU_H;

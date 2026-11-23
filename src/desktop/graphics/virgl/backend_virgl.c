@@ -369,7 +369,7 @@ static void virgl_uart_dec(int v) {
     if (v == 0) { uart_puts_raw("0"); return; }
     if (v < 0) { uart_puts_raw("-"); v = -v; }
     while (v > 0 && i >= 0) { buf[i--] = (char)('0' + v % 10); v /= 10; }
-    uart_puts_raw(buf + i + 1);
+    uart_puts_raw(buf + (i + 1));
 }
 
 /* ── Display List Helpers ─────────────────────────────────────────── */

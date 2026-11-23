@@ -249,7 +249,7 @@ static int val_cmp(const Value *a, const Value *b) {
 /* ── Variable table (shared with the public C API) ──────────────────── */
 
 static MsVar *var_find(const char *name) {
-    for (int i = 0; i < g_ms.var_count && i < MS_LOOP_BOUND; i++)
+    for (int i = 0; i < g_ms.var_count && i < MS_MAX_VARS; i++)
         if (name_eq(g_ms.vars[i].name, name)) return &g_ms.vars[i];
     return NULL;
 }
@@ -472,6 +472,7 @@ static Value ev_primary(Cx *c) {
         cx_ws(c);
         if (c->s[c->p] == '(') {
             Value args[MS_MAX_ARGS]; int n = 0;
+            memset(args, 0, sizeof(args));
             c->p++;
             cx_ws(c);
             if (c->s[c->p] != ')') {
@@ -725,7 +726,7 @@ static void register_procs(void) {
 }
 
 static MsProc *proc_find(const char *name) {
-    for (int i = 0; i < g_ms.nprocs && i < MS_LOOP_BOUND; i++)
+    for (int i = 0; i < g_ms.nprocs && i < MS_MAX_PROCS; i++)
         if (g_ms.procs[i].defined && name_eq(g_ms.procs[i].name, name)) return &g_ms.procs[i];
     return NULL;
 }
@@ -764,7 +765,7 @@ static MsFigure *fig_find(MsCard *c, const char *name) {
     int k = 0;
     while (is_ident_char((unsigned char)name[k]) && k < MS_NAME_LEN - 1) { nm[k] = (char)name[k]; k++; }
     nm[k] = '\0';
-    for (int i = 0; i < c->fig_count && i < MS_LOOP_BOUND; i++)
+    for (int i = 0; i < c->fig_count && i < MS_MAX_FIGS; i++)
         if (c->figures[i].name[0] && name_eq(c->figures[i].name, nm)) return &c->figures[i];
     return NULL;
 }
@@ -1061,7 +1062,7 @@ void ms_paint(WND *wnd, GDEV *dev) {
 
     if (g_ms.current_card >= 0 && g_ms.current_card < g_ms.card_count) {
         const MsCard *card = &g_ms.cards[g_ms.current_card];
-        for (int i = 0; i < card->fig_count && i < MS_LOOP_BOUND; i++) {
+        for (int i = 0; i < card->fig_count && i < MS_MAX_FIGS; i++) {
             const MsFigure *f = &card->figures[i];
             if (!f->visible) continue;
             RECT r = { (H)(stage.left + f->bounds.left), (H)(stage.top + f->bounds.top),
@@ -1093,7 +1094,7 @@ void ms_handle_click(H rel_x, H rel_y) {
     if (g_ms.current_card < 0 || g_ms.current_card >= g_ms.card_count) return;
     MsCard *card = &g_ms.cards[g_ms.current_card];
     const H sl = 8, st = 8;
-    for (int i = 0; i < card->fig_count && i < MS_LOOP_BOUND; i++) {
+    for (int i = 0; i < card->fig_count && i < MS_MAX_FIGS; i++) {
         MsFigure *f = &card->figures[i];
         if (f->type == FIG_BUTTON && f->visible) {
             RECT r = { (H)(sl + f->bounds.left), (H)(st + f->bounds.top),

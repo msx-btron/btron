@@ -434,8 +434,8 @@ uint32_t *pico_sched_switch(uint32_t *cur_psp)
 
 uint32_t pico_static_sram_used(void)
 {
-    uintptr_t data_sz = (uintptr_t)(__data_end__ - __data_start__);
-    uintptr_t bss_sz  = (uintptr_t)(__bss_end__ - __bss_start__);
+    uintptr_t data_sz = (uintptr_t)__data_end__ - (uintptr_t)__data_start__;
+    uintptr_t bss_sz  = (uintptr_t)__bss_end__ - (uintptr_t)__bss_start__;
     return (uint32_t)(data_sz + bss_sz);
 }
 

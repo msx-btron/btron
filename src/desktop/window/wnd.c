@@ -1447,7 +1447,7 @@ void wnd_cycle_focus(void) {
     while (curr->next) {
         curr = curr->next;
     }
-    if (curr && curr != g_wnd_head) {
+    if (curr != g_wnd_head) {
         curr->visible = TRUE;
         top_wnd(curr);
     }

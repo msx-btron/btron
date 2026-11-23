@@ -2,6 +2,14 @@
 // Synrc Research (c) 2022-2025
 // 5HT DHARMA License
 
+#if defined(__APPLE__)
+#ifndef _DARWIN_C_SOURCE
+#define _DARWIN_C_SOURCE
+#endif
+#elif !defined(_POSIX_C_SOURCE)
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <stdio.h>
 #include <string.h>
 #include <getopt.h>

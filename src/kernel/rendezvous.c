@@ -232,7 +232,7 @@ SYSCALL INT _tk_cal_por_u( ID porid, UINT calptn, void *msg, INT cmsgsz, TMO_U t
 	TCB	*tcb;
 	QUEUE	*queue;
 	RNO	rdvno;
-	INT	rmsgsz;
+	INT	rmsgsz = 0;
 	ER	ercd = E_OK;
 
 	CHECK_PORID(porid);

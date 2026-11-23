@@ -338,7 +338,7 @@ void clu_sc(const char *args, ShellOutputFn out, void *ud)
         strncpy(path_buf, p, sizeof(path_buf) - 1);
         path_buf[sizeof(path_buf) - 1] = '\0';
     } else {
-        strcpy(path_buf, g_cwd_path[0] ? g_cwd_path : "/SYS");
+        snprintf(path_buf, sizeof(path_buf), "%s", g_cwd_path[0] ? g_cwd_path : "/SYS");
     }
 
     out("Sokhatsky Commander (sc) — Dual-Pane File Manager", COLOR_CYAN, ud);

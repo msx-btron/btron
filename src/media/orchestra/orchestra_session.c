@@ -240,14 +240,13 @@ static int playing(void)
 }
 static int path_field(const uint8_t *p)
 {
-    const char *lit = ORCH_PATH_ORCH;
-    int i, n = 0;
+    int i;
+    size_t n = sizeof(ORCH_PATH_ORCH) - 1u;
     orch_check(p != 0, __LINE__);
-    while (lit[n] != 0 && n < 90) n++;
     orch_check(n > 0 && n < 90, __LINE__);
-    for (i = 0; i < 96; i++) {
-        uint8_t want = (i <= n) ? (uint8_t)lit[i] : 0;
-        if (p[i] != want) return 0;
+    if (memcmp(p, ORCH_PATH_ORCH, n) != 0) return 0;
+    for (i = (int)n; i < 96; i++) {
+        if (p[i] != 0) return 0;
     }
     return 1;
 }
@@ -689,7 +688,11 @@ static void pack_view(uint8_t *b)
     b[29] = v->damping;
     b[30] = v->feedback;
     b[31] = v->wet;
-    for (i = 0; lit[i] != 0 && i < 95; i++) b[32 + i] = (uint8_t)lit[i];
+    {
+        size_t lit_n = strlen(lit);
+        if (lit_n > 95) lit_n = 95;
+        memcpy(b + 32, lit, lit_n);
+    }
     for (i = 0; i < (int)v->track_count && i < 64; i++) {
         pack_track(b + OFF_TRK + i * TRK_N, &v->trk[i]);
     }
@@ -723,14 +726,13 @@ int orch_session_save_buf(uint8_t *buf, uint32_t cap)
 /* Hosted desktop: "/SYS/x" is also "SYS/x" beside the binary. Runtime only. */
 static void copy_path(char *dst, const char *src)
 {
-    uint32_t i = 0;
+    size_t n;
     orch_check(dst != 0, __LINE__);
     orch_check(src != 0, __LINE__);
-    for (i = 0; i + 1u < ORCH_PATH_N; i++) {
-        dst[i] = src[i];
-        if (src[i] == 0) return;
-    }
-    dst[ORCH_PATH_N - 1u] = 0;
+    n = strlen(src);
+    if (n >= ORCH_PATH_N) n = ORCH_PATH_N - 1u;
+    memcpy(dst, src, n);
+    dst[n] = 0;
 }
 static int path_stat(const char *p, struct stat *st)
 {
@@ -805,8 +807,8 @@ int orch_cmd_open_at(int idx)
     char dst[ORCH_PATH_N];
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return 0;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     lit = open_lit(idx);
     if (!lit) return refuse_session();
     if (!pick_host(dst, lit)) return refuse_session();
@@ -816,8 +818,8 @@ int orch_cmd_open(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return 0;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     return orch_cmd_open_at(0);
 }
 int orch_cmd_save(void)
@@ -1091,8 +1093,9 @@ int orch_cmd_new(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
+    if (!v) return 0;
     orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
-    if (!v || v->state == ORCH_GST_NULL) return 0;
+    if (v->state == ORCH_GST_NULL) return 0;
     if (v->state != ORCH_GST_PAUSED) {
         if (!gst_rt_set_state(ORCH_GST_PAUSED)) return 0;
     }
@@ -1149,8 +1152,8 @@ int orch_cmd_click(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    orch_check(v->click <= 1u, __LINE__);
     if (!v) return 0;
+    orch_check(v->click <= 1u, __LINE__);
     gst_seq_begin();
     v->click = (uint8_t)(v->click ? 0 : 1);
     gst_seq_end();
@@ -1161,8 +1164,8 @@ static OrchTrack *sel_track(void)
     OrchView *v = gst_view();
     int s;
     orch_check(v != 0, __LINE__);
-    orch_check(v->track_count <= 64u, __LINE__);
     if (!v) return 0;
+    orch_check(v->track_count <= 64u, __LINE__);
     s = (int)v->selected;
     if (s < 0 || s >= (int)v->track_count) return 0;
     return &v->trk[s];
@@ -1181,8 +1184,8 @@ int orch_cmd_add_track(void)
     OrchTrack *t;
     int n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->track_count <= 64u, __LINE__);
     if (!v) return 0;
+    orch_check(v->track_count <= 64u, __LINE__);
     n = (int)v->track_count;
     if (n >= 64) return refuse_track();
     gst_seq_begin();
@@ -1226,8 +1229,8 @@ int orch_cmd_del_track(void)
     OrchView *v = gst_view();
     int idx, n, i;
     orch_check(v != 0, __LINE__);
-    orch_check(v->track_count <= 64u, __LINE__);
     if (!v) return 0;
+    orch_check(v->track_count <= 64u, __LINE__);
     if (v->state == ORCH_GST_PLAYING) return refuse_track();
     n = (int)v->track_count;
     idx = (int)v->selected;
@@ -1302,8 +1305,8 @@ int orch_cmd_octave(void)
     OrchView *v = gst_view();
     int i, n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->track_count <= 64u, __LINE__);
     if (!v) return 0;
+    orch_check(v->track_count <= 64u, __LINE__);
     n = (int)v->track_count;
     gst_seq_begin();
     for (i = 0; i < n && i < 64; i++) {
@@ -1320,8 +1323,8 @@ int orch_cmd_send_programs(void)
     OrchView *v = gst_view();
     int idx;
     orch_check(v != 0, __LINE__);
-    orch_check(v->scene_count <= 16u, __LINE__);
     if (!v) return 0;
+    orch_check(v->scene_count <= 16u, __LINE__);
     idx = (int)v->active_scene;
     if (idx < 0 || idx > 15) return 0;
     gst_seq_begin();
@@ -1340,7 +1343,6 @@ static void undo_push(int kind, int track, int index, const void *before, int n,
 {
     UndoSlot *u;
     const uint8_t *src;
-    int c;
     orch_check(kind >= ORCH_UNDO_EVENT && kind <= ORCH_UNDO_INSERT, __LINE__);
     orch_check(n >= 0 && n <= 48, __LINE__);
     u = &s_undo[s_undo_at];
@@ -1351,8 +1353,9 @@ static void undo_push(int kind, int track, int index, const void *before, int n,
     u->n = (uint8_t)n;
     u->mode = (uint8_t)mode;
     src = (const uint8_t *)before;
-    if (src) {
-        for (c = 0; c < n && c < 48; c++) u->before[c] = src[c];
+    if (src && n > 0) {
+        int lim = (n < 48) ? n : 48;
+        memcpy(u->before, src, (size_t)lim);
     }
     s_undo_at = (uint8_t)((s_undo_at + 1u) % UNDO_CAP);
     if (s_undo_len < UNDO_CAP) s_undo_len++;
@@ -1677,8 +1680,8 @@ int orch_master_cycle(void)
     OrchView *v = gst_view();
     uint8_t nxt;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return 0;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (v->master_lim != ORCH_INS_BYPASS && v->master_lim != ORCH_INS_LIMITER) {
         orch_count_sat(&v->refuse_insert);
         orch_status_hold("insert");
@@ -1797,8 +1800,8 @@ int orch_cmd_stop(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return 0;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (v->state == ORCH_GST_PLAYING) return gst_rt_set_state(ORCH_GST_PAUSED);
     gst_rt_return_zero();
     return 1;
@@ -1822,8 +1825,8 @@ void orch_build_curve(void)
     OrchView *v = gst_view();
     int i, k = 25;
     orch_check(v != 0, __LINE__);
-    orch_check(v->track_count <= 64u, __LINE__);
     if (!v) return;
+    orch_check(v->track_count <= 64u, __LINE__);
     for (i = 0; i < 64 && i < (int)v->track_count; i++) {
         if (v->trk[i].ins0 == ORCH_INS_SAT) k = (int)v->trk[i].p0[0];
         if (v->trk[i].ins1 == ORCH_INS_SAT) k = (int)v->trk[i].p1[0];

@@ -1436,11 +1436,12 @@ void segui_paint_segment(SEGUI_APP *app, GDEV *dev, SEG_ID id)
 
 void segui_paint_body(SEGUI_APP *app, GDEV *dev)
 {
-    const SEGUI_THEME *th = theme_of(app);
+    const SEGUI_THEME *th;
     SEGUI_TAB *t;
     int i, row_h;
 
     if (!app || !dev || app->n_tab <= 0) return;
+    th = theme_of(app);
     t = &app->tabs[app->active_tab];
     row_h = segui_row_h(app);
 

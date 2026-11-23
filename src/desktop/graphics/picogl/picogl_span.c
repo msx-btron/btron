@@ -1671,7 +1671,6 @@ void picogl_paint_band_split(const picogl_tri_t *tris, int ntri,
     px_bind(&near, be, iz, stride, band_h, ox, oy, vw, vh,
             s_cov, &s_spans, cover_on);
     kicked = 0;
-    use_far = 0;
     /* A late core 1 still owns s_far_job. Do not rewrite it. */
     if (!s_far_go) {
         s_far_job.spans = 0;

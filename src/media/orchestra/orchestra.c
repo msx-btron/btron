@@ -1,4 +1,5 @@
 #include "orchestra_desk.h"
+#include <string.h>
 #include <media/orch_chk.h>
 #include <btron/app_menu.h>
 #include <btron/event.h>
@@ -188,8 +189,9 @@ uint32_t orch_now_tick(const OrchView *v)
     uint32_t fs;
     uint8_t den;
     orch_check(v != 0, __LINE__);
+    if (!v) return 0;
     orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
-    if (!v || v->num > 12u) return 0;
+    if (v->num > 12u) return 0;
     fs = v->sample_rate;
     if (fs != 44100u && fs != 48000u) fs = 48000u;
     den = v->den;
@@ -201,8 +203,9 @@ uint32_t orch_snap_tick(const OrchView *v, uint32_t tick)
 {
     uint32_t q;
     orch_check(v != 0, __LINE__);
+    if (!v) return tick;
     orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
-    if (!v || v->snap > ORCH_SNAP_16TH) return tick;
+    if (v->snap > ORCH_SNAP_16TH) return tick;
     q = orch_q(v, (int)v->snap);
     if (q == 0u) return tick;
     return gst_snap_down(tick, q);
@@ -258,8 +261,8 @@ void orch_desk_snap_cycle(void)
     OrchView *v = gst_view();
     int n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     n = (int)v->snap + 1;
     if (n > ORCH_SNAP_16TH) n = ORCH_SNAP_BAR;
     gst_seq_begin();
@@ -272,8 +275,8 @@ void orch_desk_rec_flip(void)
     OrchView *v = gst_view();
     uint8_t n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     n = v->rec ? 0 : 1;
     gst_seq_begin();
     v->rec = n;
@@ -286,10 +289,12 @@ static int add_s(char *d, int n, int cap, const char *s)
     orch_check(d != 0, __LINE__);
     orch_check(cap > 1 && cap <= 96, __LINE__);
     if (!d || !s || n < 0 || n >= cap) return n;
-    while (s[i] && n < cap - 1 && i < 48) {
-        d[n] = s[i];
-        n++;
-        i++;
+    {
+        size_t slen = strlen(s);
+        if (slen > 48u) slen = 48u;
+        for (i = 0; (size_t)i < slen && n < cap - 1; i++) {
+            d[n++] = s[i];
+        }
     }
     d[n] = 0;
     return n;
@@ -312,8 +317,9 @@ void orch_publish_idle(void)
     static const char *ST[4] = { "NULL", "READY", "PAUSED", "PLAYING" };
     const char *st;
     orch_check(v != 0, __LINE__);
+    if (!v) return;
     orch_check(v->status_hold == 0 || v->status_hold == 1, __LINE__);
-    if (!v || v->status_hold) return;
+    if (v->status_hold) return;
     st = (v->state <= ORCH_GST_PLAYING) ? ST[v->state] : ST[0];
     n = add_u(b, n, 96, v->sample_rate);
     n = add_s(b, n, 96, " Hz | q ");
@@ -360,8 +366,8 @@ static uint32_t span_tick(const OrchView *v)
     uint32_t i;
     uint32_t end;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return 0;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     n = v->event_count;
     end = 0;
     if (n > ORCH_MAX_EVENTS) n = ORCH_MAX_EVENTS;
@@ -383,8 +389,8 @@ void orchestra_ui_tick(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (v->sample_rate != 44100u && v->sample_rate != 48000u) return;
     orch_build_curve();
     gst_seq_begin();
@@ -403,8 +409,9 @@ void orch_boot_desk(void)
     int st;
     v = gst_view();
     orch_check(v != 0, __LINE__);
+    if (!v) return;
     orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
-    if (!v || !gst_rt_boot(48000u)) return;
+    if (!gst_rt_boot(48000u)) return;
     v = gst_view();
     if (!v) return;
     st = (int)v->state;
@@ -417,8 +424,8 @@ void orch_shutdown_desk(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     (void)gst_rt_set_state(ORCH_GST_NULL);
 }
 
@@ -448,8 +455,8 @@ void orch_cmd_tc_cycle(void)
     uint8_t n;
     uint8_t c;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     c = v->tc_format;
     if (c == 24u) n = 25u;
     else if (c == 25u) n = 29u;
@@ -470,8 +477,8 @@ void orch_cmd_master_clock(void)
     char b[32];
     int n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     ns = gst_rt_running_ns();
     sec = (unsigned)(ns / 1000000000ull);
     ms = (unsigned)((ns / 1000000ull) % 1000ull);
@@ -493,8 +500,8 @@ void orch_cmd_buffer_text(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     orch_status_set("Q 32 | host 1024");
 }
 
@@ -504,8 +511,8 @@ void orch_cmd_dsp_text(void)
     char b[40];
     int n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     orch_copy(b, 40, "wcet ");
     n = 5 + orch_fmt_u(b + 5, 12, gst_rt_wcet_us());
     if (n > 5 && n < 24) {
@@ -524,8 +531,8 @@ void orch_cmd_diag_text(void)
     char b[40];
     int n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     orch_copy(b, 40, "elem ");
     n = 5 + orch_fmt_u(b + 5, 8, (unsigned)gst_rt_element_count());
     if (n > 5 && n < 20 && v->state <= ORCH_GST_PLAYING) {
@@ -544,8 +551,8 @@ void orch_cmd_port_text(void)
     char b[32];
     int n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     for (i = 0; i < 32; i++) {
         if (v->port[i].is_input && v->port[i].is_active) {
             found = i;
@@ -570,8 +577,8 @@ void orch_cmd_latency_text(void)
     char b[24];
     int n;
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     ms = gst_rt_queued_ms();
     gst_seq_begin();
     v->queued_ms = ms;
@@ -592,8 +599,8 @@ int orch_cmd_wav(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
-    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (!v) return 0;
+    orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     return gst_rt_export_wav(ORCH_PATH_WAV);
 }
 

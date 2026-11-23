@@ -3,6 +3,9 @@
  * Bare-Metal & QEMU Target Implementation (ARM / VirtIO MMIO)
  */
 
+#if !defined(_POSIX_C_SOURCE) && !defined(__APPLE__)
+#define _POSIX_C_SOURCE 200809L
+#endif
 #include <btron/itron.h>
 #include <drivers/virtio/virtio.h>
 #include <stdio.h>

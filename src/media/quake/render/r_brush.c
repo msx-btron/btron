@@ -205,7 +205,7 @@ void R_DrawWorld(void) {
         float light = R_LightForFace(face, g_num_dlights > 0 ? face_center : NULL);
 
         if (R_EEGS_Live()) {
-            float xyz[32 * 3], stuv[32 * 2], rgb[3];
+            float xyz[32 * 3] = {0}, stuv[32 * 2] = {0}, rgb[3];
             int nv = 0;
             uint32_t rgba;
             get_surface_color(texname, sc, plane, light, rgb);
@@ -315,7 +315,7 @@ void R_DrawBModel(int model_idx, const float *origin, const float *angles) {
             const texinfo_t *ti = NULL;
             const char *texname = "";
             int tex_w = 64, tex_h = 64, gl_idx = -1, nv = 0, mip;
-            float xyz[32 * 3], stuv[32 * 2], rgb[3], light;
+            float xyz[32 * 3] = {0}, stuv[32 * 2] = {0}, rgb[3], light;
             uint32_t rgba;
             surf_class_t sc;
             if (fi < 0 || fi >= g_world.numfaces) continue;

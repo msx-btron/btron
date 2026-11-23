@@ -530,6 +530,7 @@ SYSCALL ER _tk_ref_tsk( ID tskid, T_RTSK *pk_rtsk )
 	ER	ercd;
 
 	ercd = _tk_ref_tsk_u(tskid, &lrtsk);
+	if ( ercd < E_OK ) return ercd;
 
 	pk_rtsk->exinf	   = lrtsk.exinf;
 	pk_rtsk->tskpri	   = lrtsk.tskpri;
@@ -600,6 +601,7 @@ SYSCALL ER _tk_inf_tsk( ID tskid, T_ITSK *pk_itsk, BOOL clr )
 	ER	ercd;
 
 	ercd = _tk_inf_tsk_u(tskid, &litsk, clr);
+	if ( ercd < E_OK ) return ercd;
 
 	pk_itsk->stime = to_msec(litsk.stime_u);
 	pk_itsk->utime = to_msec(litsk.utime_u);
@@ -847,6 +849,7 @@ SYSCALL ER _td_ref_tsk( ID tskid, TD_RTSK *pk_rtsk )
 	ER		ercd;
 
 	ercd = _td_ref_tsk_u(tskid, &lrtsk);
+	if ( ercd < E_OK ) return ercd;
 
 	pk_rtsk->exinf	   = lrtsk.exinf;
 	pk_rtsk->tskpri	   = lrtsk.tskpri;
@@ -928,6 +931,7 @@ SYSCALL ER _td_inf_tsk( ID tskid, TD_ITSK *pk_itsk, BOOL clr )
 	ER		ercd;
 
 	ercd = _td_inf_tsk_u(tskid, &litsk, clr);
+	if ( ercd < E_OK ) return ercd;
 
 	pk_itsk->stime = to_msec(litsk.stime_u);
 	pk_itsk->utime = to_msec(litsk.utime_u);

@@ -78,6 +78,7 @@ extern int      g_mouse_step_mult;
 extern int      g_mouse_swap_select_adjust;
 
 /* External driver and hardware entry points */
+#undef uart_puts
 extern void uart_init(void);
 extern void uart_putc(char c);
 extern void uart_puts(const char *s);

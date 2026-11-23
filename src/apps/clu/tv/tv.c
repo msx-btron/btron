@@ -250,7 +250,7 @@ static int tv_count_remaining_visual_rows(int from_line, int from_sub)
     int count = 0;
     int limit = term_rows;
     for (int l = from_line; l < (int)g_line_count && count <= limit; l++) {
-        TvSubline subs[64];
+        TvSubline subs[64] = {0};
         int nsubs = tv_get_line_sublines((size_t)l, term_cols, g_wrap_mode, subs, 64);
         int start = (l == from_line) ? from_sub : 0;
         if (start < nsubs) {
@@ -269,7 +269,7 @@ static void tv_scroll_down(int count)
         if (tv_count_remaining_visual_rows(g_scroll_y, g_scroll_sub) <= text_rows) {
             break;
         }
-        TvSubline subs[64];
+        TvSubline subs[64] = {0};
         int nsubs = tv_get_line_sublines((size_t)g_scroll_y, term_cols, g_wrap_mode, subs, 64);
         if (g_scroll_sub + 1 < nsubs) {
             g_scroll_sub++;
@@ -292,7 +292,7 @@ static void tv_scroll_up(int count)
             g_scroll_sub--;
         } else if (g_scroll_y > 0) {
             g_scroll_y--;
-            TvSubline subs[64];
+            TvSubline subs[64] = {0};
             int nsubs = tv_get_line_sublines((size_t)g_scroll_y, term_cols, g_wrap_mode, subs, 64);
             g_scroll_sub = (nsubs > 0) ? (nsubs - 1) : 0;
         } else {
@@ -383,7 +383,7 @@ static void tv_draw_text(void)
         scr_fill(screen_r, 0, term_cols, ' ', STYLE_TEXT);
 
         if (line_idx < g_line_count) {
-            TvSubline subs[64];
+            TvSubline subs[64] = {0};
             int nsubs = tv_get_line_sublines(line_idx, term_cols, g_wrap_mode, subs, 64);
             if (sub_idx < nsubs) {
                 TvLine *l = &g_lines[line_idx];
@@ -466,7 +466,7 @@ static void tv_update_cursor(void)
         return;
     }
 
-    TvSubline subs[64];
+    TvSubline subs[64] = {0};
     int nsubs = tv_get_line_sublines(g_cur_line, term_cols, g_wrap_mode, subs, 64);
     int cur_sub = 0;
     for (int i = 0; i < nsubs; i++) {

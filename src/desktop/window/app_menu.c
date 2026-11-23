@@ -723,16 +723,21 @@ static uint8_t  s_about_gif_raw[ABOUT_ICON_MAX_PIXELS];
         if (b == EOF || b == 0x3B) break;
         if (b == 0x21) {
             int ext_label = fgetc(fp);
+            if (ext_label == EOF) break;
+            int ext_err = 0;
             if (ext_label == 0xF9) {
                 int block_size = fgetc(fp);
+                if (block_size == EOF) break;
                 if (block_size == 4) {
                     uint8_t gce[4];
-                    if (fread(gce, 1, 4, fp) == 4 && (gce[0] & 0x01)) trans_idx = gce[3];
+                    if (fread(gce, 1, 4, fp) != 4) break;
+                    if (gce[0] & 0x01) trans_idx = gce[3];
                 }
-                while (1) { int l = fgetc(fp); if (l <= 0) break; fseek(fp, l, SEEK_CUR); }
+                while (1) { int l = fgetc(fp); if (l == EOF) { ext_err = 1; break; } if (l <= 0) break; if (fseek(fp, l, SEEK_CUR) != 0) { ext_err = 1; break; } }
             } else {
-                while (1) { int l = fgetc(fp); if (l <= 0) break; fseek(fp, l, SEEK_CUR); }
+                while (1) { int l = fgetc(fp); if (l == EOF) { ext_err = 1; break; } if (l <= 0) break; if (fseek(fp, l, SEEK_CUR) != 0) { ext_err = 1; break; } }
             }
+            if (ext_err) break;
         } else if (b == 0x2C) {
             uint8_t idesc[9];
             if (fread(idesc, 1, 9, fp) != 9) break;

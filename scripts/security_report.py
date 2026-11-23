@@ -452,7 +452,7 @@ def collect_cppcheck(folder, includes, excludes, fast=False):
     if not tool_exists("cppcheck"):
         return []
 
-    cmd = ["cppcheck", "-j4", "--std=c99", "--enable=warning,portability", "--quiet"]
+    cmd = ["cppcheck", "-j4", "--std=c99", "-D__CPPCHECK__", "--enable=warning,portability", "--quiet"]
     cmd.extend(includes)
     for ex in excludes:
         cmd.extend(["-i", str(ROOT / ex)])
@@ -516,6 +516,10 @@ def collect_clang(folder_info):
         return []
 
     cmd = ["clang", "--analyze", "-std=c99", "-Wall", "-Wextra"]
+    if sys.platform == "darwin":
+        cmd.append("-D_DARWIN_C_SOURCE")
+    else:
+        cmd.extend(["-D_POSIX_C_SOURCE=200809L", "-D_XOPEN_SOURCE=700"])
     cmd.extend(folder_info.get("includes", []))
     cmd.extend(["-Xanalyzer", "-analyzer-output=text"])
     cmd.extend([str(f) for f in c_files])

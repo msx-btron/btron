@@ -522,8 +522,8 @@ static int matches(const struct itemplate *t, uint8_t *data,
     while ((c = *r++) != 0) {
         op1 = (c & 3) + ((opex & 1) << 2);
         op2 = ((c >> 3) & 3) + ((opex & 2) << 1);
-        opx = &ins->oprs[op1];
-        opy = &ins->oprs[op2];
+        opx = (op1 < (int)(sizeof(ins->oprs) / sizeof(ins->oprs[0]))) ? &ins->oprs[op1] : NULL;
+        opy = (op2 < (int)(sizeof(ins->oprs) / sizeof(ins->oprs[0]))) ? &ins->oprs[op2] : NULL;
         opex = 0;
 
         switch (c) {

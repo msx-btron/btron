@@ -134,7 +134,7 @@ static const char *shift_type(int type)
     if (arm_b_ && arm_cap_ > 0u) { \
         size_t arm_used_ = strlen(arm_b_); \
         if (arm_used_ < arm_cap_) \
-            snprintf(arm_b_ + arm_used_, arm_cap_ - arm_used_, __VA_ARGS__); \
+            snprintf(arm_b_ + arm_used_, arm_cap_ - arm_used_, __VA_ARGS__); /* flawfinder: ignore */ \
     } \
 } while (0)
 
