@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>1.4 Глобальні імена та реєстр системних об'єктів (Global Name Management)</title>
+  <link rel="stylesheet" href="../../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../../index.html">System</a></li>
+<li><a href="../../../../apps/index.html">Applications</a></li>
+<li><a href="../../../../devices/index.html">Devices</a></li>
+<li><a href="../../../index.html" class="active">Books</a></li>
+<li><a href="../../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="../../shared_data/data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="../../shared_data/fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="../../shared_data/index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="../../shared_data/indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="../../shared_data/tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="../../shared_data/tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="../../shared_data/tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="../../shared_data/tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="gname.html" class="nav-link active">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="../dp/basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="../dp/basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="../dp/character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="../dp/dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="../dp/figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="../dp/intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="../dp/pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../../index.html">B-Spec</a> / <span>1.4 Глобальні імена та реєстр системних об'єктів (Global Name Management)</span>
+      </div>
+      <h1 class="page-title">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Management)</h1>
+      <p class="page-lead">Підсистема управління глобальними іменами надає засоби для створення спільних системних даних, доступних будь-яким процесам системи за їхнім символьним ім'ям, а також для пошуку та зчитування цих даних за створеним ім'ям. Дані, зареєстровані у системі за допомогою ім'я, називаються глобальними іменами (Global Name Data).</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+<A href="../index.html">Повернутися до змісту цього розділу</A><BR>
+<A href="taskcomm.html">Попередня сторінка: 1.3 Синхронізація та комунікація задач (Повернутися)</A><BR>
+<A href="memory.html">Наступна сторінка: 1.5 Управління оперативною пам'яттю (Перейти)</A><BR>
+<HR>
+
+<H2><A name="aay">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Management)</A></H2>
+
+<H3><A name="aaz">1.4.1 Огляд підсистеми глобальних імен (Overview)</A></H3>
+
+
+<P>
+  Значенням, що реєструється у системі, є одне 32-бітне ціле число (<CODE>W</CODE>). Ім'я, яке зв'язується з цим значенням, складається максимум з 8 символів TRON Code (до 16 байтів). Зазвичай як ім'я використовуються осмислені текстові строки, проте обмежень немає — ім'ям може слугувати будь-яка послідовність байтів довжиною до 8 символів, що завершується символом <CODE>TNULL(0)</CODE>.
+</P>
+<P>
+  Після реєстрації глобальне ім'я та пов'язане з ним значення стають доступними для читання та модифікації з будь-якого процесу операційної системи.
+</P>
+<P>
+  Глобальні імена поділяються на 2 категорії за часом їхнього існування:
+  <OL>
+    <LI><B>Постійні імена</B>: Існують у системі незалежно від роботи процесу, що їх створив чи змінив. Такі імена залишаються в пам'яті ядра до їхнього явного видалення системним викликом <CODE>del_nam()</CODE>.
+    <LI><B>Тимчасові імена (<CODE>DELEXIT</CODE>)</B>: Автоматично видаляються ядром при завершенні процесу, який їх створив чи востаннє модифікував.
+  </OL>
+</P>
+<P>
+  Підсистема глобальних імен зазвичай використовується для публікації загальносистемних ресурсів та сервісів між неограниченим колом процесів, наприклад:
+</P>
+
+<UL>
+ <LI> PID системного сервера (Server Process ID)
+ <LI> ID семафора чи черги, що відповідають певному системному ресурсу
+ <LI> Глобальні конфігураційні параметри середовища
+</UL>
+
+<A name="aba">
+  <CENTER><IMG src="gif/grobal_name.gif" alt="Операції з глобальними іменами"></CENTER>
+</A>
+<CENTER>Мал. 5: Операції з глобальними іменами</CENTER>
+
+<H3><A name="abb">1.4.2 Визначення типів даних та констант (Data Types & Constants)</A></H3>
+
+<H4>□ Атрибути створення та зміни глобальних імен</H4>
+
+<PRE>
+#define N_CREATE    0x0000      /* Створення нового глобального імені (помилка якщо існує) */
+#define N_MODIFY    0x0001      /* Зміна існуючого глобального імені (помилка якщо не існує) */
+#define N_FORCE     0x0002      /* Примусове створення або перезапис значення імені */
+#define DELEXIT     0x8000      /* Автоматичне видалення імені при завершенні процесу */
+</PRE>
+
+<H3><A name="abc">1.4.3 Системні виклики підсистеми глобальних імен (Global Name Calls)</A></H3>
+
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">cre_nam</FONT></TD></TR>
+<TR><TD>&nbsp;</TD></TR>
+<TR><TD>Створення або зміна глобального імені (Create Global Name)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+WERR    cre_nam(TC* name, W data, W opt)
+</PRE>
+
+<H4>【Параметри】</H4>
+<PRE>
+TC* name    Вказівник на ім'я об'єкта (враховуються перші 8 символів / 16 байтів)
+W   data    32-бітне значення, що реєструється
+W   opt     Атрибути створення:
+            ( N_CREATE || N_MODIFY || N_FORCE ) | [ DELEXIT ]
+</PRE>
+
+ <DT><CODE>N_CREATE</CODE> :
+ <DD><P>
+     Створює нове глобальне ім'я лише у випадку, якщо воно ще не існує в системному реєстрі. Якщо ім'я з таким назвою вже зареєстровано, повертається помилка <CODE>ER_EXS</CODE>.
+     </P>
+ <DT><CODE>N_MODIFY</CODE> :
+ <DD><P>
+     Модифікує 32-бітне значення існуючого глобального імені. Якщо ім'я не знайдене в реєстрі, повертається помилка <CODE>ER_NOEXS</CODE>.
+     </P>
+ <DT><CODE>N_FORCE</CODE> :
+ <DD><P>
+     Примусово реєструє ім'я: якщо воно відсутнє, створюється новий запис, а якщо існує — його значення перезаписується новим значенням data.
+     </P>
+ <DT><CODE>DELEXIT</CODE> :
+ <DD><P>
+     Реєструє прапор автоматичного видалення імені при завершенні процесу-создателя або процесу, який востаннє викликав модифікацію з цим прапорцем.
+     </P>
+
+
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0      Успішне виконання
+< 0      Помилка (Код помилки)
+</PRE>
+
+<H4>【Детальний опис】</H4>
+<P>
+  Створює новий запис глобального імені name у реєстрі ядра або змінює значення data для існуючого імені відповідно до вказаного режиму opt.
+</P>
+
+<H4>【Коди помилок】</H4>
+<PRE>
+
+ER_ADR     : Неприпустима адреса вказівника у віртуальній пам'яті.
+ER_EXS     : Вказаний об'єкт, файл або ім'я вже існує у системі.
+ER_NOEXS   : Вказаний об'єкт, файл або ім'я відсутнє у системі.
+ER_NOSPC   : Недостатньо оперативної пам'яті ядра для виконання операції.
+ER_PAR     : Неприпустиме значення одного з параметрів системного виклику.
+
+</PRE>
+
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">del_nam</FONT></TD></TR>
+<TR><TD>&nbsp;</TD></TR>
+<TR><TD>Видалення глобального імені (Delete Global Name)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR     del_nam(TC* name)
+</PRE>
+
+<H4>【Параметри】</H4>
+<PRE>
+TC* name    Вказівник на ім'я об'єкта (перші 8 символів / 16 байтів)
+</PRE>
+
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0      Успішне виконання
+< 0      Помилка (Код помилки)
+</PRE>
+
+<H4>【Детальний опис】</H4>
+<P>
+  Видаляє запис вказаного глобального імені name з реєстру об'єктів ядра та звільняє виділені під нього ресурси пам'яті.
+</P>
+
+<H4>【Коди помилок】</H4>
+<PRE>
+
+ER_ADR     : Неприпустима адреса вказівника у віртуальній пам'яті.
+ER_NOEXS   : Вказаний об'єкт, файл або ім'я відсутнє у системі.
+ER_PAR     : Неприпустиме значення одного з параметрів системного виклику.
+
+</PRE>
+
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">get_nam</FONT></TD></TR>
+<TR><TD>&nbsp;</TD></TR>
+<TR><TD>Зчитання значення глобального імені (Get Global Name)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR     get_nam(TC* name, W* data)
+</PRE>
+
+<H4>【Параметри】</H4>
+<PRE>
+TC* name    Вказівник на шукане глобальне ім'я
+W*  data    Вказівник на змінну для збереження зчитаного 32-бітного значення
+</PRE>
+
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0      Успішне виконання (значення записано в *data)
+< 0      Помилка (Код помилки)
+</PRE>
+
+<H4>【Детальний опис】</H4>
+<P>
+  Знаходить у системному реєстрі запис глобального імені name та записує зв'язане з ним 32-бітне системне значення за адресою data.
+</P>
+
+<H4>【Коди помилок】</H4>
+<PRE>
+
+ER_ADR     : Неприпустима адреса вказівника у віртуальній пам'яті.
+ER_NOEXS   : Вказаний об'єкт, файл або ім'я відсутнє у системі.
+ER_PAR     : Неприпустиме значення одного з параметрів системного виклику.
+
+</PRE>
+
+<HR>
+<A href="../index.html">Повернутися до змісту цього розділу</A><BR>
+<A href="taskcomm.html">Попередня сторінка: 1.3 Синхронізація та комунікація задач (Повернутися)</A><BR>
+<A href="memory.html">Наступна сторінка: 1.5 Управління оперативною пам'яттю (Перейти)</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

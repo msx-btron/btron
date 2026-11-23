@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raspberry Pi 500 | B-System</title>
+  <meta name="description" content="Pi 5 class machine, BCM2712.">
+  <link rel="stylesheet" href="../../index.css">
+  <link rel="stylesheet" href="../../ricepaper.css">
+</head>
+<body>
+  <nav class="sticky" aria-label="Site navigation">
+  <div class="nav-container">
+    <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+      <span class="hamburger"></span>
+    </button>
+    <ul class="nav-links">
+<li><a href="../../index.html">System</a></li>
+<li><a href="../../apps/index.html">Applications</a></li>
+<li><a href="../../devices/index.html">Devices</a></li>
+<li><a href="../../doc/index.html">Books</a></li>
+<li><a href="../index.html" class="active">Downloads</a></li>
+</ul>
+  </div>
+</nav>
+  <header class="rice-hero">
+    <h1>Raspberry Pi 500</h1>
+    <div class="rice-rule"></div>
+    <p class="rice-lede">Pi 5 class machine, BCM2712.</p>
+  </header>
+  <main class="rice-main">
+    <p>The ARM64 port brings up a Pi 5 framebuffer through <code>btron_rpi5_mailbox_init</code> in <code>src/drivers/broadcom/boot_arm_stub.c</code>. This tree does not yet emit a separate Pi 500 card image. The Pi 400 image is the packaged Broadcom card: see <a href="../pi-400/index.html">Pi 400</a>.</p>
+  </main>
+</body>
+</html>

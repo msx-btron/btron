@@ -798,8 +798,8 @@ posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol btron_disk.img
 	@echo " Startup File: $(POSIX_STARTUP)"
 	@echo " Run './btron' or 'make run-posix' to start."
 	@echo "=========================================================="
-	@if [ -n "$(PYTHON)" ] || command -v elixir >/dev/null 2>&1; then $(MAKE) tad_bin; \
-	  else echo "Note: tad_bin skipped (no python3 or elixir found) - desktop still runs."; fi
+	@if [ -n "$(PYTHON)" ]; then $(MAKE) tad_bin; \
+	  else echo "Note: tad_bin skipped (no python3 found) - desktop still runs."; fi
 
 %.posix.o: %.c
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DBTRON_TARGET=0 -MMD -MP -c $< -o $@
@@ -3147,24 +3147,21 @@ $(TEST_HMI_BIN): $(TEST_HMI_OBJS)
 	$(CC) $(TEST_HMI_OBJS) -o $@ $(LDFLAGS) -lm
 
 # ═══════════════════════════════════════════════════════════════════
-# TAD Unified Packing Pipeline — Python primary, Elixir fallback
+# TAD packing — one HTML profile, scripts/tool_book2tad.py
+# Sources: doc/specs, doc/cores, doc/media.
+# Output names stay tad_bin/b-spec, tad_bin/b-book, tad_bin/b-media.
 # ═══════════════════════════════════════════════════════════════════
 PYTHON ?= $(shell for py in python3 python3.14 python3.13 python3.12 python3.11 python3.10; do if command -v $$py >/dev/null 2>&1; then echo "$$py"; break; fi; done)
 
-TAD_HTML2TAD := $(shell \
-  if [ -n "$(PYTHON)" ]; then echo "$(PYTHON) scripts/tool_html2tad.py"; \
-  elif command -v elixir >/dev/null 2>&1; then echo "elixir scripts/html2tad.exs"; fi)
 TAD_BOOK2TAD := $(shell \
-  if [ -n "$(PYTHON)" ]; then echo "$(PYTHON) scripts/tool_book2tad.py"; \
-  elif command -v elixir >/dev/null 2>&1; then echo "elixir scripts/book2tad.exs"; fi)
+  if [ -n "$(PYTHON)" ]; then echo "$(PYTHON) scripts/tool_book2tad.py"; fi)
 
 tad_bin:
-	@if [ -z "$(TAD_HTML2TAD)" ]; then \
-	  echo "Note: neither python3 nor elixir found - tad_bin skipped (desktop still runs)."; \
-	else $(TAD_HTML2TAD); $(TAD_BOOK2TAD); fi
+	@if [ -z "$(TAD_BOOK2TAD)" ]; then \
+	  echo "Note: python3 not found - tad_bin skipped (desktop still runs)."; \
+	else $(TAD_BOOK2TAD); fi
 
 html2tad:
-	@$(TAD_HTML2TAD) --test
 	@$(TAD_BOOK2TAD) --test
 
 book2tad:
@@ -4292,8 +4289,8 @@ segui-screens: $(CAPTURE_SEGUI_BIN)
 		/tmp/segui_raw_screens/picocalc_xmb_walk.raw
 	@./$(CAPTURE_SEGUI_BIN)
 	@python3 scripts/screen_update_segui.py
-	@rm -f b-system/img/segui/picocalc_launcher_xmb.png \
-		b-system/img/segui/picocalc_xmb_walk.png
+	@rm -f img/segui/picocalc_launcher_xmb.png \
+		img/segui/picocalc_xmb_walk.png
 
 # ===================================================================
 # Quake Automated Screenshot Pipeline — 21:9 (672×288) ARGB frames

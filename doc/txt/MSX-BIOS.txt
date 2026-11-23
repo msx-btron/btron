@@ -227,7 +227,7 @@ In [src/emulators/msx/msx_app.c](file:///Users/tonpa/depot/bitedits/btron/src/em
 | **5 — R800 turbo R & HD64180 CPU Support** | turbo R `chkram_tr`, `CHGCPU/GETCPU`, `PCMPLY/PCMREC`, R800 wait-state & opcode audit; HD64180 active 20-bit MMU translation (`CBR/BBR/CBAR`) and HC-90/95 T-BIOS profile | All turbo R titles (`AUREL_VAULT.rom`, `btron8.rom`, `BULLRUSH.ROM`, `NEON_REVENANT`, `NIGHT_RAVEN`) and `test_hd64180` pass 100 % under T-BIOS |
 | **6 — Full MegaROM Suite** | Add SCC+, ASCII8/16 SRAM, Game Master 2 SRAM, R-Type, Zemina, Cross Blaim, NEO8/16, Manbow2 mappers + hash/header detection + up to 4 MiB Mapper RAM | Dedicated MegaROM unit test suite passes for every mapper type; 100 % of `./assets/msx/*.rom` pass |
 | **7 — T-DOS & Disk BIOS** | Build `tdos_disk.rom`: `DSKIO/DSKCHG/GETDPB`, TC8566AF/WD2793 FDC & virtual sector driver, Page-0 RAM environment, FAT12/16, DOS 1 FCB (`$00–$30`), DOS 2 handles/env/mapper (`$40–$6F`, `EXTBIO $0402`), `BSAVE`/`COM`/`BAT` loader, `TCOMMAND` shell | **100 % of `./assets/msx/*.dsk`** boot and run under T-BIOS + T-DOS; DOS 1/2 conformance suite passes ≥ 80 % of game API weighted calls |
-| **8 — Peripheral Extensions & Final Docs** | HD64180 on-chip DMAC/ASCI/CSIO, MSX-MIDI (`$E8–$EF` / turbo R MIDI), update `doc/txt/MSX.txt`, `b-system/apps/MSX.html`, `b-media/msx.html`, and `PROVENANCE.md` | `make test` 100 % green across all B-System suites; `btron-posix` linked and verified |
+| **8 — Peripheral Extensions & Final Docs** | HD64180 on-chip DMAC/ASCI/CSIO, MSX-MIDI (`$E8–$EF` / turbo R MIDI), update `doc/txt/MSX.txt`, `apps/MSX.html`, `doc/media/msx.html`, and `PROVENANCE.md` | `make test` 100 % green across all B-System suites; `btron-posix` linked and verified |
 
 ---
 

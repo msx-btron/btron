@@ -259,6 +259,20 @@
             white-space: nowrap;
         }
 
+        /* The shared header is a flex row. A nowrap title or mark would
+           stretch that row past a phone and clip the lede. */
+        @media (max-width: 860px) {
+            .hero-content {
+                min-width: 0;
+                width: 100%;
+                box-sizing: border-box;
+            }
+            .hero-content h1,
+            .hero-marks span {
+                white-space: normal;
+            }
+        }
+
         .hero-marks span::before {
             content: "·";
             margin-right: 0.6rem;
@@ -1345,15 +1359,12 @@
                 <span class="hamburger"></span>
             </button>
             <ul class="nav-links">
-                <li><a href="b-media/index.html" class="active">B-Media</a></li>
-                <li><a href="index.html">B-System</a></li>
-                <li><a href="b-book/index.html">B-Book</a></li>
-                <li><a href="conformance.html">B-Spec</a></li>
-                <li><a href="virtio.html">VirtIO</a></li>
-                <li><a href="mobile.html">SDK</a></li>
-                <li><a href="releases.html">Releases</a></li>
-                <li><a href="https://github.com/bitedits/btron">GitHub</a></li>
-            </ul>
+<li><a href="index.html" class="active">System</a></li>
+<li><a href="apps/index.html">Applications</a></li>
+<li><a href="devices/index.html">Devices</a></li>
+<li><a href="doc/index.html">Books</a></li>
+<li><a href="downloads/index.html">Downloads</a></li>
+</ul>
         </div>
     </nav>
 
@@ -1395,7 +1406,7 @@
                 </div>
                 <figure class="plate reveal">
                     <div class="field">
-                        <img src="b-system/img/screens/Desktop_Full.png" width="1280" height="800"
+                        <img src="img/screens/Desktop_Full.png" width="1280" height="800"
                             alt="B-System ワークベンチの初期起動デスクトップ、実機フレームバッファから自動抽出">
                     </div>
                     <figcaption>
@@ -1450,7 +1461,7 @@
                     <div class="cell">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/DriveSetup_Menu_Opened.png" width="750" height="548"
+                                <img src="img/screens/DriveSetup_Menu_Opened.png" width="750" height="548"
                                     alt="ボリューム (Volumes) — ディスクメニューと区画操作、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption><span>750 × 548 · RGBA</span></figcaption>
@@ -1467,13 +1478,13 @@
                             To mount is to open the computer’s first ear.
                             An operating system that cannot show its own storage has nothing to put media on.
                         </p>
-                        <a class="entry" href="b-system/apps/Volumes.html">区画とフォーマットの仕様 →</a>
+                        <a class="entry" href="apps/Volumes.html">区画とフォーマットの仕様 →</a>
                     </div>
 
                     <div class="cell">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/Cabinet_Menu_Opened.png" width="570" height="396"
+                                <img src="img/screens/Cabinet_Menu_Opened.png" width="570" height="396"
                                     alt="キャビネット (Cabinet) — 実身一覧とファイルメニュー、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption><span>570 × 396 · RGBA</span></figcaption>
@@ -1491,13 +1502,13 @@
                             To explore is to see the hypermedia graph itself as the directory.
                             An operating system that cannot show its own filing has nothing to explore.
                         </p>
-                        <a class="entry" href="b-system/apps/Cabinet.html">実身・仮身の探索 →</a>
+                        <a class="entry" href="apps/Cabinet.html">実身・仮身の探索 →</a>
                     </div>
 
                     <div class="cell">
                         <figure class="plate">
                         <div class="field">
-                                <img src="b-system/img/screens/Browser_Menu_Opened.png" width="730" height="536"
+                                <img src="img/screens/Browser_Menu_Opened.png" width="730" height="536"
                                     alt="ブラウザ (Browser) — TAD 文書の閲覧とファイルメニュー、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption><span>730 × 536 · RGBA</span></figcaption>
@@ -1515,7 +1526,7 @@
                             To read is to smell the semantics. The viewer that reads this site’s own
                             specification pages as native TAD records is the sense of smell before the media emerge.
                         </p>
-                        <a class="entry" href="b-system/apps/Browser.html">閲覧器の仕様 →</a>
+                        <a class="entry" href="apps/Browser.html">閲覧器の仕様 →</a>
                     </div>
 
                 </div>
@@ -1525,7 +1536,7 @@
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/Editor_Menu_Opened.png" width="770" height="516"
+                                <img src="img/screens/Editor_Menu_Opened.png" width="770" height="516"
                                     alt="文書編集 (Editor) — ファイルメニュー展開と本文、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -1536,21 +1547,21 @@
                         <div class="strip">
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/TEditor_Application.png" width="770" height="516"
+                                    <img src="img/screens/TEditor_Application.png" width="770" height="516"
                                         alt="T-Editor 基本文章編集の本文窓">
                                 </div>
                                 <figcaption>T-Editor</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Editor_Chokanji.png" width="770" height="516"
+                                    <img src="img/screens/Editor_Chokanji.png" width="770" height="516"
                                         alt="PMC Cho-Kanji 様式の窓枠で描いた同じ文書">
                                 </div>
                                 <figcaption>Cho-Kanji frame</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Editor_About.png" width="530" height="306"
+                                    <img src="img/screens/Editor_About.png" width="530" height="306"
                                         alt="バージョン情報ダイアログ、透過実身抽出">
                                 </div>
                                 <figcaption>About</figcaption>
@@ -1575,7 +1586,7 @@
                             It mixes TRON multilingual character codes, inline figure primitives and virtual-body embedded links inside a single document.
                             To write is to taste the document. An operating system that cannot show its own editor has nothing to write on.
                         </p>
-                        <a class="entry" href="b-system/apps/Editor.html">文書形式と編集操作 →</a>
+                        <a class="entry" href="apps/Editor.html">文書形式と編集操作 →</a>
                     </div>
                 </div>
 
@@ -1584,7 +1595,7 @@
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/Terminal_Menu_Opened.png" width="570" height="396"
+                                <img src="img/screens/Terminal_Menu_Opened.png" width="570" height="396"
                                     alt="端末 (Terminal) — GTerm のファイルメニュー展開とシェル対話、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -1595,21 +1606,21 @@
                         <div class="strip">
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Terminal_Application.png" width="570" height="396"
+                                    <img src="img/screens/Terminal_Application.png" width="570" height="396"
                                         alt="端末の実行窓">
                                 </div>
                                 <figcaption>Console</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Terminal_Settings.png" width="550" height="486"
+                                    <img src="img/screens/Terminal_Settings.png" width="550" height="486"
                                         alt="端末の設定窓、配色とパレット">
                                 </div>
                                 <figcaption>Settings</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Terminal_Chokanji.png" width="570" height="396"
+                                    <img src="img/screens/Terminal_Chokanji.png" width="570" height="396"
                                         alt="PMC Cho-Kanji 様式の窓枠で描いた端末窓">
                                 </div>
                                 <figcaption>Cho-Kanji frame</figcaption>
@@ -1636,7 +1647,7 @@
                             To launch is to touch the command with a finger.
                             An operating system that cannot show its own terminal has nothing to launch.
                         </p>
-                        <a class="entry" href="b-system/apps/Terminal.html">端末エミュレータの仕様 →</a>
+                        <a class="entry" href="apps/Terminal.html">端末エミュレータの仕様 →</a>
                     </div>
                 </div>
 
@@ -1645,7 +1656,7 @@
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/Preferences_Settings.png" width="910" height="656"
+                                <img src="img/screens/Preferences_Settings.png" width="910" height="656"
                                     alt="コンパイラ (Compiler) — IDE 統合窓、プロジェクト木とソース、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -1656,21 +1667,21 @@
                         <div class="strip">
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/TEditor_Application.png" width="770" height="516"
+                                    <img src="img/screens/TEditor_Application.png" width="770" height="516"
                                         alt="T-Editor をソース編集に用いた窓">
                                 </div>
                                 <figcaption>T-Editor source</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Terminal_Application.png" width="570" height="396"
+                                    <img src="img/screens/Terminal_Application.png" width="570" height="396"
                                         alt="端末をテストランナーとして回す窓">
                                 </div>
                                 <figcaption>Test runner</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Commander_BE_X64.png" width="1130" height="511"
+                                    <img src="img/screens/Commander_BE_X64.png" width="1130" height="511"
                                         alt="BE Binary Editor の逆アセンブルとメモリ表示">
                                 </div>
                                 <figcaption>BE debugger</figcaption>
@@ -1693,7 +1704,7 @@
                         <p class="en">
                             The secret sixth window is create (think). The Compiler Suite and IDE Editor are the thinking window that directly generates native C99 binary applications. Project structure reuses Cabinet functionality, showing the graph of real and virtual bodies as the project tree itself. File editing is simply T-Editor, applying the taste of document editing directly to source. The terminal becomes the test runner, repeating build and execution by touch. The BE Binary Editor provides debugger functionality, bridging disassembly and memory between seeing and touching. The browser becomes the documentation reader, smelling specifications and manuals. These five primordial windows bind together inside thinking and create native binaries as the computer’s sixth sense.
                         </p>
-                        <a class="entry" href="b-system/apps/Compiler.html">IDE とビルド体系 →</a>
+                        <a class="entry" href="apps/CLU.html">IDE とビルド体系 →</a>
                 </div>
                 </div>
             </div>
@@ -1727,7 +1738,7 @@
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/Commander_SC.png" width="1130" height="511"
+                                <img src="img/screens/Commander_SC.png" width="1130" height="511"
                                     alt="ファイル管理 (Commander) — Sokhatsky Commander の二面パネルと終了確認、端末窓の実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -1738,21 +1749,21 @@
                         <div class="strip">
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Commander_TV.png" width="1130" height="511"
+                                    <img src="img/screens/Commander_TV.png" width="1130" height="511"
                                         alt="Terminal Vision の検索ダイアログ">
                                 </div>
                                 <figcaption>tv — find</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Commander_BE.png" width="1130" height="511"
+                                    <img src="img/screens/Commander_BE.png" width="1130" height="511"
                                         alt="Binary Editor のアーキテクチャ選択ダイアログ">
                                 </div>
                                 <figcaption>be — architecture</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Commander_BE_X64.png" width="1130" height="511"
+                                    <img src="img/screens/Commander_BE_X64.png" width="1130" height="511"
                                         alt="Binary Editor の EM64T 逆アセンブル表示">
                                 </div>
                                 <figcaption>be — EM64T disasm</figcaption>
@@ -1780,7 +1791,7 @@
                             window, and in-window termios embedding is still declared unavailable by the command that
                             would start it.
                         </p>
-                        <a class="entry" href="b-system/apps/Commander.html">ファイル管理の仕様 →</a>
+                        <a class="entry" href="apps/Commander.html">ファイル管理の仕様 →</a>
                     </div>
                 </div>
 
@@ -1816,7 +1827,7 @@ recs   <b>RT_PROG</b> = 9   <b>OBJ_EXEC</b> 0x8000   /SYS/bin/*.elf</pre>
                             The rationale page puts the choice plainly: a general-purpose toolbox would have to flatten
                             the document model before it could list it.
                         </p>
-                        <a class="entry" href="b-system/apps/Commands.html">動詞の一覧と設計理由 →</a>
+                        <a class="entry" href="apps/Commands.html">動詞の一覧と設計理由 →</a>
                     </div>
                 </div>
 
@@ -1856,7 +1867,7 @@ recs   <b>RT_PROG</b> = 9   <b>OBJ_EXEC</b> 0x8000   /SYS/bin/*.elf</pre>
                         <p class="en">
                         <p> English text about ./src/chokanji/ applications.
                         </p>
-                        <a class="entry" href="b-system/apps/Commander.html">ファイル管理の仕様 →</a>
+                        <a class="entry" href="apps/Commander.html">ファイル管理の仕様 →</a>
                     </div>
 
                 </div>
@@ -1894,7 +1905,7 @@ Publishing System）、3DS（3D System）、NLE（Non-Linear Editor）。四つ�
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/Clarity_Menu_Opened.png" width="910" height="656"
+                                <img src="img/screens/Clarity_Menu_Opened.png" width="910" height="656"
                                     alt="電子帳票 (Clarity) — メニュー展開と本文、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -1920,7 +1931,7 @@ Publishing System）、3DS（3D System）、NLE（Non-Linear Editor）。四つ�
                             fourteen traditional Japanese formats and Tibetan pecha sit on the same engine. The purest
                             window, before form arises. From manuscript link to press-ready PDF in a single sequence.
                         </p>
-                        <a class="entry" href="b-system/apps/Clarity.html">機能仕様と内部構造 →</a>
+                        <a class="entry" href="apps/Clarity.html">機能仕様と内部構造 →</a>
                     </div>
                 </div>
 
@@ -1944,8 +1955,8 @@ Publishing System）、3DS（3D System）、NLE（Non-Linear Editor）。四つ�
                             contracts it will consume — B-Video for display path and playback, B-Media for per-plane
                             budgets — are already written.
                         </p>
-                        <a class="entry" href="b-media/video.html">B-Video の表示契約 →</a>
-                        <a class="entry" href="b-media/index.html">B-Media の床 →</a>
+                        <a class="entry" href="doc/media/video.html">B-Video の表示契約 →</a>
+                        <a class="entry" href="doc/media/index.html">B-Media の床 →</a>
                     </div>
                     <div class="announced-card">
                         <p class="role">12 — 3DS / 3D System</p>
@@ -1965,7 +1976,7 @@ Publishing System）、3DS（3D System）、NLE（Non-Linear Editor）。四つ�
                             not yet shipped; the floor already moves. B-GL holds TinyGL and VirtIO-GPU as production
                             backends, exercised daily by the demoscene and by MSX Geo3D.
                         </p>
-                        <a class="entry" href="b-media/gl.html">基盤 B-GL の仕様 →</a>
+                        <a class="entry" href="doc/media/gl.html">基盤 B-GL の仕様 →</a>
                     </div>
                 </div>
 
@@ -1974,7 +1985,7 @@ Publishing System）、3DS（3D System）、NLE（Non-Linear Editor）。四つ�
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/Orchestra_Application.png" width="790" height="556"
+                                <img src="img/screens/Orchestra_Application.png" width="790" height="556"
                                     alt="管弦楽 (Orchestra) — ステージ画面、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -1985,21 +1996,21 @@ Publishing System）、3DS（3D System）、NLE（Non-Linear Editor）。四つ�
                         <div class="strip">
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Orchestra_Mix.png" width="790" height="496"
+                                    <img src="img/screens/Orchestra_Mix.png" width="790" height="496"
                                         alt="管弦楽 ミキサー窗">
                                 </div>
                                 <figcaption>Mixer</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Orchestra_Piano.png" width="770" height="516"
+                                    <img src="img/screens/Orchestra_Piano.png" width="770" height="516"
                                         alt="管弦楽 ピアノロール窗">
                                 </div>
                                 <figcaption>Piano roll</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/Orchestra_Score.png" width="730" height="356"
+                                    <img src="img/screens/Orchestra_Score.png" width="730" height="356"
                                         alt="管弦楽 総譜窗">
                                 </div>
                                 <figcaption>Score</figcaption>
@@ -2024,7 +2035,7 @@ Publishing System）、3DS（3D System）、NLE（Non-Linear Editor）。四つ�
                             Latency is decided by the device queue, not by the number of windows. What is accomplished
                             dissolves without residue. Eight windows, twelve chapters of manual.
                         </p>
-                        <a class="entry" href="b-system/apps/Orchestra.html">ユーザーマニュアル →</a>
+                        <a class="entry" href="apps/Orchestra.html">ユーザーマニュアル →</a>
                     </div>
                 </div>
 
@@ -2060,7 +2071,7 @@ PlayStation 2 の実機そのものに起動する席です。メガドライブ
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/Demoscene_Application.png" width="730" height="576"
+                                <img src="img/screens/Demoscene_Application.png" width="730" height="576"
                                     alt="デモシーン・Game SDK (Lil Cu 64) — 実行画面、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -2085,9 +2096,9 @@ PlayStation 2 の実機そのものに起動する席です。メガドライブ
                             The SDK is where the two families meet: the hand-written synthesis procedures that Orchestra
                             budgets for the stage are the same palette a game calls.
                         </p>
-                        <a class="entry" href="b-system/apps/SDK.html">SDK の仕様 →</a>
-                        <a class="entry" href="b-media/sound.html">B-Sound 合成器 →</a>
-                        <a class="entry" href="b-media/gl.html">B-GL →</a>
+                        <a class="entry" href="apps/SDK.html">SDK の仕様 →</a>
+                        <a class="entry" href="doc/media/sound.html">B-Sound 合成器 →</a>
+                        <a class="entry" href="doc/media/gl.html">B-GL →</a>
                         <a class="entry" href="media.html">Chiptune Demo →</a>
                     </div>
                 </div>
@@ -2097,7 +2108,7 @@ PlayStation 2 の実機そのものに起動する席です。メガドライブ
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/img/screens/XMB_Application.png" width="970" height="622"
+                                <img src="img/screens/XMB_Application.png" width="970" height="622"
                                     alt="クロスメディアバー (XMB) — 二軸ナビの実行画面、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -2121,7 +2132,7 @@ PlayStation 2 の実機そのものに起動する席です。メガドライブ
                             The XMB is the desk seen from ten feet away: the same document model as the editor, reached
                             with a pad instead of a mouse.
                         </p>
-                        <a class="entry" href="b-system/apps/XMB.html">カテゴリ構造と操作体系 →</a>
+                        <a class="entry" href="apps/XMB.html">カテゴリ構造と操作体系 →</a>
                     </div>
                 </div>
 
@@ -2131,7 +2142,7 @@ PlayStation 2 の実機そのものに起動する席です。メガドライブ
                     <div class="plate-column">
                         <figure class="plate">
                             <div class="field">
-                                <img src="b-system/apps/img/Quake_Start.png" width="672" height="288"
+                                <img src="apps/img/Quake_Start.png" width="672" height="288"
                                     alt="Quake Light Sport — スタートハブ、実機フレームバッファから自動抽出">
                             </div>
                             <figcaption>
@@ -2142,21 +2153,21 @@ PlayStation 2 の実機そのものに起動する席です。メガドライブ
                         <div class="strip">
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/apps/img/Quake_E1M1.png" width="672" height="288"
+                                    <img src="apps/img/Quake_E1M1.png" width="672" height="288"
                                         alt="E1M1 The Slipgate Complex の出発視点">
                                 </div>
                                 <figcaption>E1M1 — Slipgate</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/apps/img/Quake_E1M5.png" width="672" height="288"
+                                    <img src="apps/img/Quake_E1M5.png" width="672" height="288"
                                         alt="E1M5 の出発視点">
                                 </div>
                                 <figcaption>E1M5</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/apps/img/Quake_Enemy_Demon.png" width="672" height="288"
+                                    <img src="apps/img/Quake_Enemy_Demon.png" width="672" height="288"
                                         alt="敵モデルの描画確認">
                                 </div>
                                 <figcaption>Enemy — Demon</figcaption>
@@ -2179,7 +2190,7 @@ id Software の Quake 1 に対して、クリーンルームで書き直した C
                             A cleanroom client rather than a port, and the nine levels of Episode 1 are the regression
                             suite: every frame here is produced by the build, not chosen by hand.
                         </p>
-                        <a class="entry" href="b-system/apps/Quake.html">エンジンとレベルの仕様 →</a>
+                        <a class="entry" href="apps/Quake.html">エンジンとレベルの仕様 →</a>
                     </div>
                 </div>
 
@@ -2189,14 +2200,14 @@ id Software の Quake 1 に対して、クリーンルームで書き直した C
                         <div class="diptych">
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/B_MSX_Application.png" width="538" height="543"
+                                    <img src="img/screens/B_MSX_Application.png" width="538" height="543"
                                         alt="ゲームシステム (MSX) — MSX-BIOS 実行窓、実機フレームバッファから自動抽出">
                                 </div>
                                 <figcaption><b>MSX-BIOS</b> — Cartridge window</figcaption>
                             </figure>
                             <figure>
                                 <div class="field">
-                                    <img src="b-system/img/screens/B_MSX_Menu_Opened.png" width="538" height="543"
+                                    <img src="img/screens/B_MSX_Menu_Opened.png" width="538" height="543"
                                         alt="ゲームシステム (MSX) — C-BIOS メニュー展開、実機フレームバッファから自動抽出">
                                 </div>
                                 <figcaption><b>C-BIOS</b> — File menu opened</figcaption>
@@ -2223,8 +2234,8 @@ id Software の Quake 1 に対して、クリーンルームで書き直した C
                             core, each core is testable, and the window manager owns the frame the way it owns every
                             other application.
                         </p>
-                        <a class="entry" href="b-system/apps/MSX.html">アプリとしての仕様 →</a>
-                        <a class="entry" href="b-media/msx.html">コアの設計と来源 →</a>
+                        <a class="entry" href="apps/MSX.html">アプリとしての仕様 →</a>
+                        <a class="entry" href="doc/media/msx.html">コアの設計と来源 →</a>
                     </div>
                 </div>
 
@@ -2237,56 +2248,56 @@ id Software の Quake 1 に対して、クリーンルームで書き直した C
                     <div class="msx-grid">
                         <figure>
                             <div class="field">
-                                <img src="b-system/img/screens/MSX_XRacing.png" width="538" height="543"
+                                <img src="img/screens/MSX_XRacing.png" width="538" height="543"
                                     alt="XRacing — MSX1 / TMS9918A の起動画面">
                             </div>
                             <figcaption><b>XRacing</b>MSX1 · TMS9918A</figcaption>
                         </figure>
                         <figure>
                             <div class="field">
-                                <img src="b-system/img/screens/MSX_Yazzier.png" width="538" height="543"
+                                <img src="img/screens/MSX_Yazzier.png" width="538" height="543"
                                     alt="YAZZIER — MSX1 のタイトルカード">
                             </div>
                             <figcaption><b>YAZZIER</b>MSX1 · title card</figcaption>
                         </figure>
                         <figure>
                             <div class="field">
-                                <img src="b-system/img/screens/MSX_C0man.png" width="538" height="543"
+                                <img src="img/screens/MSX_C0man.png" width="538" height="543"
                                     alt="c0man — MSX1 のハイスコア表">
                             </div>
                             <figcaption><b>c0man</b>MSX1 · high scores</figcaption>
                         </figure>
                         <figure>
                             <div class="field">
-                                <img src="b-system/img/screens/MSX_DynamiteGoGo.png" width="538" height="543"
+                                <img src="img/screens/MSX_DynamiteGoGo.png" width="538" height="543"
                                     alt="Dynamite Go! Go! — MSX2 JP / V9938 のタイトル">
                             </div>
                             <figcaption><b>Dynamite Go! Go!</b>MSX2 JP · V9938</figcaption>
                         </figure>
                         <figure>
                             <div class="field">
-                                <img src="b-system/img/screens/MSX_BadApple.png" width="538" height="543"
+                                <img src="img/screens/MSX_BadApple.png" width="538" height="543"
                                     alt="Bad Apple — MSX2+ / V9958 のシルエット描画">
                             </div>
                             <figcaption><b>Bad Apple</b>MSX2+ · V9958</figcaption>
                         </figure>
                         <figure>
                             <div class="field">
-                                <img src="b-system/img/screens/MSX_Bullrush.png" width="538" height="543"
+                                <img src="img/screens/MSX_Bullrush.png" width="538" height="543"
                                     alt="BULLRUSH — MegaROM 実行の画面">
                             </div>
                             <figcaption><b>BULLRUSH</b>MegaROM</figcaption>
                         </figure>
                         <figure>
                             <div class="field">
-                                <img src="b-system/img/screens/MSX_NeonRevenant.png" width="538" height="543"
+                                <img src="img/screens/MSX_NeonRevenant.png" width="538" height="543"
                                     alt="NEON REVENANT — Geo3D エンジンの画面">
                             </div>
                             <figcaption><b>Neon Revenant</b>Geo3D engine</figcaption>
                         </figure>
                         <figure>
                             <div class="field">
-                                <img src="b-system/img/screens/MSX_NightRaven.png" width="538" height="543"
+                                <img src="img/screens/MSX_NightRaven.png" width="538" height="543"
                                     alt="NIGHT RAVEN GEO3D — Geo3D Hardware Pipeline の画面">
                             </div>
                             <figcaption><b>Night Raven</b>Geo3D hardware</figcaption>
@@ -2333,8 +2344,8 @@ ps2_bench.sh  →  guest clock  |  wall clock</pre>
                             Iris is the console as host, not as guest. The same C99 sources link against PS2 silicon,
                             and the benchmark separates the clock inside the machine from the clock outside it.
                         </p>
-                        <a class="entry" href="b-book/drivers.html">PS2 ドライバ群の位置 →</a>
-                        <a class="entry" href="b-media/gl.html">B-GL のロードマップ →</a>
+                        <a class="entry" href="doc/cores/drivers.html">PS2 ドライバ群の位置 →</a>
+                        <a class="entry" href="doc/media/gl.html">B-GL のロードマップ →</a>
                     </div>
                 </div>
 
@@ -2384,7 +2395,7 @@ ps2_bench.sh  →  guest clock  |  wall clock</pre>
                             Ares is a name on a roadmap. Nothing in the tree backs it yet, and the card keeps that
                             visible instead of implying a feature.
                         </p>
-                        <a class="entry" href="b-media/gl.html">B-GL のロードマップ →</a>
+                        <a class="entry" href="doc/media/gl.html">B-GL のロードマップ →</a>
                     </div>
                 </div>
             </div>
@@ -2460,10 +2471,10 @@ ps2_bench.sh  →  guest clock  |  wall clock</pre>
                 </figure>
 
                 <div class="foundation-marks reveal">
-                    <a class="entry" href="b-media/index.html">B-Media：パイプラインと予算 →</a>
-                    <a class="entry" href="b-media/audio.html">B-Audio：純波形と DSP →</a>
-                    <a class="entry" href="b-media/core.html">B-Core：計算流送 →</a>
-                    <a class="entry" href="b-book/cores.html">対応カーネルと機械 →</a>
+                    <a class="entry" href="doc/media/index.html">B-Media：パイプラインと予算 →</a>
+                    <a class="entry" href="doc/media/audio.html">B-Audio：純波形と DSP →</a>
+                    <a class="entry" href="doc/media/core.html">B-Core：計算流送 →</a>
+                    <a class="entry" href="doc/cores/cores.html">対応カーネルと機械 →</a>
                 </div>
             </div>
         </section>
@@ -2534,10 +2545,10 @@ ps2_bench.sh  →  guest clock  |  wall clock</pre>
                 <p class="reveal"> このシステムは、純粋な心と完璧な倫理観を持つ人々の利用を想定しています。</p>
                 <p class="en reveal">This system is intended for use by people with pure hearts and perfect ethics. See <a href="https://5ht.co/license/" class="entry-simple">DHARMA</a> license.</p>
                 <div class="closing-entries reveal">
-                    <a class="entry" href="b-system/apps/Commander.html">Commander →</a>
-                    <a class="entry" href="b-system/apps/XMB.html">XMB →</a>
-                    <a class="entry" href="b-system/apps/MSX.html">MSX →</a>
-                    <a class="entry" href="b-system/apps/Quake.html">Quake →</a>
+                    <a class="entry" href="apps/Commander.html">Commander →</a>
+                    <a class="entry" href="apps/XMB.html">XMB →</a>
+                    <a class="entry" href="apps/MSX.html">MSX →</a>
+                    <a class="entry" href="apps/Quake.html">Quake →</a>
                 </div>
             </div>
         </section>
@@ -2558,26 +2569,26 @@ ps2_bench.sh  →  guest clock  |  wall clock</pre>
             <div>
                 <h4>System &amp; CLU</h4>
                 <ul>
-                    <li><a href="b-system/apps/Editor.html"><b>Editor:</b> TAD Word Processor</a></li>
-                    <li><a href="b-system/apps/Terminal.html"><b>Terminal:</b> ANSI Console</a></li>
-                    <li><a href="b-system/apps/Browser.html"><b>Browser:</b> TAD Reader</a></li>
-                    <li><a href="b-system/apps/Cabinet.html"><b>Cabinet:</b> Real &amp; Virtual Bodies</a></li>
-                    <li><a href="b-system/apps/Volumes.html"><b>Volumes:</b> MBR/GPT &amp; B-FS</a></li>
-                    <li><a href="b-system/apps/Commander.html"><b>Commander:</b> Bit Edits Hack Pack</a></li>
-                    <li><a href="b-system/apps/Commands.html"><b>Commands:</b> 20 CLU Verbs</a></li>
+                    <li><a href="apps/Editor.html"><b>Editor:</b> TAD Word Processor</a></li>
+                    <li><a href="apps/Terminal.html"><b>Terminal:</b> ANSI Console</a></li>
+                    <li><a href="apps/Browser.html"><b>Browser:</b> TAD Reader</a></li>
+                    <li><a href="apps/Cabinet.html"><b>Cabinet:</b> Real &amp; Virtual Bodies</a></li>
+                    <li><a href="apps/Volumes.html"><b>Volumes:</b> MBR/GPT &amp; B-FS</a></li>
+                    <li><a href="apps/Commander.html"><b>Commander:</b> Bit Edits Hack Pack</a></li>
+                    <li><a href="apps/Commands.html"><b>Commands:</b> 20 CLU Verbs</a></li>
                 </ul>
             </div>
 
             <div>
                 <h4>Media Products</h4>
                 <ul>
-                    <li><a href="b-system/apps/Orchestra.html"><b>Orchestra:</b> Stage DAW</a></li>
-                    <li><a href="b-system/apps/Clarity.html"><b>Clarity:</b> Publishing System</a></li>
-                    <li><a href="b-system/apps/SDK.html"><b>Lil Cu 64:</b> Game SDK &amp; B-Sound</a></li>
-                    <li><a href="b-system/apps/XMB.html"><b>XMB:</b> Cross Media Bar</a></li>
-                    <li><a href="b-system/apps/MSX.html"><b>MSX:</b> Cartridge Machine</a></li>
-                    <li><a href="b-system/apps/Quake.html"><b>Quake:</b> Cleanroom Light Client</a></li>
-                    <li><a href="b-media/gl.html"><b>B-GL:</b> 3D Graphics Subsystem</a></li>
+                    <li><a href="apps/Orchestra.html"><b>Orchestra:</b> Stage DAW</a></li>
+                    <li><a href="apps/Clarity.html"><b>Clarity:</b> Publishing System</a></li>
+                    <li><a href="apps/SDK.html"><b>Lil Cu 64:</b> Game SDK &amp; B-Sound</a></li>
+                    <li><a href="apps/XMB.html"><b>XMB:</b> Cross Media Bar</a></li>
+                    <li><a href="apps/MSX.html"><b>MSX:</b> Cartridge Machine</a></li>
+                    <li><a href="apps/Quake.html"><b>Quake:</b> Cleanroom Light Client</a></li>
+                    <li><a href="doc/media/gl.html"><b>B-GL:</b> 3D Graphics Subsystem</a></li>
                 </ul>
             </div>
 

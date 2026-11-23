@@ -53,7 +53,7 @@ The B-System documentation pipeline is designed to be **cheap, instant, authenti
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│     Optimized Asset Directory (b-system/img/screens/)  │
+│     Optimized Asset Directory (img/screens/)  │
 │  - <Name>_Settings.png, <Name>_Menu_Opened.png         │
 │  - Desktop_MainMenu_Opened.png                         │
 │  - Pixel-perfect, isolated & transparent background    │
@@ -69,7 +69,7 @@ The B-System documentation pipeline is designed to be **cheap, instant, authenti
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│     TAD Binary Document Compiler (html2tad.exs)        │
+│     TAD Binary Document Compiler (tool_book2tad.py)    │
 │  - Compiles all 87 HTML pages into native binary TAD   │
 └────────────────────────────────────────────────────────┘
 ```
@@ -110,42 +110,42 @@ The pipeline ensures authentic reproduction of:
 
 ## 5. Screen Asset Inventory & HTML Page Mapping
 
-Screenshots are generated into `b-system/img/screens/` and populated across documentation pages:
+Screenshots are generated into `img/screens/` and populated across documentation pages:
 
-### 5.1 Settings Applets (`./b-system/settings/*.html`)
+### 5.1 Settings Applets (`./settings/*.html`)
 
 | Applet Document | Japanese Title | Embedded Screenshot File | Typical Size |
 | :--- | :--- | :--- | :--- |
-| [`Appearance.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Appearance.html) | 外観 (Appearance) | `Appearance_Settings.png` | ~10.6 KB |
-| [`Desktop.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Desktop.html) | デスクトップ (Desktop) | `Desktop_Settings.png` | ~7.6 KB |
-| [`Display.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Display.html) | 画面表示 (Display) | `Display_Settings.png` | ~7.3 KB |
-| [`Input.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Input.html) | 入力環境 (Input) | `Input_Settings.png` | ~7.4 KB |
-| [`Language.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Language.html) | 言語・文字 (Language) | `Language_Settings.png` | ~11.1 KB |
-| [`Language.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Language.html) | 言語・文字 — TIP辞書チベット語 (Tibetan Candidate Window) | `Language_TIP_Tibetan.png` | ~12–16 KB |
-| [`Language.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Language.html) | 言語・文字 — Mozc辞書日本語 (Japanese Candidate Window) | `Language_TIP_Japanese.png` | ~10–14 KB |
-| [`Media.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Media.html) | メディア (Media) | `Media_Settings.png` | ~6.2 KB |
-| [`Network.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Network.html) | 通信網 (Network) | `Network_Settings.png` | ~7.4 KB |
-| [`Preferences.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Preferences.html) | 環境設定 (Preferences) | `Preferences_Settings.png` | ~28.8 KB |
-| [`Security.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Security.html) | 保全・権限 (Security) | `Security_Settings.png` | ~6.3 KB |
-| [`Sound.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Sound.html) | 音響・音声 (Sound) | `Sound_Settings.png` | ~7.2 KB |
-| [`System.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/System.html) | 基本情報 (System) | `System_Settings.png` | ~6.4 KB |
-| [`Terminal.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/settings/Terminal.html) | 端末・通信設定 (Terminal) | `Terminal_Settings.png` | ~10.7 KB |
+| [`Appearance.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Appearance.html) | 外観 (Appearance) | `Appearance_Settings.png` | ~10.6 KB |
+| [`Desktop.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Desktop.html) | デスクトップ (Desktop) | `Desktop_Settings.png` | ~7.6 KB |
+| [`Display.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Display.html) | 画面表示 (Display) | `Display_Settings.png` | ~7.3 KB |
+| [`Input.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Input.html) | 入力環境 (Input) | `Input_Settings.png` | ~7.4 KB |
+| [`Language.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Language.html) | 言語・文字 (Language) | `Language_Settings.png` | ~11.1 KB |
+| [`Language.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Language.html) | 言語・文字 — TIP辞書チベット語 (Tibetan Candidate Window) | `Language_TIP_Tibetan.png` | ~12–16 KB |
+| [`Language.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Language.html) | 言語・文字 — Mozc辞書日本語 (Japanese Candidate Window) | `Language_TIP_Japanese.png` | ~10–14 KB |
+| [`Media.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Media.html) | メディア (Media) | `Media_Settings.png` | ~6.2 KB |
+| [`Network.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Network.html) | 通信網 (Network) | `Network_Settings.png` | ~7.4 KB |
+| [`Preferences.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Preferences.html) | 環境設定 (Preferences) | `Preferences_Settings.png` | ~28.8 KB |
+| [`Security.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Security.html) | 保全・権限 (Security) | `Security_Settings.png` | ~6.3 KB |
+| [`Sound.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Sound.html) | 音響・音声 (Sound) | `Sound_Settings.png` | ~7.2 KB |
+| [`System.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/System.html) | 基本情報 (System) | `System_Settings.png` | ~6.4 KB |
+| [`Terminal.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/settings/Terminal.html) | 端末・通信設定 (Terminal) | `Terminal_Settings.png` | ~10.7 KB |
 
-### 5.2 Core Applications (`./b-system/apps/*.html` — Single Opened-Menu & Content Screenshots)
+### 5.2 Core Applications (`./apps/*.html` — Single Opened-Menu & Content Screenshots)
 
 > **App Screenshot Standard**: For Applications documentation, only single screenshots featuring an active window with its dropdown menu opened and authentic document/shell content are embedded:
 
 | Application Document | Japanese Title | Embedded Screenshot File (Opened Menu & Content) | Typical Size |
 | :--- | :--- | :--- | :--- |
-| [`Cabinet.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Cabinet.html) | 実身キャビネット (Cabinet) | `Cabinet_Menu_Opened.png` (ファイルメニュー展開・実身一覧) | ~9.2 KB |
-| [`Editor.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Editor.html) | 基本文章編集 (Editor) | `Editor_Menu_Opened.png` (ファイルメニュー展開・本文テキスト) | ~17.8 KB |
-| [`Browser.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Browser.html) | 仕様書閲覧 (Browser) | `Browser_Menu_Opened.png` (ファイルメニュー展開・仕様書TAD文書) | ~6.0 KB |
-| [`Terminal.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Terminal.html) | 端末 (Terminal / GTerm) | `Terminal_Menu_Opened.png` (ファイルメニュー展開・シェル対話) | ~5.2 KB |
-| [`Cassette.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Cassette.html) | カセット (Cassette) | `Cassette_Application.png` (ステレオカセットデッキ) | ~10.1 KB |
-| [`Preferences.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Preferences.html) | 環境設定 (Preferences) | `Preferences_Settings.png` (コントロールパネルハブ) | ~28.8 KB |
-| [`Volumes.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Volumes.html) | ボリューム (Volumes / DriveSetup) | `DriveSetup_Menu_Opened.png` (ディスクメニュー展開・区画操作一覧), `DriveSetup_About.png` (バージョン情報ダイアログ) | ~18.3 KB |
-| [`Workbench.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Workbench.html) | ワークベンチ (Workbench) | `Desktop_Full.png` (初期起動画面 Full Desktop), `About_Application.png` (システム情報ダイアログ) | ~41.2 KB |
-| [`Preferences.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/b-system/apps/Preferences.html) | 環境設定 (Preferences) | `Preferences_Settings.png` (コントロールパネルハブ) | ~28.8 KB |
+| [`Cabinet.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Cabinet.html) | 実身キャビネット (Cabinet) | `Cabinet_Menu_Opened.png` (ファイルメニュー展開・実身一覧) | ~9.2 KB |
+| [`Editor.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Editor.html) | 基本文章編集 (Editor) | `Editor_Menu_Opened.png` (ファイルメニュー展開・本文テキスト) | ~17.8 KB |
+| [`Browser.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Browser.html) | 仕様書閲覧 (Browser) | `Browser_Menu_Opened.png` (ファイルメニュー展開・仕様書TAD文書) | ~6.0 KB |
+| [`Terminal.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Terminal.html) | 端末 (Terminal / GTerm) | `Terminal_Menu_Opened.png` (ファイルメニュー展開・シェル対話) | ~5.2 KB |
+| [`Cassette.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Cassette.html) | カセット (Cassette) | `Cassette_Application.png` (ステレオカセットデッキ) | ~10.1 KB |
+| [`Preferences.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Preferences.html) | 環境設定 (Preferences) | `Preferences_Settings.png` (コントロールパネルハブ) | ~28.8 KB |
+| [`Volumes.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Volumes.html) | ボリューム (Volumes / DriveSetup) | `DriveSetup_Menu_Opened.png` (ディスクメニュー展開・区画操作一覧), `DriveSetup_About.png` (バージョン情報ダイアログ) | ~18.3 KB |
+| [`Workbench.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Workbench.html) | ワークベンチ (Workbench) | `Desktop_Full.png` (初期起動画面 Full Desktop), `About_Application.png` (システム情報ダイアログ) | ~41.2 KB |
+| [`Preferences.html`](file:///Ubuntu-22.04/home/maxim/depot/bitedits/btron/apps/Preferences.html) | 環境設定 (Preferences) | `Preferences_Settings.png` (コントロールパネルハブ) | ~28.8 KB |
 
 ### 5.3 Desktop BTRON Main Menu & System Overlays
 
@@ -159,7 +159,7 @@ Screenshots are generated into `b-system/img/screens/` and populated across docu
 
 ### 5.4 Language Settings Page Exception — TIP Dictionary Capture Protocol
 
-The Language settings page (`b-system/settings/Language.html`) is the only settings applet
+The Language settings page (`settings/Language.html`) is the only settings applet
 that embeds **three** screenshots rather than one. This exception is formally justified because
 the Language page serves a dual purpose: technical parameter reference and consumer-facing
 input method guide accessible to all users aged five and above.
@@ -209,7 +209,7 @@ All documentation pages link to their corresponding isolated window screenshot u
 make screenshots
 
 # 2. Recompile all HTML documentation pages to TAD binary format
-elixir scripts/html2tad.exs
+python3 scripts/tool_book2tad.py
 
 # 3. Run entire test suite (including GUI, kernel, and app tests)
 make test

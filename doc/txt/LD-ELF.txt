@@ -49,7 +49,7 @@ BTRON Real Bodies (Jisshi) and dynamically loaded into isolated task spaces.
 -----------------------------------------------
 
 The external ELF application suite comprises both heavy graphical/interactive programs
-and the entire POSIX/CLU command-line suite documented in b-system/apps/Commands.html:
+and the entire POSIX/CLU command-line suite documented in apps/Commands.html:
 
 2.1. Heavy Graphical & Interactive Applications
   - Quake 3D (/SYS/bin/quake.elf):

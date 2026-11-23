@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PicoCalc | B-System</title>
+  <meta name="description" content="UF2 firmware for RP2040 and RP2350.">
+  <link rel="stylesheet" href="../../index.css">
+  <link rel="stylesheet" href="../../ricepaper.css">
+</head>
+<body>
+  <nav class="sticky" aria-label="Site navigation">
+  <div class="nav-container">
+    <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+      <span class="hamburger"></span>
+    </button>
+    <ul class="nav-links">
+<li><a href="../../index.html">System</a></li>
+<li><a href="../../apps/index.html">Applications</a></li>
+<li><a href="../../devices/index.html">Devices</a></li>
+<li><a href="../../doc/index.html">Books</a></li>
+<li><a href="../index.html" class="active">Downloads</a></li>
+</ul>
+  </div>
+</nav>
+  <header class="rice-hero">
+    <h1>PicoCalc</h1>
+    <div class="rice-rule"></div>
+    <p class="rice-lede">UF2 firmware for RP2040 and RP2350.</p>
+  </header>
+  <main class="rice-main">
+    <p><code>make picocalc</code> builds the PicoCalc images. Published files at the repository root include <code>btron-picocalc-rp2040.uf2</code>, <code>btron-picocalc-rp2350.uf2</code>, and the Quake and T-Kernel variants next to them. Sources: <code>src/drivers/pico/</code>.</p>
+  </main>
+</body>
+</html>

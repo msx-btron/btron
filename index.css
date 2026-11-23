@@ -649,6 +649,7 @@ footer {
 
     .nav-toggle {
         display: block;
+        margin-left: auto;
     }
 
     .nav-links {

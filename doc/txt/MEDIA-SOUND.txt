@@ -568,7 +568,7 @@ To add new tracks or custom game levels to the BTRON sound engine:
 
 MSX, MSX2 and turboR sound chips are a separate producer of the same S16
 stereo contract. They do not call the lilcu64 renderer. See MSX-SOUND.txt
-and b-media/msx.html section 2.6.
+and doc/media/msx.html section 2.6.
 
 =======================================================================================
 END OF SOUND.txt — BTRON 3.20 SOUND SYSTEM SPECIFICATION

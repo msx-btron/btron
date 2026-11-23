@@ -11,8 +11,8 @@ Automated injection of native C99 transparent screenshot previews into B-System 
 import os
 import re
 
-SETTINGS_DIR = "b-system/settings"
-APPS_DIR = "b-system/apps"
+SETTINGS_DIR = "settings"
+APPS_DIR = "apps"
 
 SETTINGS_MAP = {
     "Appearance.html": [
@@ -358,7 +358,7 @@ def screen_items(items):
     if not any(item.get("screen") == "../img/screens/MSX_C0man.png" for item in items):
         return out
     png = os.path.normpath(os.path.join(
-        os.path.dirname(__file__), "..", "b-system", "img", "screens", "Kagee_BadApple.png"))
+        os.path.dirname(__file__), "..", "img", "screens", "Kagee_BadApple.png"))
     if os.path.isfile(png):
         out.append({
             "screen": "../img/screens/Kagee_BadApple.png",

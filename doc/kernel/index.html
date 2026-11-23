@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kernel | B-System</title>
+  <meta name="description" content="T-Kernel 2.0 and the BTRON system-call surface.">
+  <link rel="stylesheet" href="../../index.css">
+</head>
+<body>
+  <nav class="sticky" aria-label="Site navigation">
+  <div class="nav-container">
+    <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+      <span class="hamburger"></span>
+    </button>
+    <ul class="nav-links">
+<li><a href="../../index.html">System</a></li>
+<li><a href="../../apps/index.html">Applications</a></li>
+<li><a href="../../devices/index.html">Devices</a></li>
+<li><a href="../index.html" class="active">Books</a></li>
+<li><a href="../../downloads/index.html">Downloads</a></li>
+</ul>
+  </div>
+</nav>
+  <main>
+    <header>
+      <h1>Kernel</h1>
+      <p class="hero-subtitle">T-Kernel 2.0 and the BTRON system-call surface.</p>
+    </header>
+    <section>
+          <p>The kernel is the Sakamura T-Kernel 2.0 executive in <code>src/kernel/</code>, with the public headers in <code>include/kernel/</code> and <code>include/btron/</code>. The developer manual is the <a href="../cores/kernel.html">Cores kernel chapter</a>. The normative specification is the <a href="../specs/os_spec/kernel/kernel.html">B-Spec kernel</a>.</p>
+          <ul>
+            <li><a href="architecture.html">Ukrainian architecture notes</a></li>
+            <li><a href="btron_spec.html">System-call matrix</a></li>
+            <li><a href="contents.html">Earlier B-System contents page</a></li>
+            <li><a href="../verification/index.html">Coq verification</a></li>
+          </ul>
+        </section>
+  </main>
+</body>
+</html>

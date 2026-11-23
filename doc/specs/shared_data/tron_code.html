@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Розділ 2. Система кодування TRON Code</title>
+  <link rel="stylesheet" href="../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../index.html">System</a></li>
+<li><a href="../../../apps/index.html">Applications</a></li>
+<li><a href="../../../devices/index.html">Devices</a></li>
+<li><a href="../../index.html" class="active">Books</a></li>
+<li><a href="../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="tron_code.html" class="nav-link active">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../os_spec/index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../os_spec/indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="../os_spec/kernel/clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="../os_spec/kernel/device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="../os_spec/kernel/event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="../os_spec/kernel/file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="../os_spec/kernel/gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="../os_spec/kernel/kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="../os_spec/kernel/memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="../os_spec/kernel/message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="../os_spec/kernel/proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="../os_spec/kernel/system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="../os_spec/kernel/taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="../os_spec/dp/basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="../os_spec/dp/basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="../os_spec/dp/character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="../os_spec/dp/dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="../os_spec/dp/figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="../os_spec/dp/intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="../os_spec/dp/pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../os_spec/shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../os_spec/shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../os_spec/shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../os_spec/shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../os_spec/shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../os_spec/shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../os_spec/shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../os_spec/shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../os_spec/shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../os_spec/shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../os_spec/shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../os_spec/shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../index.html">B-Spec</a> / <span>Розділ 2. Система кодування TRON Code</span>
+      </div>
+      <h1 class="page-title" id="aas">Розділ 2. Система кодування TRON Code</h1>
+      <p class="page-lead">Специфікація кодування TRON Code спроектована для обробки документів багатьма мовами світу. Для деяких мов достатньо 1-байтового кодування символів, а для інших потрібні 2-байтові коди. З цієї причини специфікація TRON підтримує як 1-байтові, так і 2-байтові символьні коди. Однак принципово уникається змішування 1-байтових та 2-байтових кодів у межах одного контексту: для мов, де вистачає 1 байта, застосовуються 1-байтові кодові площини, а для мов з великим алфавітом або ієрогліфікою — 2-байтові.</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+
+
+
+
+
+<HR>
+<H2><A name="aat">2.1 Загальні відомості про специфікацію TRON Code</A></H2>
+
+<H3><A name="aau">2.1.1 Багатомовна підтримка (Multilingual Support)</A></H3>
+
+
+
+<H3><A name="aav">2.1.2 Набори символів (Character Sets / Скрипти)</A></H3>
+
+<P>
+  Традиційно символи, яким не було призначено стандартизованого коду, оброблялися як спеціальні користувацькі символи (Gaiji). 
+  У специфікації TRON Code прийнято підхід, за яким кожному символу призначається власний унікальний системний код, щоб уникнути проблеми неідентифікованих символів. 
+  Зокрема, для ієрогліфів (Кандзі) охоплено понад 45 000 символів. 
+  Така впорядкована сукупність символьних кодів називається набором символів (Character Set / Скрипт). 
+  Логотипи компаній, піктограми та візуальні візерунки вважаються графічними елементами і обробляються як растрові чи векторні зображення, а не текстові коди. 
+  Якщо виникає потреба в новому кодованому символі, він офіційно реєструється у відповідній кодовій площині.
+</P>
+
+<P>
+  Користувацькі символьні коди, які не визначені цією специфікацією або стандартом JIS X 0208, заборонено використовувати для обміну даними між програмами.
+</P>
+
+<H3><A name="aaw">2.1.3 Набори шрифтових гарнітур (Font Sets)</A></H3>
+
+<P>
+  Для одного й того самого символу можуть існувати різні шрифтові стилі та гарнітури (наприклад, Мінчьо або Готика). 
+  Усім стильовим варіантам одного символу призначається однаковий символьний код TRON Code, щоб при пошуку в базах даних або порівнянні текстів вони оброблялися як один і той самий символ. 
+  Сукупність графічних накреслень шрифтів для одного символьного набору називається шрифтовим набором (Font Set).
+</P>
+
+<H2><A name="aax">2.2 Зв'язок з існуючими стандартами кодування</A></H2>
+
+<H3><A name="aay">2.2.1 JIS X 0201</A></H3>
+
+<P>
+  Стандарт JIS X 0201 визначає 7-бітові та 8-бітові коди для обміну інформацією. 
+  Оскільки специфікація TRON Code спирається на 8-бітову та 16-бітову кодові системи, вона враховує обмеження 8-бітового стандарту JIS X 0201.
+</P>
+
+<P>
+  У 8-бітовій таблиці кодів діапазон C0 (від 00/0 до 01/15, а також 02/0 та 07/15) використовується для управляючих керуючих кодів. 
+  Діапазон C1 (від 08/0 до 09/15, а також 10/0 та 15/15) є зарезервованим або використовується для розширених управляючих кодів.
+</P>
+
+<P>
+  Оскільки в японському тексті одночасно використовуються кандзі, кана та латинські букви, часте перемикання між 1-байтовими та 2-байтовими кодами є неефективним. 
+  Тому у специфікації TRON Code весь японський текст кодується виключно 2-байтовими кодами.
+</P>
+
+<P>
+  У специфікації TRON відсутнє поняття «напівширинних» (Half-width) або «повноширинних» (Full-width) символів. 
+  Ці властивості керуються спеціальними вкладками специфікації форматування (Fusen). Докладніше див. розділ <A href="tad2.html#adj">3.5.4 Вкладки параметрів символів та шрифту</A>.
+</P>
+
+<H3><A name="aaz">2.2.2 JIS X 0208</A></H3>
+
+<P>
+  Стандарт JIS X 0208 виділяє кодову область на 8 836 символів, з яких призначено 6 877 символів (включно з 6 353 ієрогліфами кандзі за JIS X 0208-1983).
+</P>
+
+<P>
+  Специфікація TRON Code повністю включає кодові позиції та символи стандарту JIS X 0208, зберігаючи їхній оригінальний порядок та кодові значення.
+</P>
+
+<H2><A name="aba">2.3 Система кодування японських символів TRON Code</A></H2>
+
+<H3><A name="abb">2.3.1 Огляд структури</A></H3>
+
+<P>
+  Система кодування японських символів у TRON Code є 2-байтовою символьною системою і виступає повним розширенням (Superset) стандарту JIS X 0208.
+</P>
+
+<A name="abc">
+<CENTER><IMG src="gif/ja_code_system.gif" alt="Система кодування японських символів TRON Code"></CENTER>
+</A>
+<CENTER>Мал. 1 : Система кодування японських символів TRON Code</CENTER>
+
+<H3><A name="abd">2.3.2 Таблиці кодів японських символів TRON</A></H3>
+
+<A name="abe">
+<CENTER><IMG src="gif/ja_code.gif" alt="Кодові площини японських символів TRON Code"></CENTER>
+</A>
+<CENTER>Мал. 2 : Кодові площини японських символів TRON Code</CENTER>
+
+<H3><A name="abf">2.3.3 Пояснення до кодових площин TRON</A></H3>
+
+
+<DT>(1) Управляючі коди зі спеціальним значенням у TRON Code
+<DD><P>
+    Коди діапазону від (00)(00) до (00)(20), а також (00)(7F) призначені для системного управління. 
+    (Другий байт управляючого коду є спільним як для 1-байтової, так і для 2-байтової кодової системи TRON).
+    </P>
+    <P>
+    З-поміж них наступні коди мають особливе значення у TRON Code і (за винятком анульованого коду 0x00) можуть генеруватися клавішами введення:
+    </P>
+    <TABLE border=1 cellPadding=4>
+     <TR><TD valign="top">(00)</TD><TD valign="top" nowrap>Нікчемний код (TNULL)</TD>
+      <TD>Ігнорується при обробці тексту так, ніби він відсутній. Зазвичай використовується як термінатор кінця символьного рядка (Null-byte).<BR></TD></TR>
+     <TR><TD valign="top">(09)</TD><TD valign="top" nowrap>Табуляція (TAB)</TD>
+      <TD>Перехід до наступної позиції табуляції або наступного текстового поля.</TD></TR>
+     <TR><TD valign="top">(0A)</TD><TD valign="top" nowrap>Новий абзац (NL)</TD>
+      <TD>Перехід на новий абзац. У текстових блоках відокремлює абзаци один від одного.</TD></TR>
+     <TR><TD>(0B)</TD><TD nowrap>Нова колонка</TD><TD>Перехід на нову текстову колонку.</TD></TR>
+     <TR><TD>(0C)</TD><TD nowrap>Нова сторінка</TD><TD>Перехід на нову сторінку документа.</TD></TR>
+     <TR><TD valign="top">(0D)</TD><TD valign="top" nowrap>Новий рядок (CR)</TD>
+      <TD>Перехід на новий рядок у межах поточного абзацу або текстового поля.</TD></TR>
+     <TR><TD valign="top">(20)</TD><TD valign="top" nowrap>Розділювач (SP)</TD>
+      <TD>Пробіл / розділювач слів та фраз.</TD></TR>
+    </TABLE>
+
+    <P>Докладніше про визначення полів див. <A href="tad2.html#acz">3.5.3 Вкладка форматування рядка та абзацу</A>.
+    </P>
+
+<DT>(2) Кодові блоки TRON Code
+<DD>
+    <TABLE border=1 cellPadding=4>
+     <TR><TD>Блок 1:</TD><TD>(21)(21) - (7E)(7E)</TD>
+         <TD>Зона A</TD><TD align="right">8 836 символів</TD></TR>
+     <TR><TD colspan=4>
+     <TABLE border=0 cellPadding=2>
+      <TR><TD colspan=5>Повна відповідність стандарту JIS X 0208:</TD></TR>
+      <TR><TD>1-й байт</TD><TD>: 0x21 - 0x27</TD>
+       <TD>Спеціальні символи та алфавіти</TD><TD align="right">(Рядки 1-7)</TD>
+       <TD align="right">453 символи /</TD><TD align="right">658 позицій</TD></TR>
+      <TR><TD></TD><TD></TD>
+       <TD colspan=4>(0x21 / 0x21 — Фіксований пробіл Кандзі SP)</TD></TR>
+      <TR><TD></TD><TD>: 0x28 - 0x2F</TD>
+       <TD>Зарезервована область</TD><TD align="right">(Рядки 8-15)</TD>
+       <TD align="right">/</TD><TD align="right">752 позиції</TD></TR>
+      <TR><TD></TD><TD>: 0x30 - 0x4F</TD>
+       <TD>Кандзі 1-го рівня</TD><TD align="right">(Рядки 16-47)</TD>
+       <TD align="right">2 965 символів /</TD><TD align="right">3 008 позицій</TD></TR>
+      <TR><TD></TD><TD>: 0x50 - 0x74</TD>
+       <TD>Кандзі 2-го рівня</TD><TD align="right">(Рядки 48-84)</TD>
+       <TD align="right">3 388 символів /</TD><TD align="right">3 478 позицій</TD></TR>
+      <TR><TD></TD><TD>: 0x75 - 0x7E</TD>
+       <TD>Зарезервована область</TD><TD align="right">(Рядки 85-94)</TD>
+           <TD align="right">/</TD><TD align="right">940 позицій</TD></TR>
+    </TABLE>
+       </TD></TR>
+    <TR><TD>Блок 2:</TD><TD>(80)(21) - (FD)(7E)</TD>
+     <TD>Зона B</TD><TD align="right">11 844 символи</TD></TR>
+    <TR><TD>Блок 3:</TD><TD>(21)(80) - (7E)(FD)</TD>
+     <TD>Зона C</TD><TD align="right">11 844 символи</TD></TR>
+    <TR><TD>Блок 4:</TD><TD>(80)(80) - (FD)(FD)</TD>
+     <TD>Зона D</TD><TD align="right">15 876 символів</TD></TR>
+    </TABLE>
+    <P>
+    Зона A відповідає кодовим позиціям стандарту JIS X 0208.
+    </P>
+    <P>
+    Зона B містить уживані кандзі та спеціальні символи, відсутні в JIS X 0208.
+    </P>
+    <P>
+    Зони C та D призначені для рідкісних ієрогліфів, історичних знаків та розширених символьних наборів.
+    </P>
+
+ <DT>(3) Коди вибору мови (Language Switch Codes)
+ <DD><P>
+    Коди переключення мовних площин: (FE)(21) - (FE)(7E) та (FE)(80) - (FE)(FE).
+    </P>
+    <P>
+    Вказують на зміну поточного мовного скрипту або алфавіту у символьному потоці. 
+    Загалом 2-байтова система переключення дозволяє підключати до 220 мовних скриптів.
+    </P>
+  <DT>(4) Спеціальні коди TRON (TRON Special Codes)
+ <DD><P>
+    Спеціальні коди TRON: (FF)(21) - (FF)(7E) (всього 94 кодові позиції).
+    </P>
+    <P>
+    Використовуються для вставки спеціальних службових керуючих маркерів у потік тексту.
+    </P>
+  <DT>(5) Ескейп-коди TRON (TRON Escape Sequences)
+ <DD><P>
+    Ескейп-коди TRON: (FF)(80) - (FF)(FE).
+    </P>
+    <P>
+    Служать префіксними префіксами/розділювачами для вбудовування функціональних вкладок (Fusen) та розширюваних сегментів у документ TAD (докладніше див. <A href="tad1.html#abn">3.3 Огляд структури даних TAD</A>). 
+    Всього визначено 127 ескейп-сегментів TRON.
+    </P>
+
+
+<H3><A name="abg">2.3.4 Додаткові відомості</A></H3>
+
+<UL>
+ <LI>Кодовий пара (0xFF)(0xFF) при інтерпретації як знакове число дорівнює -1 і використовується як маркер кінця файла (<CODE>EOF</CODE>).
+ <LI>Для форматування вирівнювання та відступів пробіли не використовуються; замість цього застосовуються текстові вкладки (Fusen). Символи <CODE>NL</CODE>, <CODE>TAB</CODE>, <CODE>SP</CODE> та <CODE>TNULL</CODE> вбудовуються безпосередньо у потік символів TRON Code.
+ <LI>Підтримується 3 типи пробілів (<CODE>SP</CODE>):
+      <TABLE border=1 cellPadding=4>
+       <TR><TD colspan=3><B>Японський режим (Japanese Script):</B></TD></TR>
+       <TR><TD>Фіксований пробіл Кандзі</TD><TD>SP (<CODE>0x21</CODE>/<CODE>0x21</CODE>)</TD>
+        <TD>— Клавіша пробілу в режимі Кандзі</TD></TR>
+       <TR><TD colspan=3><B>Латинський режим (ASCII / English Script):</B></TD></TR>
+       <TR><TD>Фіксований пробіл ASCII</TD><TD>SP (<CODE>0x00</CODE>/<CODE>0xA0</CODE>)</TD>
+        <TD>— Клавіша пробілу в режимі латини</TD></TR>
+       <TR><TD>Пропорційний пробіл</TD><TD>SP (<CODE>0x00</CODE>/<CODE>0x20</CODE>)</TD>
+        <TD>— Пропорційний пробіл для вирівнювання тексту</TD></TR>
+      </TABLE>
+ </LI>
+</UL>
+<HR>
+<A href="index.html">Повернутися до загального змісту розділу</A><BR>
+<A href="data_type.html">Попередня сторінка: Розділ 1. Базові типи даних (Повернутися)</A><BR>
+<A href="tad1.html">Наступна сторінка: Розділ 3. Специфікація TAD (Перейти)</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

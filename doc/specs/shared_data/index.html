@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Частина 1. Загальні структури даних (Shared Data Specifications)</title>
+  <link rel="stylesheet" href="../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../index.html">System</a></li>
+<li><a href="../../../apps/index.html">Applications</a></li>
+<li><a href="../../../devices/index.html">Devices</a></li>
+<li><a href="../../index.html" class="active">Books</a></li>
+<li><a href="../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="index.html" class="nav-link active">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../os_spec/index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../os_spec/indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="../os_spec/kernel/clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="../os_spec/kernel/device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="../os_spec/kernel/event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="../os_spec/kernel/file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="../os_spec/kernel/gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="../os_spec/kernel/kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="../os_spec/kernel/memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="../os_spec/kernel/message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="../os_spec/kernel/proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="../os_spec/kernel/system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="../os_spec/kernel/taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="../os_spec/dp/basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="../os_spec/dp/basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="../os_spec/dp/character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="../os_spec/dp/dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="../os_spec/dp/figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="../os_spec/dp/intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="../os_spec/dp/pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../os_spec/shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../os_spec/shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../os_spec/shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../os_spec/shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../os_spec/shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../os_spec/shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../os_spec/shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../os_spec/shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../os_spec/shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../os_spec/shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../os_spec/shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../os_spec/shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../index.html">B-Spec</a> / <span>Частина 1. Загальні структури даних (Shared Data Specifications)</span>
+      </div>
+      <h1 class="page-title">Частина 1. Загальні структури даних (Shared Data Specifications)</h1>
+      <p class="page-lead">Специфікація Sakamura BTRON / BTRON3, версія 3.20.00.</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation Banner -->
+    
+
+    
+    
+    
+
+    
+
+    <H2>Зміст частини 1</H2>
+
+    
+      <H3><a href="data_type.html">Розділ 1. Базові типи даних та системні константи (Basic Data Types)</a></H3>
+      <UL class="toc-sublist">
+          <LI><a href="data_type.html#aaa">1.1 Вступ</a></LI>
+          <LI><a href="data_type.html#aab">1.2 Типи даних ядра та мови C</a></LI>
+          <LI><a href="data_type.html#aac">1.3 Коди помилок BTRON (System Error Codes)</a></LI>
+          <LI><a href="data_type.html#aad">1.4 Формат структури TRON Code</a></LI>
+        </UL>
+
+      <H3><a href="tron_code.html">Розділ 2. Система кодування TRON Code (Character Encoding)</a></H3>
+      <UL class="toc-sublist">
+          <LI><a href="tron_code.html#aat">2.1 Загальні відомості про специфікацію TRON Code</a></LI>
+          <LI><a href="tron_code.html#aau">2.1.1 Багатомовна підтримка (Multilingual Support)</a></LI>
+          <LI><a href="tron_code.html#aav">2.1.2 Набори символів (Character Sets / Скрипти)</a></LI>
+          <LI><a href="tron_code.html#aaw">2.1.3 Набори шрифтових гарнітур (Font Sets)</a></LI>
+          <LI><a href="tron_code.html#aax">2.2 Зв'язок з існуючими стандартами кодування</a></LI>
+          <LI><a href="tron_code.html#aay">2.2.1 JIS X 0201</a></LI>
+          <LI><a href="tron_code.html#aaz">2.2.2 JIS X 0208</a></LI>
+          <LI><a href="tron_code.html#aba">2.3 Кодування японських символів у TRON Code</a></LI>
+          <LI><a href="tron_code.html#abb">2.3.1 Огляд структури</a></LI>
+          <LI><a href="tron_code.html#abd">2.3.2 Таблиці кодів японських символів TRON</a></LI>
+          <LI><a href="tron_code.html#abf">2.3.3 Пояснення до кодових площин TRON</a></LI>
+          <LI><a href="tron_code.html#abg">2.3.4 Додаткові відомості</a></LI>
+        </UL>
+
+      <H3><a href="tad1.html">Розділ 3. Детальна специфікація формату документів TAD (TRON Application Databox)</a></H3>
+      <UL class="toc-sublist">
+          <LI><a href="tad1.html#abj">3.1 Вступ</a></LI>
+          <LI><a href="tad1.html#abk">3.2 Структура Реального об'єкта TAD (Real Body Layout)</a></LI>
+          <LI><a href="tad1.html#abl">3.2.1 Загальні відомості</a></LI>
+          <LI><a href="tad1.html#abm">3.2.2 Структура записів Реального об'єкта</a></LI>
+          <LI><a href="tad1.html#abn">3.3 Огляд структури даних TAD</a></LI>
+          <LI><a href="tad1.html#abo">3.3.1 Формат сегментів TAD</a></LI>
+          <LI><a href="tad1.html#abq">3.3.2 Текстові та графічні дані</a></LI>
+          <LI><a href="tad1.html#abw">3.3.3 Растрові зображення (Image Data)</a></LI>
+          <LI><a href="tad1.html#abx">3.3.4 Опис структур даних TAD мовою C</a></LI>
+          <LI><a href="tad1.html#aby">3.4 Детальний опис сегментів TAD</a></LI>
+          <LI><a href="tad2.html#ack">3.5 Сегменти текстових вкладок (Текстові фусени)</a></LI>
+          <LI><a href="tad3.html#aec">3.6 Сегменти графічного креслення та 2D-векторів</a></LI>
+          <LI><a href="tad3.html#aet">Додаток A: Повний перелік ідентифікаторів сегментів TAD</a></LI>
+          <LI><a href="tad3.html#aev">Додаток B: Квазі-стандартні розширення TAD</a></LI>
+        </UL>
+
+      <H3><a href="fd_format.html">Розділ 4. Формат дискети та файлової системи (Floppy Disk Format)</a></H3>
+      <UL class="toc-sublist">
+          <LI><a href="fd_format.html#aez">4.1 Огляд формату носіїв BTRON</a></LI>
+          <LI><a href="fd_format.html#afa">4.2 Структура файлової системи BTRON FS</a></LI>
+          <LI><a href="fd_format.html#afb">4.2.1 Загальна схема розміщення блоків</a></LI>
+          <LI><a href="fd_format.html#afd">4.2.2 Структура системного блоку (System Block)</a></LI>
+          <LI><a href="fd_format.html#afh">4.2.3 Таблиця ідентифікаторів файлів (File ID Table)</a></LI>
+          <LI><a href="fd_format.html#afj">4.2.4 Таблиця коротких назв файлів</a></LI>
+          <LI><a href="fd_format.html#afm">4.2.5 Область зберігання тіл файлів</a></LI>
+          <LI><a href="fd_format.html#afn">4.3 Внутрішня організація файлу BTRON</a></LI>
+          <LI><a href="fd_format.html#afo">4.3.1 Загальна схема</a></LI>
+          <LI><a href="fd_format.html#afs">4.3.2 Структура блоку заголовка файлу (Header Block)</a></LI>
+          <LI><a href="fd_format.html#afu">4.3.3 Структура заголовка файлу (File Header)</a></LI>
+          <LI><a href="fd_format.html#afx">4.3.4 Таблиця фрагментів (Fragment Table)</a></LI>
+          <LI><a href="fd_format.html#afz">4.3.5 Індекс записів файлу (Record Index)</a></LI>
+          <LI><a href="fd_format.html#agb">4.3.6 Структура непрямих індексів</a></LI>
+          <LI><a href="fd_format.html#agd">4.3.7 Приклад розміщення індексів записів</a></LI>
+          <LI><a href="fd_format.html#agf">4.3.8 Структура блоків даних (Data Blocks)</a></LI>
+          <LI><a href="fd_format.html#agh">Додаток A: Квазі-стандартний формат дискет</a></LI>
+          <LI><a href="fd_format.html#agk">Додаток B: Приклад практичної реалізації драйвера дискети</a></LI>
+        </UL>
+    
+
+    <HR>
+    <A href="../index.html">Повернутися до головного змісту всієї специфікації</A><BR>
+    <A href="indexfig.html">Перейти до змісту ілюстрацій та діаграм частини 1</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

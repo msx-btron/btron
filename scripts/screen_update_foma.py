@@ -3,7 +3,7 @@
 scripts/screen_update_foma.py
 
 Automated conversion of raw µBTRON-FOMA framebuffer dumps into production PNGs
-and injection of authentic mobile UI screenshots into mobile.html.
+and injection of authentic mobile UI screenshots into devices/index.html.
 
 Captured screens:
 1) Main (Home Cabinet / 起動キャビネット)
@@ -23,11 +23,11 @@ import re
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RAW_DIR = "/tmp/foma_raw_screens"
-IMG_OUT_DIR = os.path.join(BASE_DIR, "b-system", "img", "foma")
-MOBILE_HTML = os.path.join(BASE_DIR, "mobile.html")
+IMG_OUT_DIR = os.path.join(BASE_DIR, "img", "foma")
+MOBILE_HTML = os.path.join(BASE_DIR, "devices/index.html")
 
 # Written by scripts/screen_update_segui.py, which owns the section that
-# follows this one in mobile.html.
+# follows this one in devices/index.html.
 SEGUI_MARKER = "<!-- \u00b5BTRON-SEGUI Toolkit UI Showcase -->"
 
 def raw_to_png(raw_path, png_path):
@@ -182,7 +182,7 @@ def generate_foma_screens_html():
                 <!-- 1. Main Home Cabinet -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_main.png" alt="1. メイン画面 (起動キャビネット / Home Cabinet)" class="foma-screen-img">
+                        <img src="../img/foma/foma_main.png" alt="1. メイン画面 (起動キャビネット / Home Cabinet)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -198,7 +198,7 @@ def generate_foma_screens_html():
                 <!-- 2. Contacts Explorer -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_contacts.png" alt="2. 連絡先キャビネット (Contacts Explorer)" class="foma-screen-img">
+                        <img src="../img/foma/foma_contacts.png" alt="2. 連絡先キャビネット (Contacts Explorer)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -214,7 +214,7 @@ def generate_foma_screens_html():
                 <!-- 3. Memos Explorer -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_memo.png" alt="3. メモ一覧 (Memos Explorer)" class="foma-screen-img">
+                        <img src="../img/foma/foma_memo.png" alt="3. メモ一覧 (Memos Explorer)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -230,7 +230,7 @@ def generate_foma_screens_html():
                 <!-- 4. T-Editor -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_editor.png" alt="4. 基本エディタ (T-Editor / Document View)" class="foma-screen-img">
+                        <img src="../img/foma/foma_editor.png" alt="4. 基本エディタ (T-Editor / Document View)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -246,7 +246,7 @@ def generate_foma_screens_html():
                 <!-- 4b. T-Editor with Opened Menu -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_editor_menu.png" alt="T-Editor 開いたメニュー (仮身(O) Fusen Menu)" class="foma-screen-img">
+                        <img src="../img/foma/foma_editor_menu.png" alt="T-Editor 開いたメニュー (仮身(O) Fusen Menu)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -262,7 +262,7 @@ def generate_foma_screens_html():
                 <!-- Tier 1: gterm Live Terminal -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_terminal.png" alt="gterm 端末シェル (Live Terminal Engine)" class="foma-screen-img">
+                        <img src="../img/foma/foma_terminal.png" alt="gterm 端末シェル (Live Terminal Engine)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -278,7 +278,7 @@ def generate_foma_screens_html():
                 <!-- Tier 1: gterm with Opened Menu -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_terminal_menu.png" alt="gterm 開いたメニュー (端末(T) Menu)" class="foma-screen-img">
+                        <img src="../img/foma/foma_terminal_menu.png" alt="gterm 開いたメニュー (端末(T) Menu)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -294,7 +294,7 @@ def generate_foma_screens_html():
                 <!-- 5. Control Panel -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_control_panel.png" alt="5. コントロールパネル (Control Panel)" class="foma-screen-img">
+                        <img src="../img/foma/foma_control_panel.png" alt="5. コントロールパネル (Control Panel)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -310,7 +310,7 @@ def generate_foma_screens_html():
                 <!-- 6. Apps Launcher -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_other_apps.png" alt="6. アプリケーション一覧 (Apps Launcher)" class="foma-screen-img">
+                        <img src="../img/foma/foma_other_apps.png" alt="6. アプリケーション一覧 (Apps Launcher)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -326,7 +326,7 @@ def generate_foma_screens_html():
                 <!-- Bonus: Contact Detail with Fusen -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_contact_detail.png" alt="連絡先詳細 (Contact Detail with [仮身] Fusen)" class="foma-screen-img">
+                        <img src="../img/foma/foma_contact_detail.png" alt="連絡先詳細 (Contact Detail with [仮身] Fusen)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -342,7 +342,7 @@ def generate_foma_screens_html():
                 <!-- Bonus: Device Info -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_device_info.png" alt="端末情報 (Device Info)" class="foma-screen-img">
+                        <img src="../img/foma/foma_device_info.png" alt="端末情報 (Device Info)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -371,7 +371,7 @@ def generate_foma_screens_html():
                 <!-- 7. Opened Context Popup Menu -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_menu_popup.png" alt="操作ポップアップメニュー (Floating Context Popup Menu)" class="foma-screen-img">
+                        <img src="../img/foma/foma_menu_popup.png" alt="操作ポップアップメニュー (Floating Context Popup Menu)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -387,7 +387,7 @@ def generate_foma_screens_html():
                 <!-- 8. Delete Confirmation Modal -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_dialog_confirm.png" alt="実身削除の確認ダイアログ (Delete Confirmation Modal)" class="foma-screen-img">
+                        <img src="../img/foma/foma_dialog_confirm.png" alt="実身削除の確認ダイアログ (Delete Confirmation Modal)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -403,7 +403,7 @@ def generate_foma_screens_html():
                 <!-- 9. Real Body Properties Sheet -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_dialog_properties.png" alt="実身属性詳細シート (Real Body Properties Sheet)" class="foma-screen-img">
+                        <img src="../img/foma/foma_dialog_properties.png" alt="実身属性詳細シート (Real Body Properties Sheet)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -419,7 +419,7 @@ def generate_foma_screens_html():
                 <!-- 10. Search Dialog with TIP Virtual IME -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_dialog_search.png" alt="実身・仮身検索ダイアログ (Search Dialog with TIP Virtual IME)" class="foma-screen-img">
+                        <img src="../img/foma/foma_dialog_search.png" alt="実身・仮身検索ダイアログ (Search Dialog with TIP Virtual IME)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -435,7 +435,7 @@ def generate_foma_screens_html():
                 <!-- 11. Power Management & Sleep Dialog -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_dialog_power.png" alt="電源管理・サスペンドダイアログ (Power Management Dialog)" class="foma-screen-img">
+                        <img src="../img/foma/foma_dialog_power.png" alt="電源管理・サスペンドダイアログ (Power Management Dialog)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -451,7 +451,7 @@ def generate_foma_screens_html():
                 <!-- 12. 3G Voice Call Alert Notification -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_dialog_call.png" alt="3G 音声着信ダイアログ (3G Incoming Call Alert)" class="foma-screen-img">
+                        <img src="../img/foma/foma_dialog_call.png" alt="3G 音声着信ダイアログ (3G Incoming Call Alert)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -467,7 +467,7 @@ def generate_foma_screens_html():
                 <!-- 13. FOMA Default About Box -->
                 <div class="foma-phone-card">
                     <div class="foma-screen-frame">
-                        <img src="b-system/img/foma/foma_dialog_about.png" alt="FOMA 標準アプリ情報ダイアログ (Default Mobile About Box)" class="foma-screen-img">
+                        <img src="../img/foma/foma_dialog_about.png" alt="FOMA 標準アプリ情報ダイアログ (Default Mobile About Box)" class="foma-screen-img">
                     </div>
                     <div class="foma-card-info">
                         <div class="foma-card-title">
@@ -486,7 +486,7 @@ def generate_foma_screens_html():
 
 def update_mobile_html():
     if not os.path.exists(MOBILE_HTML):
-        print(f"[ERROR] mobile.html not found at {MOBILE_HTML}")
+        print(f"[ERROR] devices/index.html not found at {MOBILE_HTML}")
         return False
 
     with open(MOBILE_HTML, "r", encoding="utf-8") as f:

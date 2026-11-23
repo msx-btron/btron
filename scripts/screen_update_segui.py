@@ -3,7 +3,7 @@
 scripts/screen_update_segui.py
 
 Turn the raw framebuffer dumps from `make segui-screens` (the headless
-SegUI capture tool) into PNGs under b-system/img/segui/.
+SegUI capture tool) into PNGs under img/segui/.
 
 A raw frame is [u32 width][u32 height][width*height u32 pixels], where each
 pixel is the host's in-memory COLOR word: 0xAARRGGBB stored little-endian, so
@@ -19,8 +19,8 @@ import zlib
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 RAW_DIR = "/tmp/segui_raw_screens"
-IMG_OUT_DIR = os.path.join(BASE_DIR, "b-system", "img", "segui")
-MOBILE_HTML = os.path.join(BASE_DIR, "mobile.html")
+IMG_OUT_DIR = os.path.join(BASE_DIR, "img", "segui")
+MOBILE_HTML = os.path.join(BASE_DIR, "devices/index.html")
 
 MARKER = "<!-- \u00b5BTRON-SEGUI Toolkit UI Showcase -->"
 TAIL_MARKER = "<!-- Relation to B-System -->"
@@ -146,7 +146,7 @@ def _card(i, entry):
                 <!-- {n}. {tab} -->
                 <div class="segui-card">
                     <div class="segui-frame">
-                        <img src="b-system/img/segui/{fname}.png"
+                        <img src="../img/segui/{fname}.png"
                              alt="{n}. {jp_title} ({tab})"
                              class="segui-img" width="320" height="320">
                     </div>
@@ -299,7 +299,7 @@ def generate_segui_screens_html():
 
 def update_mobile_html():
     if not os.path.exists(MOBILE_HTML):
-        print(f"[ERROR] mobile.html not found at {MOBILE_HTML}")
+        print(f"[ERROR] devices/index.html not found at {MOBILE_HTML}")
         return False
 
     with open(MOBILE_HTML, "r", encoding="utf-8") as f:
@@ -336,7 +336,7 @@ def update_mobile_html():
 
 def main():
     print("===============================================================")
-    print(" SegUI Raw Frames -> PNG (b-system/img/segui) + mobile.html")
+    print(" SegUI Raw Frames -> PNG (img/segui) + devices/index.html")
     print("===============================================================")
     n = convert_all(*(sys.argv[1:3] if len(sys.argv) > 1 else ()))
     print(f" Total PNGs written: {n}")

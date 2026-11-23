@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CLU | B-System</title>
+  <link rel="stylesheet" href="../index.css">
+  <link rel="stylesheet" href="../settings/settings.css">
+  <link rel="stylesheet" href="apps.css">
+</head>
+<body>
+  <nav class="sticky" aria-label="Site navigation">
+  <div class="nav-container">
+    <a href="../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+      <span class="hamburger"></span>
+    </button>
+    <ul class="nav-links">
+<li><a href="../index.html">System</a></li>
+<li><a href="index.html" class="active">Applications</a></li>
+<li><a href="../devices/index.html">Devices</a></li>
+<li><a href="../doc/index.html">Books</a></li>
+<li><a href="../downloads/index.html">Downloads</a></li>
+</ul>
+  </div>
+</nav>
+  <nav class="setting-nav">
+    <a href="../index.html">System</a>
+    <span class="sep">/</span>
+    <a href="index.html">Applications</a>
+    <span class="sep">/</span>
+    <span class="current">CLU</span>
+  </nav>
+  <div class="setting-hero">
+    <h1>CLU</h1>
+    <div class="setting-hero-badge">CLU · be / sc / sh / tv</div>
+    <div class="subtitle">Command language utilities: a binary editor, a sheet, a shell, and a viewer.</div>
+  </div>
+  <div class="setting-content">
+    <a href="index.html" class="back-link">← Applications</a>
+    <div class="section"><h2>Four faces</h2>
+        <ul>
+          <li><strong>be</strong> — binary editor and disassembly, under <code>src/apps/clu/be/</code>.</li>
+          <li><strong>sc</strong> — the sheet, under <code>src/apps/clu/sc/</code>.</li>
+          <li><strong>sh</strong> — the shell, under <code>src/apps/clu/sh/</code>.</li>
+          <li><strong>tv</strong> — the viewer, under <code>src/apps/clu/tv/</code>.</li>
+        </ul>
+        <p>File verbs (<code>cp</code>, <code>ls</code>, <code>mv</code>, <code>rm</code>, <code>ln</code>) live next to them in <code>src/apps/clu/</code>.</p></div>
+  </div>
+</body>
+</html>

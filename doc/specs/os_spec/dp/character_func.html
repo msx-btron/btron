@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</title>
+  <link rel="stylesheet" href="../../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../../index.html">System</a></li>
+<li><a href="../../../../apps/index.html">Applications</a></li>
+<li><a href="../../../../devices/index.html">Devices</a></li>
+<li><a href="../../../index.html" class="active">Books</a></li>
+<li><a href="../../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="../../shared_data/data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="../../shared_data/fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="../../shared_data/index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="../../shared_data/indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="../../shared_data/tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="../../shared_data/tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="../../shared_data/tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="../../shared_data/tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="../kernel/clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="../kernel/device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="../kernel/event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="../kernel/file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="../kernel/gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="../kernel/kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="../kernel/memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="../kernel/message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="../kernel/proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="../kernel/system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="../kernel/taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="character_func.html" class="nav-link active">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../../index.html">B-Spec</a> / <span>2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</span>
+      </div>
+      <h1 class="page-title">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</h1>
+      <p class="page-lead">gset_chp() встанолювє нову поточну позицію пера малювання тексту у середовищі gid. gget_chp() зчитує поточні координати пера.</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+<A href="../index.html">Повернутися до змісту розділу Графічних примітивів</A><BR>
+<A href="figure_func.html">Попередня сторінка: 2.4 Функції малювання геометричних фігур (Повернутися)</A><BR>
+<A href="pointer_func.html">Наступна сторінка: 2.6 Функції керування вказівником (Перейти)</A><BR>
+<HR>
+
+<H2><A name="aes">2.5 Функції виводу тексту та символів (Text & Character Functions)</A></H2>
+
+<H3><A name="aet">2.5.1 Налаштування параметрів текстового середовища</A></H3>
+
+<!-- gset_chp / gget_chp -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gset_chp / gget_chp</FONT></TD></TR>
+<TR><TD align="right">Set / Get Text Position</TD></TR>
+<TR><TD>Встановлення та отримання поточної позиції виведення тексту</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gset_chp(GID gid, PNT *pos)
+ERR gget_chp(GID gid, PNT *pos)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+GID  gid    Дескриптор середовища малювання
+PNT *pos    Вказівник на структуру координат точки (X, Y)
+</PRE>
+<H4>【Детальний опис】</H4>
+
+
+<!-- gset_chc / gget_chc -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gset_chc / gget_chc</FONT></TD></TR>
+<TR><TD align="right">Set / Get Text Color</TD></TR>
+<TR><TD>Встановлення та отримання кольору тексту (передній план / фон)</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gset_chc(GID gid, COLOR fg, COLOR bg)
+ERR gget_chc(GID gid, COLOR *fg, COLOR *bg)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+GID   gid   Дескриптор середовища малювання
+COLOR fg    Колір переднього плану / символу (Foreground Color)
+COLOR bg    Колір фону під символом (Background Color)
+</PRE>
+
+<!-- gset_chd / gget_chd -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gset_chd / gget_chd</FONT></TD></TR>
+<TR><TD align="right">Set / Get Text Direction and Spacing</TD></TR>
+<TR><TD>Встановлення та отримання напрямку письма й міжсимвольних інтервалів</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gset_chd(GID gid, W dir, CGAP *gap)
+ERR gget_chd(GID gid, W *dir, CGAP *gap)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+GID   gid   Дескриптор середовища малювання
+W     dir   Напрямок виведення тексту (TORIGHT, TOLEFT, TOUP, TODOWN)
+CGAP *gap   Структура міжсимвольних інтервалів та відступів (CGAP)
+</PRE>
+
+<!-- gset_fon / gget_fon -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gset_fon / gget_fon</FONT></TD></TR>
+<TR><TD align="right">Set / Get Font Specifier</TD></TR>
+<TR><TD>Призначення та зчитування специфікації шрифту FSSPEC</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gset_fon(GID gid, FSSPEC *spec)
+ERR gget_fon(GID gid, FSSPEC *spec, FNTINFO *info)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+GID      gid    Дескриптор середовища малювання
+FSSPEC  *spec   Специфікація гарнітури, накреслення та розміру шрифту
+FNTINFO *info   Буфер для збереження виміряних метрик вибраного шрифту
+</PRE>
+
+<!-- gset_scr / gget_scr -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gset_scr / gget_scr</FONT></TD></TR>
+<TR><TD align="right">Set / Get Script Language</TD></TR>
+<TR><TD>Встановлення та отримання кодової площини / мовного скрипту</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gset_scr(GID gid, W script)
+ERR gget_scr(GID gid, W *script)
+</PRE>
+
+<H3><A name="aeu">2.5.2 Метрики та вимірювання тексту</A></H3>
+
+<!-- gget_chw / gget_chh -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gget_chw / gget_chh</FONT></TD></TR>
+<TR><TD align="right">Get Character Width / Height</TD></TR>
+<TR><TD>Отримання ширини та висоти окремого символу</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+W gget_chw(GID gid, TC ch)
+W gget_chh(GID gid, TC ch)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+GID gid     Дескриптор середовища малювання
+TC  ch      Символьний код TRON Code
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+>= 0    Ширина або висота символу ch у пікселях
+< 0     Помилка (EG_GID, EG_PAR)
+</PRE>
+
+<!-- gget_stw / gget_sth / gget_str -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gget_stw / gget_sth / gget_str</FONT></TD></TR>
+<TR><TD align="right">Get String Metrics / Bounding Box</TD></TR>
+<TR><TD>Вимірювання повної довжини, висоти та обмежувального прямокутника рядка</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+W   gget_stw(GID gid, TC *str, W len)
+W   gget_sth(GID gid, TC *str, W len)
+ERR gget_str(GID gid, TC *str, W len, RECT *r)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Обчислюють ширину, висоту та прямокутник верстки <CODE>r</CODE> для рядка символів <CODE>str</CODE> завдовжки <CODE>len</CODE> символів з урахуванням поточного шрифту й інтервалів.
+</P>
+
+<H3><A name="aev">2.5.3 Функції малювання символів та рядків</A></H3>
+
+<!-- gdra_chr / gdra_chp -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gdra_chr / gdra_chp</FONT></TD></TR>
+<TR><TD align="right">Draw Character (Auto / Specified Position)</TD></TR>
+<TR><TD>Малювання символу у поточній або вказаній позиції</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gdra_chr(GID gid, TC ch, W mode)
+ERR gdra_chp(GID gid, PNT *pos, TC ch, W mode)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+GID  gid    ID середовища малювання
+PNT *pos    Точка виведення (NULL = поточна позиція пера chp)
+TC   ch     Символьний код TRON Code
+W    mode   Режим накладання (DM_PAINT, DM_OVER тощо)
+</PRE>
+
+<!-- gdra_str / gdra_stp -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gdra_str / gdra_stp</FONT></TD></TR>
+<TR><TD align="right">Draw String (Auto / Specified Position)</TD></TR>
+<TR><TD>Малювання рядка символів</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gdra_str(GID gid, TC *str, W len, W mode)
+ERR gdra_stp(GID gid, PNT *pos, TC *str, W len, W mode)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+GID  gid    ID середовища малювання
+PNT *pos    Початкова точка виведення рядка (NULL = поточна позиція chp)
+TC  *str    Символьний рядок у кодуванні TRON Code
+W    len    Кількість символів у рядку
+W    mode   Режим малювання
+</PRE>
+
+<!-- gcop_chr -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gcop_chr</FONT></TD></TR>
+<TR><TD align="right">Get Glyph Mask Bitmap</TD></TR>
+<TR><TD>Отримання растрової бітової маски гліфа у буфер</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gcop_chr(GID gid, TC ch, BITMAP *bmap, PNT *offset)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+GID     gid     Дескриптор середовища малювання
+TC      ch      Код символу TRON Code
+BITMAP *bmap    Вказівник на бітову карту для збереження растру гліфа
+PNT    *offset  Буфер для збереження базового зсуву гліфа відносно лінії шрифту
+</PRE>
+
+<HR>
+<A href="../index.html">Повернутися до змісту розділу Графічних примітивів</A><BR>
+<A href="figure_func.html">Попередня сторінка: 2.4 Функції малювання геометричних фігур (Повернутися)</A><BR>
+<A href="pointer_func.html">Наступна сторінка: 2.6 Функції керування вказівником (Перейти)</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

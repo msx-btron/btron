@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>1.8 Менеджер пристроїв та драйверів (Device Management)</title>
+  <link rel="stylesheet" href="../../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../../index.html">System</a></li>
+<li><a href="../../../../apps/index.html">Applications</a></li>
+<li><a href="../../../../devices/index.html">Devices</a></li>
+<li><a href="../../../index.html" class="active">Books</a></li>
+<li><a href="../../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="../../shared_data/data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="../../shared_data/fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="../../shared_data/index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="../../shared_data/indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="../../shared_data/tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="../../shared_data/tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="../../shared_data/tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="../../shared_data/tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="device.html" class="nav-link active">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="../dp/basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="../dp/basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="../dp/character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="../dp/dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="../dp/figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="../dp/intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="../dp/pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../../index.html">B-Spec</a> / <span>1.8 Менеджер пристроїв та драйверів (Device Management)</span>
+      </div>
+      <h1 class="page-title">1.8 Менеджер пристроїв та драйверів (Device Management)</h1>
+      <p class="page-lead">Підсистема управління пристроями ядра BTRON забезпечує уніфікований асинхронний та синхронний ввід/вивід для блокових (Block), символьних (Character) та спеціальних системних пристроїв.</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+<A href="../index.html">Повернутися до змісту розділу Ядра</A><BR>
+<A href="event.html">Попередня сторінка: 1.7 Менеджер подій (Повернутися)</A><BR>
+<A href="clk.html">Наступна сторінка: 1.9 Системний годинник (Перейти)</A><BR>
+<HR>
+
+<H2><A name="acg">1.8 Менеджер пристроїв та драйверів (Device Management)</A></H2>
+
+<H3><A name="ach">1.8.1 Загальні відомості</A></H3>
+
+
+
+<P>
+  Доступ до пристроїв здійснюється за допомогою унікальних логічних дескрипторів пристрою (<CODE>DID</CODE> — Device ID), які видаються системним викликом <CODE>opn_dev()</CODE>.
+</P>
+
+<H3><A name="acj">1.8.2 Іменування та класифікація пристроїв</A></H3>
+
+<P>
+  Пристрої ідентифікуються символьними назвами у кодуванні TRON Code (наприклад, <CODE>"fdd0"</CODE>, <CODE>"hdd0"</CODE>, <CODE>"com1"</CODE>, <CODE>"kbd"</CODE>, <CODE>"display"</CODE>).
+</P>
+
+<H3><A name="acm">1.8.3 Структури даних та константи</A></H3>
+
+<H4>□ Режими відкриття пристрою (Open Mode)</H4>
+
+<PRE>
+#define TD_READ     0x0001  /* Дозвіл на читання (Read Mode) */
+#define TD_WRITE    0x0002  /* Дозвіл на запис (Write Mode) */
+#define TD_UPDATE   0x0003  /* Дозвіл на читання та запис (Read/Write) */
+#define TD_EXCL     0x0100  /* Монопольний ексклюзивний доступ (Exclusive) */
+#define TD_WAIT     0x0200  /* Очікування вивільнення заблокованого пристрою */
+</PRE>
+
+<H4>□ Атрибути пристроїв (Device Attributes)</H4>
+
+<PRE>
+#define TDA_BLK     0x0001  /* Блоковий пристрій (Block Device) */
+#define TDA_CHR     0x0002  /* Символьний пристрій (Character Device) */
+#define TDA_REMOV   0x0010  /* Знімний носій (Removable Media - FD/Flash/CD) */
+#define TDA_RO      0x0020  /* Носій лише для читання (Read-Only) */
+</PRE>
+
+<H4>□ Команди управління пристроєм (Device Control Requests for dev_sts)</H4>
+
+<PRE>
+#define TD_GSTAT    ( 1)    /* Отримання поточного статусу та параметрів пристрою */
+#define TD_SSTAT    ( 2)    /* Встановлення режимів та параметрів пристрою */
+#define TD_EJECT    ( 3)    /* Програмне вилучення / виштовхування носія (Eject) */
+#define TD_FORMAT   ( 4)    /* Низькорівневе форматування диска/треку */
+#define TD_FLUSH    ( 5)    /* Скидання незбережених буферів запису на диск (Flush Cache) */
+</PRE>
+
+<H4>□ Інформація про пристрій (DEV_INFO)</H4>
+
+<PRE>
+typedef struct {
+    TC      name[32];       /* Логічна символьна назва пристрою */
+    UW      attr;           /* Атрибути пристрою (TDA_BLK, TDA_CHR, TDA_REMOV) */
+    W       blksz;          /* Розмір дискового блоку/сектора у байтах */
+    W       nblk;           /* Загальна кількість блоків у пристрої */
+} DEV_INFO;
+</PRE>
+
+<H3><A name="acn">1.8.4 Системні виклики Менеджера пристроїв</A></H3>
+
+<!-- opn_dev -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">opn_dev</FONT></TD></TR>
+<TR><TD align="right">Open Device</TD></TR>
+<TR><TD>Відкриття пристрою та отримання дескриптора DID (Open Device)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+DID opn_dev(TC *devnm, W mode)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+TC *devnm   Логічна назва пристрою у кодуванні TRON Code (наприклад, "fdd0")
+W   mode    Режим відкриття (TD_READ, TD_WRITE, TD_EXCL, TD_WAIT)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+> 0     Успішне відкриття: логічний дескриптор пристрою (DID)
+< 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Шукає зареєстрований пристрій за ім'ям <CODE>devnm</CODE>, ініціалізує сесію доступу відповідно до режиму <CODE>mode</CODE> та повертає дескриптор <CODE>DID</CODE>. Якщо пристрій уже відкритий у режимі монопольного доступу <CODE>TD_EXCL</CODE>, виклик блокується (при <CODE>TD_WAIT</CODE>) або повертає помилку <CODE>ER_BUSY</CODE>.
+</P>
+<H4>【Коди помилок】</H4>
+<PRE>
+ER_NOEXS : Пристрій із вказаною назвою devnm не зареєстрований у системі.
+ER_BUSY  : Пристрій вже заблокований іншим процесом у режимі TD_EXCL.
+ER_NOSPC : Переповнено системну таблицю відкритих дескрипторів пристроїв.
+ER_PAR   : Некоректний режим відкриття mode або адреса devnm.
+</PRE>
+
+<!-- cls_dev -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">cls_dev</FONT></TD></TR>
+<TR><TD align="right">Close Device</TD></TR>
+<TR><TD>Закриття пристрою (Close Device)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR cls_dev(DID did)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+DID did     Дескриптор відкритого пристрою
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне закриття пристрою (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Завершує сесію роботи з пристроєм <CODE>did</CODE>, скидає кешовані буфери на носій та вивільняє дескриптор пристрою у системній таблиці.
+</P>
+<H4>【Коди помилок】</H4>
+<PRE>
+ER_DID : Недійсний або закритий дескриптор пристрою did.
+</PRE>
+
+<!-- rea_dev -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">rea_dev</FONT></TD></TR>
+<TR><TD align="right">Read Device</TD></TR>
+<TR><TD>Зчитування даних з пристрою (Read Device)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+WERR rea_dev(DID did, W start, VP buf, W size, TMO tmout)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+DID   did   Дескриптор пристрою
+W     start Початковий номер блоку (для блокових) або 0 (для символьних)
+VP    buf   Буфер у віртуальній пам'яті для збереження даних
+W     size  Кількість байтів для зчитування
+TMO   tmout Таймаут очікування у мілісекундах (TMO_FEVR, TMO_POL)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+>= 0    Кількість фактично зчитаних байтів
+< 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Зчитує <CODE>size</CODE> байтів даних із пристрою <CODE>did</CODE>, починаючи з блоку <CODE>start</CODE>, і записує їх у буфер пам'яті <CODE>buf</CODE>.
+</P>
+<H4>【Коди помилок】</H4>
+<PRE>
+ER_DID   : Недійсний дескриптор пристрою did.
+ER_IO    : Апаратна помилка зчитування вводу/виводу.
+ER_TMOUT : Перевищено час очікування готовності пристрою.
+ER_ADR   : Неприпустима адреса буфера buf у пам'яті.
+</PRE>
+
+<!-- wri_dev -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">wri_dev</FONT></TD></TR>
+<TR><TD align="right">Write Device</TD></TR>
+<TR><TD>Запис даних на пристрій (Write Device)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+WERR wri_dev(DID did, W start, VP buf, W size, TMO tmout)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+DID   did   Дескриптор пристрою
+W     start Початковий номер блоку (для блокових) або 0 (для символьних)
+VP    buf   Буфер у віртуальній пам'яті з даними для запису
+W     size  Кількість байтів для запису
+TMO   tmout Таймаут очікування у мілісекундах
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+>= 0    Кількість фактично записаних байтів
+< 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Записує <CODE>size</CODE> байтів із буфера пам'яті <CODE>buf</CODE> на пристрій <CODE>did</CODE>, починаючи з блоку <CODE>start</CODE>.
+</P>
+<H4>【Коди помилок】</H4>
+<PRE>
+ER_DID   : Недійсний дескриптор пристрою did.
+ER_ROVR  : Спроба запису на носій, захищений від запису (Read-Only).
+ER_IO    : Апаратна помилка запису на пристрій.
+ER_TMOUT : Перевищено час очікування операції запису.
+</PRE>
+
+<!-- chg_dmd -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">chg_dmd</FONT></TD></TR>
+<TR><TD align="right">Change Device Mode</TD></TR>
+<TR><TD>Зміна режимів доступу до пристрою (Change Device Mode)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR chg_dmd(DID did, W mode)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+DID did     Дескриптор відкритого пристрою
+W   mode    Нові маски режимів відкриття (TD_READ, TD_WRITE, TD_EXCL)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішна зміна режиму (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Динамічно змінює права доступу або режим ексклюзивного заблокування для вже відкритого дескриптора пристрою <CODE>did</CODE>.
+</P>
+
+<!-- dev_sts -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">dev_sts</FONT></TD></TR>
+<TR><TD align="right">Device Status / Control (ioctl)</TD></TR>
+<TR><TD>Отримання статусу та прямого керування пристроєм (Device Control)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+WERR dev_sts(DID did, W req, VP buf)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+DID did     Дескриптор пристрою
+W   req     Команда керування (TD_GSTAT, TD_SSTAT, TD_EJECT, TD_FORMAT, TD_FLUSH)
+VP  buf     Буфер передачі параметрів або отримання результатів
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+>= 0    Успішне виконання команди
+< 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Виконує низькорівневі виклики управління драйвером пристрою (аналог ioctl): форматування носіїв, виштовхування дискет/дисків, очищення внутрішніх кеш-буферів драйвера.
+</P>
+
+<!-- get_dev -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">get_dev</FONT></TD></TR>
+<TR><TD align="right">Get Device Information</TD></TR>
+<TR><TD>Отримання конфігураційної інформації про пристрій (Get Device Info)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR get_dev(TC *devnm, DEV_INFO *info)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+TC       *devnm Символьна логічна назва пристрою
+DEV_INFO *info  Буфер у віртуальній пам'яті для збереження метиданих DEV_INFO
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне зчитування інформації (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Зчитує глобальні параметри зареєстрованого пристрою (розмір дискового сектора, кількість блоків, прапорці блокового/символьного пристрою) без необхідності попереднього відкриття його дескриптора.
+</P>
+
+<!-- lst_dev -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">lst_dev</FONT></TD></TR>
+<TR><TD align="right">List Registered Devices</TD></TR>
+<TR><TD>Отримання переліку зареєстрованих у системі пристроїв (List Devices)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+WERR lst_dev(DEV_INFO *info, W cnt)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+DEV_INFO *info  Масив структур DEV_INFO для збереження списку пристроїв
+W         cnt   Максимальна кількість елементів масиву info
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+>= 0    Фактична кількість зареєстрованих у системі пристроїв
+< 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Заповнює масив <CODE>info</CODE> переліком усіх активних пристроїв та драйверів, які наразі зареєстровані в ядрі ОС BTRON.
+</P>
+
+<!-- sus_dev -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">sus_dev</FONT></TD></TR>
+<TR><TD align="right">Suspend Device</TD></TR>
+<TR><TD>Переведення пристрою у стан енергозбереження / зупинки (Suspend Device)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR sus_dev(DID did, W mode)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+DID did     Дескриптор пристрою
+W   mode    Режим зупинки / сну (0 = активний, 1 = Standby, 2 = Suspend/Power Off)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне переведення стану пристрою (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Управляє станом живлення периферійного пристрою для підсистеми Power Management (зупинка обертання шпинделя жорсткого диска, переведення у режим сну контролера тощо).
+</P>
+
+<HR>
+<A href="../index.html">Повернутися до змісту цього розділу</A><BR>
+<A href="event.html">Попередня сторінка: 1.7 Менеджер подій (Повернутися)</A><BR>
+<A href="clk.html">Наступна сторінка: 1.9 Системний годинник (Перейти)</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

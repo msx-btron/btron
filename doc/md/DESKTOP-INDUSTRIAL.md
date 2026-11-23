@@ -1,6 +1,6 @@
 # Desktop resolutions and common controls
 
-The enum is `include/btron/desktop_res.h`. The page is `mobile.html`. The hero is the five appliance tiers. The resolution table, the control matrix, and the tier bands sit under that hero.
+The enum is `include/btron/desktop_res.h`. The page is `devices/index.html`. The hero is the five appliance tiers. The resolution table, the control matrix, and the tier bands sit under that hero.
 
 ## Engine rule
 
@@ -41,7 +41,7 @@ There is no single control library. Do not delete a drawer to make one. A later 
 
 HMI (`include/btron/hmi.h`, `src/desktop/industrial/hmi/`) stays the instrument panel: push, toggle, triad, up/down, radio, rotary, slider, dial, bar meter, LED, digital display, universal pad. It is linked from `COMMON_SRCS` and `ARM64_APPS_SRCS`. It is not in the handset image, the workstation image, or the PicoCalc link. SegUI stays the sub-pico face for POCKET, BAND, and CALC. Handset items, soft keys, and modals stay the HANDHELD face.
 
-The matrix on `mobile.html` is two row groups. The first is the nine common controls. The second is the twelve HMI types. Columns are DESKTOP, HANDHELD, and POCKET. BAND and CALC share the POCKET painter, so they are not extra columns. A Yes cell names the link that actually contains the control.
+The matrix on `devices/index.html` is two row groups. The first is the nine common controls. The second is the twelve HMI types. Columns are DESKTOP, HANDHELD, and POCKET. BAND and CALC share the POCKET painter, so they are not extra columns. A Yes cell names the link that actually contains the control.
 
 ## Not in this step
 

@@ -1,15 +1,18 @@
 #!/usr/bin/env python3
 # ==============================================================================
-# B-Book Specialized TAD Compiler: scripts/tool_book2tad.py
-# Python 3.6+ stdlib-only port of book2tad.exs
-# Compiles B-Book developer manual HTML into native BTRON 3.20 TAD files.
-# Preserves C99 code layout, ASCII diagrams, API cards, callouts, metadata.
+# TAD book compiler: scripts/tool_book2tad.py
+# Python 3.6+ stdlib-only. One HTML profile: the article/section book used by
+# doc/cores (B-Book), doc/media (B-Media), and doc/specs (BTRON3 3.20 spec).
+# Preserves C99 code layout, ASCII diagrams, API cards, callouts, figures.
+# Output stays under tad_bin/b-book, tad_bin/b-media, and tad_bin/b-spec so
+# the cabinet and the TAD browser keep their existing paths.
 # ==============================================================================
 from __future__ import annotations
 
 import glob
 import os
 import re
+import shutil
 import struct
 import sys
 from datetime import date
@@ -75,6 +78,47 @@ def clean_code(html: str) -> str:
 def parse_list(html: str) -> list:
     items = re.findall(r'<li\b[^>]*>(.*?)</li>', html, flags=re.I | re.S)
     return [decode_entities(strip_tags(i)) for i in items if strip_tags(i)]
+
+def parse_list_elements(html: str, kind: str) -> list:
+    """A list whose items are only links becomes virtual-body links.
+
+    Mixed lists keep their bullets and also emit a link for each anchor.
+    """
+    lis = re.findall(r'<li\b[^>]*>(.*?)</li>', html, flags=re.I | re.S)
+    texts = []
+    links = []
+    pure = True
+    for li in lis:
+        text = decode_entities(strip_tags(li))
+        if not text:
+            continue
+        am = re.search(r"""<a\s+href=['"]([^'"]+)['"][^>]*>(.*?)</a>""", li, re.I | re.S)
+        label = decode_entities(strip_tags(am.group(2))) if am else ''
+        if am and label and label == text:
+            links.append(('link', am.group(1), label))
+        else:
+            pure = False
+            texts.append(text)
+            if am and label:
+                links.append(('link', am.group(1), label))
+    if pure and links:
+        return links
+    out = []
+    if texts:
+        out.append((kind, texts))
+    out.extend(links)
+    return out
+
+def parse_image_elements(html: str) -> list:
+    sm = re.search(r"""src=['"]([^'"]+)['"]""", html, re.I)
+    if not sm:
+        return []
+    am = re.search(r"""alt=['"]([^'"]*)['"]""", html, re.I)
+    cm = re.search(r'<figcaption\b[^>]*>(.*?)</figcaption>', html, re.I | re.S)
+    alt = decode_entities(strip_tags(cm.group(1))) if cm else ''
+    if not alt and am:
+        alt = decode_entities(am.group(1))
+    return [('image', sm.group(1), alt)]
 
 def parse_table(html: str) -> list:
     rows = re.findall(r'<tr\b[^>]*>(.*?)</tr>', html, flags=re.I | re.S)
@@ -218,7 +262,7 @@ def parse_book_html(html: str) -> list:
     remaining = clean
     tag_re = re.compile(
         r'<(?:div\s+class=[\'"](?:api-card|callout\b)'
-        r'|h[1-6]|pre|p|table|ul|ol|hr|a\s+href)\b[^>]*>',
+        r'|figure|img|h[1-6]|pre|p|table|ul|ol|hr|a\s+href)\b[^>]*>',
         re.I)
 
     while remaining:
@@ -278,19 +322,21 @@ def parse_book_html(html: str) -> list:
                 remaining = sub[pm.end():]
             else:
                 remaining = sub[len(token):]
-        elif low.startswith('<ul'):
-            pm = re.match(r'<ul\b[^>]*>.*?</ul>', sub, re.I|re.S)
+        elif low.startswith('<ul') or low.startswith('<ol'):
+            kind = 'ol' if low.startswith('<ol') else 'ul'
+            pm = re.match(rf'<{kind}\b[^>]*>.*?</{kind}>', sub, re.I|re.S)
             if pm:
-                items = parse_list(pm.group(0))
-                if items: elements.append(('ul', items))
+                elements.extend(parse_list_elements(pm.group(0), kind))
                 remaining = sub[pm.end():]
             else:
                 remaining = sub[len(token):]
-        elif low.startswith('<ol'):
-            pm = re.match(r'<ol\b[^>]*>.*?</ol>', sub, re.I|re.S)
+        elif low.startswith('<figure') or low.startswith('<img'):
+            if low.startswith('<figure'):
+                pm = re.match(r'<figure\b[^>]*>.*?</figure>', sub, re.I|re.S)
+            else:
+                pm = re.match(r'<img\b[^>]*>', sub, re.I|re.S)
             if pm:
-                items = parse_list(pm.group(0))
-                if items: elements.append(('ol', items))
+                elements.extend(parse_image_elements(pm.group(0)))
                 remaining = sub[pm.end():]
             else:
                 remaining = sub[len(token):]
@@ -347,9 +393,79 @@ def seg_hr(width=680) -> bytes:
 def seg_text(text) -> bytes:
     return (text+'\n').encode('utf-8')
 
+def seg_image(src: str, caption: str = '', width: int = 480,
+              height: int = 140) -> bytes:
+    cb, sb = caption.encode('utf-8'), src.encode('utf-8')
+    payload = (struct.pack('>BHHB', 10, width, height, 0)
+               + struct.pack('>H', len(cb)) + cb
+               + struct.pack('>H', len(sb)) + sb)
+    return make_segment(TS_FPRIM, payload)
+
+def get_image_dimensions(path: str):
+    try:
+        with open(path, 'rb') as f:
+            hdr = f.read(24)
+        if hdr[:3] == b'GIF':
+            return struct.unpack_from('<HH', hdr, 6)
+        if hdr[:8] == b'\x89PNG\r\n\x1a\n' and hdr[12:16] == b'IHDR':
+            return struct.unpack_from('>II', hdr, 16)
+    except Exception:
+        pass
+    return 480, 140
+
+# Site book folders and the tad_bin catalog names the browser already searches.
+_BOOK_SEG = {'cores': 'b-book', 'media': 'b-media', 'specs': 'b-spec'}
+
+def to_tad_href(href: str) -> str:
+    """Map a site href onto a path the TAD browser can open without source changes.
+
+    Intra-book relatives (kernel.html, ../shared_data/x.html) stay relative.
+    A hop into cores, media, or specs becomes b-book, b-media, or b-spec so
+    the browser's tad_bin/ prefix fallback finds the file.
+    """
+    if not href or href.startswith(('#', 'mailto:')) or '://' in href:
+        return href
+    path, frag = href, ''
+    if '#' in path:
+        path, frag = path.split('#', 1)
+        frag = '#' + frag
+    query = ''
+    if '?' in path:
+        path, query = path.split('?', 1)
+        query = '?' + query
+    segs = []
+    up = 0
+    for part in path.split('/'):
+        if part == '..':
+            if segs:
+                segs.pop()
+            else:
+                up += 1
+        elif part and part != '.':
+            segs.append(part)
+    if segs and segs[0] == 'doc' and len(segs) > 1 and segs[1] in _BOOK_SEG:
+        segs = [_BOOK_SEG[segs[1]]] + segs[2:]
+        up = 0
+    elif segs and segs[0] in _BOOK_SEG:
+        segs = [_BOOK_SEG[segs[0]]] + segs[1:]
+        up = 0
+    return ('../' * up) + '/'.join(segs) + query + frag
+
+def _image_file(src: str, base_dir: str) -> str:
+    cands = []
+    if base_dir and not src.startswith('/'):
+        cands.append(os.path.join(base_dir, src))
+    cands.append(src)
+    if src.startswith('b-spec/'):
+        cands.append(os.path.join('doc/specs', src[len('b-spec/'):]))
+    for cand in cands:
+        if cand and os.path.isfile(cand):
+            return cand
+    return ''
+
 
 # ── Binary TAD Compiler ───────────────────────────────────────────────────────
-def compile_to_binary_tad(elements: list) -> bytes:
+def compile_to_binary_tad(elements: list, base_dir: str = '') -> bytes:
     init = seg_page()+seg_font(0,1)+seg_char(12,400,0x000000)+seg_ruler(22,0)
     body = b''
     for elem in elements:
@@ -416,8 +532,14 @@ def compile_to_binary_tad(elements: list) -> bytes:
             body += seg_hr(720)
         elif tag in ('p','page_lead'):
             body += seg_text(elem[1])
+        elif tag == 'image':
+            src, alt = elem[1], elem[2] if len(elem) > 2 else ''
+            path = _image_file(src, base_dir)
+            w, h = get_image_dimensions(path) if path else (480, 140)
+            body += seg_image(src, alt, int(w), int(h))
         elif tag == 'link':
-            body += seg_vobj(link_id(elem[1]), elem[2], elem[1])
+            href = to_tad_href(elem[1])
+            body += seg_vobj(link_id(href), elem[2], href)
 
     payload = init + body
     return struct.pack('>HI', RECORD_TYPE_MAIN, len(payload)) + payload
@@ -478,12 +600,25 @@ def compile_to_symbolic_tad(elements: list, doc_title: str = 'B-Book Reference M
         elif tag == 'hr':
             parts.append('─'*70)
         elif tag == 'link':
-            parts.append(f'[仮身] #{link_id(elem[1])} : {elem[2]} -> [{elem[1]}]')
+            href = to_tad_href(elem[1])
+            parts.append(f'[仮身] #{link_id(href)} : {elem[2]} -> [{href}]')
+        elif tag == 'image':
+            src, alt = elem[1], elem[2] if len(elem) > 2 else ''
+            parts.append(f'[付箋: FIGURE src="{src}" caption="{alt}"]')
     return header + '\n\n'.join(parts) + '\n'
 
 
 # ── Doc title name ────────────────────────────────────────────────────────────
-def _doc_title_name(base_name: str, html_path: str, src_root: str) -> str:
+_MEDIA_DOCS = {
+    'index': 'B-Media', 'core': 'B-Core', 'audio': 'B-Audio',
+    'video': 'B-Video', 'sound': 'B-Sound', 'rtp': 'B-RTP',
+    'msx': 'B-MSX', 'gl': 'B-GL',
+}
+
+def _doc_title_name(base_name: str, html_path: str, src_root: str, kind: str) -> str:
+    if (kind == 'media' and base_name in _MEDIA_DOCS
+            and os.path.dirname(os.path.abspath(html_path)) == os.path.abspath(src_root)):
+        return _MEDIA_DOCS[base_name]
     if base_name != 'index':
         return base_name
     rel = os.path.relpath(html_path, src_root) if src_root else html_path
@@ -491,12 +626,25 @@ def _doc_title_name(base_name: str, html_path: str, src_root: str) -> str:
     if sub and sub != '.':
         m = {'vobject':'VObject','hmi':'HMI'}
         return m.get(sub.lower(), sub.lower().capitalize())
+    if kind == 'spec':
+        return 'B-Spec'
+    if kind == 'media':
+        return 'B-Media'
     return 'B-Book'
 
 
 # ── File Processor ────────────────────────────────────────────────────────────
-def process_file(html_path: str, target_dir: str, src_root: str = '') -> dict:
+def _copy_asset_dir(html_dir: str, target_dir: str, name: str) -> None:
+    src = os.path.join(html_dir, name)
+    dst = os.path.join(target_dir, name)
+    if os.path.isdir(src) and not os.path.isdir(dst):
+        shutil.copytree(src, dst)
+
+def process_file(html_path: str, target_dir: str, src_root: str = '', kind: str = 'book') -> dict:
     os.makedirs(target_dir, exist_ok=True)
+    html_dir = os.path.dirname(os.path.abspath(html_path))
+    for asset in ('gif', 'img', 'figures'):
+        _copy_asset_dir(html_dir, target_dir, asset)
     base_name = os.path.splitext(os.path.basename(html_path))[0]
     with open(html_path, 'r', encoding='utf-8', errors='replace') as f:
         html = f.read()
@@ -506,12 +654,12 @@ def process_file(html_path: str, target_dir: str, src_root: str = '') -> dict:
     title = decode_entities(strip_tags(tm.group(1))) if tm else base_name
 
     elements = parse_book_html(html)
-    doc_title_name = _doc_title_name(base_name, html_path, src_root)
+    doc_title_name = _doc_title_name(base_name, html_path, src_root, kind)
 
     bin_path = os.path.join(target_dir, doc_title_name+'.tad')
     txt_path = os.path.join(target_dir, doc_title_name+'.tad.txt')
 
-    bin_tad = compile_to_binary_tad(elements)
+    bin_tad = compile_to_binary_tad(elements, html_dir)
     sym_tad = compile_to_symbolic_tad(elements, title)
 
     with open(bin_path,'wb') as f: f.write(bin_tad)
@@ -579,44 +727,165 @@ def run_tests():
     chk(rec_type == 1, 'Binary TAD header validation')
     chk(payload_len == len(bin_tad)-6, 'Payload length matches')
 
+    chk(to_tad_href('../cores/window.html') == 'b-book/window.html',
+        'Site cores link maps to tad_bin b-book')
+    chk(to_tad_href('../media/gl.html') == 'b-media/gl.html',
+        'Site media link maps to tad_bin b-media')
+    chk(to_tad_href('../../specs/shared_data/tad1.html') == 'b-spec/shared_data/tad1.html',
+        'Site specs link maps to tad_bin b-spec')
+    chk(to_tad_href('kernel.html') == 'kernel.html', 'Intra-book link stays relative')
+    chk(to_tad_href('../shared_data/tad1.html') == '../shared_data/tad1.html',
+        'Spec chapter link stays relative')
+
+    figure_html = """<article><section>
+        <ul><li><a href="../cores/kernel.html">Kernel</a></li></ul>
+        <figure><img src="gif/all_struct.gif" alt="Shared data"><figcaption>Figure 1</figcaption></figure>
+      </section></article>"""
+    fig_elems = parse_book_html(figure_html)
+    chk(any(e[0]=='link' and e[1]=='../cores/kernel.html' for e in fig_elems),
+        'Link list becomes a virtual body')
+    chk(any(e[0]=='image' and e[1]=='gif/all_struct.gif' and e[2]=='Figure 1' for e in fig_elems),
+        'Figure image and caption are kept')
+    fig_bin = compile_to_binary_tad(fig_elems)
+    chk(struct.pack('>H', TS_VOBJ) in fig_bin, 'Link compiles to TS_VOBJ')
+    chk(struct.pack('>H', TS_FPRIM) in fig_bin, 'Image compiles to TS_FPRIM')
+    chk(b'b-book/kernel.html' in fig_bin, 'Compiled link uses the b-book catalog name')
+
     if failures:
         print(f'  {len(failures)} test(s) FAILED.')
         sys.exit(1)
     print('All BtronBook.Compiler unit tests passed!\n')
 
 
+# ── Canonical books the cabinet opens by a fixed path ─────────────────────────
+def compile_foundational_books(target_dir: str = 'tad_bin') -> None:
+    """Three portal real bodies. Image paths stay b-spec/... so the browser
+    resolves them under tad_bin/ after the spec gifs are copied there."""
+    btron3_elements = [
+        ('h1', 'BTRON3 仕様書 バージョン 3.20.00 (Sakamura BTRON Architecture)'),
+        ('image', 'b-spec/shared_data/gif/all_struct.gif',
+         '図 1: BTRON3 実身・仮身データ構造仕様 (Shared Data Structure)'),
+        ('link', 'b-spec/shared_data/index.tad',
+         'Part 1: 共通データ構造仕様 (Shared Data Specifications)'),
+        ('link', 'b-spec/os_spec/index.tad',
+         'Part 2: オペレーティングシステム機能仕様 (OS Specification)'),
+        ('link', 'b-spec/os_spec/indexfig.tad',
+         'Static Analysis & Bounded Heap Memory Model (NASA JPL Rule 3)'),
+        ('h2', '目次 (Table of Contents)'),
+        ('h3', '第1部：共通データ構造仕様 (Shared Data)'),
+        ('link', 'b-spec/shared_data/data_type.tad',
+         '第1章 基本データ型とエラーコード (Data Types & Error Codes)'),
+        ('link', 'b-spec/shared_data/tron_code.tad',
+         '第2章 TRONコード文字体系仕様 (TRON Multilingual Character Code)'),
+        ('link', 'b-spec/shared_data/tad1.tad',
+         '第3章 TAD (TRON Application Databus) 文書フォーマット仕様'),
+        ('link', 'b-spec/shared_data/fd_format.tad',
+         '第4章 BTRON FS 実身／仮身ファイルシステム構造仕様'),
+        ('h3', '第2部：OS機能仕様 (OS Specification)'),
+        ('link', 'b-spec/os_spec/kernel/kernel.tad',
+         '第5章 μITRON リアルタイムカーネルとタスク管理 (Kernel & Tasking)'),
+        ('link', 'b-spec/os_spec/dp/dp.tad',
+         '第6章 表示プリミティブ DP (Display Primitives Graphics Engine)'),
+        ('link', 'b-spec/os_spec/shell/shell.tad',
+         '第7章 GUIシェルとウィンドウマネージャ (Window Manager & Shell)'),
+        ('link', 'b-spec/os_spec/indexfig.tad',
+         '第8章 静的解析と決定論的メモリ制約 (Static Scope & Bounded Memory)'),
+        ('hr',),
+        ('h2', '基本データ型定義 (C99 Types)'),
+        ('code_block',
+         'typedef char            B;   /* 符号付き 8ビット整数 */\n'
+         'typedef short           H;   /* 符号付き 16ビット整数 */\n'
+         'typedef int             W;   /* 符号付き 32ビット整数 */\n'
+         'typedef unsigned char   UB;  /* 符号なし 8ビット整数 */\n'
+         'typedef unsigned short  UH;  /* 符号なし 16ビット整数 */\n'
+         'typedef unsigned int    UW;  /* 符号なし 32ビット整数 */\n'
+         'typedef void           *VP;  /* 汎用ポインタ */'),
+        ('p', 'BTRON3仕様では、ブート完了後の動的ヒープ確保 (malloc/free) を完全禁止し、全てのメモリ領域を有界化します。'),
+    ]
+    bcore_elements = [
+        ('h1', 'B-Core インターコア・ストリーミングプロトコル仕様書 (InterCore Streaming Protocol)'),
+        ('image', 'b-spec/os_spec/kernel/gif/processtask.gif',
+         '図 2: 五呼出プロトコル状態モデル (pub/sub/spawn/snd/rcv State Model)'),
+        ('link', 'b-media/B-Core.tad',
+         '第1章 InterCore ストリーミングプロトコル開発者仕様 (Protocol Developer Spec)'),
+        ('link', 'b-media/theorems/media_intercore.tad',
+         '第2章 Star Ring 形式検証台帳 (602 Coq判定・公理ゼロ)'),
+        ('h2', '五呼出アルファベット (The Five-Call Alphabet)'),
+        ('ol', [
+            'pub  — 発信カーソル生成 (bounded publisher cursor)',
+            'sub  — 受信カーソル末尾結合 (late joiner never replays)',
+            'spawn — コア指定とカーソル排他所有権移転 (ownership replaces the mutex)',
+            'snd  — 非ブロック送信 FULL(drop) 付き (non-blocking, says why)',
+            'rcv  — 厳密非ブロック O(1) 受信 EMPTY (no scheduler yield, ruling R7)',
+        ]),
+        ('p', 'セクタプール保存則 pool_free + Σ resident = 64 と enq = deq + drop により、Clean-room BTRONマイクロカーネルの通信心臓部は実行時ヒープ確保ゼロで動作する。'),
+    ]
+    bfree_elements = [
+        ('h1', 'B-Free 自由なBTRON3オペレーティングシステム技術解説書'),
+        ('image', 'b-spec/os_spec/kernel/gif/filesystem.gif',
+         '図 3: BTRON ファイルシステム構造仕様 (Filesystem Structure)'),
+        ('h2', '設計理念と自由ソフトウェアの精神'),
+        ('p', 'Ken Sakamura教授が提唱した「万人に開かれた標準」をGPL (GNU General Public License) の下で実現するクリーンルーム実装。'),
+    ]
+    books = [
+        ('01_btron3_spec', 'BTRON3 3.20 Specification Book', btron3_elements),
+        ('02_bcore_book', 'B-Core InterCore Streaming Protocol Book', bcore_elements),
+        ('03_bfree_os_book', 'B-Free Operating System Book', bfree_elements),
+    ]
+    print('======================================================================')
+    print(' B-System Foundational TAD Books (article compiler)')
+    print(f' Output Directory: ./{target_dir}/')
+    print('======================================================================')
+    for base_name, title, elems in books:
+        bin_tad = compile_to_binary_tad(elems, '')
+        txt_tad = compile_to_symbolic_tad(elems, title)
+        with open(os.path.join(target_dir, base_name + '.tad'), 'wb') as f:
+            f.write(bin_tad)
+        with open(os.path.join(target_dir, base_name + '.tad.txt'), 'w', encoding='utf-8') as f:
+            f.write(txt_tad)
+        print(f'  [COMPILED BOOK]   {(base_name + ".tad").ljust(26)} : {title} ({len(bin_tad)} bytes)')
+    print('======================================================================\n')
+
+
+def compile_catalog(src_dir: str, out_dir: str, kind: str) -> int:
+    if not os.path.isdir(src_dir):
+        print(f'  [SKIP] {src_dir} is not present')
+        return 0
+    print('======================================================================')
+    print(f' TAD book compiler  {src_dir}  ->  {out_dir}  ({kind})')
+    print('======================================================================')
+    html_files = sorted(glob.glob(os.path.join(src_dir, '**', '*.html'), recursive=True))
+    total = 0
+    for html_file in html_files:
+        rel = os.path.relpath(html_file, src_dir)
+        sub = os.path.dirname(rel)
+        tdir = out_dir if (not sub or sub == '.') else os.path.join(out_dir, sub)
+        res = process_file(html_file, tdir, src_dir, kind)
+        out_n = os.path.relpath(res['bin_path'], 'tad_bin')
+        print(f"  [BOOK2TAD] {rel.ljust(42)} -> {out_n} "
+              f"({res['elements_count']} items, {res['bin_bytes']} bytes)")
+        total += 1
+    print(f'  compiled {total} documents into {out_dir}')
+    print('======================================================================\n')
+    return total
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
+# Source trees are the site books. Output catalogs keep the names the
+# cabinet and tad_browser.c already open.
+CATALOGS = (
+    ('doc/cores', 'tad_bin/b-book', 'book'),
+    ('doc/media', 'tad_bin/b-media', 'media'),
+    ('doc/specs', 'tad_bin/b-spec', 'spec'),
+)
+
 if __name__ == '__main__':
     args = sys.argv[1:]
     if '--test' in args:
         run_tests()
 
-    out_dir = 'tad_bin/b-book'
-    os.makedirs(out_dir, exist_ok=True)
-
-    src_dir = 'b-book'
-    if os.path.isdir(src_dir):
-        print('======================================================================')
-        print(' B-Book Specialized TAD Formatter & Batch Compiler (scripts/tool_book2tad.py)')
-        print(f' Source Directory        : ./{src_dir}/')
-        print(f' Output Directory        : ./{out_dir}/')
-        print(' Target Specifications   : BeBook-Style C99 Systems Reference / BTRON 3.20')
-        print('======================================================================')
-
-        html_files = sorted(glob.glob(os.path.join(src_dir, '*.html')))
-        results = []
-        for html_file in html_files:
-            rel = os.path.relpath(html_file, src_dir)
-            sub = os.path.dirname(rel)
-            tdir = out_dir if (not sub or sub=='.') else os.path.join(out_dir, sub)
-            res = process_file(html_file, tdir, src_dir)
-            in_n  = html_file.ljust(30)
-            out_n = os.path.relpath(res['bin_path'],'tad_bin').ljust(30)
-            print(f"  [BOOK2TAD] {in_n} -> {out_n} ({res['elements_count']} items, {res['bin_bytes']} bytes)")
-            results.append(res)
-
-        total = sum(r['bin_bytes'] for r in results)
-        print('======================================================================')
-        print(f' Successfully compiled {len(results)} B-Book documents via book2tad.')
-        print(f' Total TAD Binary Size: {total} bytes across ./{out_dir}/')
-        print('======================================================================')
+    os.makedirs('tad_bin', exist_ok=True)
+    # Spec gifs land in tad_bin/b-spec before the portal books name them.
+    for src_dir, out_dir, kind in CATALOGS:
+        compile_catalog(src_dir, out_dir, kind)
+    compile_foundational_books('tad_bin')

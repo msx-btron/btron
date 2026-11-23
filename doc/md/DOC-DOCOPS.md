@@ -1,6 +1,6 @@
 # B-System OS Documentation Specification for Automatic Generation
 
-This document defines the technical documentation specification and structural requirements for system components in `./b-system/apps/` (corresponding to `./src/apps/`) and `./b-system/settings/` (corresponding to `./src/settings/`).
+This document defines the technical documentation specification and structural requirements for system components in `./apps/` (corresponding to `./src/apps/`) and `./settings/` (corresponding to `./src/settings/`).
 
 ## 1. Documentation Architecture & Tone
 
@@ -65,20 +65,20 @@ Every settings page must include an exhaustive **Configuration Parameter Specifi
 
 Documentation must maintain complete parity with the C99 implementation in `./src/apps/` and `./src/settings/`.
 
-### 3.1 Settings Parity Requirements (`./b-system/settings/`)
+### 3.1 Settings Parity Requirements (`./settings/`)
 - **Visual Palettes**: `COLOR_TEAL` (`#008080`), `COLOR_DKNAVY` (`#0A192F`), `COLOR_DKAMBER` (`#1A1000`), and `COLOR_LTGRAY` bezel chrome.
 - **Icon Metrics**: `BTRON_ICON_SIZE_32` (32×32) and `BTRON_ICON_SIZE_64` (64×64); grid spacing (Cabinet 96×72px vs. 110×104px; Control Panel 520px vs. 660px); fixed 32×32 window header policy (`draw_setting_gif_icon_scaled`).
 - **Menu Architecture**: `APP_MENU_STYLE_CLASSIC_3D` (4-sided beveled box) and `APP_MENU_STYLE_MODERN_CARD` (1px boundary with 3px drop shadow); propagation across in-window menus, Global Menu Bar (`global_menu.c`), and Deskbar Start Menu (`tracker.c`).
 - **Typography Engine**: 16-plane TRON code rasterizer, Classical Tibetan Jomolhari Unicode plane with EWTS stack subjoining, and subpixel anti-aliasing.
 - **State Control**: Lifecycle handling for Default, Apply (`is_dirty` tracking and `redraw_all_windows()`), and Close (`cls_wnd`).
 
-### 3.2 Application Parity Requirements (`./b-system/apps/`)
+### 3.2 Application Parity Requirements (`./apps/`)
 - **Data Model**: Real Object (実身) and Virtual Object (仮身) network traversal without modal file-picker dialogs.
 - **Input Method Processor**: TIP input engine state transitions, F6–F10 functional transliteration keys, and pre-edit buffer handling.
 
 ## 4. Standard Document Blueprint
 
-Every document in `./b-system/` must conform to the following markup structure:
+Every application page in `./apps/` and every control-panel page in `./settings/` must conform to the following markup structure:
 
 ```html
 <!DOCTYPE html>
@@ -88,15 +88,15 @@ Every document in `./b-system/` must conform to the following markup structure:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>[Identifier] – [Japanese Title] | B-System Specification</title>
   <meta name="description" content="[Academic technical summary]">
-  <link rel="stylesheet" href="../../index.css">
+  <link rel="stylesheet" href="../index.css">
   <link rel="stylesheet" href="./settings.css">
   <link rel="stylesheet" href="../apps/apps.css">
 </head>
 <body>
   <nav class="setting-nav">
-    <a href="../../b-system.html">B-System</a>
+    <a href="../index.html">B-System</a>
     <span class="sep">/</span>
-    <a href="../../b-system.html#[section]">Settings</a>
+    <a href="../settings/index.html">Settings</a>
     <span class="sep">/</span>
     <span class="current">[Component Name]</span>
   </nav>
@@ -172,7 +172,7 @@ All documentation pages must pass the native build and test harness:
 
 ```bash
 # 1. Compile HTML to Native TAD binary files
-elixir scripts/html2tad.exs
+python3 scripts/tool_book2tad.py
 
 # 2. Execute full regression test suite
 make test

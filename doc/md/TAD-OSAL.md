@@ -58,7 +58,7 @@ The B-System codebase already includes a kernel TIP Extended Wylie Transliterati
 
 ### 3. Tibetan Pecha Page Dimensions for Clarity
 
-The Clarity DTP engine (`src/apps/clarity/clarity_layout.c`) currently supports `FMT_PECHA` with ceremonial double-border (`lcags-ri`) and margin folios (`sna-chen`). We will support the 4 canonical Tibetan Pecha formats documented in `b-system/apps/Clarity.html`:
+The Clarity DTP engine (`src/apps/clarity/clarity_layout.c`) currently supports `FMT_PECHA` with ceremonial double-border (`lcags-ri`) and margin folios (`sna-chen`). We will support the 4 canonical Tibetan Pecha formats documented in `apps/Clarity.html`:
 1. **Kangyur / Tengyur (標準経典判)**: $560 \times 110\text{ mm}$ (Default loose-leaf)
 2. **Rinchen Terdzö (大蔵経・宝庫判)**: $650 \times 140\text{ mm}$ (Large treasury format)
 3. **Derge Woodblock (デルゲ木版大判)**: $700 \times 180\text{ mm}$ (Derge print house monumental edition)

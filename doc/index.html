@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Books | B-System</title>
+  <link rel="stylesheet" href="../index.css">
+  <link rel="stylesheet" href="../ricepaper.css">
+</head>
+<body>
+  <nav class="sticky" aria-label="Site navigation">
+  <div class="nav-container">
+    <a href="../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+      <span class="hamburger"></span>
+    </button>
+    <ul class="nav-links">
+<li><a href="../index.html">System</a></li>
+<li><a href="../apps/index.html">Applications</a></li>
+<li><a href="../devices/index.html">Devices</a></li>
+<li><a href="index.html" class="active">Books</a></li>
+<li><a href="../downloads/index.html">Downloads</a></li>
+</ul>
+  </div>
+</nav>
+  <header class="rice-hero">
+    <p class="rice-kicker">B-System library</p>
+    <h1>Books</h1>
+    <div class="rice-rule"></div>
+    <p class="rice-lede">Specifications, the developer book, the media book, conformance, and verification.</p>
+  </header>
+  <main class="rice-main">
+    <p class="rice-section-label">Books</p>
+<div class="rice-grid">
+<a class="rice-card" href="specs/index.html"><strong>Specifications</strong><span>BTRON3 3.20, rewritten as one book.</span></a>
+<a class="rice-card" href="cores/index.html"><strong>Cores</strong><span>The B-Book developer reference.</span></a>
+<a class="rice-card" href="media/index.html"><strong>Media</strong><span>Pipes, budgets, and the media pages.</span></a>
+<a class="rice-card" href="conformance/index.html"><strong>Conformance</strong><span>Implementation audit against the specification.</span></a>
+<a class="rice-card" href="verification/index.html"><strong>Verification</strong><span>The Coq dossier.</span></a>
+<a class="rice-card" href="virtualization/index.html"><strong>Virtualization</strong><span>VirtIO on the system.</span></a>
+<a class="rice-card" href="kernel/index.html"><strong>Kernel</strong><span>T-Kernel and the BTRON system calls.</span></a>
+<a class="rice-card" href="https://rt.btron.pro"><strong>RT</strong><span>Run-time study at rt.btron.pro.</span></a>
+<a class="rice-card" href="https://msx.btron.pro"><strong>MSX</strong><span>The MSX desk at msx.btron.pro.</span></a>
+<a class="rice-card" href="history/index.html"><strong>History</strong><span>Release notes.</span></a>
+</div>
+<p class="rice-section-label">Shelves</p>
+<div class="rice-grid">
+<a class="rice-card" href="md"><strong>Markdown</strong><span>doc/md source notes.</span></a>
+<a class="rice-card" href="pdf"><strong>PDF</strong><span>Typeset copies.</span></a>
+<a class="rice-card" href="txt"><strong>Plain text</strong><span>Cabinet and Pico text copies.</span></a>
+</div>
+  </main>
+</body>
+</html>

@@ -6,7 +6,7 @@ MSX, MSX2, MSX2+, MSX turbo R & Hitachi HC-90/95 Hardware Emulation Layer (tronM
 Target: Native BTRON Microkernel & Workstation Workbench (x86_64, AArch64, Sakamura T-Kernel, POSIX)
 Status: Complete Specification & Operational Reference
 Author: Cleanroom Working Group (Namdak Tonpa / Maxim Sokhatsky)
-Related: b-media/msx.html, b-system/apps/MSX.html, doc/txt/MSX-SOUND.txt,
+Related: doc/media/msx.html, apps/MSX.html, doc/txt/MSX-SOUND.txt,
          src/emulators/msx/hd64180.h, src/emulators/msx/hd64180.c, src/emulators/msx/tronmsx.c,
          src/emulators/msx/slots.c, src/emulators/msx/bios.c, verify/tests/test_hd64180.c
 

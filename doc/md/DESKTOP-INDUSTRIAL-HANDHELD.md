@@ -1,7 +1,7 @@
 # µBTRON-FOMA — Mouse-free BTRON for FOMA Devices
 
 **Concept document based on the B-System / bitedits/btron cleanroom recreation of BTRON3 3.20**
-Design language taken from the authentic Sakamura Cho-Kanji screenshots in `./b-system/img/`.
+Design language taken from the authentic Sakamura Cho-Kanji screenshots in `./img/`.
 
 ## 1. Core Concept
 
@@ -76,7 +76,7 @@ Natural “FOMA profile” of the micro-BTRON / B-right line (BrainPad TiPO era)
 
 **Result:** BTRON’s document-centric, hyperlinked, multilingual world, delivered through the interaction language of a classic Japanese keitai.
 
-## 2. Design Language (from `./b-system/img/` screenshots)
+## 2. Design Language (from `./img/` screenshots)
 
 - Background: classic BTRON teal/purple with fine dotted texture.
 - Windows: double-line borders, solid blue title bars with white text, close “×”.
@@ -310,7 +310,7 @@ All design, interaction and input details above are derived from:
 
 - The BTRON3 / micro-BTRON / B-right historical lineage
 - The modern cleanroom B-System implementation (bitedits/btron)
-- Authentic Sakamura Cho-Kanji visual language from `./b-system/img/`
+- Authentic Sakamura Cho-Kanji visual language from `./img/`
 - Classic Japanese keitai (FOMA) input conventions
 
 # Credits

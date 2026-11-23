@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</title>
+  <link rel="stylesheet" href="../../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../../index.html">System</a></li>
+<li><a href="../../../../apps/index.html">Applications</a></li>
+<li><a href="../../../../devices/index.html">Devices</a></li>
+<li><a href="../../../index.html" class="active">Books</a></li>
+<li><a href="../../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="../../shared_data/data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="../../shared_data/fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="../../shared_data/index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="../../shared_data/indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="../../shared_data/tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="../../shared_data/tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="../../shared_data/tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="../../shared_data/tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="../kernel/clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="../kernel/device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="../kernel/event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="../kernel/file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="../kernel/gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="../kernel/kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="../kernel/memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="../kernel/message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="../kernel/proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="../kernel/system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="../kernel/taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="pointer_func.html" class="nav-link active">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../../index.html">B-Spec</a> / <span>2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</span>
+      </div>
+      <h1 class="page-title">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</h1>
+      <p class="page-lead">Вказівник миші (покажчик курсора) відображається поверх усіх вікон і растрових площин, автоматично слідуючи за фізичними переміщеннями координатно-вказівного пристрою (миші, тачпада чи планшета).</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+<A href="../index.html">Повернутися до змісту розділу Графічних примітивів</A><BR>
+<A href="character_func.html">Попередня сторінка: 2.5 Функції виводу тексту (Повернутися)</A><BR>
+<A href="../shell/shell.html">Наступна сторінка: Розділ 3. Графічна оболонка (Перейти)</A><BR>
+<HR>
+
+<H2><A name="aex">2.6 Функції керування вказівником (Pointer Functions)</A></H2>
+
+<H3><A name="aey">2.6.1 Вказівник миші (Pointer)</A></H3>
+
+
+
+<H3><A name="aez">2.6.2 Стан та форми вказівника</A></H3>
+
+<UL>
+ <LI><B>Видимість</B> : видимий / прихований (внутрішній лічильник вимог приховування).
+ <LI><B>Форма та колір</B> : стандартний системний стиль або довільний растровий бітовий патерн <CODE>PTRIMG</CODE> з точкою гарячого фокусу (Hot Spot).
+ <LI><B>Режим руху</B> : відстеження пристрою (Tracking) або фіксована позиція (Non-tracking).
+</UL>
+
+<H4>□ Структура образу покажчика (PTRIMG / PTRSTS)</H4>
+
+<PRE>
+typedef struct {
+    PNT     hotpt;      /* Точка гарячого фокусу (Hot Spot) відносно лівого верхнього кута */
+    B       data[72];   /* Бітова маска образу покажчика (24x24 пікселі) */
+    B       mask[72];   /* Бітова маска прозорості/трафарету (1 = видимий піксель, 0 = прозорий) */
+} PTRIMG;
+
+typedef struct {
+    W       sts;        /* Стан видимості (0 = видимий, > 0 = лічильник приховувань) */
+    H       style;      /* Стиль форми (>= 0: системний стиль, < 0: довільний PTRIMG) */
+    COLOR   fgcol;      /* Колір переднього плану покажчика */
+    COLOR   bgcol;      /* Колір фону/обводки покажчика */
+    PNT     pos;        /* Поточна абсолютна позиція курсора на екрані */
+} PTRSTS;
+</PRE>
+
+<H3><A name="afb">2.6.3 Системні виклики керування вказівником</A></H3>
+
+<!-- gini_ptr -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gini_ptr</FONT></TD></TR>
+<TR><TD align="right">Initialize Pointer</TD></TR>
+<TR><TD>Ініціалізація та скидання стану вказівника (Initialize Pointer)</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gini_ptr(void)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0 (E_OK) : Успішна ініціалізація
+&lt; 0        : Помилка
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Скидає стан покажчика курсора до стандартної системної стрілки зі стандартними кольорами (чорний передній план, білий фон обводки) та вмикає режим відстеження миші.
+</P>
+
+<!-- gdsp_ptr -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gdsp_ptr</FONT></TD></TR>
+<TR><TD align="right">Show / Hide Pointer</TD></TR>
+<TR><TD>Керування видимістю вказівника (Show/Hide Pointer)</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+W gdsp_ptr(W req)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+W   req     Вимога зміни видимості:
+            = 0 : Приховати вказівник (+1 до лічильника приховування)
+            > 0 : Показати вказівник (-1 до лічильника приховування)
+            < 0 : Примусово показати (примусово скинути лічильник в 0)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+>= 0    Поточне значення внутрішнього лічильника приховування (0 = покажчик видимий)
+< 0     Помилка
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Змінює внутрішній лічильник вимог приховування вказівника. Курсор стає видимим на екрані лише при лічильнику рівному 0.
+</P>
+
+<!-- gset_ptr -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gset_ptr</FONT></TD></TR>
+<TR><TD align="right">Set Pointer Shape and Color</TD></TR>
+<TR><TD>Зміна форми та кольорів покажчика (Set Pointer Style)</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gset_ptr(PTRSTL style, PTRIMG *img, COLOR fgcol, COLOR bgcol)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+PTRSTL  style   Номер системного стилю курсора (>= 0: стрілка, хрест, пісочний годинник) або < 0 (користувацький img)
+PTRIMG *img     Довільний образотворчий масив та маска покажчика (при style < 0)
+COLOR   fgcol   Передній колір курсора (< 0 = без змін)
+COLOR   bgcol   Колір фону/обводки курсора (< 0 = без змін)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0 (E_OK) : Успішна зміна форми та кольору
+&lt; 0        : Помилка (EG_ADR, EG_PAR)
+</PRE>
+
+<!-- gmov_ptr -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gmov_ptr</FONT></TD></TR>
+<TR><TD align="right">Move Pointer Position</TD></TR>
+<TR><TD>Програмне переміщення покажчика на екрані (Move Pointer)</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gmov_ptr(PNT pos)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+PNT pos     Нові абсолютні екранні координати (X, Y)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0 (E_OK) : Успішне переміщення
+&lt; 0        : Помилка
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Програмно переміщує покажчик у точку <CODE>pos</CODE> на екрані. Працює у режимі фіксованої позиції (<CODE>Non-tracking</CODE>).
+</P>
+
+<!-- gmot_ptr -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gmot_ptr</FONT></TD></TR>
+<TR><TD align="right">Set Pointer Motion Tracking</TD></TR>
+<TR><TD>Увімкнення / вимкнення відстеження руху миші (Pointer Tracking)</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR gmot_ptr(W sts)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+W   sts     Режим руху: 0 = зафіксувати позицію (Non-tracking), 1 = автоматично слідкувати за мишею (Tracking)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0 (E_OK) : Успіх
+&lt; 0        : Помилка
+</PRE>
+
+<!-- gget_ptr -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">gget_ptr</FONT></TD></TR>
+<TR><TD align="right">Get Pointer Status</TD></TR>
+<TR><TD>Отримання поточного стану та форми покажчика (Get Pointer Status)</TD></TR>
+</TABLE></TD></TR></TABLE>
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+W gget_ptr(PTRSTS *sts, PTRIMG *img)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+PTRSTS *sts     Буфер у пам'яті для збереження загального стану курсора
+PTRIMG *img     Буфер для збереження маски та образу курсора (при NULL не повертається)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+>= 0    Фізичний розмір растру покажчика у пікселях (наприклад, 24x24 або 32x32)
+< 0     Помилка (EG_ADR)
+</PRE>
+
+<HR>
+<A href="../index.html">Повернутися до змісту розділу Графічних примітивів</A><BR>
+<A href="character_func.html">Попередня сторінка: 2.5 Функції виводу тексту (Повернутися)</A><BR>
+<A href="../shell/shell.html">Наступна сторінка: Розділ 3. Графічна оболонка (Перейти)</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

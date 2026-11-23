@@ -27,10 +27,10 @@ Unlike end-user or operational system documentation, **B-Book is written entirel
 
 ## 2. Directory Structure & Naming Conventions
 
-B-Book is organized under the root directory `./b-book/` with twelve subsystem chapters:
+B-Book is organized under the root directory `./doc/cores/` with twelve subsystem chapters:
 
 ```
-./b-book/
+./doc/cores/
 ├── b-book.css      # Unified B-Book responsive design system
 ├── index.html      # Master portal, architecture overview & type index
 ├── kernel/         # Sakamura T-Kernel 2.0 Real-Time OS Specification
@@ -65,7 +65,7 @@ Each subsystem directory and title identifier must use an exact single-word titl
 
 ## 3. BeBook-Style Section Topology
 
-Every subsystem manual page in `./b-book/<subsystem>/index.html` must follow this standardized four-part topology:
+Every subsystem manual page in `./doc/cores/<subsystem>/index.html` must follow this standardized four-part topology:
 
 ### Part 1: Architecture & Conceptual Model
 
@@ -121,7 +121,7 @@ The B-Book design system draws inspiration from the classic BeBook, modernized f
 
 ## 5. TAD Compilation Pipeline Integration (`book2tad`)
 
-All documents in `./b-book/` are typeset with BeBook-style specialized layouts (API cards, prototypes, invariant tables, metadata badges, ASCII state machine diagrams). They are compiled into binary BTRON Application Databus (`.tad`) files via the dedicated **`scripts/book2tad.exs`** compiler:
+All documents in `./doc/cores/` are typeset with BeBook-style specialized layouts (API cards, prototypes, invariant tables, metadata badges, ASCII state machine diagrams). They are compiled into binary BTRON Application Databus (`.tad`) files by **`scripts/tool_book2tad.py`**, the only TAD HTML compiler. The same script also compiles `doc/media/` and `doc/specs/`.
 
 - **B-Book Semantic Structure Mapping**:
   - `<div class="api-card">`: Extracted as structured function entries with Teal heading chips (`@ts_tfont` 1, `@ts_tchar` 14pt bold), C99 prototypes in Monospace blocks (`@ts_tfont` 2, `@ts_tchar` 11pt), aligned invariant tables, and preconditions/postconditions metadata.
@@ -132,9 +132,9 @@ All documents in `./b-book/` are typeset with BeBook-style specialized layouts (
 
 - **Compilation Targets**:
   ```bash
-  $ make book2tad     # Compiles b-book/ into tad_bin/b-book/
-  $ make html2tad     # Runs test suite and batch compiles all catalogs
-  $ make tad_bin      # Full build of foundational books and b-book
+  $ make book2tad     # Compiles doc/cores/, doc/media/, and doc/specs/
+  $ make html2tad     # Runs the compiler test suite, then compiles
+  $ make tad_bin      # Foundational books plus b-book, b-media, and b-spec
   ```
   Produces `./tad_bin/b-book/*.tad` as the **5th B-System Book** catalog.
 

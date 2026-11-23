@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Глава 4. Специфікація файлової системи BTRON та формату тома</title>
+  <link rel="stylesheet" href="../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../index.html">System</a></li>
+<li><a href="../../../apps/index.html">Applications</a></li>
+<li><a href="../../../devices/index.html">Devices</a></li>
+<li><a href="../../index.html" class="active">Books</a></li>
+<li><a href="../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="fd_format.html" class="nav-link active">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../os_spec/index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../os_spec/indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="../os_spec/kernel/clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="../os_spec/kernel/device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="../os_spec/kernel/event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="../os_spec/kernel/file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="../os_spec/kernel/gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="../os_spec/kernel/kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="../os_spec/kernel/memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="../os_spec/kernel/message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="../os_spec/kernel/proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="../os_spec/kernel/system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="../os_spec/kernel/taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="../os_spec/dp/basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="../os_spec/dp/basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="../os_spec/dp/character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="../os_spec/dp/dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="../os_spec/dp/figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="../os_spec/dp/intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="../os_spec/dp/pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../os_spec/shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../os_spec/shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../os_spec/shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../os_spec/shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../os_spec/shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../os_spec/shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../os_spec/shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../os_spec/shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../os_spec/shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../os_spec/shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../os_spec/shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../os_spec/shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../index.html">B-Spec</a> / <span>Глава 4. Специфікація файлової системи BTRON та формату тома</span>
+      </div>
+      <h1 class="page-title" id="aey">Глава 4. Специфікація файлової системи BTRON та формату тома</h1>
+      <p class="page-lead">У цьому розділі описується фізична та логічна структура файлової системи специфікації BTRON (BTRON File System), правила організації тома диска, заголовки, розміщення файлів та таблиці записів.</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+
+
+
+
+
+
+<H2><A name="aez">4.1 Загальний огляд</A></H2>
+
+
+
+<P>
+  Файлова система BTRON розроблена для підтримки мережевої структури реальних та віртуальних об'єктів (Real/Virtual Body System). Вона забезпечує високу надійність зберігання даних, швидку навігацію по записах файлу, а також сумісність із різними типами фізичних носіїв (дискети, жорсткі диски, flash-пам'ять).
+</P>
+
+<P>
+  Основний блок розміщення даних у файловій системі називається сектором або блоком тома. За замовчуванням розмір фізичного сектора/блока становить 1024 байти (1 КБ). Усі адреси блоків та зсуви у томі обчислюються у кількостях блоків розміром <VAR>n</VAR> байт.
+</P>
+
+<H2><A name="afa">4.2 Логічна структура тома файлової системи</A></H2>
+
+<H3><A name="afb">4.2.1 Загальна схема тома диска</A></H3>
+
+<P>
+  Том файлової системи BTRON ділиться на системну область тома (System Block) та область даних файлів (File Data Region).
+</P>
+
+<A name="afc">
+<CENTER><IMG src="gif/all_struct.gif" alt="Загальна структура тома файлової системи BTRON"></CENTER>
+</A>
+<CENTER>Мал. 56 : Загальна структура тома файлової системи BTRON</CENTER>
+
+<H3><A name="afd">4.2.2 Системний блок тома (System Block & Volume Header)</A></H3>
+
+<P>
+  Системний блок розміщується на початку тома диска і містить глобальний заголовок файлової системи, таблицю ідентифікаторів файлів (FID Table), таблицю назв файлів (File Name Table) та растрову карту вільних блоків (Allocation Bitmap).
+</P>
+
+<A name="afe">
+<CENTER><IMG src="gif/sys_block.gif" alt="Структура системного блока тома"></CENTER>
+</A>
+<CENTER>Мал. 57 : Структура системного блока тома</CENTER>
+
+<P>
+  Системний заголовок тома (Volume Header) розміщується у перших 128 байтах системного блока і має наведену нижче бінарну структуру:
+</P>
+
+<A name="aff">
+<CENTER><IMG src="gif/sys_header.gif" alt="Заголовок системного блока тома"></CENTER>
+</A>
+<CENTER>Мал. 58 : Заголовок системного блока тома</CENTER>
+
+<P>Опис полів системного заголовка тома:</P>
+
+
+ <DT>TRONID:
+ <DD>Системний сигнатурний код операційної системи TRON (16 біт):
+     <TABLE border=1 cellPadding=4 cellspacing=0>
+     <TR><TD>Стандартний формат (Big-Endian)</TD><TD><CODE>0x42FE</CODE></TD></TR>
+     <TR><TD>Реверсивний формат (Little-Endian)</TD><TD><CODE>0x52FE</CODE></TD></TR>
+     </TABLE>
+ <DT>FSID (File System ID):
+ <DD>Ідентифікатор типу файлової системи BTRON (16 біт):
+     <TABLE border=1 cellPadding=4 cellspacing=0>
+     <TR><TD>Стандартна файлова система BTRON</TD><TD><CODE>0x6400</CODE></TD></TR>
+     <TR><TD>Розширена файлова система BTRON</TD><TD><CODE>0x6401</CODE></TD></TR>
+     </TABLE>
+ <DT>SYS_SIZE:
+ <DD>Повний розмір системного блока тома у секторах/блоках.
+ <DT>SFIDT:
+ <DD>Розмір таблиці ідентифікаторів файлів (FID Table) у блоках:
+     <PRE>SFIDT = (NFMAX * 4) / 1024</PRE>
+ <DT>SFNMT:
+ <DD>Розмір таблиці назв файлів (File Name Table) у блоках:
+     <PRE>SFNMT = (NFMAX * 4) / 1024</PRE>
+ <DT>NBMP:
+ <DD>Розмір растрової карти вільних блоків (Allocation Bitmap) у блоках. Обчислюється залежно від кількості блоків на диску <VAR>NLB</VAR>:
+     <TABLE border=1 cellPadding=4 cellspacing=0>
+	  <TR><TD><VAR>NBMP</VAR> (для 1-бітової карти)</TD><TD>≧ <VAR>NLB</VAR> / 8 / 1024</TD></TR>
+      <TR><TD><VAR>NBMP</VAR> (для 4-бітової карти)</TD><TD>≧ <VAR>NLB</VAR> / 2 / 1024</TD></TR>
+     </TABLE>
+ <DT>BLOCK_SIZE:
+ <DD>Розмір одного дискового блока в байтах (за замовчуванням 1024 байти).
+ <DT>NFILES:
+ <DD>Загальна кількість файлів, зареєстрованих у даній файловій системі.
+ <DT>LANG:
+ <DD>Мовний код назви тома (наприклад, <CODE>0x0021</CODE> для TRON Code / кирилиці).
+ <DT>VOL_STATE:
+ <DD>Стан цілісності тома диска:
+     <TABLE border=1 cellPadding=4 cellspacing=0>
+      <TR><TD>0</TD><TD>Нормально змонтований чистий том (Clean)</TD></TR>
+      <TR><TD>1</TD><TD>Том потребує перевірки утилітою fsck</TD></TR>
+	  <TR><TD>2</TD><TD>Критична помилка тома (Corrupted)</TD></TR>
+     </TABLE>
+ <DT>VOL_CRETIME:
+ <DD>Час створення тома (секунди з 1 січня 1985 року GMT).
+ <DT>VOL_MODTIME:
+ <DD>Час останньої модифікації тома диска.
+ <DT>VOL_NAME:
+ <DD>Назва тома диска (40 байтів у кодуванні TRON Code).
+ <DT>DEV_NAME:
+ <DD>Назва пристрою / носія (40 байтів у кодуванні TRON Code).
+
+
+<P>
+  Растрова карта зайнятості блоків (Allocation Bitmap) використовує біти "0" для позначення вільних блоків та "1" для зайнятих блоків тома.
+</P>
+
+<A name="afg">
+<CENTER><IMG src="gif/bitmap.gif" alt="Растрова карта зайнятості блоків тома"></CENTER>
+</A>
+<CENTER>Мал. 59 : Растрова карта зайнятості блоків тома</CENTER>
+
+<H3><A name="afh">4.2.3 Таблиця ідентифікаторів файлів (FID Table)</A></H3>
+
+<P>
+  Таблиця ідентифікаторів файлів (File ID Table / FID Table) перетворює унікальний ідентифікатор файлу FID (File ID) у фізичну номерну адресу блоку заголовка файлу.
+</P>
+
+<P>
+  Максимальна кількість файлів у томі позначається константою <VAR>NFMAX</VAR>. Кожен запис у FID-таблиці займає 4 байти (32-бітний номер блока). Якщо FID-запис дорівнює 0, цей ідентифікатор файла вважається вільним.
+</P>
+
+<A name="afi">
+<CENTER><IMG src="gif/fid_table.gif" alt="Таблиця ідентифікаторів файлів (FID Table)"></CENTER>
+</A>
+<CENTER>Мал. 60 : Таблиця ідентифікаторів файлів (FID Table)</CENTER>
+
+<H3><A name="afj">4.2.4 Таблиця назв файлів (File Name Table)</A></H3>
+
+<P>
+  Таблиця назв файлів (File Name Table / Short Name Table) використовується для швидкого пошуку ідентифікатора файла FID за його символьною назвою.
+</P>
+
+<A name="afk">
+<CENTER><IMG src="gif/short_table.gif" alt="Таблиця коротких назв файлів"></CENTER>
+</A>
+<CENTER>Мал. 61 : Таблиця коротких назв файлів</CENTER>
+
+<P>
+  Хеш-значення назви обчислюється по 10 перших 16-бітних словах символьного рядка <VAR>NAME[10]</VAR> за допомогою операції XOR:
+</P>
+
+<A name="afl">
+<CENTER><IMG src="gif/array_name.gif" alt="Структура масиву назви NAME[10]"></CENTER>
+</A>
+<CENTER>Мал. 62 : Структура масиву назви NAME[10]</CENTER>
+
+<PRE>
+hash = 0;
+for (i = 0; i &lt; 10; i++) {
+    hash = hash ^ NAME[i];
+}
+</PRE>
+
+<H3><A name="afm">4.2.5 Кореневий файл каталогу (Root Directory File)</A></H3>
+
+<P>
+  Кореневий каталог тома файлової системи BTRON має зарезервоване значення <CODE>File ID = 0</CODE>. Він є початковою точкою ієрархічного дерева реальних та віртуальних об'єктів тома.
+</P>
+
+<H2><A name="afn">4.3 Внутрішня структура файлу та індексація записів</A></H2>
+
+<H3><A name="afo">4.3.1 Загальна схема організації файлу</A></H3>
+
+<P>
+  Файл у специфікації BTRON складається з Блока заголовка (Header Block), Блоків даних (Data Blocks) та Індексу записів (Record Index).
+</P>
+
+<P>
+  Залежно від розміру та кількості записів, файл використовує 0-рівневу (прямий заголовок), 1-рівневу або 2-рівневу непряму індексацію записів.
+</P>
+
+<A name="afp">
+<CENTER><IMG src="gif/file_idx0.gif" alt="Структура файлу (Індексація 0-го рівня)"></CENTER>
+</A>
+<CENTER>Мал. 63 : Структура файлу (Індексація 0-го рівня)</CENTER>
+
+<A name="afq">
+<CENTER><IMG src="gif/file_idx1.gif" alt="Структура файлу (Індексація 1-го рівня)"></CENTER>
+</A>
+<CENTER>Мал. 64 : Структура файлу (Індексація 1-го рівня)</CENTER>
+
+<A name="afr">
+<CENTER><IMG src="gif/file_idx2.gif" alt="Структура файлу (Індексація 2-го рівня)"></CENTER>
+</A>
+<CENTER>Мал. 65 : Структура файлу (Індексація 2-го рівня)</CENTER>
+
+<H3><A name="afs">4.3.2 Блок заголовка файлу (Header Block)</A></H3>
+
+<P>
+  Блок заголовка містить метадані файлу, часові мітки, права доступу, таблицю локації фрагментів дискових блоків та первинну таблицю записів.
+</P>
+
+<A name="aft">
+<CENTER><IMG src="gif/header_block.gif" alt="Структура блока заголовка файлу"></CENTER>
+</A>
+<CENTER>Мал. 66 : Структура блока заголовка файлу</CENTER>
+
+<H3><A name="afu">4.3.3 Заголовок файлу (File Header Record)</A></H3>
+
+<P>
+  Перші 192 байти блока заголовка займає Заголовок файлу (File Header Record), який містить такі основні поля:
+</P>
+
+<A name="afv">
+<CENTER><IMG src="gif/file_header.gif" alt="Заголовок файлу"></CENTER>
+</A>
+<CENTER>Мал. 67 : Заголовок файлу</CENTER>
+
+
+ <DT>FILE_MAGIC:
+ <DD>Сигнатура файлу BTRON (<CODE>0x54726f6e</CODE> — "Tron").
+ <DT>FILE_TYPE / ATTR:
+ <DD>Слово атрибутів типу та режимів доступу до файлу (<CODE>TTTT xxxx BAPO xRWE</CODE>):
+     <TABLE border=1 cellPadding=4 cellspacing=0>
+     <TR><TD>T (4 біти)</TD><TD>0: Звичайний файл, 1: Файл каталогу / об'єкта</TD></TR>
+     <TR><TD>RWE (3 біти)</TD><TD>Права доступу (Read, Write, Execute)</TD></TR>
+     <TR><TD>P, O, A, B</TD><TD>Прапорці захисту, стиснення та розширень додатка</TD></TR>
+     </TABLE>
+ <DT>APPL_TYPE:
+ <DD>Ідентифікатор типу додатка-власника файлу (Application ID).
+ <DT>FILE_SIZE:
+ <DD>Повний розмір файлу у байтах.
+ <DT>RECORD_COUNT:
+ <DD>Загальна кількість записів у файлі.
+ <DT>INDEX_DEPTH:
+ <DD>Глибина індексації записів (0, 1 або 2).
+ <DT>CRETIME, MODTIME, ACCTIME:
+ <DD>Часові мітки створення, останньої модифікації та останнього доступу до файлу (у секундах GMT з 1985 року).
+ <DT>FILE_NAME:
+ <DD>Символьна назва файлу (40 байтів TRON Code).
+
+
+<A name="afw">
+<CENTER><IMG src="gif/file_location.gif" alt="Таблиця розташування файлу"></CENTER>
+</A>
+<CENTER>Мал. 68 : Таблиця розташування файлу</CENTER>
+
+<H3><A name="afx">4.3.4 Таблиця фрагментів дискових блоків (Fragment Table)</A></H3>
+
+<P>
+  Таблиця фрагментів (Fragment Table) описує послідовність дискових секторів/блоків, з яких складається файл. Якщо файл фрагментований, він описується декількома безперервними дисковими сегментами (початковий блок + кількість блоків).
+</P>
+
+<A name="afy">
+<CENTER><IMG src="gif/fragment_table.gif" alt="Таблиця фрагментів дискових блоків"></CENTER>
+</A>
+<CENTER>Мал. 69 : Таблиця фрагментів дискових блоків</CENTER>
+
+<H3><A name="afz">4.3.5 Індекс записів файлу (Record Index)</A></H3>
+
+<P>
+  Індекс записів (Record Index) перетворює порядковий номер запису файлу у його фізичний зсув та розмір всередині блоків даних.
+</P>
+
+<A name="aga">
+<CENTER><IMG src="gif/record_idx.gif" alt="Індекс записів файлу"></CENTER>
+</A>
+<CENTER>Мал. 70 : Індекс записів файлу</CENTER>
+
+<H3><A name="agb">4.3.6 Непрямий індекс записів (Indirect Index)</A></H3>
+
+<P>
+  Для великих файлів із великою кількістю записів застосовується 1-рівневий або 2-рівневий непрямий індекс (Indirect Record Index), який дозволяє зберігати до 655360 записів у одному файлі.
+</P>
+
+<A name="agc">
+<CENTER><IMG src="gif/indirect_idx.gif" alt="Непрямий індекс записів"></CENTER>
+</A>
+<CENTER>Мал. 71 : Непрямий індекс записів</CENTER>
+
+<H3><A name="agd">4.3.7 Приклади індексації та розщеплення записів</A></H3>
+
+<A name="age">
+<CENTER><IMG src="gif/rec_idx_ex.gif" alt="Приклад розщеплення індексу записів"></CENTER>
+</A>
+<CENTER>Мал. 72 : Приклад розщеплення індексу записів</CENTER>
+
+<H3><A name="agf">4.3.8 Блоки даних файлу та фрагментація записів (Data Blocks)</A></H3>
+
+<P>
+  Блоки даних (Data Blocks) зберігають безпосередній корисний вміст записів файлу. Якщо запис перевищує розмір одного блоку, він простягається через декілька послідовних або фрагментованих блоків даних.
+</P>
+
+<A name="agg">
+<CENTER><IMG src="gif/sep_code.gif" alt="Фрагментація записів у блоках даних"></CENTER>
+</A>
+<CENTER>Мал. 73 : Фрагментація записів у блоках даних</CENTER>
+
+<HR>
+
+<H1><A name="agh">Додаток A. Напів-BTRON специфікація файлової системи (Semi-BTRON File System)</A></H1>
+
+<P>
+  Спрощена специфікація файлової системи Semi-BTRON призначена для вбудованих контролерів та пристроїв із обмеженими ресурсами пам'яті.
+</P>
+
+<A name="agi">
+<CENTER><IMG src="gif/semi_fd_rec_idx.gif" alt="Індекс записів у Semi-BTRON"></CENTER>
+</A>
+<CENTER>Мал. 74 : Індекс записів у Semi-BTRON</CENTER>
+
+<A name="agj">
+<CENTER><IMG src="gif/semi_fd_bitmap.gif" alt="Растрова карта у Semi-BTRON"></CENTER>
+</A>
+<CENTER>Мал. 75 : Растрова карта у Semi-BTRON</CENTER>
+
+<HR>
+
+<H1><A name="agk">Додаток B. Приклади та діаграми структури тома BTRON</A></H1>
+
+<A name="agl">
+<CENTER><IMG src="gif/examples.gif" alt="Приклади структури тома файлової системи BTRON"></CENTER>
+</A>
+<CENTER>Мал. 76 : Приклади структури тома файлової системи BTRON</CENTER>
+
+<HR>
+<A href="index.html">Повернутися до змісту цього розділу</A><BR>
+<A href="tad3.html">Попередня сторінка: Глава 3 TAD (Повернутися)</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

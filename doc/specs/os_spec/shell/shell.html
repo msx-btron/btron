@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Розділ 7. Графічна оболонка (GUI Shell Specification)</title>
+  <link rel="stylesheet" href="../../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../../index.html">System</a></li>
+<li><a href="../../../../apps/index.html">Applications</a></li>
+<li><a href="../../../../devices/index.html">Devices</a></li>
+<li><a href="../../../index.html" class="active">Books</a></li>
+<li><a href="../../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="../../shared_data/data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="../../shared_data/fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="../../shared_data/index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="../../shared_data/indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="../../shared_data/tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="../../shared_data/tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="../../shared_data/tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="../../shared_data/tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="../kernel/clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="../kernel/device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="../kernel/event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="../kernel/file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="../kernel/gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="../kernel/kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="../kernel/memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="../kernel/message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="../kernel/proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="../kernel/system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="../kernel/taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="../dp/basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="../dp/basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="../dp/character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="../dp/dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="../dp/figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="../dp/intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="../dp/pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="shell.html" class="nav-link active">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../../index.html">B-Spec</a> / <span>Розділ 7. Графічна оболонка (GUI Shell Specification)</span>
+      </div>
+      <h1 class="page-title" id="afe">Розділ 7. Графічна оболонка (GUI Shell Specification)</h1>
+      <p class="page-lead">Специфікація Sakamura BTRON / BTRON3, версія 3.20.00.</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+
+
+
+
+
+
+
+
+<H2>Зміст розділу 7 частини 2</H2>
+
+
+ <H3><a href="window.html#aff">7.1 Менеджер вікон (Window Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="window.html#afg">7.1.1 Огляд підсистеми Менеджера вікон</a></LI>
+      <LI><a href="window.html#afh">7.1.1.1 Загальні відомості</a></LI>
+      <LI><a href="window.html#afi">7.1.1.2 Типи вікон</a></LI>
+      <LI><a href="window.html#afj">7.1.1.3 Атрибути вікна (WDATTR / WDDISP)</a></LI>
+      <LI><a href="window.html#afk">7.1.1.4 Форма вказівника</a></LI>
+      <LI><a href="window.html#afl">7.1.1.5 Операції з вікнами</a></LI>
+      <LI><a href="window.html#afm">7.1.1.6 Вікнові події (WEVENT)</a></LI>
+      <LI><a href="window.html#afn">7.1.1.7 Функція переднього плану (Frontend)</a></LI>
+      <LI><a href="window.html#afo">7.1.2 Системні виклики Менеджера вікон</a></LI>
+    </UL>
+
+ <H3><a href="menu.html#aha">7.2 Менеджер меню (Menu Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="menu.html#ahb">7.2.1 Огляд підсистеми меню</a></LI>
+      <LI><a href="menu.html#ahc">7.2.1.7 Узагальнене меню (Generic Menu)</a></LI>
+      <LI><a href="menu.html#ahj">7.2.2 Системні виклики Менеджера меню</a></LI>
+    </UL>
+
+ <H3><a href="parts.html#ahu">7.3 Менеджер елементів управління (Parts Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="parts.html#ahv">7.3.1 Огляд підсистеми</a></LI>
+      <LI><a href="parts.html#ahv2">7.3.2 Типи елементів управління</a></LI>
+      <LI><a href="parts.html#ahj2">7.3.3 Структури та константи</a></LI>
+      <LI><a href="parts.html#aiw">7.3.4 Системні виклики Менеджера елементів управління</a></LI>
+    </UL>
+
+ <H3><a href="panel.html#aia">7.4 Менеджер панелей (Panel Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="panel.html#aib">7.4.1 Огляд підсистеми панелей</a></LI>
+      <LI><a href="panel.html#aid">7.4.1.2 Структури даних панелі</a></LI>
+      <LI><a href="panel.html#ajn">7.4.3 Системні виклики Менеджера панелей</a></LI>
+    </UL>
+
+ <H3><a href="tray.html#ajo">7.5 Менеджер трею / буфера обміну (Tray Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="tray.html#ajp">7.5.1 Функції Менеджера трею</a></LI>
+      <LI><a href="tray.html#aka">7.5.2 Структури даних та константи</a></LI>
+      <LI><a href="tray.html#akb">7.5.3 Системні виклики Менеджера трею</a></LI>
+    </UL>
+
+ <H3><a href="data.html#akc">7.6 Менеджер даних (Data Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="data.html#akd">7.6.1 Функції Менеджера даних</a></LI>
+      <LI><a href="data.html#akj">7.6.2 Структури та константи</a></LI>
+      <LI><a href="data.html#ako">7.6.3 Системні виклики Менеджера даних</a></LI>
+    </UL>
+
+ <H3><a href="tip.html#akp">7.7 Текстові примітиви введення (TIP)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="tip.html#akq">7.7.1 Функції примітивів введення тексту</a></LI>
+      <LI><a href="tip.html#aky">7.7.2 Константи та прапори</a></LI>
+      <LI><a href="tip.html#akz">7.7.3 Системні виклики TIP</a></LI>
+    </UL>
+
+ <H3><a href="omgr.html#ala">7.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="omgr.html#alb">7.8.1 Функції Менеджера об'єктів</a></LI>
+      <LI><a href="omgr.html#alz">7.8.4 Структури даних та константи</a></LI>
+      <LI><a href="omgr.html#ama">7.8.5 Системні виклики Менеджера об'єктів</a></LI>
+      <LI><a href="omgr.html#amb">7.8.6 Допоміжні функції для додатків</a></LI>
+    </UL>
+
+ <H3><a href="font_mgr.html#amc">7.9 Менеджер шрифтів (Font Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="font_mgr.html#amd">7.9.1 Функції Менеджера шрифтів</a></LI>
+      <LI><a href="font_mgr.html#amt">7.9.2 Структури даних та константи</a></LI>
+      <LI><a href="font_mgr.html#amu">7.9.3 Системні виклики Менеджера шрифтів</a></LI>
+    </UL>
+
+ <H3><a href="tcpip.html#anc">7.10 Менеджер TCP/IP</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="tcpip.html#and">7.10.1 Архітектура</a></LI>
+      <LI><a href="tcpip.html#anh">7.10.2 Протоколи TCP/IP</a></LI>
+      <LI><a href="tcpip.html#ani">7.10.3 Коди помилок</a></LI>
+      <LI><a href="tcpip.html#anj">7.10.4 Системні виклики</a></LI>
+    </UL>
+
+ <H3><a href="printmgr.html#ann">7.11 Менеджер друку (Print Manager)</a></H3>
+ <UL class="toc-sublist">
+      <LI><a href="printmgr.html#ano">7.11.1 Функції Менеджера друку</a></LI>
+      <LI><a href="printmgr.html#anq">7.11.2 Управління друком та параметри сторінки</a></LI>
+      <LI><a href="printmgr.html#anv">7.11.3 Управління чергою друку (Спулер)</a></LI>
+      <LI><a href="printmgr.html#anz">7.11.4 Конфігурація принтерів</a></LI>
+      <LI><a href="printmgr.html#aod">7.11.5 Системні виклики Менеджера друку</a></LI>
+    </UL>
+
+
+<HR>
+<A href="../index.html">Повернутися до змісту частини 2 (Специфікація ОС)</A><BR>
+<A href="../../index.html">Повернутися до головного змісту всієї специфікації</A><BR>
+<A href="../dp/pointer_func.html">Попередня сторінка: 6.6 Функції керування вказівником (Повернутися)</A><BR>
+<A href="window.html">Наступна сторінка: 7.1 Менеджер вікон (Перейти)</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

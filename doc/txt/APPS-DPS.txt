@@ -7,7 +7,7 @@ Target: Native BTRON Microkernel & Workstation Workbench (x86_64, AArch64, Sakam
 Status: Complete Architectural Plan, Feasibility Evaluation & Implementation Specification
 Author: Cleanroom Working Group (Namdak Tonpa / Maxim Sokhatsky)
 Related: RENDER.txt, INTERPRETER.txt, ASYNC.txt, BFS_V2.txt, doc/ps/n64.ps, src/apps/review.c,
-         src/apps/pdf_reader.c, b-system/apps/Review.html, doc/pdf/*.tex
+         src/apps/pdf_reader.c, apps/Review.html, doc/pdf/*.tex
 
 
 0. Executive Summary, Philosophy & Mathematical Foundations
@@ -45,7 +45,7 @@ Thesis:
     (b) The `sps` (Secure PostScript) CLU terminal utility, providing zero-overhead batch
         conversion from PostScript to clean, linearized PDF without dynamic execution;
     (c) The native BTRON `Reader` / `Review` workstation application (announced in
-        b-system/apps/Review.html and implemented in src/apps/review.c), which renders
+        apps/Review.html and implemented in src/apps/review.c), which renders
         vector PDF directly onto Display Primitives (DP) backing stores and enables
         two-way interactive annotation pinning (Fusen) with non-destructive,
         incremental-update PDF writeback;
@@ -413,7 +413,7 @@ Target Recommendation:
 5.1 Dual Identity: Web Specification & Native C99 Application
 
 The Reader / Review suite exists in two unified manifestations within the BTRON ecosystem:
-  1. `b-system/apps/Review.html` (and `Reader.html` alias):
+  1. `apps/Review.html` (and `Reader.html` alias):
      The official specification document, interactive showcase, and user manual
      defining menu actions, keyboard shortcuts, and TAD hypermedia integration.
   2. `src/apps/review.c` & `src/apps/pdf_reader.c`:
@@ -747,7 +747,7 @@ The implementation of DPS strictly adheres to the NASA Jet Propulsion Laboratory
   Milestone 2  Native BTRON PDF Viewer   - `src/apps/pdf_reader.c` & `src/apps/review.c`
                                          - Implements PDF 1.4 vector stream parser.
                                          - Renders `n64.pdf` directly into window GDEV.
-                                         - Updates `b-system/apps/Review.html` specification.
+                                         - Updates `apps/Review.html` specification.
   Milestone 3  Fusen Annotation Engine   - Interactive note pinning in Review app.
                                          - Saves annotations to Cabinet (`RT_MFUSEN`).
                                          - Implements non-destructive incremental update.

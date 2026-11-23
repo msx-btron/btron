@@ -1,0 +1,257 @@
+/* Ricepaper section landings.
+   index.html keeps the full Red Dot treatment inline.
+   Applications, Devices, Books, and Downloads indexes load index.css
+   for the shared nav, then this sheet replaces the rosy gradient
+   with the ink / paper / teal landing. */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+JP:wght@300;400;500;600&family=Shippori+Mincho:wght@600;700&display=swap');
+
+:root {
+    --rice-ink: #14171a;
+    --rice-ink-2: #2b3136;
+    --rice-ink-3: #5b6470;
+    --rice-paper: #f7f7f5;
+    --rice-paper-2: #efeeea;
+    --rice-plate: #ffffff;
+    --rice-rule: #d8d7d1;
+    --rice-teal: #008080;
+    --rice-gold: #c59b27;
+    --rice-mincho: "Shippori Mincho", "Noto Sans JP", serif;
+    --rice-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+body {
+    /* Same type contract as index.html: Japanese gothic, not the rosy Inter ramp. */
+    font-family: "Noto Sans JP", "Inter", system-ui, -apple-system, sans-serif !important;
+    font-weight: 400;
+    font-size: 1.05rem;
+    letter-spacing: 0.015em;
+    line-height: 1.85;
+    background: var(--rice-paper) !important;
+    color: var(--rice-ink-2);
+}
+
+.nav-container {
+    max-width: 1180px;
+    padding: 0.85rem clamp(1.25rem, 5vw, 3.5rem);
+}
+
+.logo {
+    font-size: 1.35rem !important;
+}
+
+.logo img {
+    width: 30px !important;
+    height: auto !important;
+    opacity: 0.75;
+    filter: grayscale(1) contrast(1.4);
+}
+
+.nav-links a,
+.nav-links a:visited {
+    font-size: 0.86rem !important;
+    font-weight: 500;
+}
+
+nav.sticky {
+    background: rgba(247, 247, 245, 0.94) !important;
+    border-bottom: 1px solid var(--rice-rule) !important;
+    backdrop-filter: blur(14px);
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+}
+
+.logo {
+    background: none !important;
+    -webkit-text-fill-color: var(--rice-ink) !important;
+    color: var(--rice-ink) !important;
+}
+
+.nav-links a,
+.nav-links a:visited {
+    color: var(--rice-ink-3) !important;
+}
+
+.nav-links a:hover,
+.nav-links a.active {
+    color: var(--rice-teal) !important;
+}
+
+.nav-toggle .hamburger,
+.nav-toggle .hamburger::before,
+.nav-toggle .hamburger::after {
+    background: var(--rice-ink) !important;
+}
+
+@media (max-width: 860px) {
+    .nav-toggle {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        margin-left: auto;
+    }
+    .nav-links {
+        background: rgba(247, 247, 245, 0.98) !important;
+        border-bottom-color: var(--rice-rule) !important;
+    }
+}
+
+h1, h2, .jp-title {
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    background-clip: initial !important;
+    -webkit-text-fill-color: var(--rice-ink) !important;
+    color: var(--rice-ink) !important;
+}
+
+header.rice-hero {
+    /* index.css lays header children in a row. Stack them, at the landing's scale. */
+    display: flex !important;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 100vh !important;
+    overflow: hidden !important;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 5.5rem clamp(1.25rem, 5vw, 3.5rem) 9rem;
+    text-align: center;
+    border-bottom: 1px solid var(--rice-rule);
+    background:
+        radial-gradient(120% 90% at 50% 0%, rgba(0, 128, 128, 0.07), rgba(0, 128, 128, 0) 60%),
+        var(--rice-paper) !important;
+}
+
+.hero-content {
+    max-width: 1180px;
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    text-align: center;
+}
+
+.rice-kicker {
+    font-family: var(--rice-mono);
+    font-size: 0.76rem;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    color: var(--rice-teal);
+    margin-bottom: clamp(1.6rem, 4vw, 2.6rem);
+}
+
+.rice-hero h1,
+.hero-content h1 {
+    font-family: var(--rice-mincho) !important;
+    font-weight: 700 !important;
+    font-size: clamp(2.9rem, 8.4vw, 6.6rem) !important;
+    line-height: 1.18 !important;
+    letter-spacing: -0.015em !important;
+    margin: 0 auto !important;
+    margin-left: auto !important;
+    text-shadow: none !important;
+    animation: none !important;
+}
+
+h1.jp-title,
+h2.jp-title {
+    font-family: var(--rice-mincho);
+    word-break: keep-all;
+    overflow-wrap: break-word;
+}
+
+.rice-rule {
+    width: 64px;
+    height: 1px;
+    background: var(--rice-ink);
+    margin: clamp(1.8rem, 4vw, 2.6rem) auto;
+    opacity: 0.55;
+}
+
+.rice-kicker,
+.rice-hero h1,
+.rice-lede,
+.hero-subtitle {
+    max-width: 100%;
+    overflow-wrap: break-word;
+}
+
+.rice-lede,
+.hero-subtitle {
+    max-width: 900px;
+    margin: 0 auto;
+    font-size: clamp(1.02rem, 1.7vw, 1.22rem);
+    font-weight: 300;
+    line-height: 2.1;
+    color: var(--rice-ink-2);
+}
+
+@media (max-width: 860px) {
+    .hero-content h1,
+    .rice-hero h1 {
+        white-space: normal !important;
+    }
+}
+
+@media (max-width: 620px) {
+    .hero-content h1,
+    .rice-hero h1 {
+        font-size: clamp(2rem, 9.5vw, 2.9rem) !important;
+    }
+}
+
+.rice-main {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 2.5rem clamp(1.25rem, 5vw, 3.5rem) 5rem;
+}
+
+.rice-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 1rem;
+}
+
+.rice-card {
+    display: block;
+    background: var(--rice-plate);
+    border: 1px solid var(--rice-rule);
+    border-radius: 2px;
+    padding: 1.15rem 1.2rem 1.25rem;
+    text-decoration: none;
+    color: var(--rice-ink-2);
+    box-shadow: 0 1px 2px rgba(20, 23, 26, 0.04);
+}
+
+.rice-card:hover {
+    border-color: var(--rice-teal);
+    color: var(--rice-ink);
+}
+
+.rice-card strong {
+    display: block;
+    font-family: var(--rice-mincho);
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--rice-ink);
+    margin-bottom: 0.35rem;
+}
+
+.rice-card span {
+    display: block;
+    font-size: 0.92rem;
+    line-height: 1.55;
+    color: var(--rice-ink-3);
+}
+
+.rice-section-label {
+    font-family: var(--rice-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--rice-gold);
+    margin: 2rem 0 0.8rem;
+}

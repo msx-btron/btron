@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>1.7 Менеджер подій вводу (Input Event Management)</title>
+  <link rel="stylesheet" href="../../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../../index.html">System</a></li>
+<li><a href="../../../../apps/index.html">Applications</a></li>
+<li><a href="../../../../devices/index.html">Devices</a></li>
+<li><a href="../../../index.html" class="active">Books</a></li>
+<li><a href="../../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="../../shared_data/data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="../../shared_data/fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="../../shared_data/index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="../../shared_data/indexfig.html" class="nav-link">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="../../shared_data/tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="../../shared_data/tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="../../shared_data/tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="../../shared_data/tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="event.html" class="nav-link active">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="../dp/basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="../dp/basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="../dp/character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="../dp/dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="../dp/figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="../dp/intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="../dp/pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../../index.html">B-Spec</a> / <span>1.7 Менеджер подій вводу (Input Event Management)</span>
+      </div>
+      <h1 class="page-title">1.7 Менеджер подій вводу (Input Event Management)</h1>
+      <p class="page-lead">Підсистема управління подіями призначена для побудови інтерактивного графічного інтерфейсу користувача (GUI). Вона уніфікує всі дії користувача з пристроями введення — клавіатурою (KB) та поінтинг-пристроєм / мишею (PD) — у формі єдиного поняття «Подія» (Event).</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+<A href="../index.html">Повернутися до змісту розділу Ядра</A><BR>
+<A href="file.html">Попередня сторінка: 1.6 Файлова система та менеджер файлів (Повернутися)</A><BR>
+<A href="device.html">Наступна сторінка: 1.8 Менеджер пристроїв та драйверів (Перейти)</A><BR>
+<HR>
+
+<H2><A name="aby">1.7 Менеджер подій вводу (Input Event Management)</A></H2>
+
+<H3><A name="abz">1.7.1 Огляд підсистеми управління подіями (Overview)</A></H3>
+
+
+
+<P>
+  Операції з клавіатурою та поінтинг-пристроєм послідовно поміщаються ядром у єдину системну чергу подій (Event Queue). Прикладні додатки працюють за принципом <B>подієво-орієнтованої архітектури (Event-Driven Architecture)</B>: вони послідовно зчитують події з черги та виконують відповідні обробники реакції на дії користувача.
+</P>
+
+<P>
+  У багатозадачному середовищі в кожен конкретний момент часу інтерактивне введення користувача спрямовується строго до одного активного процесу. Стан прийому введення взаємно передається між процесами відповідно до фокусу введення.
+</P>
+
+<P>
+  Окрім управління чергою подій, підсистема надає засоби для зчитування та налаштування стану, швидкості повтору, чутливості та атрибутів клавіатури й поінтинг-пристрою, формуючи уніфікований системний інтерфейс для інтерактивних пристроїв введення.
+</P>
+
+<H3><A name="aca">1.7.2 Класифікація та типи подій (Event Types)</A></H3>
+
+<P>
+  У специфікації ядра BTRON3 визначено наступні класи системних подій:
+</P>
+
+
+ <DT><B>EV_BUTDWN (Тип 1) — Натискання кнопки поінтинг-пристрою (Button Down Event)</B> :
+ <DD><P>Генерується при натисканні будь-якої кнопки миші чи поінтинг-пристрою у графічній області.</P>
+ <DT><B>EV_BUTUP (Тип 2) — Відпускання кнопки поінтинг-пристрою (Button Up Event)</B> :
+ <DD><P>Генерується при відпусканні кнопки поінтинг-пристрою.</P>
+ <DT><B>EV_KEYDWN (Тип 3) — Натискання клавіші (Key Down Event)</B> :
+ <DD><P>Генерується при натисканні звичайної клавіші клавіатури (окрім клавіш-модифікаторів Shift, Ctrl, Alt/Meta).</P>
+ <DT><B>EV_KEYUP (Тип 4) — Відпускання клавіші (Key Up Event)</B> :
+ <DD><P>Генерується при відпусканні звичайної клавіші клавіатури.</P>
+ <DT><B>EV_AUTKEY (Тип 5) — Автоматичний повтор клавіші (Auto-Repeat Key Event)</B> :
+ <DD><P>Періодично генерується ядром при тривалій затримці клавіатурної клавіші у натиснутому стані. Затримка перед першим повтором (Offset) та інтервал між повторами (Interval) налаштовуються системно.</P>
+ <DT><B>EV_DEVICE (Тип 6) — Подія системного пристрою (Device Event)</B> :
+ <DD><P>Генерується при змінах стану периферійних пристроїв (наприклад, підключення/вилучення носіїв інформації FD/Flash або зміна стану живильної батареї).</P>
+ <DT><B>EV_NULL (Тип 0) — Порожня подія (Null Event)</B> :
+ <DD><P>Фіктивна подія, що повертається системним викликом, якщо у черзі немає очікуючих подій.</P>
+ <DT><B>EV_APPL1 .. EV_APPL8 (Типи 8 – 15) — Події прикладних додатків (Application Events)</B> :
+ <DD><P>Спеціальні події користувача для міжпроцесної взаємодії та передачі міжвіконних повідомлень системної оболонки Shell.</P>
+
+
+<H3><A name="acb">1.7.3 Підсистема клавіатури (Keyboard Management)</A></H3>
+
+<P>
+  Клавіатурна підсистема розпізнає натискання та відпускання клавіш, стан клавіш-модифікаторів (Shift, Lock, Command) та генерує відповідні коди символів TRON Code. Швидкість автоповтору та таблиці розкладки клавіатури конфігуруються викликами <CODE>get_kbs()</CODE> та <CODE>set_kbs()</CODE>.
+</P>
+
+<H3><A name="acd">1.7.4 Підсистема поінтинг-пристрою (Pointing Device Management)</A></H3>
+
+<P>
+  Поінтинг-пристрій (миша, планшет, трекбол) транслює переміщення в координатній сітці екрана та натискання кнопок у системні координати курсора $(X, Y)$. За допомогою системних викликів <CODE>get_pds()</CODE> та <CODE>set_pds()</CODE> можна обмежувати область переміщення курсора, блокувати його позицію чи змінювати чутливість і коефіцієнт прискорення.
+</P>
+
+<H3><A name="ace">1.7.5 Визначення типів даних та констант (Data Types & Constants)</A></H3>
+
+<H4>□ Маски типів подій (Event Type Masks)</H4>
+
+<PRE>
+#define EM_BUTDWN   0x0001      /* Маска події натискання кнопки миші */
+#define EM_BUTUP    0x0002      /* Маска події відпускання кнопки миші */
+#define EM_KEYDWN   0x0004      /* Маска події натискання клавіші */
+#define EM_KEYUP    0x0008      /* Маска події відпускання клавіші */
+#define EM_AUTKEY   0x0010      /* Маска події автоповтору клавіші */
+#define EM_DEVICE   0x0020      /* Маска системних подій пристроїв */
+#define EM_APPL1    0x0080      /* Маска додатка 1 */
+#define EM_ALL      0xffff      /* Маска усіх типів подій */
+</PRE>
+
+<H4>□ Структура події EVENT</H4>
+
+<PRE>
+typedef struct {
+    H       kind;           /* Тип події (EV_BUTDWN, EV_KEYDWN тощо) */
+    H       stat;           /* Стан модифікаторів (Shift, Ctrl, Alt) */
+    W       time;           /* Системна часова мітка події (мс) */
+    PNT     pos;            /* Екранні координати курсора (X, Y) */
+    union {
+        struct {
+            H   no;         /* Номер кнопки поінтинг-пристрою */
+            H   cnt;        /* Кількість кліків (Single/Double click) */
+        } button;
+        struct {
+            TC  code;       /* Символьний код клавіші (TRON Code) */
+        } key;
+    } data;
+} EVENT;
+</PRE>
+
+<H4>□ Стан та налаштування клавіатури (T_KBS)</H4>
+
+<PRE>
+typedef struct {
+    UW      stat;           /* Маска стану модифікаторів (Shift, Ctrl, Alt, CapsLock) */
+    UH      delay;          /* Затримка перед першим автоповтором клавіші (мс) */
+    UH      interval;       /* Інтервал між повторними спрацьовуваннями (мс) */
+    UH      layout;         /* Ідентифікатор кодової розкладки клавіатури */
+} T_KBS;
+</PRE>
+
+<H4>□ Стан та налаштування поінтинг-пристрою (T_PDS)</H4>
+
+<PRE>
+typedef struct {
+    PNT     pos;            /* Поточні екранні координати курсора (X, Y) */
+    UH      buttons;        /* Бітова маска натиснутих кнопок миші */
+    RECT    limit;          /* Прямокутні межі переміщення курсора */
+    UH      accel;          /* Коефіцієнт прискорення руху курсора */
+    UH      sens;           /* Чутливість поінтинг-пристрою */
+} T_PDS;
+</PRE>
+
+<H3><A name="acf">1.7.6 Системні виклики підсистеми подій (Event System Calls)</A></H3>
+
+<!-- get_evt -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">get_evt</FONT></TD></TR>
+<TR><TD align="right">Get Event</TD></TR>
+<TR><TD>Зчитання події з черги (Get Event)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR get_evt(EVENT *evt, UW mask, TMOUT tmout)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+EVENT  *evt     Буфер для збереження зчитаної події (Вихід)
+UW      mask    Маска фільтрації типів подій (EM_BUTDWN, EM_KEYDWN тощо)
+TMOUT   tmout   Час очікування (T_NOWAIT, T_FOREVER або значення у мс)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне виконання (Подію записано у *evt)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Вилучає чергову подію із системної черги подій процесу відповідно до маски фільтрації <CODE>mask</CODE> та записує її у структуру <CODE>evt</CODE>. Якщо черга порожня, процес заблокується до появи події або до спливання таймауту <CODE>tmout</CODE>.
+</P>
+<H4>【Коди помилок】</H4>
+<PRE>
+ER_ADR     : Неприпустима адреса вказівника evt.
+ER_TIMEOUT : Перевищено допустимий час очікування (при T_NOWAIT або таймауті).
+ER_PAR     : Некоректні параметри mask або tmout.
+</PRE>
+
+<!-- pke_evt -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">pke_evt</FONT></TD></TR>
+<TR><TD align="right">Peek Event</TD></TR>
+<TR><TD>Перегляд події у черзі без вилучення (Peek Event)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR pke_evt(EVENT *evt, UW mask)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+EVENT  *evt     Буфер для збереження копії події (Вихід)
+UW      mask    Маска фільтрації типів подій
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне виконання (Копію події записано в *evt, сама подія залишається в черзі)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Зчитує копію найстарішої події із системної черги подій без її вилучення з черги.
+</P>
+<H4>【Коди помилок】</H4>
+<PRE>
+ER_ADR     : Неприпустима адреса вказівника evt.
+ER_NOEXS   : У черзі відсутні події, що відповідають масці mask.
+</PRE>
+
+<!-- snd_evt -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">snd_evt</FONT></TD></TR>
+<TR><TD align="right">Send Event</TD></TR>
+<TR><TD>Відправлення події у чергу (Send Event)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR snd_evt(W pid, EVENT *evt)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+W       pid     Ідентифікатор цільового процесу (PID)
+EVENT  *evt     Вказівник на відправлювану подію
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне виконання
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Поміщає прикладну або системну подію <CODE>evt</CODE> у чергу подій вказаного цільового процесу <CODE>pid</CODE>.
+</P>
+<H4>【Коди помилок】</H4>
+<PRE>
+ER_ADR     : Неприпустима адреса вказівника evt.
+ER_ID      : Недійсний ідентифікатор цільового процесу pid.
+ER_NOSPC   : Черга подій цільового процесу переповнена.
+</PRE>
+
+<!-- clr_evt -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">clr_evt</FONT></TD></TR>
+<TR><TD align="right">Clear Events</TD></TR>
+<TR><TD>Очищення очікуючих подій із черги (Clear Events)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+WERR clr_evt(UW mask)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+UW      mask    Маска фільтрації типів подій для вилучення
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+>= 0    Кількість вилучених та очищених подій
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Вилучає та відкидає з черги подій поточної задачі всі події, що відповідають бітовій масці <CODE>mask</CODE>. Повертає кількість вилучених подій.
+</P>
+<H4>【Коди помилок】</H4>
+<PRE>
+ER_PAR     : Некоректна маска подій mask.
+</PRE>
+
+<!-- def_evt -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">def_evt</FONT></TD></TR>
+<TR><TD align="right">Define Event Handler</TD></TR>
+<TR><TD>Реєстрація обробника асинхронних подій (Define Event Handler)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR def_evt(UW mask, FP evthdr)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+UW      mask    Маска типів подій для обробки
+FP      evthdr  Адреса процедури обробника (при evthdr = NULL скасовує реєстрацію)
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне виконання (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Реєструє процедуру асинхронного сповіщення <CODE>evthdr</CODE>, яка автоматично викликатиметься ядром при надходженні подій, що відповідають масці <CODE>mask</CODE>.
+</P>
+
+<!-- get_kbs -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">get_kbs</FONT></TD></TR>
+<TR><TD align="right">Get Keyboard Status</TD></TR>
+<TR><TD>Отримання стану та параметрів клавіатури (Get Keyboard Status)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR get_kbs(T_KBS *kbs)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+T_KBS  *kbs     Вказівник на структуру для збереження параметрів клавіатури
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне виконання (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Зчитує поточний стан модифікаторів, інтервал автоповтору та ідентифікатор розкладки клавіатури.
+</P>
+
+<!-- set_kbs -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">set_kbs</FONT></TD></TR>
+<TR><TD align="right">Set Keyboard Status</TD></TR>
+<TR><TD>Встановлення параметрів клавіатури (Set Keyboard Status)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR set_kbs(T_KBS *kbs)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+T_KBS  *kbs     Вказівник на нові параметри клавіатури
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне виконання (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+
+<!-- get_pds -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">get_pds</FONT></TD></TR>
+<TR><TD align="right">Get Pointing Device Status</TD></TR>
+<TR><TD>Отримання стану поінтинг-пристрою (Get Pointing Device Status)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR get_pds(T_PDS *pds)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+T_PDS  *pds     Вказівник на структуру для збереження стану поінтинг-пристрою
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне виконання (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Зчитує поточну позицію курсора $(X, Y)$, стан кнопок та межі руху поінтинг-пристрою.
+</P>
+
+<!-- set_pds -->
+<TABLE border=2 width="100%"><TR><TD><TABLE width="100%">
+<TR><TD><FONT size="+2">set_pds</FONT></TD></TR>
+<TR><TD align="right">Set Pointing Device Status</TD></TR>
+<TR><TD>Встановлення налаштувань поінтинг-пристрою (Set Pointing Device Status)</TD></TR>
+</TABLE></TD></TR></TABLE>
+
+<H4>【Синтаксис / Прототип】</H4>
+<PRE>
+ERR set_pds(T_PDS *pds)
+</PRE>
+<H4>【Параметри】</H4>
+<PRE>
+T_PDS  *pds     Вказівник на нові налаштування поінтинг-пристрою
+</PRE>
+<H4>【Значення, що повертається】</H4>
+<PRE>
+= 0     Успішне виконання (E_OK)
+&lt; 0     Помилка (Код помилки)
+</PRE>
+<H4>【Детальний опис】</H4>
+<P>
+  Змінює прямокутні межі руху курсора, позицію курсора, чутливість та коефіцієнт прискорення.
+</P>
+
+<HR>
+<A href="../index.html">Повернутися до змісту цього розділу</A><BR>
+<A href="file.html">Попередня сторінка: 1.6 Файлова система та менеджер файлів (Повернутися)</A><BR>
+<A href="device.html">Наступна сторінка: 1.8 Менеджер пристроїв та драйверів (Перейти)</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

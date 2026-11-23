@@ -1,6 +1,6 @@
 # Unified Multi-Partition Disk Boot Model & Replication Installer — Implementation Plan
 
-This plan translates the boot architecture and target analysis documented in [Boot.html](file:///Users/tonpa/depot/bitedits/btron/b-system/apps/Boot.html) into an incremental engineering rollout across three integrated tracks:
+This plan translates the boot architecture and target analysis documented in [Boot.html](file:///Users/tonpa/depot/bitedits/btron/apps/Boot.html) into an incremental engineering rollout across three integrated tracks:
 
 - **Part 0 (Cross-Cutting Foundation):** Establish a normative **BTRON OS Error Code Protocol** grounded in [error.h](file:///Users/tonpa/depot/bitedits/btron/include/btron/error.h) across the block/partition layer, V1 filesystem copy engine, Ski/core boot path, and Volumes/Installer UI — eliminating ad-hoc `-1` / silent `bool` failures.
 - **Part I (Phases 1–5):** Transition B-System to direct boot from unified **Disk-Based Multiple Partition Images** (MBR & GPT), make **UEFI always boot from `.img` disk images** (with direct `.vol` partition-slice granularity strictly **optional**), and right-size `Volumes` ([b_drivesetup.c](file:///Users/tonpa/depot/bitedits/btron/src/apps/volumes/b_drivesetup.c)) to each platform's physical storage tier.
@@ -297,6 +297,6 @@ stateDiagram-v2
    ```
 5. **Documentation TAD Compilation:**
    ```bash
-   python3 scripts/tool_html2tad.py --test
+   python3 scripts/tool_book2tad.py --test
    ```
 

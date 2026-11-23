@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Частина 1. Зміст ілюстрацій та діаграм</title>
+  <link rel="stylesheet" href="../../cores/b-book.css">
+</head>
+<body>
+  <nav class="book-global-nav" aria-label="Site navigation">
+    <div class="book-global-nav-container">
+      <a href="../../../index.html" class="book-global-logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="book-nav-toggle" aria-label="Toggle navigation" aria-expanded="false" onclick="const links = this.nextElementSibling; const sidebar = document.querySelector('.book-sidebar'); const open = links.classList.toggle('open'); if (sidebar) sidebar.classList.toggle('open', open); this.classList.toggle('open', open); this.setAttribute('aria-expanded', open);">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="book-global-links">
+<li><a href="../../../index.html">System</a></li>
+<li><a href="../../../apps/index.html">Applications</a></li>
+<li><a href="../../../devices/index.html">Devices</a></li>
+<li><a href="../../index.html" class="active">Books</a></li>
+<li><a href="../../../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+  <nav class="book-sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-title">B-Spec <span class="badge">3.20</span></div>
+      <div class="brand-sub">Sakamura BTRON3</div>
+    </div>
+    <div class="sidebar-nav">
+      <div class="nav-heading">Overview</div>
+<a href="../index.html" class="nav-link">Специфікація BTRON3 (Версія 3.20.00)</a>
+<div class="nav-heading">Part 1 · Shared data</div>
+<a href="data_type.html" class="nav-link">Розділ 1. Базові типи даних</a>
+<a href="fd_format.html" class="nav-link">Глава 4. Специфікація файлової системи BTRON та формату тома</a>
+<a href="index.html" class="nav-link">Частина 1. Загальні структури даних (Shared Data Specifications)</a>
+<a href="indexfig.html" class="nav-link active">Частина 1. Зміст ілюстрацій та діаграм</a>
+<a href="tad1.html" class="nav-link">Розділ 3. Детальна специфікація формату документів TAD (TRON Applicat…</a>
+<a href="tad2.html" class="nav-link">3.5 Сегменти текстових вкладок (Text Fusen Segments)</a>
+<a href="tad3.html" class="nav-link">Додаток A. Довідник сегментів та структур даних TAD</a>
+<a href="tron_code.html" class="nav-link">Розділ 2. Система кодування TRON Code</a>
+<div class="nav-heading">Part 2 · OS specification</div>
+<a href="../os_spec/index.html" class="nav-link">Частина 2. Специфікація операційної системи BTRON3</a>
+<a href="../os_spec/indexfig.html" class="nav-link">Частина 2. Зміст ілюстрацій та діаграм</a>
+<div class="nav-heading">Kernel</div>
+<a href="../os_spec/kernel/clk.html" class="nav-link">1.9 Системний годинник та таймери (Clock &amp; Timer Management)</a>
+<a href="../os_spec/kernel/device.html" class="nav-link">1.8 Менеджер пристроїв та драйверів (Device Management)</a>
+<a href="../os_spec/kernel/event.html" class="nav-link">1.7 Менеджер подій вводу (Input Event Management)</a>
+<a href="../os_spec/kernel/file.html" class="nav-link">1.6 Файлова система та менеджер файлів (File Management)</a>
+<a href="../os_spec/kernel/gname.html" class="nav-link">1.4 Глобальні імена та реєстр системних об'єктів (Global Name Managem…</a>
+<a href="../os_spec/kernel/kernel.html" class="nav-link">Розділ 5. Ядро операційної системи (Kernel Specification)</a>
+<a href="../os_spec/kernel/memory.html" class="nav-link">1.5 Управління оперативною пам'яттю (Memory Management)</a>
+<a href="../os_spec/kernel/message.html" class="nav-link">1.2 Система міжпроцесних повідомлень (Message Passing)</a>
+<a href="../os_spec/kernel/proc.html" class="nav-link">1.1 Управління процесами та задачами (Process &amp; Task Management)</a>
+<a href="../os_spec/kernel/system.html" class="nav-link">1.10 Системне управління (System Management)</a>
+<a href="../os_spec/kernel/taskcomm.html" class="nav-link">1.3 Синхронізація та комунікація задач (Task Communication &amp; Synchron…</a>
+<div class="nav-heading">Display primitives</div>
+<a href="../os_spec/dp/basic_concept.html" class="nav-link">2.2 Базові графічні концепції (Basic Display Concepts)</a>
+<a href="../os_spec/dp/basic_func.html" class="nav-link">2.3 Базові функції графічного порту (Basic Display Functions)</a>
+<a href="../os_spec/dp/character_func.html" class="nav-link">2.5 Функції виводу тексту та символів (Text &amp; Character Functions)</a>
+<a href="../os_spec/dp/dp.html" class="nav-link">Розділ 6. Графічні примітиви (Display Primitives Specification)</a>
+<a href="../os_spec/dp/figure_func.html" class="nav-link">2.4 Функції малювання геометричних фігур (Figure Drawing Functions)</a>
+<a href="../os_spec/dp/intro.html" class="nav-link">2.1 Огляд підсистеми графічних примітивів (Display Primitives Overview)</a>
+<a href="../os_spec/dp/pointer_func.html" class="nav-link">2.6 Функції керування вказівником (Pointer &amp; Cursor Functions)</a>
+<div class="nav-heading">Shell</div>
+<a href="../os_spec/shell/data.html" class="nav-link">3.6 Менеджер даних (Data Manager)</a>
+<a href="../os_spec/shell/font_mgr.html" class="nav-link">3.9 Менеджер шрифтів (Font Manager)</a>
+<a href="../os_spec/shell/menu.html" class="nav-link">3.2 Менеджер меню (Menu Manager)</a>
+<a href="../os_spec/shell/omgr.html" class="nav-link">3.8 Менеджер Реальних та Віртуальних об'єктів (Real/Virtual Body Mana…</a>
+<a href="../os_spec/shell/panel.html" class="nav-link">3.4 Менеджер панелей (Panel Manager)</a>
+<a href="../os_spec/shell/parts.html" class="nav-link">3.3 Менеджер елементів управління (Parts Manager)</a>
+<a href="../os_spec/shell/printmgr.html" class="nav-link">3.11 Менеджер друку (Print Manager)</a>
+<a href="../os_spec/shell/shell.html" class="nav-link">Розділ 7. Графічна оболонка (GUI Shell Specification)</a>
+<a href="../os_spec/shell/tcpip.html" class="nav-link">3.11 Менеджер мережі та TCP/IP (TCP/IP Manager Specification)</a>
+<a href="../os_spec/shell/tip.html" class="nav-link">3.7 Текстові примітиви введення (Text Input Primitives / TIP)</a>
+<a href="../os_spec/shell/tray.html" class="nav-link">3.5 Менеджер трею / буфера обміну (Tray Manager)</a>
+<a href="../os_spec/shell/window.html" class="nav-link">3.1 Менеджер вікон (Window Manager)</a>
+    </div>
+  </nav>
+  <main class="book-content">
+    <header class="book-header">
+      <div class="breadcrumb">
+        <a href="../index.html">B-Spec</a> / <span>Частина 1. Зміст ілюстрацій та діаграм</span>
+      </div>
+      <h1 class="page-title">Частина 1. Зміст ілюстрацій та діаграм</h1>
+      <p class="page-lead">Специфікація Sakamura BTRON / BTRON3, версія 3.20.00.</p>
+    </header>
+    <article>
+      <section>
+        <!-- Sakamura BTRON / BTRON3 Specification - Ukrainian Translation -->
+
+
+
+
+
+
+
+<H2>Перелік схематичних матеріалів</H2>
+
+
+<h4><a href="tron_code.html#abc">Мал. 1 Структура системи кодування японських символів TRON Code</a></h4>
+<h4><a href="tron_code.html#abe">Мал. 2 Кодові площини та групи символів TRON Code</a></h4>
+<h4><a href="tad1.html#abp">Мал. 3 Структура сегмента змінної довжини TAD</a></h4>
+<h4><a href="tad1.html#abr">Мал. 4 Послідовність сегментів текстового документа TAD</a></h4>
+<h4><a href="tad1.html#abs">Мал. 5 Послідовність сегментів графічного документа TAD</a></h4>
+<h4><a href="tad1.html#abt">Мал. 6 Область малювання та область відображення документа</a></h4>
+<h4><a href="tad1.html#abu">Мал. 7 Координатна система розміщення на сторінці</a></h4>
+<h4><a href="tad1.html#abv">Мал. 8 Перетворення макета та позиціювання елементів</a></h4>
+<h4><a href="tad1.html#aby">Мал. 9 Загальна структура сегментів даних TAD</a></h4>
+<h4><a href="tad1.html#ace">Мал. 10 Структура сегмента растрового зображення (Image Segment)</a></h4>
+<h4><a href="tad1.html#acf">Мал. 11 Формати стиснення та розпакування растру</a></h4>
+<h4><a href="tad1.html#acg">Мал. 12 Маска прозорості та прямокутник накладання зображення</a></h4>
+<h4><a href="tad2.html#acm">Мал. 13 Ієрархія текстових вкладок (Text Fusen)</a></h4>
+<h4><a href="tad2.html#aco">Мал. 14 Параметри макета та полів сторінки в текстових вкладках</a></h4>
+<h4><a href="tad2.html#acq">Мал. 15 Способи вирівнювання та виключки рядків</a></h4>
+<h4><a href="tad2.html#acx">Мал. 16 Міжрядкові та міжсимвольні інтервали</a></h4>
+<h4><a href="tad2.html#acy">Мал. 17 Параметри підтяжки та перенесення слів</a></h4>
+<h4><a href="tad2.html#adk">Мал. 18 Зміна атрибутів шрифтів та розмірів у тексті</a></h4>
+<h4><a href="tad2.html#adp">Мал. 19 Розміщення спеціальних символів та знаків</a></h4>
+<h4><a href="tad2.html#adu">Мал. 20 Зсув базової лінії символів (Superscript / Subscript)</a></h4>
+<h4><a href="tad3.html#aee">Мал. 21 Ієрархія сегментів 2D-векторної графіки TAD</a></h4>
+<h4><a href="tad3.html#aeg">Мал. 22 Опис геометричних примітивів та ліній</a></h4>
+<h4><a href="tad3.html#aei">Мал. 23 Патерни штриховки та заповнення контурів</a></h4>
+<h4><a href="tad3.html#ael">Мал. 24 Матриці геометричних перетворень (Transformation Matrices)</a></h4>
+<h4><a href="tad3.html#aeo">Мал. 25 Графічні групи та макровизначення</a></h4>
+<h4><a href="tad3.html#aep">Мал. 26 Порядок малювання та перекриття шарів (Z-order)</a></h4>
+<h4><a href="fd_format.html#afc">Мал. 27 Загальна схема файлової системи BTRON FS на дискеті</a></h4>
+<h4><a href="fd_format.html#afe">Мал. 28 Структура системного блоку (System Block)</a></h4>
+<h4><a href="fd_format.html#afi">Мал. 29 Таблиця ідентифікаторів файлів (File ID Table)</a></h4>
+<h4><a href="fd_format.html#afk">Мал. 30 Таблиця коротких назв файлів</a></h4>
+<h4><a href="fd_format.html#afp">Мал. 31 Внутрішня структура файлу та ланцюжки блоків</a></h4>
+<h4><a href="fd_format.html#aft">Мал. 32 Заголовок файлу (File Header) та блоки метаданих</a></h4>
+<h4><a href="fd_format.html#afy">Мал. 33 Таблиця фрагментів (Fragment Table)</a></h4>
+<h4><a href="fd_format.html#aga">Мал. 34 Індекс записів (Record Index) та непрямі індекси</a></h4>
+<h4><a href="fd_format.html#agg">Мал. 35 Розміщення блоків даних у файлових записах</a></h4>
+
+
+<HR>
+<A href="../index.html">Повернутися до головного змісту всієї специфікації</A><BR>
+<A href="index.html">Попередня сторінка: Повернутися до змісту частини 1</A><BR>
+      </section>
+    </article>
+  </main>
+</body>
+</html>

@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review – 差分校正 | B-System Specification</title>
+  <meta name="description" content="差分校正（Review）は、B-Systemの仕様に準拠したC99実装アプリケーション。TAD実身バイナリおよびソースコードの視覚的差分比較・校正アプレット。">
+  <link rel="stylesheet" href="../index.css">
+  <link rel="stylesheet" href="../settings/settings.css">
+  <link rel="stylesheet" href="apps.css">
+</head>
+<body>
+  <nav class="sticky" aria-label="Site navigation">
+    <div class="nav-container">
+        <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+          <span class="hamburger"></span>
+        </button>
+        <ul class="nav-links">
+<li><a href="../index.html">System</a></li>
+<li><a href="index.html" class="active">Applications</a></li>
+<li><a href="../devices/index.html">Devices</a></li>
+<li><a href="../doc/index.html">Books</a></li>
+<li><a href="../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+
+  <nav class="setting-nav">
+    <a href="../index.html">B-System</a>
+    <span class="sep">/</span>
+    <a href="../index.html#apps-section">Applications</a>
+    <span class="sep">/</span>
+    <span class="current">Review</span>
+  </nav>
+
+  <div class="setting-hero">
+    <div class="setting-hero-icon"><img src="../assets/svg/1F50D.svg" alt="🔍" width="64" height="64"></div>
+    <h1>差分校正 (Review)</h1>
+    <div class="setting-hero-badge">差分校正 · BTRON3 3.20 準拠 · C99 実装</div>
+    <div class="subtitle">Review アプリケーションの機能仕様および内部構造<br><span style="font-size:0.9em; opacity:0.85;">"Functional and architectural specification of the Review application component."</span></div>
+  </div>
+
+  <div class="setting-content">
+    <a href="../index.html#apps-section" class="back-link">← アプリケーション一覧 (Applications Index)</a>
+
+    <div class="tagline-card">
+      <strong>差分校正（Review）</strong> — B-Systemネイティブの科学的PDF閲覧・査読ワークスペース・TAD引用注釈エンジン。Display Primitives (DP) によるベクトル描画、非破壊インクリメンタルPDF保存、BibTeX引用出力、およびマージナリア付箋（Fusen）注釈に対応。<br>
+      <span style="display:block; margin-top:0.45rem; font-size:0.88rem; color:#6b4f7e;">
+        "Official technical specification for the Review application within the B-System operating environment (see doc/txt/DPS.txt for full engine architecture)."
+      </span>
+    </div>
+
+    <div class="section">
+      <h2>概要 (Overview)</h2>
+      <p>
+        差分校正（Review）は、B-Systemの仕様に準拠したC99実装アプリケーション。TAD実身バイナリおよびソースコードの視覚的差分比較・校正アプレット。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Official technical specification for the Review application within the B-System operating environment."</span>
+      </p>
+    </div>
+
+    <div class="section">
+      <h2>1. メニュー構造と操作体系 (Menu Architecture &amp; Operations)</h2>
+      <p>
+        Review が提供する標準メニューバー構造（<code>APP_MENU_BAR</code>）および操作体系の仕様。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Standard in-app menu bar hierarchy, keyboard shortcuts, and interactive command bindings."</span>
+      </p>
+      <table class="market-table">
+        <thead>
+          <tr>
+            <th>メニュー項目</th>
+            <th>機能説明 (Functional Description)</th>
+            <th>短縮キー (Shortcut)</th>
+            <th>コマンドID / 実装 (C99 Architecture)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>ファイル(F)</b></td>
+            <td>PDF文書の開く、増分保存、BibTeX引用出力、閉じる</td>
+            <td>—</td>
+            <td><code>h_file</code> (幅 96px)</td>
+          </tr>
+          <tr>
+            <td>└ 開く (Open PDF...)</td>
+            <td>検証用PDF文書（<code>n64.pdf</code> / <code>sample.pdf</code>）の切り替え読み込み</td>
+            <td><code>Ctrl+O</code></td>
+            <td><code>CMD_PDF_OPEN</code> (1001)</td>
+          </tr>
+          <tr>
+            <td>└ 増分保存 (Incremental Save)</td>
+            <td>ISO 32000非破壊アペンドによる注釈オブジェクトのPDF末尾追記</td>
+            <td><code>Ctrl+S</code></td>
+            <td><code>CMD_PDF_SAVE</code> (1002)</td>
+          </tr>
+          <tr>
+            <td>└ BibTeX引用出力 (Export Citation)</td>
+            <td>TAD実身IDに基づく学術BibTeXフォーマットの引用レコード生成</td>
+            <td><code>Ctrl+C</code></td>
+            <td><code>CMD_PDF_CITE</code> (1003)</td>
+          </tr>
+          <tr>
+            <td>└ 閉じる (Close)</td>
+            <td>Reviewウィンドウの安全な終了・リソース解放</td>
+            <td><code>Ctrl+W</code></td>
+            <td><code>CMD_PDF_CLOSE</code> (1004)</td>
+          </tr>
+          <tr>
+            <td><b>表示(V)</b></td>
+            <td>頁移動および高品位拡大・縮小ズーム制御</td>
+            <td>—</td>
+            <td><code>h_view</code> (幅 80px)</td>
+          </tr>
+          <tr>
+            <td>└ 前のページ (Previous)</td>
+            <td>前頁へのナビゲーション</td>
+            <td><code>PageUp</code> / <code>p</code> / <code>BS</code></td>
+            <td><code>CMD_PDF_PREV</code> (1005)</td>
+          </tr>
+          <tr>
+            <td>└ 次のページ (Next)</td>
+            <td>次頁へのナビゲーション</td>
+            <td><code>PageDown</code> / <code>n</code> / <code>Space</code> / <code>Enter</code></td>
+            <td><code>CMD_PDF_NEXT</code> (1006)</td>
+          </tr>
+          <tr>
+            <td>└ 拡大 (Zoom In +)</td>
+            <td>表示倍率を +20% 拡大（最大 300%）</td>
+            <td><code>Ctrl++</code> / <code>+</code> / <code>=</code></td>
+            <td><code>CMD_PDF_ZOOM_IN</code> (1007)</td>
+          </tr>
+          <tr>
+            <td>└ 縮小 (Zoom Out -)</td>
+            <td>表示倍率を -20% 縮小（最小 40%）</td>
+            <td><code>Ctrl+-</code> / <code>-</code> / <code>_</code></td>
+            <td><code>CMD_PDF_ZOOM_OUT</code> (1008)</td>
+          </tr>
+          <tr>
+            <td>└ 等倍 (Actual 100%)</td>
+            <td>原寸（100%）表示リセットおよびスクロール位置初期化</td>
+            <td><code>Ctrl+0</code> / <code>0</code></td>
+            <td><code>CMD_PDF_ZOOM_100</code> (1009)</td>
+          </tr>
+          <tr>
+            <td>└ 窓に合わせる (Fit Window)</td>
+            <td>現在のウィンドウ幅・高さに応じた最適ズーム自動計算</td>
+            <td><code>Ctrl+F</code> / <code>f</code></td>
+            <td><code>CMD_PDF_ZOOM_FIT</code> (1010)</td>
+          </tr>
+          <tr>
+            <td><b>校正(R)</b></td>
+            <td>TAD付箋（Fusen）注釈ピンの配置・検証</td>
+            <td>—</td>
+            <td><code>h_rev</code> (幅 80px)</td>
+          </tr>
+          <tr>
+            <td>└ 付箋メモ追加 (Add Fusen Note...)</td>
+            <td>現頁への付箋注釈カード追加およびキャビネット実身登録</td>
+            <td><code>Ctrl+M</code></td>
+            <td><code>CMD_PDF_ADD_ANNO</code> (1011)</td>
+          </tr>
+          <tr>
+            <td>└ 全付箋の検証 (Verify All)</td>
+            <td>マージナリア全注釈の整合性検証および再描画</td>
+            <td>—</td>
+            <td><code>CMD_PDF_LIST_ANNO</code> (1012)</td>
+          </tr>
+          <tr>
+            <td><b>ヘルプ(H)</b></td>
+            <td>Reviewシステム情報およびアーキテクチャ案内</td>
+            <td>—</td>
+            <td><code>h_help</code> (幅 80px)</td>
+          </tr>
+          <tr>
+            <td>└ Review について (About...)</td>
+            <td>Nano About Box（420×170px 3Dプレート）のポップアップ表示</td>
+            <td>—</td>
+            <td><code>CMD_PDF_ABOUT</code> (1013)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>2. 機能仕様とアーキテクチャ (Functional &amp; Architecture Specifications)</h2>
+      <p>
+        Review アプリケーションの内部構造、データモデル、およびシステムコール仕様。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Internal architectural components, memory models, and system call bindings."</span>
+      </p>
+      <table class="market-table">
+        <thead>
+          <tr>
+            <th>コンポーネント・機能名</th>
+            <th>動作概要と機能仕様 (Functional Specification)</th>
+            <th>技術仕様・C99構造体 (C99 Implementation)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>PDFベクトル描画</b></td>
+            <td>PDF 1.4のコンテンツストリーム（BT/ET、Tf、Tm、Td、Tj、m/l/c/h、re、w、RG/rg/G/g、S/s/f/b）をDP線分・矩形・TRONフォントへと直接ラスタライズ。</td>
+            <td><code>pdf_reader_render_page()</code>, <code>pdf_exec_stream()</code></td>
+          </tr>
+          <tr>
+            <td><b>インアップメニューバー</b></td>
+            <td>クラシック3Dベベルスタイルのヘッダーとドロップダウンプレート。マウスホバーによるヘッダー滑空（Glide）、外側クリック自動消去、ステータス右端表示（頁数・倍率・付箋数）。</td>
+            <td><code>APP_MENU_BAR</code>, <code>app_menu_paint_bar()</code></td>
+          </tr>
+          <tr>
+            <td><b>標準スクロールバー</b></td>
+            <td>BTRON伝統の3Dステッパー矢印（▲/▼、◄/►）とエレベータ親指（Thumb）。マウスドラッグによる連続スクロール、トラッククリックによる半画面ページジャンプ、方向キー（↑↓←→）連動。</td>
+            <td><code>paint_scrollbar_v()</code>, <code>paint_scrollbar_h()</code></td>
+          </tr>
+          <tr>
+            <td><b>マージナリア欄 (Marginalia)</b></td>
+            <td>ウィンドウ幅 640px 以上で右側に 230px の校正メモレールを自動展開。頁番号、著者、タイムスタンプ、ゴールドのピンバッジ付きカード表示。</td>
+            <td><code>ReviewAnnotation</code>, <code>app->annos[]</code></td>
+          </tr>
+          <tr>
+            <td><b>About ダイアログ</b></td>
+            <td>親ウィンドウ連動のNano About Box（420×170px）。エンボスアイコン、タイトル、Secure PostScript/ISO 32000エンジン情報、Cleanroom Working Group帰属表示、OKボタン。</td>
+            <td><code>open_review_about_window()</code>, <code>app_menu_create_about_dialog()</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>関連コンポーネント (Related Components)</h2>
+      <div class="related-apps">
+        <a href="Workbench.html">🗄️ ワークベンチ</a>
+        <a href="Cabinet.html">📁 キャビネット</a>
+        <a href="Editor.html">✍️ 文書編集</a>
+      </div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <div class="app-footer-top">
+      <a href="../index.html">← B-System</a>
+      <span class="site-name">Applications</span>
+    </div>
+    <div class="app-footer-grid">
+      <div class="app-footer-col">
+        <h4>System</h4>
+        <ul>
+            <li><a href="Workbench.html">Workbench</a></li>
+            <li><a href="Terminal.html">Terminal</a></li>
+            <li><a href="Commander.html">Commander</a></li>
+            <li><a href="Commands.html">Commands</a></li>
+            <li><a href="Calculator.html">Calculator</a></li>
+            <li><a href="Clock.html">Clock</a></li>
+            <li><a href="Mail.html">Mail</a></li>
+            <li><a href="Preferences.html">Preferences</a></li>
+            <li><a href="Boot.html">Boot</a></li>
+            <li><a href="Volumes.html">Volumes</a></li>
+            <li><a href="Firmware.html">Firmware</a></li>
+        </ul>
+      </div>
+      <div class="app-footer-col">
+        <h4>TAD</h4>
+        <ul>
+            <li><a href="Cabinet.html">Cabinet</a></li>
+            <li><a href="Editor.html">Editor</a></li>
+            <li><a href="Matrix.html">Matrix</a></li>
+            <li><a href="Clarity.html">Clarity</a></li>
+            <li><a href="Browser.html">Browser</a></li>
+            <li><a href="Notebook.html">Notebook</a></li>
+            <li><a href="Review.html" class="active">Review</a></li>
+            <li><a href="Chat.html">Chat</a></li>
+        </ul>
+      </div>
+      <div class="app-footer-col">
+        <h4>Media</h4>
+        <ul>
+            <li><a href="Cassette.html">Cassette</a></li>
+            <li><a href="Paint.html">Paint</a></li>
+            <li><a href="Orchestra.html">Orchestra</a></li>
+            <li><a href="MSX.html">MSX</a></li>
+            <li><a href="MicroScript.html">MicroScript</a></li>
+            <li><a href="XMB.html">XMB</a></li>
+            <li><a href="SDK.html">SDK</a></li>
+             <li><a href="Quake.html">Quake</a></li>
+        </ul>
+      </div>
+      <div class="app-footer-col">
+        <h4>Settings</h4>
+        <ul>
+            <li><a href="../settings/Appearance.html">Appearance</a></li>
+            <li><a href="../settings/Desktop.html">Desktop</a></li>
+            <li><a href="../settings/Input.html">Input</a></li>
+            <li><a href="../settings/Language.html">Language</a></li>
+            <li><a href="../settings/Sound.html">Sound</a></li>
+            <li><a href="../settings/Network.html">Network</a></li>
+            <li><a href="../settings/Display.html">Display</a></li>
+            <li><a href="../settings/Media.html">Media</a></li>
+            <li><a href="../settings/System.html">System</a></li>
+            <li><a href="../settings/Security.html">Security</a></li>
+            <li><a href="../settings/Terminal.html">Terminal</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="app-footer-bottom">B-System &nbsp;·&nbsp; Synrc VE OS.1 &nbsp;·&nbsp; Technical Specification</div>
+  </footer>
+</body>
+</html>

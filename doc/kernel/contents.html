@@ -1,0 +1,192 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+<META CHARSET="UTF-8">
+<META NAME="viewport" CONTENT="width=device-width, initial-scale=1.0">
+<TITLE>Документація B-System (BSD/MIT BTRON 3.20 - 2026)</TITLE>
+<LINK REL="stylesheet" HREF="../doc.css">
+</HEAD>
+<BODY>
+<DIV CLASS="global-top-menu"><A HREF="../../index.html">System</A><SPAN CLASS="sep">|</SPAN><A HREF="../../apps/index.html">Applications</A><SPAN CLASS="sep">|</SPAN><A HREF="../../devices/index.html">Devices</A><SPAN CLASS="sep">|</SPAN><A HREF="../index.html" CLASS="active">Books</A><SPAN CLASS="sep">|</SPAN><A HREF="../../downloads/index.html">Downloads</A></DIV>
+
+    <DIV CLASS="doc-header-banner" STYLE="background:#0057b7;">
+      Документація B-System OS | Головний зміст (BTRON3 3.20 BSD/MIT)
+    </DIV>
+
+    <A href="../../index.html">← Головна сторінка BTRON System Plane (OS.1)</A><BR><BR>
+    <H1>Документація B-System (BTRON3 3.20)</H1>
+
+    <P>
+      <B>B-System</B> — це сучасна ергономічна реалізація стандартів BTRON3 3.20 та µITRON, розповсюджувана під пермісивними ліцензіями <B>MIT / BSD 2-Clause / ISC</B>. Система спроектована для віртуалізованих середовищ <B>VirtIO 1.4</B>, гіпервізорів <B>seL4 / Synrc VE OS.1</B>, радіотехнічної обробки сигналів (DSP/SDR) та неонової векторної wireframe-графіки (TRON / NetWars).
+    </P>
+
+    <DIV STYLE='background:#e0f2fe; border: 1px solid #bae6fd; padding:15px; border-radius:6px; margin: 20px 0;'>
+      <H3 STYLE='margin-top:0; color:#0369a1;'>Примітка щодо сучасної архітектури 2026 року</H3>
+      Усі архаїчні апаратні обмеження (FDC, CHS, 16-бітна сегментація, ISA/VLB, COM-порти 8250/16550) повністю вилучені. B-System спирається на плоску адресацію RISC-V 64 / ARM64 / x86_64, VirtIO-MMIO/PCI, безблокувальні черги Virtqueue та хостовий біт-блітінг <B>SDL2</B>. Детальніше див. <A href="../license.html"><B>Умови ліцензії B-System</B></A>.
+    </DIV>
+
+    <HR>
+    <H2>Зміст специфікації B-System за розділами</H2>
+
+    <DL class="toc-container">
+      <DT><H3>Частина 1. Мікроядра та Менеджери</H3></DT>
+      <DD>
+        <UL class="toc-sublist">
+          <LI><A href="architecture.html">Розділ 1: Вступ та загальна архітектура B-System</A></LI>
+          <LI><A href="architecture.html#ch2">Розділ 2: Ядро мікроконтролера µITRON (DSP / Real-time)</A></LI>
+          <LI><A href="architecture.html#ch3">Розділ 3: Менеджер системного ядра BTRON</A></LI>
+        </UL>
+      </DD>
+
+      <DT><H3>Частина 2. Графіка, Об'єкти та Wireframe Engine</H3></DT>
+      <DD>
+        <UL class="toc-sublist">
+          <LI><A href="btron_spec.html">Розділ 4: Графічні примітиви DP та Wireframe Engine (TRON/NetWars)</A></LI>
+          <LI><A href="btron_spec.html#ch5">Розділ 5: Менеджер вікон (Window Manager) та Графічна оболонка</A></LI>
+          <LI><A href="btron_spec.html#ch6">Розділ 6: Архітектура Реальних та Віртуальних об'єктів (VOBJ)</A></LI>
+        </UL>
+      </DD>
+
+      <DT><H3>Частина 3. Дані, Віртуалізація та VirtIO</H3></DT>
+      <DD>
+        <UL class="toc-sublist">
+          <LI><A href="../specs/shared_data/tad1.html">Розділ 7: Уніфіковані формати документів TRON Application Document (TAD)</A></LI>
+          <LI><A href="../specs/shared_data/fd_format.html">Розділ 8: Файлова система BTRON FS та структура об'єктних накопичувачів</A></LI>
+          <LI><A href="../virtualization/notes.html">Розділ 9: Віртуалізація VirtIO & Synrc VE</A></LI>
+          <DD>
+            <UL class="toc-sublist" style="margin-top:0.2rem;">
+              <LI><A href="../virtualization/notes.html#ch9-1">9.1: Матриця Хостів Synrc VE</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-2">9.2: Кільцеві Буфери Virtqueue</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-3">9.3: Транспорт MMIO/PCI</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-4">9.4: Графіка VirtIO-GPU & SDL2</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-5">9.5: Дискові Накопичувачі</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-6">9.6: Мережевий Адаптер</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-7">9.7: Консоль та SDR-Телеметрія</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-8">9.8: Апаратна Криптографія</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-9">9.9: Автовизначення Шини</A></LI>
+              <LI><A href="../virtualization/notes.html#ch9-10">9.10: Безпека VirtIO 1.4</A></LI>
+            </UL>
+          </DD>
+        </UL>
+      </DD>
+      <DT><H3>Частина 4. Формальна Верифікація та Базова Бібліотека Coq (1,758 теорем)</H3></DT>
+      <DD>
+        <UL class="toc-sublist">
+          <LI><A href="../verification/theorems/index.html"><B>Зведений реєстр теорем Coq та Оракулів OCaml (Головний зміст)</B></A></LI>
+          <LI><A href="../media/theorems/media_intercore.html">4.1: Протокол InterCore та безблокувальні кільця Star Ring (602 теореми)</A></LI>
+          <LI><A href="../verification/theorems/tron.html">4.2: Мікроядро ITRON / T-Kernel RTOS та 140 черг пріоритетів (815 теорем)</A></LI>
+          <LI><A href="../media/theorems/media_rtp.html">4.3: Медіа-стек NuStreams / RTP та ізохронна інтерполяція (161 теорема)</A></LI>
+          <LI><A href="../media/theorems/media_smp.html">4.4: Багатоядерний субстрат SMP / AMP та безблокувальні черги CAS (69 теорем)</A></LI>
+          <LI><A href="../verification/theorems/bfs.html">4.5: Журнал транзакцій файлової системи B-FS Volume V2 WAL (39 теорем)</A></LI>
+          <LI><A href="../verification/theorems/bfs_btree.html">4.6: Індексна структура параметризованого B+Tree (6 теорем)</A></LI>
+          <LI><A href="../verification/theorems/bfs_allocator.html">4.7: 64-бітний менеджер груп алокації (AG) та бітмапи B-FS (6 теорем)</A></LI>
+          <LI><A href="../verification/theorems/hypermedia_dnd.html">4.8: Гіпермедіа ROBJ/VOBJ, пряме маніпулювання DND та формат TAD (61 теорема)</A></LI>
+        </UL>
+      </DD>
+    </DL>
+
+    <HR>
+    <H2>Галерея знімків екрана B-System (Screenshots)</H2>
+    <P>
+      Знімки інтерактивного середовища B-System: віконний інтерфейс Sakamura Cho-Kanji, переглядач документів TAD Browser, Провідник Реальних Об'єктів, CUA-редактор T-Editor та японський метод введення Mozc TIP IME.
+    </P>
+
+    <DIV STYLE="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin: 1.5rem 0 2.5rem 0;">
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen1.png" target="_blank">
+          <IMG src="../../img/screen1.png" alt="Знімок 1: Робочий стіл B-System, меню та системна панель" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 1:</B> Робочий стіл B-System, меню та системна панель
+        </DIV>
+      </DIV>
+
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen2.png" target="_blank">
+          <IMG src="../../img/screen2.png" alt="Знімок 2: Текстовий редактор T-Editor та японська типізація Mozc" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 2:</B> Текстовий редактор T-Editor та японська типізація Mozc
+        </DIV>
+      </DIV>
+
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen3.jpeg" target="_blank">
+          <IMG src="../../img/screen3.jpeg" alt="Знімок 3: Емулятор консолі gterm та Провідник Кабінету" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 3:</B> Емулятор консолі gterm та Провідник Кабінету
+        </DIV>
+      </DIV>
+
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen4.jpeg" target="_blank">
+          <IMG src="../../img/screen4.jpeg" alt="Знімок 4: Багатовіконне робоче середовище CUA Workstation" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 4:</B> Багатовіконне робоче середовище CUA Workstation
+        </DIV>
+      </DIV>
+
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen5.png" target="_blank">
+          <IMG src="../../img/screen5.png" alt="Знімок 5: Кабінет Реальних Об'єктів та навігація за посиланнями" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 5:</B> Кабінет Реальних Об'єктів та навігація за посиланнями
+        </DIV>
+      </DIV>
+
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen6.png" target="_blank">
+          <IMG src="../../img/screen6.png" alt="Знімок 6: Нативний переглядач документів TAD Browser" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 6:</B> Нативний переглядач документів TAD Browser
+        </DIV>
+      </DIV>
+
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen7.png" target="_blank">
+          <IMG src="../../img/screen7.png" alt="Знімок 7: Гіпертекстова навігація TAD та стек історії переглядів" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 7:</B> Гіпертекстова навігація TAD та стек історії переглядів
+        </DIV>
+      </DIV>
+
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen8.png" target="_blank">
+          <IMG src="../../img/screen8.png" alt="Знімок 8: 2D-векторна графіка Sakamura DP та сегменти фігур Fusen" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 8:</B> 2D-векторна графіка Sakamura DP та сегменти фігур Fusen
+        </DIV>
+      </DIV>
+
+      <DIV STYLE="background: #ffffff; border: 1px solid var(--doc-border); border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+        <A href="../../img/screen9.png" target="_blank">
+          <IMG src="../../img/screen9.png" alt="Знімок 9: VirtIO System Plane та шрифтовий рушій TRON Code" style="width:100%; height:auto; display:block; border-bottom:1px solid #e2e8f0;">
+        </A>
+        <DIV STYLE="padding: 0.8rem 1rem; font-size: 0.92rem; color: var(--doc-muted); font-weight: 500;">
+          <B>Знімок 9:</B> VirtIO System Plane та шрифтовий рушій TRON Code
+        </DIV>
+      </DIV>
+    </DIV>
+
+    <HR>
+    <footer class="doc-footer">
+        <div class="doc-footer-container">
+            <div>Специфікація B-System (Ліцензія BSD/MIT)</div>
+            <ul class="doc-footer-links">
+                <li><a href="contents.html">Головний зміст</a></li>
+                <li><a href="architecture.html">Ядро</a></li>
+                <li><a href="btron_spec.html">GUI & DP</a></li>
+                <li><a href="../virtualization/notes.html">VirtIO & VE</a></li>
+                <li><a href="../license.html">Ліцензування</a></li>
+                <li><a href="../../index.html">BTRON Home</a></li>
+            </ul>
+        </div>
+    </footer>
+</BODY>
+</HTML>

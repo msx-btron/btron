@@ -112,7 +112,7 @@ def convert_all(base_dir=None):
     raw_files = glob.glob("/tmp/btron_raw_screens/*.raw")
     for r in sorted(raw_files):
         base = os.path.splitext(os.path.basename(r))[0]
-        png_path = os.path.join(base_dir, "b-system", "img", "screens", f"{base}.png")
+        png_path = os.path.join(base_dir, "img", "screens", f"{base}.png")
         raw_to_png(r, png_path)
 
 if __name__ == "__main__":

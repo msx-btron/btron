@@ -1,6 +1,6 @@
 # BTRON Application Databus (TAD) in B-System
 
-This document provides a comprehensive technical overview of **TAD (TRON Application Databus)** in B-System, explaining the unified `./tad_bin/` ecosystem, the Elixir multi-catalog batch compiler, native **GIF & PNG** diagram rasterization, binary segment format conforming to **BTRON3 SPEC 3.20**, compatibility with **B-right/V Cho-Kanji (超漢字)**, and runtime usage across the **Cabinet Explorer** and **Native TAD Document Browser**.
+This document provides a comprehensive technical overview of **TAD (TRON Application Databus)** in B-System, explaining the unified `./tad_bin/` ecosystem, the Python book compiler `scripts/tool_book2tad.py`, native **GIF & PNG** diagram rasterization, binary segment format conforming to **BTRON3 SPEC 3.20**, compatibility with **B-right/V Cho-Kanji (超漢字)**, and runtime usage across the **Cabinet Explorer** and **Native TAD Document Browser**.
 
 ## 1. Overview: What is TAD?
 
@@ -12,7 +12,7 @@ In B-System, TAD serves two critical roles:
 
 ## 2. Directory Structure & Unified Packaging Pipeline
 
-All documentation, specifications, and foundational books in B-System are packaged into a single, canonical directory: `./tad_bin/`.
+HTML sources live in `doc/specs/` (BTRON3 3.20), `doc/cores/` (B-Book), and `doc/media/` (B-Media). `make tad_bin` runs `scripts/tool_book2tad.py` and writes the real bodies under `./tad_bin/`. Output directory names stay `b-spec`, `b-book`, and `b-media` so the document browser and the cabinet keep their existing prefixes.
 
 ```
 btron/
@@ -20,12 +20,8 @@ btron/
     ├── 01_btron3_spec.tad        # Book 1: BTRON3 3.20 共通仕様書 (Canonical Book)
     ├── 02_bcore_book.tad         # Book 2: B-Core InterCore Streaming Protocol Book
     ├── 03_bfree_os_book.tad      # Book 3: B-Free 自由OS読本とマニフェスト
-    ├── 04_tron_hmi_book.tad      # Book 4, emitted only when a b-hmi/ source tree exists
-    ├── index.tad                 # Головний портал документації B-System
-    ├── releases.tad              # Release-notes portal
-    ├── B-System_Portal.tad       # B-System portal real body
     │
-    ├── b-spec/                   # BTRON3 specification books
+    ├── b-spec/                   # from doc/specs/
     │   ├── shared_data/          # [tad_bin][Специфікація] Загальні специфікації даних
     │   │   ├── data_type.tad     # Типи даних, коди помилок та C99 межі
     │   │   ├── tron_code.tad     # Багатомовне кодування TRON Code
@@ -41,16 +37,11 @@ btron/
     │       ├── shell/*.tad       # [tad_bin][Оболонка] Графічна оболонка, Вікна, Меню, Панелі, TIP/IME
     │       └── indexfig.tad      # [tad_bin][Надійність] Статичний аналіз пам'яті (NASA JPL Rule 3)
     │
-    ├── b-book/                   # B-Book: 14 compiled C99 systems-reference pages
-    │   └── *.tad                 # kernel, drivers, fs, graphics, window, hmi, font, tip,
-    │                             # apps, cores, desktop, settings, vobject, plus B-Book + index
+    ├── b-book/                   # from doc/cores/: kernel, drivers, fs, graphics, window,
+    │   └── *.tad                 # hmi, font, tip, apps, cores, desktop, settings, vobject,
+    │                             # plus B-Book and index
     │
-    ├── b-system/                 # B-System POSIX & VirtIO Specs
-    │   ├── virtio.tad            # VirtIO Core Architecture & System Specifications
-    │   ├── btron_spec.tad        # System Call Matrix
-    │   └── kernel.tad, license.tad, apps/, settings/, theorems/, img/
-    │
-    ├── b-media/                  # B-Media book: one catalog, eight pages + proofs
+    ├── b-media/                  # from doc/media/
     │   ├── B-Media.tad           # Pipes, plane budgets & the SMP substrate
     │   ├── B-Core.tad            # InterCore streaming protocol
     │   ├── B-Audio.tad           # VirtIO-Sound PCM stack
@@ -60,8 +51,6 @@ btron/
     │   ├── B-MSX.tad             # MSX2+ home · tronMSX
     │   ├── B-GL.tad              # OpenGL 3D subsystem & backends
     │   └── theorems/*.tad        # media_intercore, media_smp, media_rtp
-    │
-    ├── img/                      # Boot, desktop, IME and POSIX illustrations (182 PNG/JPEG)
     │
     └── *.tad.txt                 # Companion human-readable symbolic TAD files
 ```
@@ -216,7 +205,7 @@ In BTRON3 SPEC 3.20, illustrations, diagrams, and raster images are embedded dir
   - **GIF Decoder:** Decodes LZW-compressed 8-bit palette GIF specification diagrams (218 spec diagrams across `tad_bin/**/gif/`).
   - **PNG Decoder:** Decodes Deflate-compressed RGB and RGBA PNG diagrams with full scanline unfiltering (Paeth, Sub, Up, Average, None) (220+ illustrations across `tad_bin/b-hmi/img/`).
   - Implemented strictly with bounded static memory conforming to **NASA JPL Safety Rule 3** (zero dynamic heap allocation).
-- **Exact HTML Specification Image Extraction:** The Elixir batch compiler (`scripts/html2tad.exs`) extracts exact diagram paths (`<IMG src="gif/*.gif">` and `<IMG src="img/*.png">`) directly from the original HTML specification documents, inspects their native dimensions (`w` and `h` in GIF87a/GIF89a and PNG IHDR headers), and copies all asset directories into `tad_bin/**/`.
+- **Exact HTML Specification Image Extraction:** `scripts/tool_book2tad.py` extracts diagram paths (`<img src="gif/*.gif">` and `<img src="img/*.png">`) from the book HTML, reads native dimensions (`w` and `h` in GIF87a/GIF89a and PNG IHDR headers), and copies the `gif/`, `img/`, and `figures/` directories next to the compiled real bodies under `tad_bin/`.
 - **Fallback Vector Schematics:** For synthetic documents without on-disk image assets, the browser falls back gracefully to topic-matched vector schematics.
 
 ## 8. Compatibility Matrix

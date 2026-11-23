@@ -1,0 +1,91 @@
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 3.2 Final//EN">
+<HTML>
+<HEAD>
+<META CHARSET="UTF-8">
+<META NAME="viewport" CONTENT="width=device-width, initial-scale=1.0">
+<TITLE>B-System Специфікація GUI, DP & VOBJ</TITLE>
+<LINK REL="stylesheet" HREF="../doc.css">
+</HEAD>
+<BODY>
+<DIV CLASS="global-top-menu"><A HREF="../../index.html">System</A><SPAN CLASS="sep">|</SPAN><A HREF="../../apps/index.html">Applications</A><SPAN CLASS="sep">|</SPAN><A HREF="../../devices/index.html">Devices</A><SPAN CLASS="sep">|</SPAN><A HREF="../index.html" CLASS="active">Books</A><SPAN CLASS="sep">|</SPAN><A HREF="../../downloads/index.html">Downloads</A></DIV>
+
+    <DIV CLASS="doc-header-banner" STYLE="background:#0057b7;">
+      B-System OS | Розділи 4, 5, 6: GUI, DP & VOBJ
+    </DIV>
+
+    <A href="contents.html">← Головний зміст B-System</A><BR><BR>
+    
+    <H1>Специфікації GUI, DP та VOBJ</H1>
+    
+    <H2 id="ch4">Розділ 4: Графічні примітиви DP</H2>
+    <P>
+      Графічний рушій Display Primitives (DP) у B-System спроектований як високоефективна бібліотека для рендерингу 2D/3D-графіки безпосередньо у VirtIO фреймбуфер з подальшим передаванням на хостовий бекенд <B>SDL2</B>.
+    </P>
+    
+    <H3>4.1 2D примітиви</H3>
+    <UL>
+      <LI><CODE>gd_rect</CODE>, <CODE>gd_round_rect</CODE> — малювання прямокутних областей та областей із закругленими кутами.</LI>
+      <LI><CODE>gd_draw_text</CODE> — рендеринг векторних та растрових шрифтів із підтримкою TRON Code.</LI>
+      <LI><CODE>gd_clip</CODE> — маскування та малювання у геометричних регіонах відсікання.</LI>
+    </UL>
+
+    <H3>4.2 FFT Спектрограми та Waterfall</H3>
+    <P>
+      Для завдань радіотехніки та аналізу сигналів DP містить алгоритми швидкого виводу спектрограм:
+    </P>
+    <UL>
+      <LI><CODE>gd_draw_spectrum_line</CODE> — векторний графік спектра потужності сигналу (FFT) зі згладжуванням Wu.</LI>
+      <LI><CODE>gd_blit_waterfall_scroll</CODE> — скролінг растрової палітри Waterfall на 1 рядок униз (кольори HSL dBm).</LI>
+    </UL>
+
+    <H3>4.3 Векторний Wireframe (TRON/NetWars)</H3>
+    <P>
+      Векторний рушій B-System підтримує неонову каркасну графіку у сучасному виконанні:
+    </P>
+    <UL>
+      <LI><CODE>gd_wireframe_grid</CODE> — малювання 3D перспективної сітки (TRON Lightcycles Grid).</LI>
+      <LI><CODE>gd_draw_wireframe_mesh</CODE> — растеризація 3D векторних каркасів (кораблі NetWars).</LI>
+      <LI><CODE>gd_glow_line</CODE> — неонові лінії з градієнтним розмиттям свічення (glow buffer).</LI>
+    </UL>
+
+    <HR>
+
+    <H2 id="ch5">Розділ 5: Менеджер Вікон</H2>
+    <P>
+      Графічний інтерфейс B-System наслідує класичний ретро-дизайн операційної системи Cho-Kanji та BTRON із бірюзовою робочою зоною, верхньою статус-панеллю та ієрархічним менеджером вікон.
+    </P>
+    <P>
+      Менеджер вікон забезпечує:
+    </P>
+    <UL>
+      <LI>Створення вікон із заголовками, рамками, смугами прокручування та кнопками згортання.</LI>
+      <LI>Надсилання подій віконної системи (<CODE>WND_EVENT</CODE>) процесу-додатку.</LI>
+      <LI>Синхронізація оновлень вікна із <CODE>virtio-gpu</CODE> та host SDL2 window manager.</LI>
+    </UL>
+
+    <HR>
+
+    <H2 id="ch6">Розділ 6: Об'єктна Модель VOBJ</H2>
+    <P>
+      B-System повністю імплементує об'єктну модель BTRON. Замість ієрархічного дерева каталогів пропонується гіпер-текстове середовище:
+    </P>
+    <UL>
+      <LI><B>Реальні об'єкти (Real Objects):</B> дані, що зберігаються в кабінетах накопичувачів без розширення файлу.</LI>
+      <LI><B>Віртуальні об'єкти (Virtual Bodys):</B> візуальні посилання (ярлики), які можна вбудовувати в тіло інших документів. Документ може містити текст, малюнки, спектрограми сигналів чи Wireframe 3D сценарії.</LI>
+    </UL>
+
+    <HR>
+    <footer class="doc-footer">
+        <div class="doc-footer-container">
+            <div>B-System GUI & DP Engine (2026 Edition)</div>
+            <ul class="doc-footer-links">
+                <li><a href="contents.html">Головний зміст</a></li>
+                <li><a href="architecture.html">Ядро</a></li>
+                <li><a href="btron_spec.html">GUI & DP</a></li>
+                <li><a href="../virtualization/notes.html">VirtIO & VE</a></li>
+                <li><a href="../license.html">Ліцензування</a></li>
+            </ul>
+        </div>
+    </footer>
+</BODY>
+</HTML>

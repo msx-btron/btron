@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Commander – ファイル管理 | B-System Specification</title>
+  <meta name="description" content="ファイル管理（Commander）は、B-Systemの仕様に準拠したC99実装アプリケーション。左右二面パネル型ファイルマネージャ。キーボードドリブンの高速実身操作パイプライン。">
+  <link rel="stylesheet" href="../index.css">
+  <link rel="stylesheet" href="../settings/settings.css">
+  <link rel="stylesheet" href="apps.css">
+  <style>
+    /* Links styled to match page rosy/plum theme */
+    .setting-features a {
+      color: #be185d;
+      font-weight: 600;
+      text-decoration: none;
+      border-bottom: 1px dotted rgba(190, 24, 93, 0.45);
+      transition: color 0.2s ease, border-color 0.2s ease;
+    }
+    .setting-features a:hover {
+      color: DarkMagenta;
+      border-bottom: 1px solid DarkMagenta;
+    }
+  </style>
+</head>
+<body>
+  <nav class="sticky" aria-label="Site navigation">
+    <div class="nav-container">
+        <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+          <span class="hamburger"></span>
+        </button>
+        <ul class="nav-links">
+<li><a href="../index.html">System</a></li>
+<li><a href="index.html" class="active">Applications</a></li>
+<li><a href="../devices/index.html">Devices</a></li>
+<li><a href="../doc/index.html">Books</a></li>
+<li><a href="../downloads/index.html">Downloads</a></li>
+</ul>
+    </div>
+  </nav>
+
+  <nav class="setting-nav">
+    <a href="../index.html">B-System</a>
+    <span class="sep">/</span>
+    <a href="../index.html#apps-section">Applications</a>
+    <span class="sep">/</span>
+    <span class="current">Commander</span>
+  </nav>
+
+  <div class="setting-hero">
+    <div class="setting-hero-icon"><img src="../assets/svg/1F5C4.svg" alt="🗄️" width="64" height="64"></div>
+    <h1>ファイル管理 (Commander)</h1>
+    <div class="setting-hero-badge">ファイル管理 · BTRON3 3.20 準拠 · C99 実装</div>
+    <div class="subtitle">Commander アプリケーションの機能仕様および内部構造<br><span style="font-size:0.9em; opacity:0.85;">"Functional and architectural specification of the Commander application component."</span></div>
+  </div>
+
+  <div class="setting-content">
+    <a href="../index.html#apps-section" class="back-link">← アプリケーション一覧 (Applications Index)</a>
+
+    <div class="tagline-card">
+      <strong>ファイル管理（Commander）</strong> — ファイル管理（Commander）は、B-Systemの仕様に準拠したC99実装アプリケーション。左右二面パネル型ファイルマネージャ。キーボードドリブンの高速実身操作パイプライン。<br>
+      <span style="display:block; margin-top:0.45rem; font-size:0.88rem; color:#6b4f7e;">
+        "Official technical specification for the Commander application within the B-System operating environment."
+      </span>
+    </div>
+
+                                                                                                                                                        <!-- 画面プレビュー -->
+    <div class="section">
+      <h2>画面プレビュー (Screen Preview)</h2>
+      <div class="screen-preview">
+        <img src="../img/screens/Commander_SC.png" alt="Sokhatsky Commander (sc) 終了確認ダイアログ (Quit Dialog)">
+        <p>実機描画フレームバッファより自動抽出された Sokhatsky Commander (sc) 終了確認ダイアログ (F10 Quit Dialog)</p>
+      </div>
+      <div class="screen-preview">
+        <img src="../img/screens/Commander_TV.png" alt="Terminal Vision (tv) 検索ダイアログ (Search Dialog)">
+        <p>実機描画フレームバッファより自動抽出された Terminal Vision (tv) 検索ダイアログ (F2 Find Dialog)</p>
+      </div>
+      <div class="screen-preview">
+        <img src="../img/screens/Commander_BE.png" alt="Binary Editor (be) アーキテクチャ選択ダイアログ (Architecture Dialog)">
+        <p>実機描画フレームバッファより自動抽出された Binary Editor (be) アーキテクチャ選択ダイアログ (F2 Architecture Dialog)</p>
+      </div>
+      <div class="screen-preview">
+        <img src="../img/screens/Commander_BE_X64.png" alt="Binary Editor (be) EM64T 逆アセンブル (Disassembly)">
+        <p>実機描画フレームバッファより自動抽出された Binary Editor (be) 逆アセンブル表示 (EM64T Intel/AMD x86-64)</p>
+      </div>
+      <div class="screen-preview">
+        <img src="../img/screens/Commander_BE_ARM.png" alt="Binary Editor (be) AArch32 逆アセンブル (Disassembly)">
+        <p>実機描画フレームバッファより自動抽出された Binary Editor (be) 逆アセンブル表示 (AArch32 / ARM 32-bit)</p>
+      </div>
+      <div class="screen-preview">
+        <img src="../img/screens/Commander_BE_RISCV.png" alt="Binary Editor (be) RISC-V 逆アセンブル (Disassembly)">
+        <p>実機描画フレームバッファより自動抽出された Binary Editor (be) 逆アセンブル表示 (RISC-V)</p>
+      </div>
+    </div>
+
+<div class="section">
+      <h2>概要 (Overview)</h2>
+      <p>
+        ファイル管理（Commander）は、B-Systemの仕様に準拠したC99実装アプリケーション。左右二面パネル型ファイルマネージャ。キーボードドリブンの高速実身操作パイプライン。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Official technical specification for the Commander application within the B-System operating environment."</span>
+      </p>
+    </div>
+
+    <div class="section">
+      <h2>1. メニュー構造と操作体系 (Menu Architecture &amp; Operations)</h2>
+      <p>
+        Commander が提供する標準メニューバー構造および操作体系の仕様。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Standard menu bar hierarchy and interactive command bindings."</span>
+      </p>
+      <table class="market-table">
+        <thead>
+          <tr>
+            <th>メニュー項目</th>
+            <th>機能説明 (Functional Description)</th>
+            <th>技術仕様・C99実装 (C99 Architecture)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>ファイル (File)</b></td>
+            <td>新規作成、開く、保存、閉じる</td>
+            <td><code>src/apps/commander.c</code></td>
+          </tr>
+          <tr>
+            <td><b>編集 (Edit)</b></td>
+            <td>元に戻す、切り取り、コピー、貼り付け</td>
+            <td>クリップボード連携</td>
+          </tr>
+          <tr>
+            <td><b>操作 (Action)</b></td>
+            <td>メイン機能実行、パラメータ設定</td>
+            <td>内部状態ディスパッチ</td>
+          </tr>
+          <tr>
+            <td><b>ヘルプ (Help)</b></td>
+            <td>バージョン情報（Nano About Box 420×170px）</td>
+            <td><code>app_menu_create_about_dialog</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>2. 機能仕様とアーキテクチャ (Functional &amp; Architecture Specifications)</h2>
+      <p>
+        Commander アプリケーションの内部構造、データモデル、およびシステムコール仕様。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Internal architectural components, memory models, and system call bindings."</span>
+      </p>
+      <table class="market-table">
+        <thead>
+          <tr>
+            <th>コンポーネント・機能名</th>
+            <th>動作概要と機能仕様 (Functional Specification)</th>
+            <th>技術仕様・C99構造体 (C99 Implementation)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>アーキテクチャ</b></td>
+            <td>BTRON3 Specification 3.20に完全準拠したC99クリーンルーム実装。</td>
+            <td><code>src/apps/commander.c</code></td>
+          </tr>
+          <tr>
+            <td><b>メニューシステム</b></td>
+            <td>3DベベルおよびModern Flat Cardメニューバーに完全対応。</td>
+            <td><code>APP_MENU_BAR</code></td>
+          </tr>
+          <tr>
+            <td><b>メモリ管理</b></td>
+            <td>不変ドキュメントコンテキスト分離とリソースの自動解放。</td>
+            <td><code>user_data</code> コンテキスト</td>
+          </tr>
+          <tr>
+            <td><b>イベント処理</b></td>
+            <td>マウス座標、キーボードショートカット、ウィンドウリサイズイベントの処理。</td>
+            <td><code>event_handler</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>3. 対応アーキテクチャ (Architectures)</h2>
+      <p>
+        Binary Editor (BE) が対応する逆アセンブラおよび命令セットアーキテクチャの一覧。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Supported processor architectures and instruction set extensions in Binary Editor (BE)."</span>
+      </p>
+      <ul class="setting-features" style="margin-top: 0.8rem; margin-bottom: 1.5rem;">
+        <li><b>EM64T</b>: SSE5, KNI, AVX-512, AES, AMX, TSX, MPX, FMA, VNNI, GFNI, SGX, CET, PKU</li>
+        <li><b>AArch32</b>: v6, V6-M, v7-A, v7-M, v8-M</li>
+        <li><b>AArch64</b>: v8-A, NEON, SVE, SME</li>
+        <li><b>RISC-V</b>: RV32, RV64, RV128</li>
+        <li><b>PowerPC</b>: POWER, Cell/BE (Sony PS3)</li>
+        <li><b>MIPS</b>: MIPS32, MIPS64 (Nintendo 64, Sony PS2)</li>
+        <li><b>SuperH</b>: SH-4 (Sega Dreamcast)</li>
+        <li><b>M68K</b>: M68000 (Motorola CD-920)</li>
+        <li><b>PDP-11</b>: EIS, FIS, CIS (DEC PDP-11/70)</li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>4. 開発元クレジット (Credits)</h2>
+      <p>
+        各アーキテクチャの逆アセンブラおよびバイナリ解析コンポーネントの原作者・オープンソースプロジェクトへの謝辞。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Credits and acknowledgments to upstream disassembler authors and projects."</span>
+      </p>
+      <ul class="setting-features" style="margin-top: 0.8rem;">
+        <li>Kevin Pors, <a href="https://github.com/krpors/hx" target="_blank" rel="noopener">hx</a></li>
+        <li>Wouter de Waal, <a href="https://github.com/TomHarte/dis68k" target="_blank" rel="noopener">dis68k</a></li>
+        <li>Snickerbockers, <a href="https://github.com/washingtondc-emu/sh4asm" target="_blank" rel="noopener">sh4asm</a></li>
+        <li>Frank Wille, <a href="https://github.com/BullyWiiPlaza/vdappc" target="_blank" rel="noopener">vdappc</a></li>
+        <li>Michael Clark, <a href="https://github.com/michaeljclark/riscv-disassembler" target="_blank" rel="noopener">riscv-disassembler</a></li>
+        <li>Justin Sherman, <a href="https://github.com/jsherman212/armadillo" target="_blank" rel="noopener">armadillo</a></li>
+        <li>Thiadmer Riemersma, <a href="https://github.com/compuphase/ARM-disassembler/" target="_blank" rel="noopener">ARM-disassembler</a></li>
+        <li>NASM Authors, <a href="https://github.com/netwide-assembler/nasm" target="_blank" rel="noopener">nasm</a></li>
+        <li>Namdak Tonpa, <a href="https://github.com/asmedit/dasm-pdp11" target="_blank" rel="noopener">dasm-pdp11</a>, <a href="https://github.com/asmedit/dasm-mips" target="_blank" rel="noopener">dasm-mips</a></li>
+      </ul>
+    </div>
+
+    <div class="section">
+      <h2>関連コンポーネント (Related Components)</h2>
+      <div class="related-apps">
+        <a href="Workbench.html">🗄️ ワークベンチ</a>
+        <a href="Cabinet.html">📁 キャビネット</a>
+        <a href="Editor.html">✍️ 文書編集</a>
+      </div>
+    </div>
+  </div>
+
+  <footer class="app-footer">
+    <div class="app-footer-top">
+      <a href="../index.html">← B-System</a>
+      <span class="site-name">Applications</span>
+    </div>
+    <div class="app-footer-grid">
+      <div class="app-footer-col">
+        <h4>System</h4>
+        <ul>
+            <li><a href="Workbench.html">Workbench</a></li>
+            <li><a href="Terminal.html">Terminal</a></li>
+            <li><a href="Commander.html" class="active">Commander</a></li>
+            <li><a href="Commands.html">Commands</a></li>
+            <li><a href="Calculator.html">Calculator</a></li>
+            <li><a href="Clock.html">Clock</a></li>
+            <li><a href="Mail.html">Mail</a></li>
+            <li><a href="Preferences.html">Preferences</a></li>
+            <li><a href="Boot.html">Boot</a></li>
+            <li><a href="Volumes.html">Volumes</a></li>
+            <li><a href="Firmware.html">Firmware</a></li>
+        </ul>
+      </div>
+      <div class="app-footer-col">
+        <h4>TAD</h4>
+        <ul>
+            <li><a href="Cabinet.html">Cabinet</a></li>
+            <li><a href="Editor.html">Editor</a></li>
+            <li><a href="Matrix.html">Matrix</a></li>
+            <li><a href="Clarity.html">Clarity</a></li>
+            <li><a href="Browser.html">Browser</a></li>
+            <li><a href="Notebook.html">Notebook</a></li>
+            <li><a href="Review.html">Review</a></li>
+            <li><a href="Chat.html">Chat</a></li>
+        </ul>
+      </div>
+      <div class="app-footer-col">
+        <h4>Media</h4>
+        <ul>
+            <li><a href="Cassette.html">Cassette</a></li>
+            <li><a href="Paint.html">Paint</a></li>
+            <li><a href="Orchestra.html">Orchestra</a></li>
+            <li><a href="MSX.html">MSX</a></li>
+            <li><a href="MicroScript.html">MicroScript</a></li>
+            <li><a href="XMB.html">XMB</a></li>
+            <li><a href="SDK.html">SDK</a></li>
+             <li><a href="Quake.html">Quake</a></li>
+        </ul>
+      </div>
+      <div class="app-footer-col">
+        <h4>Settings</h4>
+        <ul>
+            <li><a href="../settings/Appearance.html">Appearance</a></li>
+            <li><a href="../settings/Desktop.html">Desktop</a></li>
+            <li><a href="../settings/Input.html">Input</a></li>
+            <li><a href="../settings/Language.html">Language</a></li>
+            <li><a href="../settings/Sound.html">Sound</a></li>
+            <li><a href="../settings/Network.html">Network</a></li>
+            <li><a href="../settings/Display.html">Display</a></li>
+            <li><a href="../settings/Media.html">Media</a></li>
+            <li><a href="../settings/System.html">System</a></li>
+            <li><a href="../settings/Security.html">Security</a></li>
+            <li><a href="../settings/Terminal.html">Terminal</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="app-footer-bottom">B-System &nbsp;·&nbsp; Synrc VE OS.1 &nbsp;·&nbsp; Technical Specification</div>
+  </footer>
+</body>
+</html>

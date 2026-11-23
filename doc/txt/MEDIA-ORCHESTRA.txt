@@ -9,8 +9,8 @@ Form:    Manuscript of a forthcoming article.
 Related: SOUND.txt, ASYNC.txt, IO.txt,
          doc/pdf/btron-sound.tex,
          doc/md/MEDIA.md,
-         b-media/index.html, b-media/audio.html,
-         b-media/sound.html,
+         doc/media/index.html, doc/media/audio.html,
+         doc/media/sound.html,
          src/media/orchestra.c, src/media/gst_rt.c,
          src/media/orchestra_session.c, src/media/orchestra_smf.c,
          include/media/gst_rt.h, include/apps/orchestra.h,
@@ -101,14 +101,14 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
   Публічний опис і оболонка, описані в першому читанні цієї статті,
   розходилися з драйвером і з уже написаним синтезом. Розрив закритий:
   src/apps/orchestra.c у дереві більше немає, концертний граф і файл сесії
-  зібрані, а b-system/apps/Orchestra.html говорить мовою розділів 2–12. Той
+  зібрані, а apps/Orchestra.html говорить мовою розділів 2–12. Той
   стан, якого вже не існує, і план, який його прибрав, винесені в розділ 18 і
   нормативними не є. Наступний розділ називає те, що лежить у дереві зараз.
   Контракт будується на цих іменах і ні на чому раніше не названому.
 
   Заяв поза цим деревом лишається дві, і жодна з них не є властивістю
-  Orchestra. b-media/audio.html називає ціль Control Panel у 128 кадрів;
-  період драйвера з §2.1 — 1024. b-media/sound.html не має companion-моделі, і
+  Orchestra. doc/media/audio.html називає ціль Control Panel у 128 кадрів;
+  період драйвера з §2.1 — 1024. doc/media/sound.html не має companion-моделі, і
   §2.3 це фіксує.
 
   Правило читання. Анотація підсумовує результат і не є посилкою для тіла. У
@@ -206,7 +206,7 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
   поза ними; лічильник читає lc_shim_refusals. Номери тримає enum LC_SHIM у
   lilcu64_score.h: 1 є squash, 21 — violin, 22 — cello, 23 — timpani; 24 і 25
   є лише ідентифікаторами захоплення, hammer і swoosh, і диспетчеру не їдуть.
-  Демо лишається на LILCU64_AUDIO_RATE 44100. У b-media/index.html оголошені
+  Демо лишається на LILCU64_AUDIO_RATE 44100. У doc/media/index.html оголошені
   25 функцій shim*, рядки 3373–4390. doc/pdf/btron-sound.tex і
   doc/txt/SOUND.txt нумерують їх 1A–1C і 2–23.
 
@@ -216,7 +216,7 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
   shimGrandPiano уже містить атаку 8 мс і параметр duration; типове значення
   в JS — 1.2 с. shimKickD має тривалість 0.16 с. Адитивний shimPulseBell у
   lilcu64_score.c і в index.html є вісьмома синусами; це не
-  lilcu64_shim_pulse_bell. b-media/sound.html у §2.2 називає для FM пару
+  lilcu64_shim_pulse_bell. doc/media/sound.html у §2.2 називає для FM пару
   2.76 і 1.8.
 
   Скрипкове тіло JS, index.html:4227, має шум, два saw, LFO 5.8 Гц у частоту
@@ -225,7 +225,7 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
 
   Той самий папір задає рівномірну темперацію, адитивний шим, біквад, FM,
   хвилі шейпера і панораму. Коефіцієнти біквада — Audio EQ Cookbook Роберта
-  Брістоу-Джонсона, суспільне надбання, не бібліотека. b-media/sound.html
+  Брістоу-Джонсона, суспільне надбання, не бібліотека. doc/media/sound.html
   прямо каже, що синтезатор постачається без companion-моделі. У
   verify/models/ немає sound_* і lilcu64_*. Є media_smp_properties.v про
   площини, прогрес і seqlock, а також media_intercore і media_rtp. Вони не
@@ -238,7 +238,7 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
   include/btron/async_rt.h задає період INPUT 1000 мкс і бюджет 500 мкс,
   період UI 8333 мкс і бюджет 4000 мкс. Імені аудіоплощини в цьому заголовку
   немає. Текст B-Media називає ще IOD 250/500 мкс; у заголовку цього числа
-  немає. Плагінного завантажувача b-media/index.html не має. Стани пайплайна
+  немає. Плагінного завантажувача doc/media/index.html не має. Стани пайплайна
   там названі VOID_PENDING, NULL, READY, PAUSED і PLAYING. Відмова фабрики
   інертна: повертається NULL, попередній стан не руйнується.
 
@@ -1905,7 +1905,7 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
   Сталий напис 0.8 ms заборонений. Round-trip 5–8 мс не є контрактом цієї
   збірки: його міг би дати лише бекенд із періодом не більше 128 кадрів, а
   період хоста — 1024. Ціль Control Panel у 128 кадрів лишається реченням
-  b-media/audio.html, не властивістю virtio_sound_open. Акустична затримка є
+  doc/media/audio.html, не властивістю virtio_sound_open. Акустична затримка є
   чергою пристрою, не тими 666 мкс.
 
 
@@ -2880,7 +2880,7 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
      коротша за два періоди. Drop —
      лише на відхиленому write.
 
-  b-media/sound.html не має companion-моделі, і §2.3 це вже сказав. Семплова
+  doc/media/sound.html не має companion-моделі, і §2.3 це вже сказав. Семплова
   детермінованість шимів, неперервність крадіжки голосу і зв'язок аудіо з
   відеогодинником не доведені. Ця стаття таких доказів не заявляє.
   media_smp, media_intercore і media_rtp можна цитувати лише як дисципліну
@@ -2963,15 +2963,15 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
     reverb_process, biquad_coeffs.
   * src/demo/lilcu64_score.c і lilcu64_score.h — шими і s_T. Тіла 21–23
     (shimViolin, shimCello, shimTimpani) уже в файлі.
-  * b-media/index.html — 25 функцій shim* і площини.
+  * doc/media/index.html — 25 функцій shim* і площини.
   * doc/pdf/btron-sound.tex — формули сигналу і нумерація 1A–1C, 2–23.
     eq:stft є кроком палітри паперу, не алгоритмом цього DAW.
   * doc/txt/SOUND.txt, розділи 3, 5, 6, 7, 8 і 9.
   * doc/md/GST-SYNC-RTP.md, §4 — атрибути реального часу, не тіла елементів.
   * doc/md/GUI.md — вікно без окремої збірки на ширину.
-  * b-media/sound.html — розрив доказу і пара FM 2.76 на 1.8.
-  * b-media/audio.html — період 1024 і ціль Control Panel 128.
-  * b-system/apps/Orchestra.html — сторінка, переписана за цією статтею;
+  * doc/media/sound.html — розрив доказу і пара FM 2.76 на 1.8.
+  * doc/media/audio.html — період 1024 і ціль Control Panel 128.
+  * apps/Orchestra.html — сторінка, переписана за цією статтею;
     заяви, які зняв PR 11, не повернулися.
   * include/btron/app_menu.h — стеля пунктів 20, заголовків 8, висота 21.
   * include/btron/async_rt.h — UI 8333 і 4000 мкс, INPUT 1000 і 500.
@@ -3017,7 +3017,7 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
     MIDI-події; PCM-масиву такої довжини в теперішньому дереві немає (§7).
   * Масиву портів у пульті більше немає: порт 0 існує описом із §7.
 
-  Сторінка b-system/apps/Orchestra.html до PR 11 повторяла ті самі твердження:
+  Сторінка apps/Orchestra.html до PR 11 повторяла ті самі твердження:
   FluidSynth, SoundFont, 96 кГц, RTP-MIDI, PTP, субмілісекундний DMA, буфер 64
   семпли, напис 0.8 ms, DMX, MTC і SMPTE master, порівняння з GarageBand
   і Logic як заяву здатності. §13 називає, що від цих заяв лишилось.
@@ -3080,7 +3080,7 @@ Related: SOUND.txt, ASYNC.txt, IO.txt,
   * PR 10, WAV. Залежить від PR 9. Офлайн-рендер, заголовок 44 байти,
     /SYS/orchestra.wav, стеля 80 МіБ. Індекс — локальний s_clock. N не
     змінюється. Без читача. Той самий крок перевіряє стелю 5000 рядків.
-  * PR 11, сторінка. Залежить від PR 10. Лише b-system/apps/Orchestra.html.
+  * PR 11, сторінка. Залежить від PR 10. Лише apps/Orchestra.html.
     Прибрати FluidSynth, SF2, GM Level 2 PCM, 96 кГц, RTP-MIDI, PTP,
     субмілісекундний DMA, буфер 64 семпли, напис 0.8 ms, DMX, MTC і SMPTE
     master, рядок USB/DIN/RTP, недоведену цифру footprint менше ніж 2 МБ,
