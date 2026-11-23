@@ -69,7 +69,8 @@ int main(void)
 
     /* SYS.VOL on the host, when present, carries the payload. */
     {
-        FILE *f = fopen("btron_sys.vol", "rb");
+        FILE *f = fopen("downloads/btron_sys.vol", "rb");
+        if (!f) f = fopen("btron_sys.vol", "rb");
         if (!f) {
             printf("  [SKIP] btron_sys.vol not in cwd\n");
         } else {

@@ -1265,7 +1265,7 @@ static void handle_cmd(int cmd)
                                       (ClarityPechaSize)g_doc.pecha_size, TRUE);
             }
             if (bk->is_loaded) {
-                clarity_book_export_tad(bk, "tad_bin/osal", "tad_bin/osal_shog_dril.tad");
+                clarity_book_export_tad(bk, "tad_bin/osal", "tad_bin/osal/osal_shog_dril.tad");
             }
             break;
         }
@@ -1277,7 +1277,7 @@ static void handle_cmd(int cmd)
                                       (ClarityPechaSize)g_doc.pecha_size, TRUE);
             }
             if (bk->is_loaded) {
-                clarity_book_export_tad(bk, "tad_bin/osal", "tad_bin/osal_shog_dril.tad");
+                clarity_book_export_tad(bk, "tad_bin/osal", "tad_bin/osal/osal_shog_dril.tad");
                 open_tad_browser_window("tad_bin/osal/index.tad", "【目録】Лонгчен Осал (TAD Browser)");
             }
             break;

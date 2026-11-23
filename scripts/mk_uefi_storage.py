@@ -126,12 +126,11 @@ def create_gpt_header_and_entries(partitions):
 
 
 def build_btron_volumes():
-    """Return paths to btron_sys.vol and btron_anders.vol, preferring root Makefile-built volumes."""
+    """Return paths to btron_sys.vol and btron_anders.vol, preferring downloads/ Makefile-built volumes."""
     os.makedirs(".build", exist_ok=True)
-    root_sys = "btron_sys.vol"
-    root_anders = "btron_anders.vol"
-    sys_vol = root_sys if os.path.exists(root_sys) else ".build/btron_sys.vol"
-    anders_vol = root_anders if os.path.exists(root_anders) else ".build/btron_anders.vol"
+    os.makedirs("downloads", exist_ok=True)
+    sys_vol = next((p for p in ("downloads/btron_sys.vol", "btron_sys.vol") if os.path.exists(p)), "downloads/btron_sys.vol")
+    anders_vol = next((p for p in ("downloads/btron_anders.vol", "btron_anders.vol") if os.path.exists(p)), "downloads/btron_anders.vol")
 
     mkbtronfs_bin = "./mkbtronfs"
     if not os.path.exists(sys_vol) or not os.path.exists(anders_vol):
@@ -140,7 +139,7 @@ def build_btron_volumes():
 
     if not os.path.exists(sys_vol) and os.path.exists("tools/manifest.txt"):
         print(f"[STORAGE] Generating {sys_vol}...")
-        subprocess.run([mkbtronfs_bin, "tools/manifest.txt", "-o", sys_vol, "-n", "512", "-b", "16384"], check=True)
+        subprocess.run([mkbtronfs_bin, "tools/manifest.txt", "-o", sys_vol, "-n", "512", "-b", "4096"], check=True)
 
     if not os.path.exists(anders_vol) and os.path.exists("tools/manifest_anders.txt"):
         print(f"[STORAGE] Generating {anders_vol}...")
@@ -357,7 +356,7 @@ def main():
     os.makedirs("downloads/intel-uefi", exist_ok=True)
 
     if cmd in ("all", "disk"):
-        build_raw_disk(out_override or "btron_disk.img", is_installed=True, use_gpt=use_gpt)
+        build_raw_disk(out_override or "downloads/intel-uefi/btron_disk.img", is_installed=True, use_gpt=use_gpt)
     if cmd in ("all", "usb"):
         build_raw_disk(out_override or "downloads/intel-uefi/btron-uefi-usb.img", is_installed=False, use_gpt=use_gpt)
     if cmd in ("all", "hdd"):

@@ -528,7 +528,8 @@ static void test_clu_integration(void)
 
     g_chokanji_vol = v;
 
-    BlkDev *sys_dev = blk_file_create("btron_sys.vol", 0, 1024);
+    BlkDev *sys_dev = blk_file_create("downloads/btron_sys.vol", 0, 1024);
+    if (!sys_dev) sys_dev = blk_file_create("btron_sys.vol", 0, 1024);
     Volume *sv = NULL;
     if (sys_dev) {
         sv = vol_mount(sys_dev);
@@ -842,7 +843,8 @@ static void test_clu_integration(void)
     }
 
     /* Mount /ANDERS to test cross-volume isolation and fs -r performance */
-    BlkDev *anders_dev = blk_file_create("btron_anders.vol", 0, 1024);
+    BlkDev *anders_dev = blk_file_create("downloads/btron_anders.vol", 0, 1024);
+    if (!anders_dev) anders_dev = blk_file_create("btron_anders.vol", 0, 1024);
     if (anders_dev) {
         g_anders_vol = vol_mount(anders_dev);
         if (g_anders_vol) {
@@ -996,7 +998,8 @@ static void test_volume_isolation_security(void)
     TEST_ASSERT(v != NULL, "failed to mount Cho-Kanji volume");
     g_chokanji_vol = v;
 
-    BlkDev *sys_dev = blk_file_create("btron_sys.vol", 0, 1024);
+    BlkDev *sys_dev = blk_file_create("downloads/btron_sys.vol", 0, 1024);
+    if (!sys_dev) sys_dev = blk_file_create("btron_sys.vol", 0, 1024);
     TEST_ASSERT(sys_dev != NULL, "failed to open btron_sys.vol");
     Volume *sv = vol_mount(sys_dev);
     TEST_ASSERT(sv != NULL, "failed to mount btron_sys.vol");

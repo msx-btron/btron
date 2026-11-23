@@ -414,7 +414,17 @@ def get_image_dimensions(path: str):
     return 480, 140
 
 # Site book folders and the tad_bin catalog names the browser already searches.
-_BOOK_SEG = {'cores': 'b-book', 'media': 'b-media', 'specs': 'b-spec'}
+_BOOK_SEG = {
+    'cores': 'b-book',
+    'media': 'b-media',
+    'specs': 'b-spec',
+    'apps': 'b-system/apps',
+    'settings': 'b-system/settings',
+    'kernel': 'b-system/kernel',
+    'virtualization': 'b-system/virtualization',
+    'conformance': 'b-system/conformance',
+    'verification': 'b-system/verification',
+}
 
 def to_tad_href(href: str) -> str:
     """Map a site href onto a path the TAD browser can open without source changes.
@@ -630,6 +640,8 @@ def _doc_title_name(base_name: str, html_path: str, src_root: str, kind: str) ->
         return 'B-Spec'
     if kind == 'media':
         return 'B-Media'
+    if kind == 'system':
+        return 'B-System'
     return 'B-Book'
 
 
@@ -828,22 +840,24 @@ def compile_foundational_books(target_dir: str = 'tad_bin') -> None:
         ('p', 'Ken Sakamura教授が提唱した「万人に開かれた標準」をGPL (GNU General Public License) の下で実現するクリーンルーム実装。'),
     ]
     books = [
-        ('01_btron3_spec', 'BTRON3 3.20 Specification Book', btron3_elements),
-        ('02_bcore_book', 'B-Core InterCore Streaming Protocol Book', bcore_elements),
-        ('03_bfree_os_book', 'B-Free Operating System Book', bfree_elements),
+        (os.path.join('b-spec', '01_btron3_spec'), 'BTRON3 3.20 Specification Book', btron3_elements),
+        (os.path.join('b-media', '02_bcore_book'), 'B-Core InterCore Streaming Protocol Book', bcore_elements),
+        (os.path.join('b-system', '03_bfree_os_book'), 'B-Free Operating System Book', bfree_elements),
     ]
     print('======================================================================')
     print(' B-System Foundational TAD Books (article compiler)')
     print(f' Output Directory: ./{target_dir}/')
     print('======================================================================')
-    for base_name, title, elems in books:
+    for rel_name, title, elems in books:
+        out_base = os.path.join(target_dir, rel_name)
+        os.makedirs(os.path.dirname(out_base), exist_ok=True)
         bin_tad = compile_to_binary_tad(elems, '')
         txt_tad = compile_to_symbolic_tad(elems, title)
-        with open(os.path.join(target_dir, base_name + '.tad'), 'wb') as f:
+        with open(out_base + '.tad', 'wb') as f:
             f.write(bin_tad)
-        with open(os.path.join(target_dir, base_name + '.tad.txt'), 'w', encoding='utf-8') as f:
+        with open(out_base + '.tad.txt', 'w', encoding='utf-8') as f:
             f.write(txt_tad)
-        print(f'  [COMPILED BOOK]   {(base_name + ".tad").ljust(26)} : {title} ({len(bin_tad)} bytes)')
+        print(f'  [COMPILED BOOK]   {(rel_name + ".tad").ljust(32)} : {title} ({len(bin_tad)} bytes)')
     print('======================================================================\n')
 
 
@@ -871,21 +885,60 @@ def compile_catalog(src_dir: str, out_dir: str, kind: str) -> int:
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
-# Source trees are the site books. Output catalogs keep the names the
-# cabinet and tad_browser.c already open.
+# Exactly five canonical book directories live under tad_bin/:
+#   1) b-book    — B-Book (doc/cores)
+#   2) b-media   — B-Media (doc/media)
+#   3) b-spec    — B-Spec (doc/specs)
+#   4) b-system  — B-System (apps, settings, doc/kernel, virtualization, conformance, verification)
+#   5) osal      — Osal Book (Tibetan Longchen Osal TADs exported by Clarity)
+ALLOWED_TOP_DIRS = {'b-book', 'b-media', 'b-spec', 'b-system', 'osal'}
+
 CATALOGS = (
-    ('doc/cores', 'tad_bin/b-book', 'book'),
-    ('doc/media', 'tad_bin/b-media', 'media'),
-    ('doc/specs', 'tad_bin/b-spec', 'spec'),
+    ('doc/cores',          'tad_bin/b-book',                  'book'),
+    ('doc/media',          'tad_bin/b-media',                 'media'),
+    ('doc/specs',          'tad_bin/b-spec',                  'spec'),
+    ('apps',               'tad_bin/b-system/apps',           'system'),
+    ('settings',           'tad_bin/b-system/settings',       'system'),
+    ('doc/kernel',         'tad_bin/b-system/kernel',         'system'),
+    ('doc/virtualization', 'tad_bin/b-system/virtualization', 'system'),
+    ('doc/conformance',    'tad_bin/b-system/conformance',    'system'),
+    ('doc/verification',   'tad_bin/b-system/verification',   'system'),
 )
+
+SYSTEM_SINGLE_PAGES = (
+    ('index.html',       'tad_bin/b-system', 'system'),
+    ('doc/license.html', 'tad_bin/b-system', 'system'),
+)
+
+
+def _clean_tad_bin_leftovers(root: str = 'tad_bin') -> None:
+    """Keep only the five canonical book directories under tad_bin/."""
+    os.makedirs(root, exist_ok=True)
+    for entry in os.listdir(root):
+        path = os.path.join(root, entry)
+        if entry not in ALLOWED_TOP_DIRS or not os.path.isdir(path):
+            if os.path.isdir(path) and not os.path.islink(path):
+                shutil.rmtree(path)
+            else:
+                os.unlink(path)
+    # Rebuild the four HTML-compiled book folders fresh (preserve osal/).
+    for d in ('b-book', 'b-media', 'b-spec', 'b-system'):
+        p = os.path.join(root, d)
+        if os.path.isdir(p):
+            shutil.rmtree(p)
+        os.makedirs(p, exist_ok=True)
+    os.makedirs(os.path.join(root, 'osal'), exist_ok=True)
+
 
 if __name__ == '__main__':
     args = sys.argv[1:]
     if '--test' in args:
         run_tests()
 
-    os.makedirs('tad_bin', exist_ok=True)
-    # Spec gifs land in tad_bin/b-spec before the portal books name them.
+    _clean_tad_bin_leftovers('tad_bin')
     for src_dir, out_dir, kind in CATALOGS:
         compile_catalog(src_dir, out_dir, kind)
+    for html_file, out_dir, kind in SYSTEM_SINGLE_PAGES:
+        if os.path.isfile(html_file):
+            process_file(html_file, out_dir, os.path.dirname(html_file) or '.', kind)
     compile_foundational_books('tad_bin')

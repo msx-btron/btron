@@ -87,10 +87,10 @@ jobs:
         with:
           name: btron-binaries-${{ matrix.os }}
           path: |
-            btron-posix
-            btron-qemu.elf
+            downloads/virtio/btron-posix
+            downloads/virtio/btron-qemu.elf
             btron-tkernel.elf
-            btron-sakamura.elf
+            downloads/virtio/btron-sakamura.elf
             downloads/pi-2/btron-arm-baremetal.elf
             downloads/pi-400/btron-aarch64-baremetal.elf
           if-no-files-found: ignore
@@ -128,7 +128,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: btron-binaries-alpine
-          path: btron-posix
+          path: downloads/virtio/btron-posix
           if-no-files-found: ignore
 
   # ── Security & Quality Static Analysis (Alpine Linux) ────────────────────────
@@ -216,7 +216,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: btron-binaries-freebsd
-          path: btron-posix
+          path: downloads/virtio/btron-posix
           if-no-files-found: ignore
 
   # ── OpenBSD ───────────────────────────────────────────────────────────────────
@@ -269,7 +269,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: btron-binaries-openbsd
-          path: btron-posix
+          path: downloads/virtio/btron-posix
           if-no-files-found: ignore
 
   # ── NetBSD ────────────────────────────────────────────────────────────────────
@@ -331,5 +331,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: btron-binaries-netbsd
-          path: btron-posix
+          path: downloads/virtio/btron-posix
           if-no-files-found: ignore

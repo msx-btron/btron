@@ -19,14 +19,18 @@ int vfs_init(void)
 {
 #if CLU_HOSTED
     if (vol_mounted_count() == 0) {
-        BlkDev *dev = blk_file_create("btron_sys.vol", 0, 0);
+        BlkDev *dev = blk_file_create("downloads/btron_sys.vol", 0, 0);
+        if (dev == NULL) dev = blk_file_create("../btron_sys.vol", 0, 0);
+        if (dev == NULL) dev = blk_file_create("btron_sys.vol", 0, 0);
         if (dev != NULL) {
             Volume *v = vol_mount(dev);
             if (v != NULL && g_sys_vol == NULL) {
                 g_sys_vol = v;
             }
         }
-        BlkDev *adev = blk_file_create("btron_anders.vol", 0, 0);
+        BlkDev *adev = blk_file_create("downloads/btron_anders.vol", 0, 0);
+        if (adev == NULL) adev = blk_file_create("../btron_anders.vol", 0, 0);
+        if (adev == NULL) adev = blk_file_create("btron_anders.vol", 0, 0);
         if (adev != NULL) {
             (void)vol_mount(adev);
         }

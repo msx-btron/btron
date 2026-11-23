@@ -791,20 +791,21 @@ fi
 # that was pure fiction), and sc's real session init must be the one that links -- gterm.c
 # carries a weak definition, so a strong-symbol regression would bring back "not available
 # yet" while every other row here still passed.
-if [ -f btron_sys.vol ]; then
+SYS_VOL_FILE=".build/ps2_sys.vol"
+if [ -f "$SYS_VOL_FILE" ]; then
     VOL_ADDR="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image" {print "0x"$2}' | head -n1)"
     VOL_END="$($READELF -s $ELF | awk '$8=="ps2_sys_vol_image_end" {print "0x"$2}' | head -n1)"
     DATA_ADDR="$($READELF -S $ELF | awk '$3==".data" {print "0x"$5}' | head -n1)"
     DATA_OFF="$($READELF -S $ELF | awk '$3==".data" {print "0x"$6}' | head -n1)"
     VOL_BYTES=$((VOL_END - VOL_ADDR))
     VOL_FILE_OFF=$((DATA_OFF + VOL_ADDR - DATA_ADDR))
-    VOL_ON_DISK=$(wc -c < btron_sys.vol | tr -d ' ')
+    VOL_ON_DISK=$(wc -c < "$SYS_VOL_FILE" | tr -d ' ')
     assert_check "The image carries the volume in .data at $VOL_ADDR: $VOL_BYTES bytes, 1024-aligned, $((VOL_BYTES / 1024)) whole blocks" \
         "[ -n '$VOL_ADDR' ] && [ -n '$VOL_END' ] && [ $VOL_BYTES -gt 0 ] && [ \$((VOL_ADDR % 1024)) -eq 0 ] && [ \$((VOL_BYTES % 1024)) -eq 0 ]"
     # dd reads whole 1024-byte blocks, which is exactly why the alignment row above is a
     # precondition rather than a detail: an unaligned start would silently truncate here.
-    assert_check "...and they are the bytes mkbtronfs wrote ($VOL_ON_DISK in btron_sys.vol, copied from ELF offset $VOL_FILE_OFF)" \
-        "[ $VOL_BYTES -eq $VOL_ON_DISK ] && dd if=$ELF bs=1024 skip=$((VOL_FILE_OFF / 1024)) count=$((VOL_BYTES / 1024)) 2>/dev/null | cmp -s - btron_sys.vol"
+    assert_check "...and they are the bytes mkbtronfs wrote ($VOL_ON_DISK in $SYS_VOL_FILE, copied from ELF offset $VOL_FILE_OFF)" \
+        "[ $VOL_BYTES -eq $VOL_ON_DISK ] && dd if=$ELF bs=1024 skip=$((VOL_FILE_OFF / 1024)) count=$((VOL_BYTES / 1024)) 2>/dev/null | cmp -s - $SYS_VOL_FILE"
     # The two rows above are a pair, and the pair has a hole: row 89 compares the image against
     # btron_sys.vol AS IT IS ON DISK, so both go green together when the working file has drifted
     # away from the manifest -- and it does drift, because five host suites mount that very file
@@ -822,16 +823,16 @@ if [ -f btron_sys.vol ]; then
     # the control; and after the Makefile rule for ps2_sys_vol.ps2.o began repairing the payload
     # before assembling it, the same sequence ends with this row green at 0 bytes.
     FRESH_VOL=.build/ps2-vol-fresh.vol
-    if ./mkbtronfs tools/manifest.txt -o "$FRESH_VOL" >/dev/null 2>&1; then
-        FRESH_DIFF=$(cmp -l "$FRESH_VOL" btron_sys.vol 2>/dev/null | wc -l | tr -d ' ')
-        assert_check "...and what the image carries is the manifest itself, not the working file (${FRESH_DIFF:-0} bytes separate btron_sys.vol from a fresh build; the host FS suites mount it read/write)" \
+    if ./mkbtronfs tools/manifest_ps2.txt -o "$FRESH_VOL" -n 256 -b 1024 >/dev/null 2>&1; then
+        FRESH_DIFF=$(cmp -l "$FRESH_VOL" "$SYS_VOL_FILE" 2>/dev/null | wc -l | tr -d ' ')
+        assert_check "...and what the image carries is the manifest itself, not the working file (${FRESH_DIFF:-0} bytes separate $SYS_VOL_FILE from a fresh build; the host FS suites mount it read/write)" \
             "dd if=$ELF bs=1024 skip=$((VOL_FILE_OFF / 1024)) count=$((VOL_BYTES / 1024)) 2>/dev/null | cmp -s - $FRESH_VOL"
         rm -f "$FRESH_VOL"
     else
         echo "  [SKIP] mkbtronfs did not rebuild the manifest -- the payload-freshness row was not run"
     fi
 else
-    echo "  [SKIP] btron_sys.vol absent -- the embedded-volume law was not read off the image"
+    echo "  [SKIP] $SYS_VOL_FILE absent -- the embedded-volume law was not read off the image"
 fi
 
 BOOT_ASM="$($OBJDUMP -d $ELF | awk '/<ps2_kernel_main>:/{f=1;print;next} f&&/^[[:space:]]*$/{f=0;next} f')"

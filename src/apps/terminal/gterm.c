@@ -952,7 +952,7 @@ void shell_execute_cmd(const char *cmd_line, ShellOutputFn out_fn, void *user_da
         open_t_editor_window();
         out_fn("Started new Editor instance", COLOR_GREEN, user_data);
     } else if (strcmp(cmd, "tad") == 0 || strcmp(cmd, "browser") == 0) {
-        open_tad_browser_window("tad_bin/01_btron3_spec.tad", "【仕様書】BTRON3 3.20");
+        open_tad_browser_window("tad_bin/b-spec/01_btron3_spec.tad", "【仕様書】BTRON3 3.20");
         out_fn("Started new TAD Browser instance", COLOR_GREEN, user_data);
     } else if (strcmp(cmd, "chat") == 0) {
 #if BTRON_HOSTED

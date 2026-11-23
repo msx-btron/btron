@@ -29,7 +29,7 @@
 
 	.globl	ps2_sys_vol_image
 ps2_sys_vol_image:
-	.incbin	"btron_sys.vol"
+	.incbin	".build/ps2_sys.vol"
 
 	.globl	ps2_sys_vol_image_end
 ps2_sys_vol_image_end:

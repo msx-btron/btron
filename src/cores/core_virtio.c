@@ -105,6 +105,14 @@ void btron_core_hfds_log(void) {
             disk_used = disk_env;
         }
         if (!disk_blk) {
+            disk_blk = blk_file_create("downloads/intel-uefi/btron_disk.img", 0, 0);
+            disk_used = "downloads/intel-uefi/btron_disk.img";
+        }
+        if (!disk_blk) {
+            disk_blk = blk_file_create("../intel-uefi/btron_disk.img", 0, 0);
+            disk_used = "../intel-uefi/btron_disk.img";
+        }
+        if (!disk_blk) {
             disk_blk = blk_file_create("btron_disk.img", 0, 0);
             disk_used = "btron_disk.img";
         }
@@ -127,8 +135,9 @@ void btron_core_hfds_log(void) {
     }
     /* ── Optional direct .vol slice granularity (/SYS) ──────────────── */
     if (!g_sys_vol) {
-        BlkDev *sys_blk = blk_file_create("btron_sys.vol", 0 /*open existing*/, 0);
+        BlkDev *sys_blk = blk_file_create("downloads/btron_sys.vol", 0 /*open existing*/, 0);
         if (!sys_blk) sys_blk = blk_file_create("../btron_sys.vol", 0, 0);
+        if (!sys_blk) sys_blk = blk_file_create("btron_sys.vol", 0, 0);
         if (sys_blk) {
             g_sys_vol = vol_mount(sys_blk);
             if (g_sys_vol)
@@ -152,8 +161,9 @@ void btron_core_hfds_log(void) {
     }
     /* ── Mount /ANDERS volume ───────────────────────────────────────── */
     if (!g_anders_vol) {
-        BlkDev *anders_blk = blk_file_create("btron_anders.vol", 0, 0);
+        BlkDev *anders_blk = blk_file_create("downloads/btron_anders.vol", 0, 0);
         if (!anders_blk) anders_blk = blk_file_create("../btron_anders.vol", 0, 0);
+        if (!anders_blk) anders_blk = blk_file_create("btron_anders.vol", 0, 0);
         if (anders_blk) {
             g_anders_vol = vol_mount(anders_blk);
             if (g_anders_vol)

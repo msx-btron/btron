@@ -742,15 +742,13 @@ static int path_stat(const char *p, struct stat *st)
 }
 static void resolve_orch_path(void)
 {
-    const char *alt = 0;
     struct stat st;
     uint32_t n = 0;
     while (ORCH_PATH_ORCH[n] != 0 && n < ORCH_PATH_N) n++;
     orch_check(n >= 2u, __LINE__);
     orch_check(n + 1u < ORCH_PATH_N, __LINE__);
     copy_path(s_orch_path, ORCH_PATH_ORCH);
-    alt = (ORCH_PATH_ORCH[0] == '/') ? &ORCH_PATH_ORCH[1] : ORCH_PATH_ORCH;
-    copy_path(s_orch_alt, alt);
+    copy_path(s_orch_alt, "assets/music/orchestra.orch");
     if (path_stat(s_orch_path, &st)) return;
     if (s_orch_path[0] != '/') return;
     copy_path(s_orch_path, s_orch_alt);
@@ -772,12 +770,22 @@ static const char *open_lit(int idx)
 }
 static int pick_host(char *dst, const char *lit)
 {
+    static const char pfx[] = "assets/music/";
     struct stat st;
     orch_check(dst != 0, __LINE__);
     orch_check(lit != 0, __LINE__);
     copy_path(dst, lit);
     if (path_stat(dst, &st)) return 1;
     if (lit[0] != '/') return 0;
+    if (strncmp(lit, "/SYS/", 5) == 0) {
+        size_t plen = sizeof(pfx) - 1u;
+        size_t nlen = strlen(lit + 5);
+        if (plen + nlen < ORCH_PATH_N) {
+            memcpy(dst, pfx, plen);
+            memcpy(dst + plen, lit + 5, nlen + 1u);
+            if (path_stat(dst, &st)) return 1;
+        }
+    }
     copy_path(dst, lit + 1);
     return path_stat(dst, &st) ? 1 : 0;
 }

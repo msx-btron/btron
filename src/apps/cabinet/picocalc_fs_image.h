@@ -11,7 +11,7 @@
  *   /SYS/KHRUS.TAD        <- tad_bin/osal/khrus.tad (1033 bytes)
  *   /SYS/DGE_BSNGO.TAD    <- tad_bin/osal/dge_bsngo.tad (4691 bytes)
  *   /SYS/HEART_SUTRA.TAD  <- assets/texts/Heart_Sutra_Tibetan.txt (3747 bytes)
- *   /SYS/PICO.TXT         <- doc/txt/PICO.txt (26405 bytes)
+ *   /SYS/PICO.TXT         <- doc/txt/CORES-PICO.txt (26405 bytes)
  */
 static const uint8_t btron_picocalc_fs_img[63156] = {
     0x42, 0x52, 0x4f, 0x4d, 0x01, 0x00, 0x00, 0x00, 0x07, 0x00, 0x00, 0x00, 0xb4, 0xf6, 0x00, 0x00,

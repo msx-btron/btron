@@ -181,7 +181,7 @@ static void test_elixir_compiled_tad_loading(void) {
 
     static TAD_BROWSER tb;
     memset(&tb, 0, sizeof(tb));
-    ER er = tad_browser_load_file(&tb, "tad_bin/01_btron3_spec.tad");
+    ER er = tad_browser_load_file(&tb, "tad_bin/b-spec/01_btron3_spec.tad");
     TEST_ASSERT(er == E_OK, "Successfully loaded tad_bin/01_btron3_spec.tad");
     TEST_ASSERT(tb.span_count > 10, "Document loaded with >10 structured spans");
 
@@ -197,7 +197,7 @@ static void test_viewport_scrolling(void) {
     static TAD_BROWSER tb;
     memset(&tb, 0, sizeof(tb));
     tad_browser_init(&tb);
-    tad_browser_load_file(&tb, "tad_bin/01_btron3_spec.tad");
+    tad_browser_load_file(&tb, "tad_bin/b-spec/01_btron3_spec.tad");
     tb.doc_height = 800;
     tb.page_height = 200;
 
@@ -233,13 +233,13 @@ static void test_cabinet_explorer_selection(void) {
     for (int row = 0; row < 256; row++) {
         int y = 26 + row * 22 + 5;
         cabinet_handle_click(50, y, FALSE, &robj, path);
-        if (robj == 103 && strcmp(path, "tad_bin/03_bfree_os_book.tad") == 0) {
+        if (robj == 103 && strcmp(path, "tad_bin/b-system/03_bfree_os_book.tad") == 0) {
             bfree_row = row;
             break;
         }
     }
     TEST_ASSERT(bfree_row >= 0, "Selected Real Body #103 (03_bfree_os_book.tad)");
-    TEST_ASSERT(strcmp(path, "tad_bin/03_bfree_os_book.tad") == 0, "Resolved path for #103");
+    TEST_ASSERT(strcmp(path, "tad_bin/b-system/03_bfree_os_book.tad") == 0, "Resolved path for #103");
 
     /* Cabinet contents are discovered dynamically; locate manifest.tad through the
      * same list hit-testing API rather than assuming directory enumeration order. */
@@ -283,19 +283,19 @@ static void test_browser_history_and_path_resolution(void) {
     tad_browser_resolve_path("tad_bin/b-spec/os_spec/dp/dp.tad", "b-spec/os_spec/dp/dp.html", resolved, sizeof(resolved));
     TEST_ASSERT(strcmp(resolved, "tad_bin/b-spec/os_spec/dp/dp.tad") == 0, "Resolved sibling path ../dp/dp.html -> tad_bin/os_spec/dp/dp.tad");
 
-    tad_browser_resolve_path("tad_bin/01_btron3_spec.tad", "02_bcore_book.tad", resolved, sizeof(resolved));
-    TEST_ASSERT(strcmp(resolved, "tad_bin/02_bcore_book.tad") == 0, "Resolved neighbor canonical book");
+    tad_browser_resolve_path("tad_bin/b-spec/01_btron3_spec.tad", "02_bcore_book.tad", resolved, sizeof(resolved));
+    TEST_ASSERT(strcmp(resolved, "tad_bin/b-media/02_bcore_book.tad") == 0, "Resolved neighbor canonical book");
 
     /* 2. Test In-place Browser History Navigation */
     static TAD_BROWSER tb;
     memset(&tb, 0, sizeof(tb));
     tad_browser_init(&tb);
 
-    tad_browser_navigate(&tb, "tad_bin/01_btron3_spec.tad");
+    tad_browser_navigate(&tb, "tad_bin/b-spec/01_btron3_spec.tad");
     TEST_ASSERT(tb.history_idx == 0, "Initial page at history_idx = 0");
     TEST_ASSERT(tad_browser_can_go_back(&tb) == FALSE, "Cannot go back from first page");
 
-    tad_browser_navigate(&tb, "tad_bin/02_bcore_book.tad");
+    tad_browser_navigate(&tb, "tad_bin/b-media/02_bcore_book.tad");
     TEST_ASSERT(tb.history_idx == 1, "Navigated to page 2 (history_idx = 1)");
     TEST_ASSERT(tad_browser_can_go_back(&tb) == TRUE, "Can go back to page 1");
     TEST_ASSERT(tad_browser_can_go_forward(&tb) == FALSE, "Cannot go forward past current head");
@@ -303,13 +303,13 @@ static void test_browser_history_and_path_resolution(void) {
     /* Navigate back */
     tad_browser_go_back(&tb);
     TEST_ASSERT(tb.history_idx == 0, "Went back to history_idx = 0");
-    TEST_ASSERT(strcmp(tb.file_path, "tad_bin/01_btron3_spec.tad") == 0, "Current document restored to page 1");
+    TEST_ASSERT(strcmp(tb.file_path, "tad_bin/b-spec/01_btron3_spec.tad") == 0, "Current document restored to page 1");
     TEST_ASSERT(tad_browser_can_go_forward(&tb) == TRUE, "Can go forward to page 2");
 
     /* Navigate forward */
     tad_browser_go_forward(&tb);
     TEST_ASSERT(tb.history_idx == 1, "Went forward to history_idx = 1");
-    TEST_ASSERT(strcmp(tb.file_path, "tad_bin/02_bcore_book.tad") == 0, "Current document restored to page 2");
+    TEST_ASSERT(strcmp(tb.file_path, "tad_bin/b-media/02_bcore_book.tad") == 0, "Current document restored to page 2");
 
     /* Test Toolbar Button Click in handle_mouse */
     BOOL nav_hit = tad_browser_handle_mouse(&tb, 20, 15, TRUE, NULL, NULL);
@@ -445,7 +445,7 @@ static void test_btron3_picture_figure_segments(void) {
     /* 1. Test Canonical Book with embedded GIF Figure */
     static TAD_BROWSER tb;
     memset(&tb, 0, sizeof(tb));
-    ER er = tad_browser_load_file(&tb, "tad_bin/01_btron3_spec.tad");
+    ER er = tad_browser_load_file(&tb, "tad_bin/b-spec/01_btron3_spec.tad");
     TEST_ASSERT(er == E_OK, "Loaded tad_bin/01_btron3_spec.tad with embedded figures");
 
     BOOL found_img = FALSE;
@@ -507,9 +507,9 @@ static void test_canonical_books_links_resolution(void) {
     printf("\n[TEST GROUP 11] Canonical Books Top-Level Links & Cross-Doc Resolution\n");
 
     const char *book_files[] = {
-        "tad_bin/01_btron3_spec.tad",
-        "tad_bin/02_bcore_book.tad",
-        "tad_bin/03_bfree_os_book.tad"
+        "tad_bin/b-spec/01_btron3_spec.tad",
+        "tad_bin/b-media/02_bcore_book.tad",
+        "tad_bin/b-system/03_bfree_os_book.tad"
     };
 
     for (int b = 0; b < 3; b++) {
@@ -551,8 +551,8 @@ static void test_canonical_books_links_resolution(void) {
 static void test_multi_window_context_isolation(void) {
     printf("\n[TEST GROUP 12] Multi-Window Immutable Document Context Isolation (SPEC 3.20)\n");
 
-    WND *w1 = open_tad_browser_window("tad_bin/01_btron3_spec.tad", "Spec Book Window");
-    WND *w2 = open_tad_browser_window("tad_bin/02_bcore_book.tad", "B-Core Book Window");
+    WND *w1 = open_tad_browser_window("tad_bin/b-spec/01_btron3_spec.tad", "Spec Book Window");
+    WND *w2 = open_tad_browser_window("tad_bin/b-media/02_bcore_book.tad", "B-Core Book Window");
 
     TEST_ASSERT(w1 != NULL && w2 != NULL, "Opened two independent TAD Browser windows");
     TEST_ASSERT(w1->user_data != 0 && w2->user_data != 0, "Both windows have allocated user_data document contexts");
@@ -1008,7 +1008,7 @@ static void test_address_bar_and_ascii_spacing_alignment(void) {
     TEST_ASSERT(w_spaces == w_digits, "Columns padded with spaces align with pixel-perfect precision to character columns");
 
     /* 3. Address Bar: Click to focus and edit */
-    WND *wnd = open_tad_browser_window("tad_bin/01_btron3_spec.tad", "Address Bar Test Window");
+    WND *wnd = open_tad_browser_window("tad_bin/b-spec/01_btron3_spec.tad", "Address Bar Test Window");
     TEST_ASSERT(wnd != NULL, "Opened TAD Browser window for address bar test");
     TAD_BROWSER *tb = (TAD_BROWSER*)(uintptr_t)wnd->user_data;
     TEST_ASSERT(tb != NULL, "Browser context valid");
@@ -1065,7 +1065,7 @@ static void test_address_bar_and_ascii_spacing_alignment(void) {
 static void test_word_wrap_and_hscrollbar(void) {
     printf("\n[TEST GROUP 19] Word Wrap Toggle & Horizontal Scrollbar\n");
 
-    WND *wnd = open_tad_browser_window("tad_bin/01_btron3_spec.tad", "Wrap Test");
+    WND *wnd = open_tad_browser_window("tad_bin/b-spec/01_btron3_spec.tad", "Wrap Test");
     TEST_ASSERT(wnd != NULL, "Opened TAD Browser for wrap/hscroll test");
     TAD_BROWSER *tb = (TAD_BROWSER*)(uintptr_t)wnd->user_data;
     TEST_ASSERT(tb != NULL, "Browser context valid");

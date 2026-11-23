@@ -762,17 +762,21 @@ $(QEMU_BUILD_STAMP):
 	@touch $@
 
 # ── Output names ──────────────────────────────────────────────────
-POSIX_TARGET   = btron-posix$(EXEEXT)
-QEMU_TARGET    = btron-qemu.elf$(EXEEXT)
-TKERNEL_TARGET = ./.build/btron-tkernel.elf
-SAKAMURA_TARGET = ./.build/btron-sakamura.elf
+POSIX_TARGET    = downloads/virtio/btron-posix$(EXEEXT)
+QEMU_TARGET     = downloads/virtio/btron-qemu.elf$(EXEEXT)
+TKERNEL_TARGET  = ./.build/btron-tkernel.elf
+SAKAMURA_TARGET = downloads/virtio/btron-sakamura.elf
 FOMA_TARGET     = ./.build/btron-foma.elf
 TEST_FOMA_BIN   = ./.build/test_foma_ui
 UEFI_TARGET     = downloads/intel-uefi/btron-uchida.elf
 PC98_TARGET     = downloads/pc98/btron-morris.elf
-ARM32_TARGET   = downloads/pi-2/btron-arm-baremetal.elf
-ARM64_TARGET   = downloads/pi-400/btron-aarch64-baremetal.elf
-DEFAULT_TARGET = ./.build/btron
+ARM32_TARGET    = downloads/pi-2/btron-arm-baremetal.elf
+ARM64_TARGET    = downloads/pi-400/btron-aarch64-baremetal.elf
+SYS_VOL         = downloads/btron_sys.vol
+ANDERS_VOL      = downloads/btron_anders.vol
+MSX_VOL         = downloads/btron_msx.vol
+DISK_IMG        = downloads/intel-uefi/btron_disk.img
+DEFAULT_TARGET  = ./.build/btron
 
 TKERNEL_INC = -D_RPI_BCM283x_ -DTYPE_RPI=2 \
               -Wno-int-to-pointer-cast -Wno-pointer-to-int-cast \
@@ -791,12 +795,12 @@ list-%:
 # ═══════════════════════════════════════════════════════════════════
 # POSIX Desktop
 # ═══════════════════════════════════════════════════════════════════
-posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol btron_disk.img
-	@ln -sf $(POSIX_TARGET) $(DEFAULT_TARGET)
+posix: $(POSIX_TARGET) $(SYS_VOL) $(ANDERS_VOL) $(DISK_IMG)
+	@ln -sf ../$(POSIX_TARGET) $(DEFAULT_TARGET)
 	@echo "=========================================================="
 	@echo " B-System POSIX Kernel & Desktop successfully built!"
 	@echo " Startup File: $(POSIX_STARTUP)"
-	@echo " Run './btron' or 'make run-posix' to start."
+	@echo " Run './$(POSIX_TARGET)' or 'make run-posix' to start."
 	@echo "=========================================================="
 	@if [ -n "$(PYTHON)" ]; then $(MAKE) tad_bin; \
 	  else echo "Note: tad_bin skipped (no python3 found) - desktop still runs."; fi
@@ -805,12 +809,13 @@ posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol btron_disk.img
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DBTRON_TARGET=0 -MMD -MP -c $< -o $@
 
 $(POSIX_TARGET): $(POSIX_OBJS)
+	@mkdir -p $(dir $@)
 	$(CC) $(POSIX_OBJS) -o $@ $(LDFLAGS) $(SDL_LIBS)
 
-run-posix: $(POSIX_TARGET) btron_sys.vol btron_anders.vol btron_disk.img
+run-posix: $(POSIX_TARGET) $(SYS_VOL) $(ANDERS_VOL) $(DISK_IMG)
 	./$(POSIX_TARGET)
 
-run-sakamura: $(SAKAMURA_TARGET) btron_sys.vol btron_anders.vol btron_disk.img
+run-sakamura: $(SAKAMURA_TARGET) $(SYS_VOL) $(ANDERS_VOL) $(DISK_IMG)
 	./$(SAKAMURA_TARGET)
 
 # ══════════════════════════════════════════════════════════════════════
@@ -853,13 +858,17 @@ mkbtronfs: tools/mkbtronfs.c $(FS_OBJS)
 	$(CC) $(CFLAGS) -Isrc $^ -o mkbtronfs
 	@echo "[FS] mkbtronfs built."
 
-# Host album encoder. Not linked into btron. Writes SYS/*.orch and SYS/*.mid.
+# Host album encoder. Not linked into btron. Writes assets/music/*.orch and assets/music/*.mid.
 album_encode: tools/album_encode.c src/media/sdk/lilcu64_score.c \
 		src/media/sdk/lilcu64_wa.c src/media/sdk/lilcu64_insert.c \
 		src/media/orchestra/orchestra_session.c src/media/orchestra/orchestra_smf.c \
 		src/media/sdk/gst_rt.c src/media/orchestra/lukhash_score.c
 	$(CC) $(CFLAGS) -Werror -Isrc/media/sdk $^ -lm -o album_encode
 	@echo "[ALBUM] album_encode built."
+
+music-assets: album_encode
+	@mkdir -p assets/music
+	./album_encode
 
 # The manifest's payloads are prerequisites and not merely its input: with only the manifest and
 # the tool listed, make rebuilds btron_sys.vol when either changes and *never* when a document the
@@ -873,28 +882,38 @@ album_encode: tools/album_encode.c src/media/sdk/lilcu64_score.c \
 # payload (so every entry that names a parent drawer, like a cartridge in /SYS/msx, dropped out)
 # and it stopped at the first space (so `Dynamite Go! Go! - Demo (2021) (Rutubo Gameworks).ROM` was never a file make
 # knew about).  One reader of a manifest is the tool that builds from it.
-btron_sys.vol: mkbtronfs tools/manifest.txt
-	./mkbtronfs tools/manifest.txt -o btron_sys.vol -n 512 -b 16384 --deps btron_sys.vol.d
-	@echo "[FS] btron_sys.vol written."
-	@xxd btron_sys.vol | head -2
+$(SYS_VOL): mkbtronfs tools/manifest.txt
+	@mkdir -p $(dir $@) .build
+	./mkbtronfs tools/manifest.txt -o $@ -n 512 -b 4096 --deps .build/btron_sys.vol.d
+	@echo "[FS] $@ written."
+	@xxd $@ | head -2
 
-btron_anders.vol: mkbtronfs tools/manifest_anders.txt
-	./mkbtronfs tools/manifest_anders.txt -o btron_anders.vol -l ANDERS --deps btron_anders.vol.d
-	@echo "[FS] btron_anders.vol written."
+$(ANDERS_VOL): mkbtronfs tools/manifest_anders.txt
+	@mkdir -p $(dir $@) .build
+	./mkbtronfs tools/manifest_anders.txt -o $@ -l ANDERS --deps .build/btron_anders.vol.d
+	@echo "[FS] $@ written."
 
-btron_msx.vol: mkbtronfs tools/manifest_msx.txt
-	./mkbtronfs tools/manifest_msx.txt -o btron_msx.vol -l MSX -b 32768 --deps btron_msx.vol.d
-	@echo "[FS] btron_msx.vol written."
+$(MSX_VOL): mkbtronfs tools/manifest_msx.txt
+	@mkdir -p $(dir $@) .build
+	./mkbtronfs tools/manifest_msx.txt -o $@ -l MSX -b 32768 --deps .build/btron_msx.vol.d
+	@echo "[FS] $@ written."
 
-btron_disk.img: btron_sys.vol btron_anders.vol scripts/mk_uefi_storage.py
-	python3 scripts/mk_uefi_storage.py disk -o btron_disk.img
-	@echo "[FS] btron_disk.img (unified MBR multi-partition disk) written."
+$(DISK_IMG): $(SYS_VOL) $(ANDERS_VOL) scripts/mk_uefi_storage.py
+	@mkdir -p $(dir $@)
+	python3 scripts/mk_uefi_storage.py disk -o $@
+	@echo "[FS] $@ (unified MBR multi-partition disk) written."
+
+.PHONY: btron_sys.vol btron_anders.vol btron_msx.vol btron_disk.img
+btron_sys.vol: $(SYS_VOL)
+btron_anders.vol: $(ANDERS_VOL)
+btron_msx.vol: $(MSX_VOL)
+btron_disk.img: $(DISK_IMG)
 
 # Written by the recipe above, so the first build after a clean has no payload dependencies and
 # every one after it does -- exactly the trade `-include *.d` already makes for C headers.
--include btron_sys.vol.d
--include btron_anders.vol.d
--include btron_msx.vol.d
+-include .build/btron_sys.vol.d
+-include .build/btron_anders.vol.d
+-include .build/btron_msx.vol.d
 
 
 # ── FS unit tests ──────────────────────────────────────────────────────
@@ -1081,6 +1100,7 @@ qemu: tad_bin $(QEMU_TARGET)
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DBTRON_TARGET=1 -DBTRON_QEMU_TARGET -c $< -o $@
 
 $(QEMU_TARGET): $(QEMU_OBJS)
+	@mkdir -p $(dir $@)
 	$(CC) $(QEMU_OBJS) -o $@ $(LDFLAGS) $(SDL_LIBS)
 
 run-qemu: $(QEMU_TARGET)
@@ -1131,6 +1151,7 @@ src/drivers/broadcom/%.sakamura.o: src/drivers/broadcom/%.c
 	$(CC) $(CFLAGS) $(SDL_CFLAGS) -DBTRON_TARGET=3 -c $< -o $@
 
 $(SAKAMURA_TARGET): $(SAKAMURA_OBJS)
+	@mkdir -p $(dir $@)
 	$(CC) $(SAKAMURA_OBJS) -o $@ $(LDFLAGS) $(SDL_LIBS)
 
 # ═══════════════════════════════════════════════════════════════════
@@ -1189,7 +1210,6 @@ UEFI_CFLAGS = -O2 -Wall -Wextra -std=c99 -mno-sse -mno-mmx -mno-sse2 \
 	$(X86_CC) $(UEFI_CFLAGS) -c $< -o $@
 
 uefi: tad_bin $(UEFI_TARGET)
-	@ln -sf $(UEFI_TARGET) btron-uefi.elf
 	@echo "=========================================================="
 	@echo " B-System X86_64 / EMT64 UEFI SMP Kernel built: $(UEFI_TARGET)"
 	@echo " In honor of Kota Uchida (内田 公太) — Japanese UEFI OS pioneer"
@@ -1312,7 +1332,6 @@ PC98_CFLAGS = -O2 -Wall -Wextra -std=c99 -mno-sse -mno-mmx -mno-sse2 -DBTRON_TAR
 	$(X86_CC) $(PC98_CFLAGS) -c $< -o $@
 
 pc98: tad_bin $(PC98_TARGET)
-	@ln -sf $(PC98_TARGET) btron-pc98.elf
 	@echo "=========================================================="
 	@echo " B-System NEC PC-98 Kernel built: $(PC98_TARGET)"
 	@echo " In honor of Awe Morris — NEC PC-98 & zedBSD pioneer"
@@ -1378,7 +1397,7 @@ $(M68K_TARGET): $(M68K_OBJS) $(M68K_LD_SCRIPT)
 	@echo "=========================================================="
 	@echo " Building B-System M68K Quadra 800 Kernel: $@"
 	@echo "=========================================================="
-	$(M68K_CC) -mcpu=68040 -nostdlib -T $(M68K_LD_SCRIPT) $(M68K_OBJS) -o $@
+	$(M68K_CC) -mcpu=68040 -nostdlib -T $(M68K_LD_SCRIPT) $(M68K_OBJS) -lgcc -o $@
 	@echo "[M68K-ELF] Built: $@"
 	@file $@
 
@@ -1529,16 +1548,15 @@ PS2_OBJS       = src/drivers/playstation2/boot_ps2.ps2.o         \
                  $(PS2_SYS_VOL_OBJ)                    \
                  $(PS2_SRCS:.c=.ps2.o)
 
-# Built-in /SYS filesystem volume embedded in image data; verify manifest integrity
+# Built-in 1 MiB /SYS RAM volume embedded in PS2 image .data (full /SYS with Osal stays on ISO)
+PS2_SYS_VOL_IMG     = .build/ps2_sys.vol
 PS2_SYS_VOL_OBJ     = src/drivers/playstation2/ps2_sys_vol.ps2.o
 PS2_SYS_VOL_SOURCE  = src/drivers/playstation2/ps2_sys_vol.s
-$(PS2_SYS_VOL_OBJ): $(PS2_SYS_VOL_SOURCE) btron_sys.vol
-	@./mkbtronfs tools/manifest.txt -o .build/ps2-vol-fresh.vol >/dev/null 2>&1; \
-	 if ! cmp -s .build/ps2-vol-fresh.vol btron_sys.vol; then \
-	   echo "[PS2] btron_sys.vol is not the manifest ($$(cmp -l .build/ps2-vol-fresh.vol btron_sys.vol | wc -l | tr -d ' ') bytes): a host FS suite wrote into it, so the image relinks from a fresh build"; \
-	   cp .build/ps2-vol-fresh.vol btron_sys.vol; \
-	 fi; \
-	 rm -f .build/ps2-vol-fresh.vol
+$(PS2_SYS_VOL_IMG): mkbtronfs tools/manifest_ps2.txt
+	@mkdir -p .build
+	./mkbtronfs tools/manifest_ps2.txt -o $@ -n 256 -b 1024
+
+$(PS2_SYS_VOL_OBJ): $(PS2_SYS_VOL_SOURCE) $(PS2_SYS_VOL_IMG)
 	$(PS2_CC) -I. -c $< -o $@
 
 # MIPS O32 calling convention rules: mips2 ISA ensures consistent varargs and 32-bit GPR ABI
@@ -1694,7 +1712,7 @@ $(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt
 	@mkdir -p build/ps2_iso/QUAKE
 	@printf "BOOT2 = cdrom0:\\\\BTRON.ELF;1\r\nVER = 1.00\r\nVMODE = NTSC\r\n" > build/ps2_iso/SYSTEM.CNF
 	@cp $(PS2_TARGET) build/ps2_iso/BTRON.ELF
-	@./mkbtronfs tools/manifest.txt        -o build/ps2_iso/SYS.VOL -n 512 -b 16384
+	@./mkbtronfs tools/manifest.txt        -o build/ps2_iso/SYS.VOL -n 512 -b 4096
 	@./mkbtronfs tools/manifest_anders.txt -o build/ps2_iso/ANDERS.VOL -l ANDERS
 	@if [ -f assets/quake/pak/pak0.pak ]; then \
 	    cp assets/quake/pak/pak0.pak build/ps2_iso/PAK0.PAK; \
@@ -2716,7 +2734,7 @@ $(TEST_FBORDER_PBIN): $(TEST_FBORDER_POBJS)
 # ═══════════════════════════════════════════════════════════════════
 # Bare-Metal MIPS Malta / Magnum Kernel (mips / QEMU) [Target 9]
 # ═══════════════════════════════════════════════════════════════════
-MIPS_TARGET     = ./.build/btron-mips.elf
+MIPS_TARGET     = downloads/mips64/btron-mips.elf
 MIPS_LD_SCRIPT  = src/drivers/mips/mips_qemu.ld
 MIPS_CFLAGS     = -O2 -Wall -Wextra -std=c99 -ffreestanding -nostdlib \
                   -DBTRON_TARGET=9 -DBTRON_MIPS_TARGET \
@@ -2736,11 +2754,11 @@ MIPS_OBJS       = src/drivers/mips/boot_mips.mips.o $(MIPS_SRCS:.c=.mips.o)
 mips: $(MIPS_TARGET)
 
 $(MIPS_TARGET): $(MIPS_OBJS) $(MIPS_LD_SCRIPT)
+	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Building B-System MIPS Kernel: $@"
 	@echo "=========================================================="
 	$(MIPS_LD) -T $(MIPS_LD_SCRIPT) $(MIPS_OBJS) -o $@
-	@ln -sf $@ btron-mips.elf
 	@echo "[MIPS-ELF] Built: $@"
 	@file $@
 
@@ -2856,7 +2874,7 @@ $(PI400_ARMSTUB_BIN): src/drivers/broadcom/armstub8.S
 
 # initramfs blob at 0x03000000.  A payload that stops after pak0 (~34 MiB) leaves
 # /MSX unmapped at RAM 0x05400000 and yoko4 reports "flash btron_payload.bin".
-$(PI400_PAYLOAD): btron_sys.vol btron_msx.vol scripts/tool_mk_pi400_payload.py
+$(PI400_PAYLOAD): $(SYS_VOL) $(MSX_VOL) scripts/tool_mk_pi400_payload.py
 	@mkdir -p .build/pi400
 	python3 scripts/tool_mk_pi400_payload.py $@
 
@@ -2870,7 +2888,7 @@ $(PI400_KERNEL8): $(ARM64_TARGET)
 
 pi400-payload: $(PI400_PAYLOAD) $(PI400_KERNEL8)
 
-$(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) $(PI400_PAYLOAD) $(PI400_KERNEL8) btron_sys.vol btron_msx.vol
+$(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) $(PI400_PAYLOAD) $(PI400_KERNEL8) $(SYS_VOL) $(MSX_VOL)
 	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " BTRON Pi 400 — SD Card Image Builder"
@@ -2917,9 +2935,9 @@ $(PI400_IMG): arm64-elf $(PI400_ARMSTUB_BIN) $(PI400_PAYLOAD) $(PI400_KERNEL8) b
 	cp $(PI400_CFG_DIR)/cmdline.txt     $$MOUNT_PT/cmdline.txt; \
 	cp $(PI400_KERNEL8)                 $$MOUNT_PT/kernel8.img; \
 	cp .build/pi400/armstub8.bin        $$MOUNT_PT/armstub8.bin; \
-	cp btron_sys.vol                    $$MOUNT_PT/btron_sys.vol; \
-	if [ -f btron_anders.vol ]; then cp btron_anders.vol $$MOUNT_PT/btron_anders.vol; fi; \
-	cp btron_msx.vol                    $$MOUNT_PT/btron_msx.vol; \
+	cp $(SYS_VOL)                       $$MOUNT_PT/btron_sys.vol; \
+	if [ -f $(ANDERS_VOL) ]; then cp $(ANDERS_VOL) $$MOUNT_PT/btron_anders.vol; fi; \
+	cp $(MSX_VOL)                       $$MOUNT_PT/btron_msx.vol; \
 	mkdir -p $$MOUNT_PT/msx; \
 	cp -f assets/msx/*.rom assets/msx/*.ROM assets/msx/*.dsk assets/msx/*.DSK $$MOUNT_PT/msx/ 2>/dev/null || true; \
 	cp $(PI400_PAYLOAD)                 $$MOUNT_PT/btron_payload.bin; \
@@ -3035,13 +3053,13 @@ run-yoko: $(ARM64_TARGET)
 	    exit 1; \
 	fi
 
-run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
+run-yoko4: $(ARM64_TARGET) $(SYS_VOL) $(ANDERS_VOL) $(MSX_VOL)
 	@echo "=========================================================="
 	@echo " Launching T-Kernel AArch64 on QEMU Raspberry Pi 4B (BCM2711)"
 	@echo " Honoring : Takanori Yokoyama (横山 孝徳) — T-Kernel Pioneer"
 	@echo " Machine  : raspi4b  |  CPU: Cortex-A72 / AArch64  |  RAM: 2G"
 	@echo " ELF      : $(ARM64_TARGET)"
-	@echo " Volumes  : btron_sys.vol (@0x03000000), btron_msx.vol (@0x05400000), btron_anders.vol (@0x07400000)"
+	@echo " Volumes  : $(SYS_VOL) (@0x03000000), $(MSX_VOL) (@0x05400000), $(ANDERS_VOL) (@0x07400000)"
 	@echo " Devices  : USB Keyboard, USB Mouse, USB DAC & VideoCore GPU Display"
 	@echo "=========================================================="
 	@echo " INPUT CAPTURE:"
@@ -3051,9 +3069,9 @@ run-yoko4: $(ARM64_TARGET) btron_sys.vol btron_anders.vol btron_msx.vol
 	@echo "=========================================================="
 	@if command -v $(QEMU_AARCH64) >/dev/null 2>&1; then \
 	    $(QEMU_AARCH64) -M raspi4b -m 2G $(KERNEL_DISPLAY) \
-	        -device loader,file=btron_sys.vol,addr=0x03000000 \
-	        -device loader,file=btron_msx.vol,addr=0x05400000 \
-	        -device loader,file=btron_anders.vol,addr=0x07400000 \
+	        -device loader,file=$(SYS_VOL),addr=0x03000000 \
+	        -device loader,file=$(MSX_VOL),addr=0x05400000 \
+	        -device loader,file=$(ANDERS_VOL),addr=0x07400000 \
 	        $$(test -f assets/quake/pak/pak0.pak && echo "-device loader,file=assets/quake/pak/pak0.pak,addr=0x04000000") \
 	        -device usb-kbd -device usb-mouse \
 	        $$(if [ "$$(uname -s)" = Darwin ]; then echo "-audiodev coreaudio,id=snd0,out.frequency=48000,out.channels=2,out.format=s16 -device usb-audio,audiodev=snd0,buffer=12288"; fi) \
@@ -3160,19 +3178,36 @@ $(TEST_HMI_BIN): $(TEST_HMI_OBJS)
 	$(CC) $(TEST_HMI_OBJS) -o $@ $(LDFLAGS) -lm
 
 # ═══════════════════════════════════════════════════════════════════
-# TAD packing — one HTML profile, scripts/tool_book2tad.py
-# Sources: doc/specs, doc/cores, doc/media.
-# Output names stay tad_bin/b-spec, tad_bin/b-book, tad_bin/b-media.
+# TAD packing — 5 canonical books in tad_bin/:
+#   b-book (doc/cores), b-media (doc/media), b-spec (doc/specs),
+#   b-system (apps, settings, doc/kernel/virtualization/conformance/verification),
+#   osal (assets/osal via .build/mkosalbook).
 # ═══════════════════════════════════════════════════════════════════
 PYTHON ?= $(shell for py in python3 python3.14 python3.13 python3.12 python3.11 python3.10; do if command -v $$py >/dev/null 2>&1; then echo "$$py"; break; fi; done)
 
 TAD_BOOK2TAD := $(shell \
   if [ -n "$(PYTHON)" ]; then echo "$(PYTHON) scripts/tool_book2tad.py"; fi)
 
-tad_bin:
+MKOSALBOOK_BIN  = .build/mkosalbook
+MKOSALBOOK_SRCS = tools/mkosalbook.c \
+                  src/apps/clarity/clarity_book.c \
+                  src/desktop/tip/tibetan/wylie.c \
+                  src/desktop/font/troncode.c \
+                  src/desktop/font/jis_fonts.c \
+                  src/desktop/font/tibetan_fonts.c
+
+$(MKOSALBOOK_BIN): $(MKOSALBOOK_SRCS)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -Isrc/apps/clarity -DBTRON_HOSTED=1 $(MKOSALBOOK_SRCS) -o $@
+
+osal-book: $(MKOSALBOOK_BIN)
+	@./$(MKOSALBOOK_BIN) assets/osal tad_bin/osal tad_bin/osal/osal_shog_dril.tad
+
+tad_bin: $(MKOSALBOOK_BIN)
 	@if [ -z "$(TAD_BOOK2TAD)" ]; then \
-	  echo "Note: python3 not found - tad_bin skipped (desktop still runs)."; \
+	  echo "Note: python3 not found - HTML books skipped (desktop still runs)."; \
 	else $(TAD_BOOK2TAD); fi
+	@./$(MKOSALBOOK_BIN) assets/osal tad_bin/osal tad_bin/osal/osal_shog_dril.tad
 
 html2tad:
 	@$(TAD_BOOK2TAD) --test

@@ -968,7 +968,7 @@ void clarity_init_sample_page(ClarityDoc *doc)
     /* Frame 2: TAD Placeholder Frame */
     ClarityFrame *f_tad = clarity_doc_add_frame(doc, FRAME_TAD, 24, 240, 576, 120);
     if (f_tad) {
-        strncpy(f_tad->tad_path, "tad_bin/01_btron3_spec.tad", sizeof(f_tad->tad_path) - 1);
+        strncpy(f_tad->tad_path, "tad_bin/b-spec/01_btron3_spec.tad", sizeof(f_tad->tad_path) - 1);
         strncpy(f_tad->tad_title, "【仕様書】BTRON3 3.20 OS Specification", sizeof(f_tad->tad_title) - 1);
         f_tad->robj_id = 104;
     }

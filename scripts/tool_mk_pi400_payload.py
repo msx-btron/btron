@@ -59,10 +59,18 @@ def write_optional(out, path, offset, label):
     print(f"[PAYLOAD] {label} written: {len(data)} bytes at offset 0x{offset:x}")
 
 
+def _vol_path(name):
+    dl = os.path.join('downloads', name)
+    return dl if os.path.exists(dl) else name
+
+
 def build_payload(out_path, use_mbr=False):
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
-    sys_data = must_read('btron_sys.vol', '/SYS')
-    msx_data = must_read('btron_msx.vol', '/MSX')
+    sys_vol = _vol_path('btron_sys.vol')
+    msx_vol = _vol_path('btron_msx.vol')
+    anders_vol = _vol_path('btron_anders.vol')
+    sys_data = must_read(sys_vol, '/SYS')
+    msx_data = must_read(msx_vol, '/MSX')
     with open(out_path, 'wb') as out:
         if use_mbr:
             # Partitioned RAM payload: keep pak0.pak undisturbed at 0x01000000 (RAM 0x04000000)
@@ -71,15 +79,15 @@ def build_payload(out_path, use_mbr=False):
             parts = [
                 (0x80, 0x13, sys_off // 512, (len(sys_data) + 511) // 512),
             ]
-            if os.path.exists('btron_anders.vol'):
-                anders_sz = os.path.getsize('btron_anders.vol')
+            if os.path.exists(anders_vol):
+                anders_sz = os.path.getsize(anders_vol)
                 parts.append((0x00, 0x13, anders_off // 512, (anders_sz + 511) // 512))
             parts.append((0x00, 0x13, MSX_PAYLOAD_OFF // 512, (len(msx_data) + 511) // 512))
             out.write(build_mbr_sector(parts))
             out.seek(sys_off)
             out.write(sys_data)
             print(f"[PAYLOAD] MBR + /SYS written: {len(sys_data)} bytes at offset 0x{sys_off:x}")
-            write_optional(out, 'btron_anders.vol', anders_off, '/ANDERS')
+            write_optional(out, anders_vol, anders_off, '/ANDERS')
         else:
             out.write(sys_data)
             print(f"[PAYLOAD] /SYS written: {len(sys_data)} bytes at offset 0x0")
@@ -91,7 +99,7 @@ def build_payload(out_path, use_mbr=False):
         print(f"[PAYLOAD] /MSX written: {len(msx_data)} bytes at offset 0x{MSX_PAYLOAD_OFF:x}")
 
         if not use_mbr:
-            write_optional(out, 'btron_anders.vol', 0x04400000, '/ANDERS')
+            write_optional(out, anders_vol, 0x04400000, '/ANDERS')
 
         total_sz = out.tell()
         print(f"[PAYLOAD] Total payload size: {total_sz} bytes ({total_sz // (1024*1024)} MiB)")

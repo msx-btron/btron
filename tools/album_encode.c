@@ -9,7 +9,7 @@
  */
 #include <media/orchestra.h>
 #include "lilcu64_score.h"
-#include "../media/lukhash_score.h"
+#include "lukhash_score.h"
 #include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -770,8 +770,8 @@ static int piece(int track, int bpm, int num, int den, const char *title, const 
     int ev0;
     int ev1;
     OrchView *v;
-    snprintf(orch, sizeof orch, "SYS/%s.orch", stem);
-    snprintf(mid, sizeof mid, "SYS/%s.mid", stem);
+    snprintf(orch, sizeof orch, "assets/music/%s.orch", stem);
+    snprintf(mid, sizeof mid, "assets/music/%s.mid", stem);
     if (!capture(track, bpm, den)) return 0;
     qsort(s_nv, (size_t)s_nn, sizeof s_nv[0], cmp_nv);
     place_all();
@@ -800,7 +800,7 @@ static int piece(int track, int bpm, int num, int den, const char *title, const 
         fprintf(stderr, "%s smf save failed ev=%d\n", stem, ev0);
         return 0;
     }
-    if (!copy_file("SYS/orchestra.mid", mid)) {
+    if (!copy_file("assets/music/orchestra.mid", mid)) {
         fprintf(stderr, "copy mid %s failed\n", mid);
         return 0;
     }
@@ -823,15 +823,17 @@ static int piece(int track, int bpm, int num, int den, const char *title, const 
 static int at_repo(void)
 {
     struct stat st;
-    if (stat("SYS", &st) == 0 && S_ISDIR(st.st_mode)) return 1;
-    if (chdir("/Users/tonpa/depot/bitedits/btron") != 0) return 0;
-    return stat("SYS", &st) == 0 && S_ISDIR(st.st_mode);
+    if (stat("assets", &st) != 0 || !S_ISDIR(st.st_mode)) return 0;
+    if (stat("assets/music", &st) != 0) {
+        if (mkdir("assets/music", 0755) != 0) return 0;
+    }
+    return stat("assets/music", &st) == 0 && S_ISDIR(st.st_mode);
 }
 
 int main(void)
 {
     if (!at_repo()) {
-        fprintf(stderr, "run from the btron repo\n");
+        fprintf(stderr, "run from the btron repo root\n");
         return 1;
     }
     if (!piece(1, 168, 3, 4, "Carol of the Bells", "bells")) return 1;
@@ -839,8 +841,8 @@ int main(void)
     if (!piece(3, 125, 3, 4, "House of the Rising Sun", "rising")) return 1;
     if (!piece(4, 93, 4, 4, "TRON Init", "tron")) return 1;
     if (!piece(5, 112, 4, 4, "LukHash (Amiga Outtake)", "lukhash")) return 1;
-    if (!copy_file("SYS/bells.orch", "SYS/orchestra.orch")) return 1;
-    if (!copy_file("SYS/bells.mid", "SYS/orchestra.mid")) return 1;
-    printf("desk SYS/orchestra.orch + SYS/orchestra.mid = bells\n");
+    if (!copy_file("assets/music/bells.orch", "assets/music/orchestra.orch")) return 1;
+    if (!copy_file("assets/music/bells.mid", "assets/music/orchestra.mid")) return 1;
+    printf("desk assets/music/orchestra.orch + assets/music/orchestra.mid = bells\n");
     return 0;
 }

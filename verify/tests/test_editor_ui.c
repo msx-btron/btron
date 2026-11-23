@@ -1040,7 +1040,8 @@ static void test_volume_and_markdown_file_operations(void) {
     TEST_ASSERT(strcmp(ed.filename, "FS.md") == 0, "Editor filename is FS.md");
 
     /* 4. Mount real btron_sys.vol and verify volume-backed loading */
-    BlkDev *dev = blk_file_create("btron_sys.vol", 0 /* read/write existing */, 1024);
+    BlkDev *dev = blk_file_create("downloads/btron_sys.vol", 0 /* read/write existing */, 1024);
+    if (!dev) dev = blk_file_create("btron_sys.vol", 0 /* read/write existing */, 1024);
     TEST_ASSERT(dev != NULL, "Opened btron_sys.vol for Editor UI test");
     Volume *v = vol_mount(dev);
     TEST_ASSERT(v != NULL, "Mounted btron_sys.vol for Editor UI test");

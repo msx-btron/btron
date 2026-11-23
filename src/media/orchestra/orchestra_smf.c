@@ -226,7 +226,7 @@ static const char *alt_src(void)
     orch_check(n >= 2u, __LINE__);
     orch_check(n + 1u < SMF_PATH, __LINE__);
     if (ORCH_PATH_MID[0] != '/') return ORCH_PATH_MID;
-    return &ORCH_PATH_MID[1];
+    return "assets/music/orchestra.mid";
 }
 
 static int mid_exists(void)

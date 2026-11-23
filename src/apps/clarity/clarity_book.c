@@ -1493,7 +1493,7 @@ int clarity_book_export_tad(const ClarityBook *book, const char *out_dir, const 
     }
 
     const char *unified_path = (single_tad_path && single_tad_path[0]) ?
-                                single_tad_path : "tad_bin/osal_shog_dril.tad";
+                                single_tad_path : "tad_bin/osal/osal_shog_dril.tad";
 
     UW pos_shog = 6;
     pos_shog = append_page_seg(buf_shog, pos_shog, px_w, px_h, 30);

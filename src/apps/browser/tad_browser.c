@@ -2041,22 +2041,19 @@ void tad_browser_resolve_path(const char *current_path, const char *target, char
         }
     }
 
-    /* 3. Prefix fallbacks: tad_bin/ subtrees */
+    /* 3. Prefix fallbacks: five canonical tad_bin/ books */
     const char *prefixes[] = {
         "tad_bin/",
         "tad_bin/b-book/",
-        "tad_bin/shared_data/",
-        "tad_bin/os_spec/",
-        "tad_bin/os_spec/kernel/",
-        "tad_bin/os_spec/shell/",
-        "tad_bin/os_spec/dp/",
-        "tad_bin/b-hmi/",
-        "tad_bin/b-hmi/part1/",
-        "tad_bin/b-hmi/part2/",
-        "tad_bin/b-hmi/part_book/",
-        "tad_bin/t-kernel/",
-        "tad_bin/b-free/",
+        "tad_bin/b-media/",
+        "tad_bin/b-spec/",
+        "tad_bin/b-spec/shared_data/",
+        "tad_bin/b-spec/os_spec/",
+        "tad_bin/b-spec/os_spec/kernel/",
+        "tad_bin/b-spec/os_spec/shell/",
+        "tad_bin/b-spec/os_spec/dp/",
         "tad_bin/b-system/",
+        "tad_bin/osal/",
         NULL
     };
     for (int p = 0; prefixes[p] != NULL; p++) {
@@ -2116,7 +2113,7 @@ void tad_browser_go_forward(TAD_BROWSER *tb) {
 }
 
 void tad_browser_go_home(TAD_BROWSER *tb) {
-    tad_browser_navigate(tb, "tad_bin/01_btron3_spec.tad");
+    tad_browser_navigate(tb, "tad_bin/b-spec/01_btron3_spec.tad");
 }
 
 void tad_browser_reload(TAD_BROWSER *tb) {

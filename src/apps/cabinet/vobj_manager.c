@@ -568,6 +568,7 @@ static const char* deduce_toc_path(const char *path) {
     if (strstr(path, "b-free/")) return "b-free/";
     if (strstr(path, "b-system/")) return "b-system/";
     if (strstr(path, "b-media/")) return "b-media/";
+    if (strstr(path, "osal/")) return "osal/";
     return "root/";
 }
 
@@ -577,6 +578,7 @@ static const char* deduce_icon_tag(const char *path) {
     if (strstr(path, "b-system")) return "[b-system]";
     if (strstr(path, "02_bcore") || strstr(path, "b-media/B-Core")) return "[b-core]";
     if (strstr(path, "b-media")) return "[b-media]";
+    if (strstr(path, "osal/")) return "[osal]";
     if (strstr(path, "b-book")) return "[doc]";
     if (strstr(path, "01_btron3") || strstr(path, "shared_data") || strstr(path, "os_spec") || strstr(path, "doc")) return "[doc]";
     return "[doc]";
@@ -779,10 +781,10 @@ static void cabinet_init_defaults(CABINET_EXPLORER *cab) {
 
     /* Fallback static list for freestanding embedded environments */
     int n = 0;
-    cab->items[n++] = (CABINET_ITEM){ 101, VOBJ_TYPE_TEXT, "01_btron3_spec.tad", "tad_bin/01_btron3_spec.tad", 3996, "[doc]", "books/" };
-    cab->items[n++] = (CABINET_ITEM){ 102, VOBJ_TYPE_TEXT, "02_bcore_book.tad", "tad_bin/02_bcore_book.tad", 1377, "[b-core]", "books/" };
-    cab->items[n++] = (CABINET_ITEM){ 103, VOBJ_TYPE_TEXT, "03_bfree_os_book.tad", "tad_bin/03_bfree_os_book.tad", 1472, "[b-free]", "books/" };
-    cab->items[n++] = (CABINET_ITEM){ 111, VOBJ_TYPE_TEXT, "01_data_type.tad", "tad_bin/shared_data/data_type.tad", 10022, "[doc]", "shared_data/" };
+    cab->items[n++] = (CABINET_ITEM){ 101, VOBJ_TYPE_TEXT, "01_btron3_spec.tad", "tad_bin/b-spec/01_btron3_spec.tad", 3996, "[doc]", "books/" };
+    cab->items[n++] = (CABINET_ITEM){ 102, VOBJ_TYPE_TEXT, "02_bcore_book.tad", "tad_bin/b-media/02_bcore_book.tad", 1377, "[b-core]", "books/" };
+    cab->items[n++] = (CABINET_ITEM){ 103, VOBJ_TYPE_TEXT, "03_bfree_os_book.tad", "tad_bin/b-system/03_bfree_os_book.tad", 1472, "[b-free]", "books/" };
+    cab->items[n++] = (CABINET_ITEM){ 111, VOBJ_TYPE_TEXT, "01_data_type.tad", "tad_bin/b-spec/shared_data/data_type.tad", 10022, "[doc]", "shared_data/" };
     cab->item_count = n;
     cabinet_sort_items(cab);
     strncpy(cab->status_msg, "Cabinet Ready (Embedded Static Fallback).", sizeof(cab->status_msg) - 1);

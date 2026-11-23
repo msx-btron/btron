@@ -975,7 +975,8 @@ static void test_clu_full_interactive_session(void)
 /* ─────────────────────────────────────────────────────────────────── */
 static void test_real_image_clu(void)
 {
-    BlkDev *dev = blk_file_create("btron_sys.vol", 0 /* read/write existing */, 1024);
+    BlkDev *dev = blk_file_create("downloads/btron_sys.vol", 0 /* read/write existing */, 1024);
+    if (!dev) dev = blk_file_create("btron_sys.vol", 0 /* read/write existing */, 1024);
     CHECK(dev != NULL, "open btron_sys.vol");
     Volume *v = vol_mount(dev);
     CHECK(v != NULL, "mount btron_sys.vol");
@@ -1024,7 +1025,8 @@ static void test_real_image_clu(void)
 /* ─────────────────────────────────────────────────────────────────── */
 static void test_packed_markdown_files(void)
 {
-    BlkDev *dev = blk_file_create("btron_sys.vol", 0 /* read/write existing */, 1024);
+    BlkDev *dev = blk_file_create("downloads/btron_sys.vol", 0 /* read/write existing */, 1024);
+    if (!dev) dev = blk_file_create("btron_sys.vol", 0 /* read/write existing */, 1024);
     CHECK(dev != NULL, "open btron_sys.vol for md test");
     Volume *v = vol_mount(dev);
     CHECK(v != NULL, "mount btron_sys.vol for md test");
@@ -1078,12 +1080,14 @@ static void test_packed_markdown_files(void)
 /* ─────────────────────────────────────────────────────────────────── */
 static void test_df_all_volumes(void)
 {
-    BlkDev *sys_dev = blk_file_create("btron_sys.vol", 0, 1024);
+    BlkDev *sys_dev = blk_file_create("downloads/btron_sys.vol", 0, 1024);
+    if (!sys_dev) sys_dev = blk_file_create("btron_sys.vol", 0, 1024);
     CHECK(sys_dev != NULL, "must open btron_sys.vol");
     g_sys_vol = vol_mount(sys_dev);
     CHECK(g_sys_vol != NULL, "must mount btron_sys.vol");
 
-    BlkDev *anders_dev = blk_file_create("btron_anders.vol", 0, 1024);
+    BlkDev *anders_dev = blk_file_create("downloads/btron_anders.vol", 0, 1024);
+    if (!anders_dev) anders_dev = blk_file_create("btron_anders.vol", 0, 1024);
     CHECK(anders_dev != NULL, "must open btron_anders.vol");
     g_anders_vol = vol_mount(anders_dev);
     CHECK(g_anders_vol != NULL, "must mount btron_anders.vol");
@@ -1118,7 +1122,8 @@ static void test_df_all_volumes(void)
 /* ─────────────────────────────────────────────────────────────────── */
 static void test_clu_tree_cleanroom(void)
 {
-    BlkDev *anders_dev = blk_file_create("btron_anders.vol", 0, 1024);
+    BlkDev *anders_dev = blk_file_create("downloads/btron_anders.vol", 0, 1024);
+    if (!anders_dev) anders_dev = blk_file_create("btron_anders.vol", 0, 1024);
     CHECK(anders_dev != NULL, "must open btron_anders.vol");
     g_anders_vol = vol_mount(anders_dev);
     CHECK(g_anders_vol != NULL, "must mount btron_anders.vol");

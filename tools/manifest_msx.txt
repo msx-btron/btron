@@ -30,19 +30,3 @@ FILE "tbios_logo.rom"        BIN "assets/msx/tbios/tbios_logo.rom" tbios
 FILE "tbios_sub.rom"         BIN "assets/msx/tbios/tbios_sub.rom" tbios
 FILE "tbios_music.rom"       BIN "assets/msx/tbios/tbios_music.rom" tbios
 FILE "tdos_disk.rom"         BIN "assets/msx/tbios/tdos_disk.rom" tbios
-
-DIR "cbios" -
-FILE "cbios_main_msxtr_jp.rom" BIN "SYS/cbios/cbios_main_msxtr_jp.rom" cbios
-FILE "cbios_main_msxtr.rom"    BIN "SYS/cbios/cbios_main_msxtr.rom" cbios
-FILE "cbios_main_msx2+_jp.rom" BIN "SYS/cbios/cbios_main_msx2+_jp.rom" cbios
-FILE "cbios_main_msx2+.rom"    BIN "SYS/cbios/cbios_main_msx2+.rom" cbios
-FILE "cbios_main_msx2_jp.rom"  BIN "SYS/cbios/cbios_main_msx2_jp.rom" cbios
-FILE "cbios_main_msx2.rom"     BIN "SYS/cbios/cbios_main_msx2.rom" cbios
-FILE "cbios_main_msx1.rom"     BIN "SYS/cbios/cbios_main_msx1.rom" cbios
-FILE "cbios_logo_msx1.rom"     BIN "SYS/cbios/cbios_logo_msx1.rom" cbios
-FILE "cbios_logo_msx2.rom"     BIN "SYS/cbios/cbios_logo_msx2.rom" cbios
-FILE "cbios_logo_msx2+.rom"    BIN "SYS/cbios/cbios_logo_msx2+.rom" cbios
-FILE "cbios_sub.rom"           BIN "SYS/cbios/cbios_sub.rom" cbios
-FILE "cbios_music.rom"         BIN "SYS/cbios/cbios_music.rom" cbios
-FILE "cbios_disk.rom"          BIN "SYS/cbios/cbios_disk.rom" cbios
-FILE "cbios_basic.rom"         BIN "SYS/cbios/cbios_basic.rom" cbios

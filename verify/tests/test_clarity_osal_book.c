@@ -196,7 +196,7 @@ int main(void)
     /* ── Test Group 4: Legal Binary TAD Book Export ─────────────────── */
     printf("\n==> Test Group 4: Legal Binary TAD Book Export\n");
     {
-        int exp_rc = clarity_book_export_tad(&book, "tad_bin/osal", "tad_bin/osal_shog_dril.tad");
+        int exp_rc = clarity_book_export_tad(&book, "tad_bin/osal", "tad_bin/osal/osal_shog_dril.tad");
         TEST_ASSERT(exp_rc == 0, "clarity_book_export_tad completed successfully");
 
         FILE *f_toc = fopen("tad_bin/osal/index.tad", "rb");
@@ -207,7 +207,7 @@ int main(void)
         TEST_ASSERT(f_ch != NULL, "Chapter file tad_bin/osal/dkar_chag.tad created");
         if (f_ch) fclose(f_ch);
 
-        FILE *f_shog = fopen("tad_bin/osal_shog_dril.tad", "rb");
+        FILE *f_shog = fopen("tad_bin/osal/osal_shog_dril.tad", "rb");
         TEST_ASSERT(f_shog != NULL, "Complete roll volume tad_bin/osal_shog_dril.tad created");
         if (f_shog) fclose(f_shog);
     }
@@ -290,7 +290,7 @@ int main(void)
         }
 
         /* C. Ingest Unified Scroll Volume (shog-dril) */
-        ER s_er = tad_browser_load_file(&tb, "tad_bin/osal_shog_dril.tad");
+        ER s_er = tad_browser_load_file(&tb, "tad_bin/osal/osal_shog_dril.tad");
         TEST_ASSERT(s_er == E_OK, "tad_browser_load_file loaded complete roll volume tad_bin/osal_shog_dril.tad");
         TEST_ASSERT(tb.is_binary_tad == TRUE, "Scroll volume is valid binary TAD");
         TEST_ASSERT(tb.span_count > 50, "Scroll volume loaded comprehensive book spans (> 50)");

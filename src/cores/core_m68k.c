@@ -168,6 +168,10 @@ void uart_puts(const char *s) {
     scc_puts(s);
 }
 
+void uart_puts_raw(const char *s) {
+    scc_puts(s);
+}
+
 void uart_putc(char c) {
     scc_putc(c);
 }

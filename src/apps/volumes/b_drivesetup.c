@@ -488,8 +488,9 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
 #if BTRON_HOSTED
     /* 1. Mount /SYS volume (btron_sys.vol) if backing file exists */
     if (!g_sys_vol) {
-        BlkDev *sys_blk = blk_file_create("btron_sys.vol", 0, 0);
+        BlkDev *sys_blk = blk_file_create("downloads/btron_sys.vol", 0, 0);
         if (!sys_blk) sys_blk = blk_file_create("../btron_sys.vol", 0, 0);
+        if (!sys_blk) sys_blk = blk_file_create("btron_sys.vol", 0, 0);
         if (sys_blk) {
             g_sys_vol = vol_mount(sys_blk);
             if (!g_sys_vol) blk_destroy(sys_blk);
@@ -498,8 +499,9 @@ void b_drivesetup_scan_devices(DriveSetupState *st) {
 
     /* 2. Mount /ANDERS volume (btron_anders.vol) if backing file exists */
     if (!g_anders_vol) {
-        BlkDev *anders_blk = blk_file_create("btron_anders.vol", 0, 0);
+        BlkDev *anders_blk = blk_file_create("downloads/btron_anders.vol", 0, 0);
         if (!anders_blk) anders_blk = blk_file_create("../btron_anders.vol", 0, 0);
+        if (!anders_blk) anders_blk = blk_file_create("btron_anders.vol", 0, 0);
         if (anders_blk) {
             g_anders_vol = vol_mount(anders_blk);
             if (!g_anders_vol) blk_destroy(anders_blk);
@@ -2058,8 +2060,9 @@ static void drivesetup_dispatch_cmd(WND *wnd, DriveSetupState *st, int cmd) {
 #if BTRON_HOSTED
         case DSCMD_MOUNT_SYS: {
             if (!g_sys_vol) {
-                BlkDev *sys_blk = blk_file_create("btron_sys.vol", 0, 0);
+                BlkDev *sys_blk = blk_file_create("downloads/btron_sys.vol", 0, 0);
                 if (!sys_blk) sys_blk = blk_file_create("../btron_sys.vol", 0, 0);
+                if (!sys_blk) sys_blk = blk_file_create("btron_sys.vol", 0, 0);
                 if (sys_blk) {
                     g_sys_vol = vol_mount(sys_blk);
                     if (!g_sys_vol) blk_destroy(sys_blk);
@@ -2071,8 +2074,9 @@ static void drivesetup_dispatch_cmd(WND *wnd, DriveSetupState *st, int cmd) {
         }
         case DSCMD_MOUNT_ANDERS: {
             if (!g_anders_vol) {
-                BlkDev *anders_blk = blk_file_create("btron_anders.vol", 0, 0);
+                BlkDev *anders_blk = blk_file_create("downloads/btron_anders.vol", 0, 0);
                 if (!anders_blk) anders_blk = blk_file_create("../btron_anders.vol", 0, 0);
+                if (!anders_blk) anders_blk = blk_file_create("btron_anders.vol", 0, 0);
                 if (anders_blk) {
                     g_anders_vol = vol_mount(anders_blk);
                     if (!g_anders_vol) blk_destroy(anders_blk);
