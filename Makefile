@@ -1685,7 +1685,7 @@ $(PS2_TARGET): $(PS2_OBJS) $(PS2_LD_SCRIPT)
 # Package bootable ISO (SYSTEM.CNF, BTRON.ELF, SYS.VOL, ANDERS.VOL, QUAKE assets).
 # Retail PS2 model: the ELF is the RAM working set; PAK/ROMs live on the
 # disc (CD ~700 MiB, DVD ~4 GiB).  Do not incbin pak0 into the ELF.
-$(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt assets/quake/pak/pak0.pak $(wildcard assets/quake/drone1m*.dem)
+$(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt $(wildcard assets/quake/pak/pak0.pak) $(wildcard assets/quake/drone1m*.dem)
 	@mkdir -p $(dir $@)
 	@echo "=========================================================="
 	@echo " Packaging Bootable PS2 Disc ISO: $@"
@@ -1694,12 +1694,17 @@ $(PS2_ISO): $(PS2_TARGET) mkbtronfs tools/manifest.txt tools/manifest_anders.txt
 	@mkdir -p build/ps2_iso/QUAKE
 	@printf "BOOT2 = cdrom0:\\\\BTRON.ELF;1\r\nVER = 1.00\r\nVMODE = NTSC\r\n" > build/ps2_iso/SYSTEM.CNF
 	@cp $(PS2_TARGET) build/ps2_iso/BTRON.ELF
-	@./mkbtronfs tools/manifest.txt        -o build/ps2_iso/SYS.VOL
+	@./mkbtronfs tools/manifest.txt        -o build/ps2_iso/SYS.VOL -n 512 -b 16384
 	@./mkbtronfs tools/manifest_anders.txt -o build/ps2_iso/ANDERS.VOL -l ANDERS
-	@cp assets/quake/pak/pak0.pak build/ps2_iso/PAK0.PAK
-	@cp assets/quake/pak/pak0.pak build/ps2_iso/QUAKE/PAK0.PAK
-	@for f in assets/quake/drone1m*.dem; do n=$$(basename "$$f" | tr '[:lower:]' '[:upper:]'); \
-	    cp "$$f" "build/ps2_iso/QUAKE/$$n"; done
+	@if [ -f assets/quake/pak/pak0.pak ]; then \
+	    cp assets/quake/pak/pak0.pak build/ps2_iso/PAK0.PAK; \
+	    cp assets/quake/pak/pak0.pak build/ps2_iso/QUAKE/PAK0.PAK; \
+	fi
+	@for f in assets/quake/drone1m*.dem; do \
+	    [ -f "$$f" ] || continue; \
+	    n=$$(basename "$$f" | tr '[:lower:]' '[:upper:]'); \
+	    cp "$$f" "build/ps2_iso/QUAKE/$$n"; \
+	done
 	@if command -v hdiutil >/dev/null 2>&1; then \
 	    rm -f $@; \
 	    hdiutil makehybrid -iso -joliet -default-volume-name "BTRON3_PS2" -o $@ build/ps2_iso >/dev/null; \
