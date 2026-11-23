@@ -1,0 +1,86 @@
+# B-System /SYS Volume Manifest
+# Processed by: mkbtronfs manifest.txt -o btron_sys.vol
+# Format: FILE "name"  TAD|MD|TXT|PNG|BIN|LINK  [payload_path | target_fid | -]  [parent_drawer]
+#         DIR  "name"  [parent_drawer]
+# '-' means empty/placeholder payload.  A token with spaces is "quoted"; the payload column is a
+# path relative to the repository root, which is where the build runs this tool from.
+
+FILE "BTRON Spec Book 1"  TAD   -
+FILE "Cho-Kanji Guide"    TAD   -
+FILE "Kernel Internals"   TAD   -
+FILE "Graphics & Display" TAD   -
+FILE "Applications & HMI" TAD   -
+FILE "TRASH"              LINK  0
+
+# Documentation.  Cabinet names are the repo basenames.  The prefix is the
+# source area: APPS, CORES, DESKTOP, DOC, FS, MEDIA, MSX, TAD, TIP, VERIFY.
+# GUI.md, HYPERMEDIA.md, PORTING.md, and README.md left with the reindex.
+FILE "APPS-CHAT.md"                  MD    doc/md/APPS-CHAT.md
+FILE "APPS-CLU.md"                   MD    doc/md/APPS-CLU.md
+FILE "CORES-PS2.txt"                 TXT   doc/txt/CORES-PS2.txt
+FILE "CORES-UEFI-SMP.md"             MD    doc/md/CORES-UEFI-SMP.md
+FILE "DESKTOP-INDUSTRIAL-HANDHELD.md" MD   doc/md/DESKTOP-INDUSTRIAL-HANDHELD.md
+FILE "DESKTOP-WINDOW-MENU.md"        MD    doc/md/DESKTOP-WINDOW-MENU.md
+FILE "DESKTOP-WINDOW.md"             MD    doc/md/DESKTOP-WINDOW.md
+FILE "DOC-BOOK.md"                   MD    doc/md/DOC-BOOK.md
+FILE "DOC-DOCOPS.md"                 MD    doc/md/DOC-DOCOPS.md
+FILE "DOC-PUBLISH.md"                MD    doc/md/DOC-PUBLISH.md
+FILE "FS.md"                         MD    doc/md/FS.md
+FILE "FS-CHOKANJI.md"                MD    doc/md/FS-CHOKANJI.md
+FILE "MSX.txt"                       TXT   doc/txt/MSX.txt
+FILE "TAD-OSAL.md"                   MD    doc/md/TAD-OSAL.md
+FILE "TAD.md"                        MD    doc/md/TAD.md
+FILE "TIP-BOPOMOFO.md"               MD    doc/md/TIP-BOPOMOFO.md
+FILE "TIP.md"                        MD    doc/md/TIP.md
+FILE "VERIFY-BTRON.md"               MD    doc/md/VERIFY-BTRON.md
+
+# Longchen Osal Tibetan Texts (for Clarity DTP & in-OS TAD construction)
+
+# assets/texts — Classic texts
+FILE "BTRON3_Report.txt"         TXT   assets/texts/BTRON3_Report.txt
+FILE "Heart_Sutra_Tibetan.txt"   TXT   assets/texts/Heart_Sutra_Tibetan.txt
+
+# Secure PostScript & PDF Document Assets
+FILE "sample.ps"                 TXT   doc/ps/sample.ps
+
+# Native Forth Demos & Scripts
+FILE "mandelbrot.fth"            TXT   assets/forth/mandelbrot.fth
+FILE "mars.fth"                  TXT   assets/forth/mars.fth
+FILE "mars_height.bin"           BIN   assets/forth/mars_height.bin
+FILE "mars_shade.bin"            BIN   assets/forth/mars_shade.bin
+FILE "mars_sky.bin"              BIN   assets/forth/mars_sky.bin
+
+# Quake Attract-Mode Demos.  One track stays so the 1 MiB /SYS image can
+# carry MSX2 C-BIOS + T-FW; the rest live on the host and in btron_msx.vol.
+FILE "drone1m1.dem"              BIN   assets/quake/drone1m1.dem
+
+# Clarity Ceremony Assets
+FILE "clarity.png"               PNG   assets/icons/clarity.png
+FILE "Clarity-Sample.TAD"        TAD   -
+
+# assets/msx — B-MSX cartridges, and the C-BIOS they boot under.
+#
+# A BIN line is a byte-exact copy: the payload's bytes go into one RT_DATABOX record, which is the
+# type no text viewer of this system interprets, and the body keeps its host name.  mkbtronfs
+# prints how much of the volume is left when it writes this file, and refuses an entry that does
+# not fit by naming the blocks it needed.
+#
+# What is here is what tronMSX can run today: its first cartridge window maps one 32 KiB page at
+# 0x4000 and answers MSX_ERR_SIZE above that, so the MSX1 flat cartridges ship and BULLRUSH,
+# NIGHT_RAVEN and NEON_REVENANT wait on the banked megaROM mapper, not on room in the image.  The
+# C-BIOS pair is not optional -- the machine has no ROM of its own, and without a BIOS the window
+# opens on an empty slot and says so.  MSX2 C-BIOS + sub are required for MARS, MSX_LOGO and
+# Dynamite; T-FW is the Forth shell BIOS.
+DIR "msx" -
+FILE "MSX_LOGO.rom" BIN  "assets/msx/MSX_LOGO.rom" msx
+FILE "MARS.ROM"     BIN  "assets/msx/MARS.ROM"     msx
+
+DIR "cbios" -
+FILE "cbios_main_msx1.rom"  BIN  third_party/openMSX/Contrib/cbios/cbios_main_msx1.rom  cbios
+FILE "cbios_logo_msx1.rom"  BIN  third_party/openMSX/Contrib/cbios/cbios_logo_msx1.rom  cbios
+FILE "cbios_main_msx2.rom"  BIN  third_party/openMSX/Contrib/cbios/cbios_main_msx2.rom  cbios
+FILE "cbios_logo_msx2.rom"  BIN  third_party/openMSX/Contrib/cbios/cbios_logo_msx2.rom  cbios
+FILE "cbios_sub.rom"        BIN  third_party/openMSX/Contrib/cbios/cbios_sub.rom        cbios
+
+DIR "tbios" -
+FILE "tfw_main_msx2.rom"    BIN  assets/msx/tbios/tfw_main_msx2.rom  tbios
