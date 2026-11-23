@@ -1,8 +1,80 @@
-btron/
-├── doc/
-│   ├── md/
-│   ├── pdf/
-│   └── txt/
+TASK: We want to make optmizational refactoring of TAD books (remove old html source format for TAD book generation).
+
+This task has two interdependent subtasks:
+
+SUBTASK 1: (python generation should contains support for only new HTML format, eliminate old format book (rewrite) and cleanup python code)
+
+Currently we have 2 HTML parser structure:
+1) First is for new format of clean document HTML article section structure: ./b-Book/ and ./b-media/ is typesetted.
+2) Second, is legacy format we want to eliminate and rewrite book ./b-spec/ for new html structure of First format,
+This refoctoring should eliminate support of old format in python TAD generation scripts.
+
+SUBTASK 2: (HTML site restructuring, some parts of which used for TAD book generation)
+
+At the same time we want to introduce new site folder structure with new top level header menu:
+
+TOP MENU FOR NEW UPDATED SITE: System | Applications | Devices | Books | Downloads
+
+New proposed site structure:
+
++-- index.html (leave ricepaper Red Dot Design landing, othe pages should remain in "rosy" CSS)
++-- img/ (./b-system/img/)
++-- settings/ (./b-system/settings/index.html) — not linked from top level site menu
++-- apps/index.html (./b-system/settings/index.html) — linked from top level site menu, this page should have CSS from original "index.html" ricepaper and its requirement
+|   +-- Chat.html (./b-system/apps/Chat.html, ...)
+|   +-- Cabinet.html
+|   +-- Clarity.html
+|   +-- Browser.html
+|   +-- Review.html
+|   +-- Editor.html
+|   +-- Workbench.html
+|   +-- Volumes.html
+|   +-- Clock.html
+|   +-- Preferences.html
+|   +-- Terminal.html
+|   +-- Chokanji.html
+|   +-- CLU.html
+|   +-- Cassette.html
+|   +-- Paint.html
+|   +-- Orchestra.html
+|   +-- MSX.html
+|   +-- XMB.html
+|   +-- SDK.html
+|   +-- Quake.html
++-- devices/index.html (mobile.html) — linked from top level site menu, this page should have CSS from original "index.html" ricepaper and its requirement
+|   +-- laptop/index.html (new pages...)
+|   +-- hendheld/index.html
+|   +-- pocket/index.html
+|   +-- band/index.html
+|   +-- key/index.html
++-- downloads/index.html (new page) — lined from top level site menu, this page should have CSS from original "index.html" ricepaper and its requirement)
+|   +-- pi-500/index.html (new pages,...)
+|   +-- pi-400/index.html
+|   +-- pi-3/index.html
+|   +-- pi-2/index.html
+|   +-- uconsole/index.html
+|   +-- picocalc/index.html
+|   +-- playstation-2/index.html
+|   +-- quadra-800/index.html
+|   +-- pc98/index.html
+|   +-- intel-uefi/index.html
++-- doc/index.html (linked from top level site menu as "Books", this page should have CSS from original "index.html" ricepaper and its requirement)
+    +-- specs/index.html (./b-spec/ book reformated to new HTML structure)
+    +-- cores/index.html (./b-book/ old boot, shout remain untouched olny referencial changes needed)
+    +-- media/index.html (./b-media/ old boot, shout remain untouched olny referencial changes needed)
+    +-- comformance/index.html (conformance.html, without Coq information)
+    +-- verification/index.html (should contain all Coq information from conformance.html)
+    +-- virtualization/index.html (virtio.html)
+    +-- kernel/index.html (new page)
+    +-- rt/index.html (should lead to external linkrt.btron.pro)
+    +-- msx/index.html (should lead to external link msx.btron.pro)
+    +-- history/index.html (releases.html)
+    +-- md/
+    +-- pdf/
+    +-- txt/
+
+The sources should be untouched, given here only for reference:
+
 ├── include/
 │   ├── btron/
 │   ├── drivers/
