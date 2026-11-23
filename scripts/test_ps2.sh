@@ -811,7 +811,7 @@ if [ -f btron_sys.vol ]; then
     # through blk_file_create(path, 0 /* read/write existing */, 1024) and two of them then write
     # records into it: verify/tests/test_b_drivesetup.c mounts the real btron_sys.vol as /SYS at
     # :158 and creates its `sys_boot_%d.cfg` there at :959 (90 bytes), and test_editor_ui.c saves
-    # NOTE.md into the mounted volume, deletes it, and calls vol_sync() at :1109-1121, which
+    # SCRATCH.md into the mounted volume, deletes it, and calls vol_sync() at :1109-1121, which
     # flushes the image back over the file (40,742 bytes more; the deleted record's body stays in
     # the blocks it owned).  A test's scratch data is then inside the shipped payload -- `make
     # ps2` .incbin's the file -- and no row here says so.  So this row compares the image's own

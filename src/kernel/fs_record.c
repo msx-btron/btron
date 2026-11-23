@@ -166,6 +166,50 @@ ER mov_fil(const char *src_path, const char *dst_path) {
     return ER_NOEXS;
 }
 
+ER cpy_fil(const char *src_path, const char *dst_path) {
+    if (!src_path || !dst_path || !src_path[0] || !dst_path[0]) return ER_PAR;
+    if (strcmp(src_path, dst_path) == 0) return ER_PAR;
+
+    pthread_mutex_lock(&g_fs_lock);
+    fs_init_once();
+
+    int src = -1;
+    for (int i = 0; i < MAX_FS_FILES; i++) {
+        if (g_files[i].exists && strcmp(g_files[i].path, src_path) == 0) {
+            src = i;
+            break;
+        }
+    }
+    if (src < 0) {
+        pthread_mutex_unlock(&g_fs_lock);
+        return ER_NOEXS;
+    }
+    for (int i = 0; i < MAX_FS_FILES; i++) {
+        if (g_files[i].exists && strcmp(g_files[i].path, dst_path) == 0) {
+            pthread_mutex_unlock(&g_fs_lock);
+            return ER_EXS;
+        }
+    }
+
+    int dst = -1;
+    for (int i = 0; i < MAX_FS_FILES; i++) {
+        if (!g_files[i].exists) {
+            dst = i;
+            break;
+        }
+    }
+    if (dst < 0) {
+        pthread_mutex_unlock(&g_fs_lock);
+        return ER_NOSPC;
+    }
+
+    g_files[dst] = g_files[src];
+    g_files[dst].open = FALSE;
+    tkl_strscpy(g_files[dst].path, dst_path, sizeof(g_files[dst].path));
+    pthread_mutex_unlock(&g_fs_lock);
+    return E_OK;
+}
+
 ID opn_rec(ID fd, W rec_idx, UW mode) {
     if (fd <= 0 || fd > MAX_FS_FILES) return ER_FD;
     if (rec_idx < 0 || rec_idx >= MAX_RECS_PER_FILE) return ER_PAR;

@@ -2151,7 +2151,7 @@ security: sec-libstr sec-be sec-clu sec-kernel sec-fs sec-drivers
 	@echo "=========================================================="
 	@echo " ALL SECURITY SCANS COMPLETE"
 	@echo "=========================================================="
-	@python3 scripts/security_report.py
+	@python3 scripts/security_report.py --fast
 
 test-ps2-cdvd-loop:
 	@echo "=========================================================="

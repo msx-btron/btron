@@ -2256,6 +2256,7 @@ int teditor_save_file(TEditor *ed, const char *filepath) {
     const char *base = slash ? slash + 1 : target;
 
     /* 1. If BTRON volume is mounted, save Real Body record on volume */
+    int saved_vol = 0;
     if (g_sys_vol) {
         ID fd = opn_fil(base, 0x0002 /* F_WRITE */);
         if (fd < 0) {
@@ -2282,6 +2283,7 @@ int teditor_save_file(TEditor *ed, const char *filepath) {
                 ins_rec(fd, 0, buf, (W)total_sz);
                 fil_set_rec_type(fd, 0, (unsigned short)RT_TADDATA);
                 free(buf);
+                saved_vol = 1;
             }
             cls_fil(fd);
             vol_sync(g_sys_vol);
@@ -2289,26 +2291,29 @@ int teditor_save_file(TEditor *ed, const char *filepath) {
     }
 
 #if BTRON_HOSTED
-    /* 2. Also save to host filesystem if hosted */
-    FILE *fp = fopen(target, "w");
-    if (!fp) {
-        char alt_path[128];
-        snprintf(alt_path, sizeof(alt_path), "doc/md/%s", base);
-        fp = fopen(alt_path, "w");
+    /* A bare name is a volume record.  Opening it here recreated NOTE.md in
+       the repo root during make test.  A path with a directory is a host file. */
+    if (!(saved_vol && strchr(target, '/') == 0 && strchr(target, '\\') == 0)) {
+        FILE *fp = fopen(target, "w");
         if (!fp) {
-            snprintf(alt_path, sizeof(alt_path), "assets/texts/%s", base);
+            char alt_path[128];
+            snprintf(alt_path, sizeof(alt_path), "doc/md/%s", base);
             fp = fopen(alt_path, "w");
             if (!fp) {
-                snprintf(alt_path, sizeof(alt_path), "assets/forth/%s", base);
+                snprintf(alt_path, sizeof(alt_path), "assets/texts/%s", base);
                 fp = fopen(alt_path, "w");
+                if (!fp) {
+                    snprintf(alt_path, sizeof(alt_path), "assets/forth/%s", base);
+                    fp = fopen(alt_path, "w");
+                }
             }
         }
-    }
-    if (fp) {
-        for (int i = 0; i < ed->total_lines; i++) {
-            fprintf(fp, "%s\n", ed->lines[i]);
+        if (fp) {
+            for (int i = 0; i < ed->total_lines; i++) {
+                fprintf(fp, "%s\n", ed->lines[i]);
+            }
+            fclose(fp);
         }
-        fclose(fp);
     }
 #endif
 

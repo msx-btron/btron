@@ -1,7 +1,7 @@
 /*
  * v_fs.c — BTRON 3.20 Record Stream File System Verification Suite
  *
- * Tests opn_fil, cls_fil, cre_fil, del_fil, chg_fil, mov_fil,
+ * Tests opn_fil, cls_fil, cre_fil, del_fil, chg_fil, mov_fil, cpy_fil,
  * opn_rec, cls_rec, rd_rec, wr_rec, ins_rec, del_rec, pos_rec, trn_rec,
  * opn_dir, rd_dir, cls_dir, cre_lnk, del_lnk, ref_vol.
  */
@@ -66,9 +66,50 @@ void vfy_suite_fs(void)
         er = ins_rec(fd, 1, r1_data, (W)strlen(r1_data));
         VFY_ASSERT_EQ(S, "ins_rec(valid)", er, E_OK);
 
+        /* One clause for cpy_fil.  The checks are the call, its refusals,
+           both records, and that the source is a different file. */
+        int copy_ok = cpy_fil(NULL, "/test_doc_copy.tad") == ER_PAR
+                   && cpy_fil("/test_doc.tad", "") == ER_PAR
+                   && cpy_fil("/test_doc.tad", "/test_doc.tad") == ER_PAR
+                   && cpy_fil("/no_such.tad", "/test_doc_copy.tad") == ER_NOEXS
+                   && cpy_fil("/test_doc.tad", "/test_doc_copy.tad") == E_OK
+                   && cpy_fil("/test_doc.tad", "/test_doc_copy.tad") == ER_EXS
+                   && opn_fil("/test_doc.tad", F_READ) == fd;
+        ID cfd = opn_fil("/test_doc_copy.tad", F_READ);
+        if (cfd > 0) {
+            ID cr0 = opn_rec(cfd, 0, F_READ);
+            if (cr0 > 0) {
+                char cbuf[64];
+                W cn = 0;
+                memset(cbuf, 0, sizeof(cbuf));
+                er = rd_rec(cr0, cbuf, sizeof(cbuf) - 1, &cn);
+                copy_ok = copy_ok && er == E_OK && cn == 5 && memcmp(cbuf, "BTRON", 5) == 0;
+                cls_rec(cr0);
+            } else {
+                copy_ok = 0;
+            }
+            ID cr1 = opn_rec(cfd, 1, F_READ);
+            if (cr1 > 0) {
+                char cbuf[64];
+                W cn = 0;
+                memset(cbuf, 0, sizeof(cbuf));
+                er = rd_rec(cr1, cbuf, sizeof(cbuf) - 1, &cn);
+                copy_ok = copy_ok && er == E_OK && cn == (W)strlen(r1_data)
+                       && strcmp(cbuf, r1_data) == 0;
+                cls_rec(cr1);
+            } else {
+                copy_ok = 0;
+            }
+            cls_fil(cfd);
+        } else {
+            copy_ok = 0;
+        }
+        VFY_ASSERT_TRUE(S, "cpy_fil(valid)", copy_ok);
+
         /* Delete record */
         er = del_rec(fd, 1);
         VFY_ASSERT_EQ(S, "del_rec(valid)", er, E_OK);
+        del_fil("/test_doc_copy.tad");
 
         /* Close file */
         er = cls_fil(fd);

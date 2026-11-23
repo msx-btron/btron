@@ -1106,18 +1106,19 @@ static void test_volume_and_markdown_file_operations(void) {
     /* 6. Test saving file back to BTRON volume and verify round-trip */
     strncpy(wnd_ed->lines[0], "# BTRON3 Custom Note", TEDITOR_MAX_COLS - 1);
     wnd_ed->is_modified = TRUE;
-    int save_rc = teditor_save_file(wnd_ed, "NOTE.md");
-    TEST_ASSERT(save_rc == 0, "Saved NOTE.md to BTRON volume");
+    int save_rc = teditor_save_file(wnd_ed, "SCRATCH.md");
+    TEST_ASSERT(save_rc == 0, "Saved SCRATCH.md to BTRON volume");
 
     TEditor verify_ed;
     memset(&verify_ed, 0, sizeof(verify_ed));
-    int load_rc = teditor_load_file(&verify_ed, "NOTE.md");
-    TEST_ASSERT(load_rc == 0, "Loaded newly saved NOTE.md back from BTRON volume");
+    int load_rc = teditor_load_file(&verify_ed, "SCRATCH.md");
+    TEST_ASSERT(load_rc == 0, "Loaded newly saved SCRATCH.md back from BTRON volume");
     TEST_ASSERT(strcmp(verify_ed.lines[0], "# BTRON3 Custom Note") == 0,
-                "NOTE.md contents match saved text");
+                "SCRATCH.md contents match saved text");
 
-    /* Clean up newly created test file on volume */
-    del_fil("NOTE.md");
+    /* Clean up newly created test file on volume.  The Cho-Kanji volume
+       note lives at doc/md/FS-CHOKANJI.md and is not rewritten here. */
+    del_fil("SCRATCH.md");
     vol_sync(v);
 
     cls_wnd(wnd);

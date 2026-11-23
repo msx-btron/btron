@@ -56,6 +56,7 @@ ID cre_fil(const char *path, UW mode);
 ER del_fil(const char *path);
 ER chg_fil(ID fd, UW mode);
 ER mov_fil(const char *src_path, const char *dst_path);
+ER cpy_fil(const char *src_path, const char *dst_path);
 
 /* ── Record Level APIs ─────────────────────────────────────────── */
 ID opn_rec(ID fd, W rec_idx, UW mode);
