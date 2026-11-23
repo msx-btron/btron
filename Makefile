@@ -812,7 +812,7 @@ $(POSIX_TARGET): $(POSIX_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(POSIX_OBJS) -o $@ $(LDFLAGS) $(SDL_LIBS)
 
-run-posix: $(POSIX_TARGET) $(SYS_VOL) $(ANDERS_VOL) $(DISK_IMG)
+run-posix: $(POSIX_TARGET) $(SYS_VOL) $(ANDERS_VOL) $(DISK_IMG) tad_bin
 	./$(POSIX_TARGET)
 
 run-sakamura: $(SAKAMURA_TARGET) $(SYS_VOL) $(ANDERS_VOL) $(DISK_IMG)

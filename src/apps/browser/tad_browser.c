@@ -1997,20 +1997,29 @@ void tad_browser_resolve_path(const char *current_path, const char *target, char
     char *query = strchr(norm_target, '?');
     if (query) *query = '\0';
 
-    /* Convert .html to .tad */
+    /* Convert .html / .htm to .tad */
     char *dot_html = strstr(norm_target, ".html");
-    if (dot_html) strcpy(dot_html, ".tad");
+    if (dot_html) {
+        memcpy(dot_html, ".tad", 5);
+    } else {
+        char *dot_htm = strstr(norm_target, ".htm");
+        if (dot_htm && dot_htm[4] == '\0') {
+            memcpy(dot_htm, ".tad", 5);
+        }
+    }
 
     /* 1. Direct path check */
     if (file_exists(norm_target)) {
         strncpy(out_resolved, norm_target, max_len - 1);
+        out_resolved[max_len - 1] = '\0';
         return;
     }
 
-    /* 2. Relative to current file directory */
+    /* 2. Relative to current file directory (supports multiple ../ hops) */
     if (current_path && current_path[0]) {
         char dir[128] = "";
         strncpy(dir, current_path, sizeof(dir) - 1);
+        dir[sizeof(dir) - 1] = '\0';
         char *last_slash = strrchr(dir, '/');
         if (last_slash) {
             *(last_slash + 1) = '\0';
@@ -2018,30 +2027,38 @@ void tad_browser_resolve_path(const char *current_path, const char *target, char
             dir[0] = '\0';
         }
 
-        char combined[256];
-        if (strncmp(norm_target, "../", 3) == 0) {
-            /* Handle parent jump: strip one folder from dir */
-            char parent_dir[128] = "";
-            strncpy(parent_dir, dir, sizeof(parent_dir) - 1);
-            char *s1 = strrchr(parent_dir, '/');
-            if (s1 && s1 > parent_dir) {
-                *s1 = '\0';
-                char *s2 = strrchr(parent_dir, '/');
-                if (s2) *(s2 + 1) = '\0';
-                else parent_dir[0] = '\0';
+        const char *rel = norm_target;
+        while (strncmp(rel, "../", 3) == 0) {
+            size_t dlen = strlen(dir);
+            if (dlen > 0 && dir[dlen - 1] == '/') {
+                dir[dlen - 1] = '\0';
             }
-            snprintf(combined, sizeof(combined), "%s%s", parent_dir, norm_target + 3);
-        } else {
-            snprintf(combined, sizeof(combined), "%s%s", dir, norm_target);
+            char *s = strrchr(dir, '/');
+            if (s) {
+                *(s + 1) = '\0';
+            } else {
+                dir[0] = '\0';
+            }
+            rel += 3;
+        }
+        while (strncmp(rel, "./", 2) == 0) {
+            rel += 2;
         }
 
+        char combined[256];
+        snprintf(combined, sizeof(combined), "%s%s", dir, rel);
         if (file_exists(combined)) {
             strncpy(out_resolved, combined, max_len - 1);
+            out_resolved[max_len - 1] = '\0';
             return;
         }
     }
 
     /* 3. Prefix fallbacks: five canonical tad_bin/ books */
+    const char *rel_target = norm_target;
+    while (strncmp(rel_target, "../", 3) == 0) rel_target += 3;
+    while (strncmp(rel_target, "./", 2) == 0)  rel_target += 2;
+
     const char *prefixes[] = {
         "tad_bin/",
         "tad_bin/b-book/",
@@ -2053,14 +2070,22 @@ void tad_browser_resolve_path(const char *current_path, const char *target, char
         "tad_bin/b-spec/os_spec/shell/",
         "tad_bin/b-spec/os_spec/dp/",
         "tad_bin/b-system/",
+        "tad_bin/b-system/apps/",
+        "tad_bin/b-system/settings/",
+        "tad_bin/b-system/kernel/",
+        "tad_bin/b-system/virtualization/",
+        "tad_bin/b-system/conformance/",
+        "tad_bin/b-system/verification/",
+        "tad_bin/b-system/verification/theorems/",
         "tad_bin/osal/",
         NULL
     };
     for (int p = 0; prefixes[p] != NULL; p++) {
         char try_path[256];
-        snprintf(try_path, sizeof(try_path), "%s%s", prefixes[p], norm_target);
+        snprintf(try_path, sizeof(try_path), "%s%s", prefixes[p], rel_target);
         if (file_exists(try_path)) {
             strncpy(out_resolved, try_path, max_len - 1);
+            out_resolved[max_len - 1] = '\0';
             return;
         }
     }
@@ -2076,12 +2101,26 @@ ER tad_browser_navigate(TAD_BROWSER *tb, const char *target_path) {
     char resolved[TAD_MAX_PATH];
     tad_browser_resolve_path(tb->file_path, target_path, resolved, sizeof(resolved));
 
+    /* Save current scroll position before navigating away */
+    if (tb->history_idx >= 0 && tb->history_idx < tb->history_count) {
+        tb->history[tb->history_idx].scroll_y = tb->scroll_y;
+    }
+
     ER er = tad_browser_load_file(tb, resolved);
     if (er == E_OK) {
-        /* Push to navigation history stack */
-        if (tb->history_idx < TAD_MAX_HISTORY - 1) {
+        /* Avoid pushing consecutive duplicate entries for the same document */
+        if (!(tb->history_idx >= 0 && tb->history_idx < tb->history_count &&
+              strcmp(tb->history[tb->history_idx].path, resolved) == 0)) {
+            if (tb->history_idx >= TAD_MAX_HISTORY - 1) {
+                /* Keep history[0] as this window's locally opened root */
+                for (int i = 2; i < TAD_MAX_HISTORY; i++) {
+                    tb->history[i - 1] = tb->history[i];
+                }
+                tb->history_idx = TAD_MAX_HISTORY - 2;
+            }
             tb->history_idx++;
             strncpy(tb->history[tb->history_idx].path, resolved, sizeof(tb->history[0].path) - 1);
+            tb->history[tb->history_idx].path[sizeof(tb->history[0].path) - 1] = '\0';
             tb->history[tb->history_idx].scroll_y = 0;
             tb->history_count = tb->history_idx + 1;
         }
@@ -2100,6 +2139,7 @@ BOOL tad_browser_can_go_forward(const TAD_BROWSER *tb) {
 
 void tad_browser_go_back(TAD_BROWSER *tb) {
     if (!tad_browser_can_go_back(tb)) return;
+    tb->history[tb->history_idx].scroll_y = tb->scroll_y;
     tb->history_idx--;
     tad_browser_load_file(tb, tb->history[tb->history_idx].path);
     tb->scroll_y = tb->history[tb->history_idx].scroll_y;
@@ -2107,13 +2147,22 @@ void tad_browser_go_back(TAD_BROWSER *tb) {
 
 void tad_browser_go_forward(TAD_BROWSER *tb) {
     if (!tad_browser_can_go_forward(tb)) return;
+    tb->history[tb->history_idx].scroll_y = tb->scroll_y;
     tb->history_idx++;
     tad_browser_load_file(tb, tb->history[tb->history_idx].path);
     tb->scroll_y = tb->history[tb->history_idx].scroll_y;
 }
 
 void tad_browser_go_home(TAD_BROWSER *tb) {
-    tad_browser_navigate(tb, "tad_bin/b-spec/01_btron3_spec.tad");
+    if (!tb) return;
+    const char *home = (tb->history_count > 0 && tb->history[0].path[0] != '\0')
+                           ? tb->history[0].path
+                           : "tad_bin/b-spec/01_btron3_spec.tad";
+    if (strcmp(tb->file_path, home) == 0) {
+        tb->scroll_y = 0;
+        return;
+    }
+    tad_browser_navigate(tb, home);
 }
 
 void tad_browser_reload(TAD_BROWSER *tb) {

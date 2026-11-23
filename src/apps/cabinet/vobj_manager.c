@@ -65,6 +65,7 @@ static void cab_open_path(const char *path, const char *name) {
 }
 
 #define MAX_CABINET_ITEMS 2048
+#define CAB_MAX_HISTORY   64
 
 typedef enum {
     CAB_VIEW_LIST = 0,
@@ -74,7 +75,8 @@ typedef enum {
 typedef struct {
     ID robj_id;
     VOBJ_TYPE type;
-    char name[64];
+    BOOL is_dir;
+    char name[96];
     char path[128];
     UW size_bytes;
     const char *icon_tag;
@@ -89,6 +91,11 @@ typedef struct {
     int scroll_offset;      /* Scroll item row offset (LIST view) */
     int grid_scroll_rows;   /* First visible row index in GRID icon view */
     CAB_VIEW_MODE view_mode;
+    char current_dir[128];  /* "" = Cabinet root book folders */
+    char current_label[64];
+    char history[CAB_MAX_HISTORY][128];
+    int history_idx;        /* -1 when uninitialized */
+    int history_count;
     char status_msg[128];
 
     /* In-Window Application Menu State */
@@ -380,8 +387,7 @@ static int get_toc_order(const char *path, const char *name) {
     /* 1. Canonical Foundational Books & Main Portals */
     if (strstr(path, "01_btron3_spec")) return 10;
     if (strstr(path, "02_bcore_book")) return 20;
-    if (strstr(path, "03_bfree_os_book")) return 30;
-    if (strstr(path, "04_tron_hmi_book")) return 35;
+    if (strstr(path, "03_bsystem_book")) return 30;
 
     /* 2. Top-level portal index */
     if (name && strcmp(name, "index.tad") == 0 && strcmp(path, "tad_bin/index.tad") == 0) return 40;
@@ -486,6 +492,22 @@ static void cabinet_sort_items(CABINET_EXPLORER *cab) {
     if (!cab || cab->item_count <= 1) return;
     for (int i = 0; i < cab->item_count - 1; i++) {
         for (int j = i + 1; j < cab->item_count; j++) {
+            /* Keep ".." parent entry pinned at row 0, and folders before files */
+            if (strcmp(cab->items[i].name, "..") == 0) continue;
+            if (strcmp(cab->items[j].name, "..") == 0) {
+                CABINET_ITEM tmp = cab->items[i];
+                cab->items[i] = cab->items[j];
+                cab->items[j] = tmp;
+                continue;
+            }
+            if (cab->items[i].is_dir != cab->items[j].is_dir) {
+                if (!cab->items[i].is_dir && cab->items[j].is_dir) {
+                    CABINET_ITEM tmp = cab->items[i];
+                    cab->items[i] = cab->items[j];
+                    cab->items[j] = tmp;
+                }
+                continue;
+            }
             int swap = 0;
             if (cab->sort_mode == 1) {
                 /* Sort by Name */
@@ -522,11 +544,8 @@ static void cabinet_sort_items(CABINET_EXPLORER *cab) {
 static ID deduce_robj_id(const char *path) {
     if (strstr(path, "01_btron3_spec")) return 101;
     if (strstr(path, "02_bcore_book")) return 102;
-    if (strstr(path, "03_bfree_os_book")) return 103;
-    if (strstr(path, "04_tron_hmi_book")) return 104;
-    if (strstr(path, "b-hmi/index.tad") || strstr(path, "b-hmi/B-HMI.tad")) return 105;
-    if (strstr(path, "b-free/manifest.tad")) return 106;
-    if (strstr(path, "b-system/virtio.tad")) return 107;
+    if (strstr(path, "03_bsystem_book")) return 103;
+    if (strstr(path, "b-system/virtualization")) return 107;
     if (strstr(path, "data_type.tad")) return 111;
     if (strstr(path, "tron_code.tad")) return 112;
     if (strstr(path, "tad1.tad")) return 113;
@@ -552,7 +571,7 @@ static ID deduce_robj_id(const char *path) {
 
 static const char* deduce_toc_path(const char *path) {
     if (strstr(path, "01_btron3_spec") || strstr(path, "02_bcore_book") ||
-        strstr(path, "03_bfree_os_book") || strstr(path, "04_tron_hmi_book")) {
+        strstr(path, "03_bsystem_book")) {
         return "books/";
     }
     if (strstr(path, "b-book/")) return "b-book/";
@@ -573,15 +592,68 @@ static const char* deduce_toc_path(const char *path) {
 }
 
 static const char* deduce_icon_tag(const char *path) {
-    if (strstr(path, "04_tron_hmi") || strstr(path, "b-hmi")) return "[b-hmi]";
-    if (strstr(path, "03_bfree") || strstr(path, "b-free")) return "[b-free]";
-    if (strstr(path, "b-system")) return "[b-system]";
-    if (strstr(path, "02_bcore") || strstr(path, "b-media/B-Core")) return "[b-core]";
+    if (strstr(path, "b-book")) return "[b-book]";
     if (strstr(path, "b-media")) return "[b-media]";
-    if (strstr(path, "osal/")) return "[osal]";
-    if (strstr(path, "b-book")) return "[doc]";
-    if (strstr(path, "01_btron3") || strstr(path, "shared_data") || strstr(path, "os_spec") || strstr(path, "doc")) return "[doc]";
+    if (strstr(path, "b-spec")) return "[b-spec]";
+    if (strstr(path, "b-system")) return "[b-system]";
+    if (strstr(path, "osal")) return "[osal]";
     return "[doc]";
+}
+
+static const char* cabinet_folder_label(const char *base) {
+    if (!base) return "";
+    if (strcmp(base, "b-book") == 0) return "B-Book";
+    if (strcmp(base, "b-media") == 0) return "B-Media";
+    if (strcmp(base, "b-spec") == 0) return "B-Spec";
+    if (strcmp(base, "b-system") == 0) return "B-System";
+    if (strcmp(base, "osal") == 0) return "Osal Book";
+    if (strcmp(base, "os_spec") == 0) return "OS Spec";
+    if (strcmp(base, "shared_data") == 0) return "Shared Data";
+    if (strcmp(base, "dp") == 0) return "Display Primitives";
+    if (strcmp(base, "shell") == 0) return "GUI Shell";
+    if (strcmp(base, "kernel") == 0) return "Kernel";
+    if (strcmp(base, "apps") == 0) return "Applications";
+    if (strcmp(base, "settings") == 0) return "Settings";
+    if (strcmp(base, "virtualization") == 0) return "Virtualization";
+    if (strcmp(base, "conformance") == 0) return "Conformance";
+    if (strcmp(base, "verification") == 0) return "Verification";
+    if (strcmp(base, "theorems") == 0) return "Theorems";
+    return base;
+}
+
+static BOOL cabinet_is_asset_dir(const char *name) {
+    return (strcmp(name, "gif") == 0 || strcmp(name, "img") == 0 || strcmp(name, "figures") == 0);
+}
+
+/* Read the compiled page title from companion <path>.txt header if present */
+static BOOL cabinet_read_tad_title(const char *tad_path, char *out_name, size_t max_len) {
+    if (!tad_path || !out_name || max_len < 4) return FALSE;
+    char txt_path[264];
+    snprintf(txt_path, sizeof(txt_path), "%s.txt", tad_path);
+    FILE *f = fopen(txt_path, "r");
+    if (!f) return FALSE;
+    char line[256];
+    BOOL ok = FALSE;
+    const char *prefix = "TAD Real Body [実身] : ";
+    size_t plen = strlen(prefix);
+    for (int ln = 0; ln < 4 && fgets(line, sizeof(line), f); ln++) {
+        if (strncmp(line, prefix, plen) == 0) {
+            const char *t = line + plen;
+            size_t len = strlen(t);
+            while (len > 0 && (t[len - 1] == '\n' || t[len - 1] == '\r' || t[len - 1] == ' ')) {
+                len--;
+            }
+            if (len > 0) {
+                if (len >= max_len) len = max_len - 1;
+                memcpy(out_name, t, len);
+                out_name[len] = '\0';
+                ok = TRUE;
+                break;
+            }
+        }
+    }
+    fclose(f);
+    return ok;
 }
 
 /* Check if directory contains any non-index .tad file */
@@ -605,55 +677,182 @@ static int dir_has_titled_tad(const char *dir_path) {
 static void get_friendly_title(const char *sub_path, const char *filename, char *out_name, size_t max_len) {
     if (!sub_path || !filename || !out_name || max_len == 0) return;
 
+    if (cabinet_read_tad_title(sub_path, out_name, max_len)) {
+        return;
+    }
+    if (strcmp(filename, "osal_shog_dril.tad") == 0) {
+        snprintf(out_name, max_len, "Osal Book — Complete Scroll (Shog-dril)");
+        return;
+    }
     if (strcmp(filename, "index.tad") != 0) {
         strncpy(out_name, filename, max_len - 1);
         out_name[max_len - 1] = '\0';
         return;
     }
 
-    if (strstr(sub_path, "b-book/kernel")) strncpy(out_name, "Kernel.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/cores")) strncpy(out_name, "Cores.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/graphics")) strncpy(out_name, "Graphics.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/tip")) strncpy(out_name, "Tip.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/vobject")) strncpy(out_name, "VObject.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/window")) strncpy(out_name, "Window.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/desktop")) strncpy(out_name, "Desktop.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/hmi")) strncpy(out_name, "HMI.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/font")) strncpy(out_name, "Font.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/settings")) strncpy(out_name, "Settings.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/drivers")) strncpy(out_name, "Drivers.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book/apps")) strncpy(out_name, "Apps.tad", max_len - 1);
-    else if (strstr(sub_path, "b-book")) strncpy(out_name, "B-Book.tad", max_len - 1);
-    else if (strstr(sub_path, "b-hmi/part1")) strncpy(out_name, "Part1.tad", max_len - 1);
-    else if (strstr(sub_path, "b-hmi/part2")) strncpy(out_name, "Part2.tad", max_len - 1);
-    else if (strstr(sub_path, "b-hmi/part_book")) strncpy(out_name, "Part_Book.tad", max_len - 1);
-    else if (strstr(sub_path, "b-hmi")) strncpy(out_name, "B-HMI.tad", max_len - 1);
-    else if (strstr(sub_path, "b-media")) strncpy(out_name, "B-Media.tad", max_len - 1);
-    else if (strstr(sub_path, "b-system")) strncpy(out_name, "B-System.tad", max_len - 1);
-    else if (strstr(sub_path, "b-free")) strncpy(out_name, "B-Free.tad", max_len - 1);
-    else if (strstr(sub_path, "shared_data")) strncpy(out_name, "Shared_Data.tad", max_len - 1);
-    else if (strstr(sub_path, "os_spec")) strncpy(out_name, "OS_Spec.tad", max_len - 1);
-    else strncpy(out_name, "B-System_Portal.tad", max_len - 1);
-    out_name[max_len - 1] = '\0';
+    if (strstr(sub_path, "osal/")) snprintf(out_name, max_len, "Osal Book — Table of Contents");
+    else if (strstr(sub_path, "b-book")) snprintf(out_name, max_len, "B-Book");
+    else if (strstr(sub_path, "b-media")) snprintf(out_name, max_len, "B-Media");
+    else if (strstr(sub_path, "b-spec/shared_data")) snprintf(out_name, max_len, "Shared Data");
+    else if (strstr(sub_path, "b-spec/os_spec")) snprintf(out_name, max_len, "OS Spec");
+    else if (strstr(sub_path, "b-spec")) snprintf(out_name, max_len, "B-Spec");
+    else if (strstr(sub_path, "b-system/apps")) snprintf(out_name, max_len, "Applications");
+    else if (strstr(sub_path, "b-system/settings")) snprintf(out_name, max_len, "Settings");
+    else if (strstr(sub_path, "b-system/kernel")) snprintf(out_name, max_len, "Kernel");
+    else if (strstr(sub_path, "b-system/virtualization")) snprintf(out_name, max_len, "Virtualization");
+    else if (strstr(sub_path, "b-system/conformance")) snprintf(out_name, max_len, "Conformance");
+    else if (strstr(sub_path, "b-system/verification")) snprintf(out_name, max_len, "Verification");
+    else if (strstr(sub_path, "b-system")) snprintf(out_name, max_len, "B-System");
+    else snprintf(out_name, max_len, "B-System Portal");
 }
 
-/* ── Dynamic Recursive Filesystem Discovery (Discovered not Hardcoded) ── */
-static void cabinet_discover_dir(CABINET_EXPLORER *cab, const char *dir_path) {
-    DIR *d = opendir(dir_path);
-    if (!d) return;
+static void cabinet_add_folder_item(CABINET_EXPLORER *cab, const char *label, const char *path, const char *tag) {
+    if (!cab || cab->item_count >= MAX_CABINET_ITEMS) return;
+    struct stat st;
+    if (path[0] != '\0' && (stat(path, &st) != 0 || !S_ISDIR(st.st_mode))) return;
+    CABINET_ITEM *it = &cab->items[cab->item_count++];
+    memset(it, 0, sizeof(*it));
+    it->robj_id = deduce_robj_id(path);
+    it->type = VOBJ_TYPE_TEXT;
+    it->is_dir = TRUE;
+    strncpy(it->name, label, sizeof(it->name) - 1);
+    strncpy(it->path, path, sizeof(it->path) - 1);
+    it->size_bytes = 0;
+    it->icon_tag = tag;
+    it->category = "folder/";
+}
 
+static void cabinet_history_record(CABINET_EXPLORER *cab, const char *dir_path) {
+    if (!cab) return;
+    const char *norm = dir_path ? dir_path : "";
+    if (cab->history_idx >= 0 && cab->history_idx < cab->history_count &&
+        strcmp(cab->history[cab->history_idx], norm) == 0) {
+        return;
+    }
+    if (cab->history_idx + 1 >= CAB_MAX_HISTORY) {
+        for (int i = 1; i < CAB_MAX_HISTORY; i++) {
+            memcpy(cab->history[i - 1], cab->history[i], sizeof(cab->history[0]));
+        }
+        cab->history_idx = CAB_MAX_HISTORY - 2;
+    }
+    cab->history_idx++;
+    strncpy(cab->history[cab->history_idx], norm, sizeof(cab->history[0]) - 1);
+    cab->history[cab->history_idx][sizeof(cab->history[0]) - 1] = '\0';
+    cab->history_count = cab->history_idx + 1;
+}
+
+/* Open Cabinet root: show the five canonical books + document shelves as folders */
+static void cabinet_open_root_ex(CABINET_EXPLORER *cab, BOOL record_history) {
+    cab->item_count = 0;
+    cab->selected_idx = 0;
+    cab->hovered_idx = -1;
+    cab->scroll_offset = 0;
+    cab->grid_scroll_rows = 0;
+    cab->current_dir[0] = '\0';
+    snprintf(cab->current_label, sizeof(cab->current_label), "Books & Shelves");
+
+    cabinet_add_folder_item(cab, "B-Book",        "tad_bin/b-book",   "[b-book]");
+    cabinet_add_folder_item(cab, "B-Media",       "tad_bin/b-media",  "[b-media]");
+    cabinet_add_folder_item(cab, "B-Spec",        "tad_bin/b-spec",   "[b-spec]");
+    cabinet_add_folder_item(cab, "B-System",      "tad_bin/b-system", "[b-system]");
+    cabinet_add_folder_item(cab, "Osal Book",     "tad_bin/osal",     "[osal]");
+    cabinet_add_folder_item(cab, "Markdown Docs", "doc/md",           "[md]");
+    cabinet_add_folder_item(cab, "Texts",         "assets/texts",     "[txt]");
+    cabinet_add_folder_item(cab, "Icons",         "assets/icons",     "[img]");
+    cabinet_add_folder_item(cab, "Store",         "btron_store",      "[doc]");
+
+    if (record_history) {
+        cabinet_history_record(cab, "");
+    }
+    snprintf(cab->status_msg, sizeof(cab->status_msg),
+             "Cabinet Ready. %d book & document folders.", cab->item_count);
+}
+
+static void cabinet_open_root(CABINET_EXPLORER *cab) {
+    cabinet_open_root_ex(cab, TRUE);
+}
+
+/* Open a single folder level (non-recursive) with ".." parent navigation */
+static void cabinet_open_dir_ex(CABINET_EXPLORER *cab, const char *dir_path, BOOL record_history) {
+    if (!cab) return;
+    if (!dir_path || dir_path[0] == '\0') {
+        cabinet_open_root_ex(cab, record_history);
+        return;
+    }
+
+    /* Copy dir_path before modifying cab->items[], since callers pass items[idx].path */
+    char target_dir[128];
+    strncpy(target_dir, dir_path, sizeof(target_dir) - 1);
+    target_dir[sizeof(target_dir) - 1] = '\0';
+
+    DIR *d = opendir(target_dir);
+    if (!d) {
+        cabinet_open_root_ex(cab, record_history);
+        return;
+    }
+
+    cab->item_count = 0;
+    cab->selected_idx = 0;
+    cab->hovered_idx = -1;
+    cab->scroll_offset = 0;
+    cab->grid_scroll_rows = 0;
+    strncpy(cab->current_dir, target_dir, sizeof(cab->current_dir) - 1);
+    cab->current_dir[sizeof(cab->current_dir) - 1] = '\0';
+
+    const char *leaf = strrchr(target_dir, '/');
+    leaf = leaf ? (leaf + 1) : target_dir;
+    snprintf(cab->current_label, sizeof(cab->current_label), "%s", cabinet_folder_label(leaf));
+
+    /* Compute parent path: top-level book/shelf folders return to Cabinet root ("") */
+    char parent_path[128];
+    parent_path[0] = '\0';
+    if (strcmp(target_dir, "tad_bin/b-book") != 0 &&
+        strcmp(target_dir, "tad_bin/b-media") != 0 &&
+        strcmp(target_dir, "tad_bin/b-spec") != 0 &&
+        strcmp(target_dir, "tad_bin/b-system") != 0 &&
+        strcmp(target_dir, "tad_bin/osal") != 0 &&
+        strcmp(target_dir, "doc/md") != 0 &&
+        strcmp(target_dir, "assets/texts") != 0 &&
+        strcmp(target_dir, "assets/icons") != 0 &&
+        strcmp(target_dir, "btron_store") != 0) {
+        const char *slash = strrchr(target_dir, '/');
+        if (slash && slash > target_dir) {
+            size_t plen = (size_t)(slash - target_dir);
+            if (plen >= sizeof(parent_path)) plen = sizeof(parent_path) - 1;
+            memcpy(parent_path, target_dir, plen);
+            parent_path[plen] = '\0';
+            if (strcmp(parent_path, "tad_bin") == 0) parent_path[0] = '\0';
+        }
+    }
+
+    /* Row 0: parent directory link ".." */
+    if (cab->item_count < MAX_CABINET_ITEMS) {
+        CABINET_ITEM *up = &cab->items[cab->item_count++];
+        memset(up, 0, sizeof(*up));
+        up->robj_id = 0;
+        up->type = VOBJ_TYPE_TEXT;
+        up->is_dir = TRUE;
+        snprintf(up->name, sizeof(up->name), "..");
+        strncpy(up->path, parent_path, sizeof(up->path) - 1);
+        up->icon_tag = "[dir]";
+        up->category = "parent/";
+    }
+
+    /* Osal Book uses index.tad as its real Master TOC (not a duplicate of a titled .tad) */
+    int skip_index_tad = (strstr(target_dir, "osal") == NULL) && dir_has_titled_tad(target_dir);
     struct dirent *de;
     while ((de = readdir(d)) != NULL) {
         if (de->d_name[0] == '.') continue;
 
         char sub_path[256];
-        snprintf(sub_path, sizeof(sub_path), "%s/%s", dir_path, de->d_name);
+        snprintf(sub_path, sizeof(sub_path), "%s/%s", target_dir, de->d_name);
 
         struct stat st;
         if (stat(sub_path, &st) != 0) continue;
 
         if (S_ISDIR(st.st_mode)) {
-            cabinet_discover_dir(cab, sub_path);
+            if (cabinet_is_asset_dir(de->d_name)) continue;
+            cabinet_add_folder_item(cab, cabinet_folder_label(de->d_name), sub_path, "[dir]");
         } else if (S_ISREG(st.st_mode)) {
             int len = strlen(de->d_name);
             BOOL is_tad = (len > 4 && strcmp(de->d_name + len - 4, ".tad") == 0);
@@ -663,8 +862,8 @@ static void cabinet_discover_dir(CABINET_EXPLORER *cab, const char *dir_path) {
             BOOL is_gif = (len > 4 && (strcmp(de->d_name + len - 4, ".gif") == 0 || strcmp(de->d_name + len - 4, ".GIF") == 0));
 
             if (is_tad || is_md || is_txt || is_png || is_gif) {
-                /* Skip .tad.txt companions or index.tad duplicates */
-                if (is_tad && strcmp(de->d_name, "index.tad") == 0 && dir_has_titled_tad(dir_path)) {
+                /* Skip .tad.txt companions or duplicate index.tad when a titled .tad exists */
+                if (is_tad && strcmp(de->d_name, "index.tad") == 0 && skip_index_tad) {
                     continue;
                 }
                 if (is_txt && strstr(de->d_name, ".tad.txt")) {
@@ -673,7 +872,9 @@ static void cabinet_discover_dir(CABINET_EXPLORER *cab, const char *dir_path) {
 
                 if (cab->item_count < MAX_CABINET_ITEMS) {
                     CABINET_ITEM *it = &cab->items[cab->item_count++];
+                    memset(it, 0, sizeof(*it));
                     it->robj_id = deduce_robj_id(sub_path);
+                    it->is_dir = FALSE;
                     if (is_png || is_gif) {
                         it->type = VOBJ_TYPE_DRAW;
                         it->icon_tag = "[img]";
@@ -696,11 +897,52 @@ static void cabinet_discover_dir(CABINET_EXPLORER *cab, const char *dir_path) {
         }
     }
     closedir(d);
+
+    cabinet_sort_items(cab);
+    if (record_history) {
+        cabinet_history_record(cab, target_dir);
+    }
+    snprintf(cab->status_msg, sizeof(cab->status_msg),
+             "[%s] %d items.", cab->current_label, cab->item_count);
+}
+
+static void cabinet_open_dir(CABINET_EXPLORER *cab, const char *dir_path) {
+    cabinet_open_dir_ex(cab, dir_path, TRUE);
+}
+
+BOOL cabinet_can_go_back(void) {
+    return (g_cabinet.history_idx > 0);
+}
+
+BOOL cabinet_can_go_forward(void) {
+    return (g_cabinet.history_idx >= 0 && g_cabinet.history_idx + 1 < g_cabinet.history_count);
+}
+
+void cabinet_go_back(void) {
+    if (!cabinet_can_go_back()) return;
+    g_cabinet.history_idx--;
+    cabinet_open_dir_ex(&g_cabinet, g_cabinet.history[g_cabinet.history_idx], FALSE);
+}
+
+void cabinet_go_forward(void) {
+    if (!cabinet_can_go_forward()) return;
+    g_cabinet.history_idx++;
+    cabinet_open_dir_ex(&g_cabinet, g_cabinet.history[g_cabinet.history_idx], FALSE);
+}
+
+void cabinet_go_home(void) {
+    if (g_cabinet.current_dir[0] == '\0') return;
+    cabinet_open_root_ex(&g_cabinet, TRUE);
+}
+
+const char *cabinet_current_dir(void) {
+    return g_cabinet.current_dir;
 }
 #endif
 
 static const char* deduce_gif_icon(const CABINET_ITEM *it) {
     if (!it) return "tad_browser";
+    if (it->is_dir) return "workbench";
     if (it->type == VOBJ_TYPE_DRAW) return "paint";
     if (strstr(it->path, "shared_data")) return "notebook";
     if (strstr(it->path, "b-hmi")) return "appearance";
@@ -756,35 +998,33 @@ static void cabinet_init_defaults(CABINET_EXPLORER *cab) {
     cab->hovered_idx = -1;
     cab->scroll_offset = 0;
     cab->view_mode = CAB_VIEW_LIST;
+    cab->history_idx = -1;
+    cab->history_count = 0;
 
 #if BTRON_HOSTED
-    /* Dynamic discovery: canonical books in tad_bin, plus SYS, doc/md, assets */
-    cabinet_discover_dir(cab, "tad_bin");
-    cabinet_discover_dir(cab, "SYS");
-    cabinet_discover_dir(cab, "doc/md");
-    cabinet_discover_dir(cab, "assets/texts");
-    cabinet_discover_dir(cab, "assets/icons");
-    cabinet_discover_dir(cab, "btron_store");
+    /* Group canonical books and document shelves into top-level folders */
+    cabinet_open_root(cab);
+    if (cab->item_count > 0) {
+        return;
+    }
 #else
     /* Dynamic discovery on bare-metal from mounted VFS volumes (/SYS and /ANDERS) */
     cabinet_discover_vfs(cab, "/SYS");
     cabinet_discover_vfs(cab, "/ANDERS");
-#endif
-
     if (cab->item_count > 0) {
-        /* Group by first column & sort by TOC order */
         cabinet_sort_items(cab);
         snprintf(cab->status_msg, sizeof(cab->status_msg),
-                 "Cabinet Ready. Discovered %d Real Bodys across tad_bin/.", cab->item_count);
+                 "Cabinet Ready. Discovered %d Real Bodys.", cab->item_count);
         return;
     }
+#endif
 
     /* Fallback static list for freestanding embedded environments */
     int n = 0;
-    cab->items[n++] = (CABINET_ITEM){ 101, VOBJ_TYPE_TEXT, "01_btron3_spec.tad", "tad_bin/b-spec/01_btron3_spec.tad", 3996, "[doc]", "books/" };
-    cab->items[n++] = (CABINET_ITEM){ 102, VOBJ_TYPE_TEXT, "02_bcore_book.tad", "tad_bin/b-media/02_bcore_book.tad", 1377, "[b-core]", "books/" };
-    cab->items[n++] = (CABINET_ITEM){ 103, VOBJ_TYPE_TEXT, "03_bfree_os_book.tad", "tad_bin/b-system/03_bfree_os_book.tad", 1472, "[b-free]", "books/" };
-    cab->items[n++] = (CABINET_ITEM){ 111, VOBJ_TYPE_TEXT, "01_data_type.tad", "tad_bin/b-spec/shared_data/data_type.tad", 10022, "[doc]", "shared_data/" };
+    cab->items[n++] = (CABINET_ITEM){ 101, VOBJ_TYPE_TEXT, FALSE, "BTRON3 3.20 Specification Book", "tad_bin/b-spec/01_btron3_spec.tad", 3996, "[b-spec]", "b-spec/" };
+    cab->items[n++] = (CABINET_ITEM){ 102, VOBJ_TYPE_TEXT, FALSE, "B-Core InterCore Streaming Protocol Book", "tad_bin/b-media/02_bcore_book.tad", 1377, "[b-media]", "b-media/" };
+    cab->items[n++] = (CABINET_ITEM){ 103, VOBJ_TYPE_TEXT, FALSE, "B-System Operating System Book", "tad_bin/b-system/03_bsystem_book.tad", 1472, "[b-system]", "b-system/" };
+    cab->items[n++] = (CABINET_ITEM){ 111, VOBJ_TYPE_TEXT, FALSE, "Data Types & Error Codes", "tad_bin/b-spec/shared_data/data_type.tad", 10022, "[b-spec]", "shared_data/" };
     cab->item_count = n;
     cabinet_sort_items(cab);
     strncpy(cab->status_msg, "Cabinet Ready (Embedded Static Fallback).", sizeof(cab->status_msg) - 1);
@@ -894,17 +1134,35 @@ static void paint_vobj_manager(WND *wnd, GDEV *dev) {
 
     /* ── 1. In-Window Application Menu Bar (y = 0..21) ────────────────────────── */
     if (g_cabinet.menu_bar.header_count == 0) cab_init_menu_bar();
-    char count_buf[32];
-    snprintf(count_buf, sizeof(count_buf), "%d 実身", g_cabinet.item_count);
-    app_menu_set_right_text(&g_cabinet.menu_bar, count_buf);
+    if (dev->width >= 560) {
+        app_menu_set_right_text(&g_cabinet.menu_bar, "");
+    } else {
+        char count_buf[32];
+        snprintf(count_buf, sizeof(count_buf), "%d 実身", g_cabinet.item_count);
+        app_menu_set_right_text(&g_cabinet.menu_bar, count_buf);
+    }
     app_menu_paint_bar(&g_cabinet.menu_bar, dev);
 
-    /* Quick View Mode Toggle Button on right */
+    /* Quick Walking History ([<] [>] [H]) + View Mode Toggle on right of menu bar */
     if (dev->width >= 560) {
-        RECT view_btn = { 440, 1, 542, 20 };
+#if BTRON_HOSTED
+        RECT back_btn = { 418, 1, 438, 20 };
+        RECT fwd_btn  = { 440, 1, 460, 20 };
+        RECT home_btn = { 462, 1, 482, 20 };
+        fill_rec(dev, &back_btn, COLOR_WHITE); drw_rec(dev, &back_btn);
+        fill_rec(dev, &fwd_btn,  COLOR_WHITE); drw_rec(dev, &fwd_btn);
+        fill_rec(dev, &home_btn, COLOR_WHITE); drw_rec(dev, &home_btn);
+        drw_tc_string(dev, back_btn.left + 5, back_btn.top + 2, "<",
+                      cabinet_can_go_back() ? COLOR_BLUE : COLOR_GRAY, 0x00000000);
+        drw_tc_string(dev, fwd_btn.left + 5, fwd_btn.top + 2, ">",
+                      cabinet_can_go_forward() ? COLOR_BLUE : COLOR_GRAY, 0x00000000);
+        drw_tc_string(dev, home_btn.left + 5, home_btn.top + 2, "H",
+                      (g_cabinet.current_dir[0] != '\0') ? COLOR_BLUE : COLOR_GRAY, 0x00000000);
+#endif
+        RECT view_btn = { 486, 1, 556, 20 };
         fill_rec(dev, &view_btn, COLOR_WHITE);
         drw_rec(dev, &view_btn);
-        const char *v_lbl = (g_cabinet.view_mode == CAB_VIEW_LIST) ? "[一覧表示]" : "[アイコン表示]";
+        const char *v_lbl = (g_cabinet.view_mode == CAB_VIEW_LIST) ? "[一覧]" : "[図]";
         drw_tc_string(dev, view_btn.left + 8, view_btn.top + 2, v_lbl, COLOR_BLUE, 0x00000000);
     }
 
@@ -934,23 +1192,43 @@ static void paint_vobj_manager(WND *wnd, GDEV *dev) {
 
             COLOR txt_col = is_sel ? COLOR_WHITE : COLOR_BLACK;
 
-            /* Icon badge */
-            drw_tc_string(dev, 8, y + 2, (it->type == 1) ? "[文書]" : "[画像]", is_sel ? COLOR_WHITE : COLOR_BLUE, 0x00000000);
+            /* Icon badge (col 1: x = 8..88) */
+            const char *badge = it->is_dir ? "[フォルダ]" : ((it->type == 1) ? "[文書]" : "[画像]");
+            COLOR badge_col = is_sel ? COLOR_WHITE : (it->is_dir ? COLOR_TEAL : COLOR_BLUE);
+            drw_tc_string(dev, 8, y + 2, badge, badge_col, 0x00000000);
 
-            /* Real Object Name */
-            char name_str[80];
+            int id_x = dev->width - 150 - CAB_SBAR_W;
+            int size_x = dev->width - 80 - CAB_SBAR_W;
+
+            /* Real Object Name / Page Title (col 2: x = 98 .. id_x - 8, clipped) */
+            char name_str[100];
             snprintf(name_str, sizeof(name_str), "%s", it->name);
-            drw_tc_string(dev, 60, y + 2, name_str, txt_col, 0x00000000);
+            RECT saved_clip = dev->clip;
+            if (id_x - 8 < dev->clip.right) {
+                dev->clip.right = (H)(id_x - 8);
+            }
+            if (dev->clip.right > 98) {
+                drw_tc_string(dev, 98, y + 2, name_str, txt_col, 0x00000000);
+            }
+            dev->clip = saved_clip;
 
-            /* Real Object ID */
+            /* Real Object ID (col 3) */
             char id_str[16];
-            snprintf(id_str, sizeof(id_str), "#%d", it->robj_id);
-            drw_tc_string(dev, dev->width - 150 - CAB_SBAR_W, y + 2, id_str, is_sel ? COLOR_WHITE : COLOR_DKGRAY, 0x00000000);
+            if (it->is_dir) {
+                snprintf(id_str, sizeof(id_str), "DIR");
+            } else {
+                snprintf(id_str, sizeof(id_str), "#%d", it->robj_id);
+            }
+            drw_tc_string(dev, id_x, y + 2, id_str, is_sel ? COLOR_WHITE : COLOR_DKGRAY, 0x00000000);
 
-            /* Byte Size */
+            /* Byte Size (col 4) */
             char size_str[16];
-            snprintf(size_str, sizeof(size_str), "%u B", it->size_bytes);
-            drw_tc_string(dev, dev->width - 80 - CAB_SBAR_W, y + 2, size_str, is_sel ? COLOR_WHITE : COLOR_DKGRAY, 0x00000000);
+            if (it->is_dir) {
+                snprintf(size_str, sizeof(size_str), "<DIR>");
+            } else {
+                snprintf(size_str, sizeof(size_str), "%u B", it->size_bytes);
+            }
+            drw_tc_string(dev, size_x, y + 2, size_str, is_sel ? COLOR_WHITE : COLOR_DKGRAY, 0x00000000);
         }
     } else {
         /* Grid Icon View */
@@ -1013,17 +1291,24 @@ static void paint_vobj_manager(WND *wnd, GDEV *dev) {
     fill_rec(dev, &status_r, COLOR_LTGRAY);
     drw_lin(dev, 0, dev->height - 22, dev->width, dev->height - 22);
 
-    char foot_text[128];
+    char foot_text[160];
+    const char *dir_lbl = g_cabinet.current_label[0] ? g_cabinet.current_label : "tad_bin";
     const int sidx = g_cabinet.selected_idx;
     if (sidx >= 0 && sidx < g_cabinet.item_count) {
-        snprintf(foot_text, sizeof(foot_text), "キャビネット: %d 実身 [tad_bin] | #%d: %s (%u B)",
-                 g_cabinet.item_count,
-                 g_cabinet.items[sidx].robj_id,
-                 g_cabinet.items[sidx].name,
-                 g_cabinet.items[sidx].size_bytes);
+        if (g_cabinet.items[sidx].is_dir) {
+            snprintf(foot_text, sizeof(foot_text), "キャビネット [%s]: %d 項目 | フォルダ: %s",
+                     dir_lbl, g_cabinet.item_count, g_cabinet.items[sidx].name);
+        } else {
+            snprintf(foot_text, sizeof(foot_text), "キャビネット [%s]: %d 項目 | #%d: %s (%u B)",
+                     dir_lbl,
+                     g_cabinet.item_count,
+                     g_cabinet.items[sidx].robj_id,
+                     g_cabinet.items[sidx].name,
+                     g_cabinet.items[sidx].size_bytes);
+        }
     } else {
-        snprintf(foot_text, sizeof(foot_text), "キャビネット: %d 実身 [tad_bin] | 選択なし",
-                 g_cabinet.item_count);
+        snprintf(foot_text, sizeof(foot_text), "キャビネット [%s]: %d 項目 | 選択なし",
+                 dir_lbl, g_cabinet.item_count);
     }
     drw_tc_string(dev, 10, dev->height - 17, foot_text, COLOR_BLACK, 0x00000000);
 
@@ -1112,10 +1397,27 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
     }
 
     if (evt->type == EV_BUT_DOWN) {
-        /* Quick toggle button on right of Menu Bar */
+        /* Quick history & view toggle buttons on right of Menu Bar */
         H dev_w = wnd->dev ? wnd->dev->width : 560;
         if (dev_w >= 560 && rel_y >= 0 && rel_y <= 21) {
-            if (rel_x >= 440 && rel_x <= 542) {
+#if BTRON_HOSTED
+            if (rel_x >= 418 && rel_x <= 438) {
+                cabinet_go_back();
+                inval_wnd(wnd);
+                return;
+            }
+            if (rel_x >= 440 && rel_x <= 460) {
+                cabinet_go_forward();
+                inval_wnd(wnd);
+                return;
+            }
+            if (rel_x >= 462 && rel_x <= 482) {
+                cabinet_go_home();
+                inval_wnd(wnd);
+                return;
+            }
+#endif
+            if (rel_x >= 486 && rel_x <= 556) {
                 g_cabinet.view_mode = (g_cabinet.view_mode == CAB_VIEW_LIST) ? CAB_VIEW_GRID : CAB_VIEW_LIST;
                 inval_wnd(wnd);
                 return;
@@ -1131,6 +1433,12 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
                     case CCMD_FILE_VIEW_TAD:
                         if (g_cabinet.selected_idx >= 0 && g_cabinet.selected_idx < g_cabinet.item_count) {
                             CABINET_ITEM *it = &g_cabinet.items[g_cabinet.selected_idx];
+#if BTRON_HOSTED
+                            if (it->is_dir) {
+                                cabinet_open_dir(&g_cabinet, it->path);
+                                break;
+                            }
+#endif
                             cab_open_path(it->path, it->name);
                         }
                         break;
@@ -1264,6 +1572,13 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
                 s_last_click_idx = -1;
                 s_last_click_time = 0;
                 CABINET_ITEM *it = &g_cabinet.items[idx];
+#if BTRON_HOSTED
+                if (it->is_dir) {
+                    cabinet_open_dir(&g_cabinet, it->path);
+                    inval_wnd(wnd);
+                    return;
+                }
+#endif
                 int path_len = strlen(it->path);
                 BOOL is_tad = (path_len > 4 &&
                                (strcmp(it->path + path_len - 4, ".tad") == 0 ||
@@ -1301,10 +1616,45 @@ static void handle_vobj_manager_event(WND *wnd, const EVT *evt) {
         H dev_w = (wnd->dev) ? wnd->dev->width : 560;
         H dev_h = (wnd->dev) ? wnd->dev->height : 360;
 
+        if (key == BTRON_KEY_BACKSPACE) {
+#if BTRON_HOSTED
+            if (g_cabinet.current_dir[0] != '\0' && g_cabinet.item_count > 0 &&
+                g_cabinet.items[0].is_dir && strcmp(g_cabinet.items[0].name, "..") == 0) {
+                cabinet_open_dir(&g_cabinet, g_cabinet.items[0].path);
+                inval_wnd(wnd);
+            }
+#endif
+            return;
+        }
+#if BTRON_HOSTED
+        if (key == '[' || (g_cabinet.view_mode == CAB_VIEW_LIST && key == BTRON_KEY_LEFT)) {
+            cabinet_go_back();
+            inval_wnd(wnd);
+            return;
+        }
+        if (key == ']' || (g_cabinet.view_mode == CAB_VIEW_LIST && key == BTRON_KEY_RIGHT)) {
+            cabinet_go_forward();
+            inval_wnd(wnd);
+            return;
+        }
+        if (key == 'h' || key == 'H') {
+            cabinet_go_home();
+            inval_wnd(wnd);
+            return;
+        }
+#endif
+
         if (key == '\n' || key == '\r' || key == ' ' || key == BTRON_KEY_KP_ENTER) {
             if (g_cabinet.selected_idx >= 0 && g_cabinet.selected_idx < g_cabinet.item_count) {
-                cab_open_path(g_cabinet.items[g_cabinet.selected_idx].path,
-                              g_cabinet.items[g_cabinet.selected_idx].name);
+                CABINET_ITEM *it = &g_cabinet.items[g_cabinet.selected_idx];
+#if BTRON_HOSTED
+                if (it->is_dir) {
+                    cabinet_open_dir(&g_cabinet, it->path);
+                    inval_wnd(wnd);
+                    return;
+                }
+#endif
+                cab_open_path(it->path, it->name);
             }
             return;
         }
@@ -1382,6 +1732,12 @@ BOOL cabinet_handle_click(int mouse_x, int mouse_y, BOOL is_double_click, ID *ou
         if (out_path) strncpy(out_path, g_cabinet.items[idx].path, 127);
 
         if (is_double_click) {
+#if BTRON_HOSTED
+            if (g_cabinet.items[idx].is_dir) {
+                cabinet_open_dir(&g_cabinet, g_cabinet.items[idx].path);
+                return TRUE;
+            }
+#endif
             cab_open_path(g_cabinet.items[idx].path, g_cabinet.items[idx].name);
             return TRUE;
         }

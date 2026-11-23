@@ -214,6 +214,12 @@ static void test_viewport_scrolling(void) {
 /* ── Test 6: Cabinet Explorer Selection & Real Body Activation ── */
 extern BOOL cabinet_handle_click(int mouse_x, int mouse_y, BOOL is_double_click, ID *out_robj_id, char *out_path);
 extern WND* open_vobj_manager_window(void);
+extern BOOL cabinet_can_go_back(void);
+extern BOOL cabinet_can_go_forward(void);
+extern void cabinet_go_back(void);
+extern void cabinet_go_forward(void);
+extern void cabinet_go_home(void);
+extern const char *cabinet_current_dir(void);
 
 static void test_cabinet_explorer_selection(void) {
     printf("\n[TEST GROUP 6] Cabinet Explorer Interactive Selection & Dispatch\n");
@@ -227,46 +233,90 @@ static void test_cabinet_explorer_selection(void) {
     BOOL handled = cabinet_handle_click(50, 31, FALSE, &robj, path);
     TEST_ASSERT(handled == FALSE, "Single click updates selection without modal block");
 
-    /* Row order depends on icon-tag grouping ("[b-core]" precedes "[b-free]"),
-     * so locate #103 with the same dynamic scan used for manifest.tad below. */
-    int bfree_row = -1;
-    for (int row = 0; row < 256; row++) {
-        int y = 26 + row * 22 + 5;
-        cabinet_handle_click(50, y, FALSE, &robj, path);
-        if (robj == 103 && strcmp(path, "tad_bin/b-system/03_bfree_os_book.tad") == 0) {
-            bfree_row = row;
-            break;
+    /* Verify all five book folders open with complete contents (no path aliasing). */
+    const struct { const char *dir; int min_items; const char *label; } book_checks[] = {
+        { "tad_bin/b-book",   15, "B-Book" },
+        { "tad_bin/b-media",  11, "B-Media" },
+        { "tad_bin/b-spec",    5, "B-Spec" },
+        { "tad_bin/b-system", 10, "B-System" },
+        { "tad_bin/osal",     42, "Osal Book" },
+    };
+    for (int bc = 0; bc < 5; bc++) {
+        int folder_y = -1;
+        for (int row = 0; row < 32; row++) {
+            int y = 26 + row * 22 + 5;
+            path[0] = '\0';
+            cabinet_handle_click(50, y, FALSE, &robj, path);
+            if (strcmp(path, book_checks[bc].dir) == 0) {
+                folder_y = y;
+                break;
+            }
         }
-    }
-    TEST_ASSERT(bfree_row >= 0, "Selected Real Body #103 (03_bfree_os_book.tad)");
-    TEST_ASSERT(strcmp(path, "tad_bin/b-system/03_bfree_os_book.tad") == 0, "Resolved path for #103");
+        TEST_ASSERT(folder_y >= 0, "Cabinet root displays book folder");
+        handled = cabinet_handle_click(50, folder_y, TRUE, &robj, path);
+        TEST_ASSERT(handled == TRUE, "Double click opens book folder");
 
-    /* Cabinet contents are discovered dynamically; locate manifest.tad through the
-     * same list hit-testing API rather than assuming directory enumeration order. */
-    int manifest_y = -1;
-    for (int row = 0; row < 256; row++) {
-        int y = 26 + row * 22 + 5;
-        cabinet_handle_click(50, y, FALSE, &robj, path);
-        if (robj == 106 && strcmp(path, "tad_bin/b-free/manifest.tad") == 0) {
-            manifest_y = y;
-            break;
+        int count = 0;
+        for (int row = 0; row < 64; row++) {
+            int y = 26 + row * 22 + 5;
+            char prev[128];
+            strncpy(prev, path, sizeof(prev) - 1);
+            prev[sizeof(prev) - 1] = '\0';
+            path[0] = '\0';
+            cabinet_handle_click(50, y, FALSE, &robj, path);
+            if (row > 0 && path[0] == '\0') break;
+            count++;
         }
-    }
-    if (manifest_y < 0) {
-        const char *why = "b-free/ HTML catalog no longer in the tree, so tad_bin/b-free/manifest.tad is never compiled";
-        TEST_SKIP("Selected Real Body #106 (manifest.tad)", why);
-        TEST_SKIP("Resolved path for #106", why);
-        /* Still exercise activation, on the entry this suite knows exists (#103). */
+        TEST_ASSERT(count >= book_checks[bc].min_items, "Book folder contains all expected TAD items");
+
+        /* Return to Cabinet root via row 0 ("..") */
         handled = cabinet_handle_click(50, 31, TRUE, &robj, path);
-        TEST_ASSERT(handled == TRUE, "Double click triggers TAD Real Body launch");
-    } else {
-        TEST_ASSERT(manifest_y >= 0, "Selected Real Body #106 (manifest.tad)");
-        TEST_ASSERT(strcmp(path, "tad_bin/b-free/manifest.tad") == 0, "Resolved path for #106");
-
-        /* Test double-click activation on the discovered Manifest real body */
-        handled = cabinet_handle_click(50, manifest_y, TRUE, &robj, path);
-        TEST_ASSERT(handled == TRUE, "Double click triggers TAD Real Body launch");
+        TEST_ASSERT(handled == TRUE, "Double click on '..' returns to Cabinet root");
     }
+
+    /* Enter B-System folder, locate Real Body #103 (03_bsystem_book.tad). */
+    int bsys_folder_y = -1;
+    for (int row = 0; row < 32; row++) {
+        int y = 26 + row * 22 + 5;
+        cabinet_handle_click(50, y, FALSE, &robj, path);
+        if (strcmp(path, "tad_bin/b-system") == 0) {
+            bsys_folder_y = y;
+            break;
+        }
+    }
+    TEST_ASSERT(bsys_folder_y >= 0, "Cabinet root displays B-System book folder");
+    handled = cabinet_handle_click(50, bsys_folder_y, TRUE, &robj, path);
+    TEST_ASSERT(handled == TRUE, "Double click opens B-System book folder");
+
+    /* Inside B-System folder, locate Real Body #103 (03_bsystem_book.tad). */
+    int bfree_row = -1;
+    int bfree_y = -1;
+    for (int row = 0; row < 256; row++) {
+        int y = 26 + row * 22 + 5;
+        cabinet_handle_click(50, y, FALSE, &robj, path);
+        if (robj == 103 && strcmp(path, "tad_bin/b-system/03_bsystem_book.tad") == 0) {
+            bfree_row = row;
+            bfree_y = y;
+            break;
+        }
+    }
+    TEST_ASSERT(bfree_row >= 0, "Selected Real Body #103 (03_bsystem_book.tad)");
+    TEST_ASSERT(strcmp(path, "tad_bin/b-system/03_bsystem_book.tad") == 0, "Resolved path for #103");
+
+    /* Double-click activation on #103 launches the TAD Browser. */
+    handled = cabinet_handle_click(50, bfree_y, TRUE, &robj, path);
+    TEST_ASSERT(handled == TRUE, "Double click triggers TAD Real Body launch");
+
+    /* Verify Cabinet walking history: Back -> root, Forward -> B-System, Home -> root */
+    TEST_ASSERT(strcmp(cabinet_current_dir(), "tad_bin/b-system") == 0, "Cabinet currently in tad_bin/b-system");
+    TEST_ASSERT(cabinet_can_go_back() == TRUE, "Cabinet can walk back through folder history");
+    cabinet_go_back();
+    TEST_ASSERT(cabinet_current_dir()[0] == '\0', "Cabinet Back returned to root");
+    TEST_ASSERT(cabinet_can_go_forward() == TRUE, "Cabinet can walk forward after Back");
+    cabinet_go_forward();
+    TEST_ASSERT(strcmp(cabinet_current_dir(), "tad_bin/b-system") == 0, "Cabinet Forward returned to tad_bin/b-system");
+    cabinet_go_home();
+    TEST_ASSERT(cabinet_current_dir()[0] == '\0', "Cabinet Home returned to local root");
 
     cls_wnd(wnd);
 }
@@ -310,6 +360,18 @@ static void test_browser_history_and_path_resolution(void) {
     tad_browser_go_forward(&tb);
     TEST_ASSERT(tb.history_idx == 1, "Went forward to history_idx = 1");
     TEST_ASSERT(strcmp(tb.file_path, "tad_bin/b-media/02_bcore_book.tad") == 0, "Current document restored to page 2");
+
+    /* Home button returns to this window's locally opened root document */
+    {
+        static TAD_BROWSER tb_local;
+        memset(&tb_local, 0, sizeof(tb_local));
+        tad_browser_init(&tb_local);
+        tad_browser_navigate(&tb_local, "tad_bin/b-media/B-Media.tad");
+        tad_browser_navigate(&tb_local, "tad_bin/b-media/B-Core.tad");
+        tad_browser_go_home(&tb_local);
+        TEST_ASSERT(strcmp(tb_local.file_path, "tad_bin/b-media/B-Media.tad") == 0,
+                    "Home button returned to window's local opened root (B-Media.tad)");
+    }
 
     /* Test Toolbar Button Click in handle_mouse */
     BOOL nav_hit = tad_browser_handle_mouse(&tb, 20, 15, TRUE, NULL, NULL);
@@ -509,7 +571,7 @@ static void test_canonical_books_links_resolution(void) {
     const char *book_files[] = {
         "tad_bin/b-spec/01_btron3_spec.tad",
         "tad_bin/b-media/02_bcore_book.tad",
-        "tad_bin/b-system/03_bfree_os_book.tad"
+        "tad_bin/b-system/03_bsystem_book.tad"
     };
 
     for (int b = 0; b < 3; b++) {

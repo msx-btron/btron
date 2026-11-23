@@ -425,13 +425,29 @@ _BOOK_SEG = {
     'conformance': 'b-system/conformance',
     'verification': 'b-system/verification',
 }
+# Subdirectory names that also exist inside doc/specs/os_spec/ — only remap
+# these to b-system/* when preceded by ../ or doc/.
+_AMBIGUOUS_BOOK_SEG = {'kernel'}
 
-def to_tad_href(href: str) -> str:
-    """Map a site href onto a path the TAD browser can open without source changes.
+_MEDIA_DOCS = {
+    'index': 'B-Media', 'core': 'B-Core', 'audio': 'B-Audio',
+    'video': 'B-Video', 'sound': 'B-Sound', 'rtp': 'B-RTP',
+    'msx': 'B-MSX', 'gl': 'B-GL',
+}
+
+def _map_media_leaf(leaf: str) -> str:
+    stem, ext = os.path.splitext(leaf)
+    if ext.lower() in ('.html', '.htm', '.tad') and stem in _MEDIA_DOCS:
+        return _MEDIA_DOCS[stem] + ext
+    return leaf
+
+def to_tad_href(href: str, kind: str = '') -> str:
+    """Map a site href onto a path the TAD browser can open cleanly.
 
     Intra-book relatives (kernel.html, ../shared_data/x.html) stay relative.
-    A hop into cores, media, or specs becomes b-book, b-media, or b-spec so
-    the browser's tad_bin/ prefix fallback finds the file.
+    Cross-book hops into cores, media, specs, apps, settings, kernel,
+    virtualization, conformance, or verification resolve to their canonical
+    tad_bin/ book paths, and B-Media page stems map to B-*.
     """
     if not href or href.startswith(('#', 'mailto:')) or '://' in href:
         return href
@@ -454,11 +470,26 @@ def to_tad_href(href: str) -> str:
         elif part and part != '.':
             segs.append(part)
     if segs and segs[0] == 'doc' and len(segs) > 1 and segs[1] in _BOOK_SEG:
-        segs = [_BOOK_SEG[segs[1]]] + segs[2:]
+        segs = _BOOK_SEG[segs[1]].split('/') + segs[2:]
         up = 0
-    elif segs and segs[0] in _BOOK_SEG:
-        segs = [_BOOK_SEG[segs[0]]] + segs[1:]
+    elif (segs and segs[0] in _BOOK_SEG
+          and (segs[0] not in _AMBIGUOUS_BOOK_SEG
+               or (up > 0 and not (kind == 'spec' and up <= 1)))):
+        segs = _BOOK_SEG[segs[0]].split('/') + segs[1:]
         up = 0
+    elif segs == ['index.html'] and up >= 1:
+        segs = ['b-system', 'B-System.html']
+        up = 0
+    elif segs == ['doc', 'license.html'] or (segs == ['license.html'] and up >= 1):
+        segs = ['b-system', 'license.html']
+        up = 0
+
+    # Map B-Media HTML stems (gl.html -> B-GL.html, core.html -> B-Core.html, etc.)
+    if len(segs) == 2 and segs[0] == 'b-media':
+        segs[1] = _map_media_leaf(segs[1])
+    elif kind == 'media' and len(segs) == 1 and up <= 1:
+        segs[0] = _map_media_leaf(segs[0])
+
     return ('../' * up) + '/'.join(segs) + query + frag
 
 def _image_file(src: str, base_dir: str) -> str:
@@ -475,7 +506,7 @@ def _image_file(src: str, base_dir: str) -> str:
 
 
 # ── Binary TAD Compiler ───────────────────────────────────────────────────────
-def compile_to_binary_tad(elements: list, base_dir: str = '') -> bytes:
+def compile_to_binary_tad(elements: list, base_dir: str = '', kind: str = '') -> bytes:
     init = seg_page()+seg_font(0,1)+seg_char(12,400,0x000000)+seg_ruler(22,0)
     body = b''
     for elem in elements:
@@ -548,7 +579,7 @@ def compile_to_binary_tad(elements: list, base_dir: str = '') -> bytes:
             w, h = get_image_dimensions(path) if path else (480, 140)
             body += seg_image(src, alt, int(w), int(h))
         elif tag == 'link':
-            href = to_tad_href(elem[1])
+            href = to_tad_href(elem[1], kind)
             body += seg_vobj(link_id(href), elem[2], href)
 
     payload = init + body
@@ -556,7 +587,7 @@ def compile_to_binary_tad(elements: list, base_dir: str = '') -> bytes:
 
 
 # ── Symbolic TAD Compiler ─────────────────────────────────────────────────────
-def compile_to_symbolic_tad(elements: list, doc_title: str = 'B-Book Reference Manual') -> str:
+def compile_to_symbolic_tad(elements: list, doc_title: str = 'B-Book Reference Manual', kind: str = '') -> str:
     today = date.today().isoformat()
     header = (
         '================================================================================\n'
@@ -610,7 +641,7 @@ def compile_to_symbolic_tad(elements: list, doc_title: str = 'B-Book Reference M
         elif tag == 'hr':
             parts.append('─'*70)
         elif tag == 'link':
-            href = to_tad_href(elem[1])
+            href = to_tad_href(elem[1], kind)
             parts.append(f'[仮身] #{link_id(href)} : {elem[2]} -> [{href}]')
         elif tag == 'image':
             src, alt = elem[1], elem[2] if len(elem) > 2 else ''
@@ -619,13 +650,22 @@ def compile_to_symbolic_tad(elements: list, doc_title: str = 'B-Book Reference M
 
 
 # ── Doc title name ────────────────────────────────────────────────────────────
-_MEDIA_DOCS = {
-    'index': 'B-Media', 'core': 'B-Core', 'audio': 'B-Audio',
-    'video': 'B-Video', 'sound': 'B-Sound', 'rtp': 'B-RTP',
-    'msx': 'B-MSX', 'gl': 'B-GL',
+_SUBDIR_TITLES = {
+    'vobject': 'VObject',
+    'hmi': 'HMI',
+    'os_spec': 'OS_Spec',
+    'shared_data': 'Shared_Data',
+    'apps': 'Apps',
+    'settings': 'Settings',
+    'kernel': 'Kernel',
+    'virtualization': 'Virtualization',
+    'conformance': 'Conformance',
+    'verification': 'Verification',
+    'theorems': 'Theorems',
 }
 
-def _doc_title_name(base_name: str, html_path: str, src_root: str, kind: str) -> str:
+def _doc_title_name(base_name: str, html_path: str, src_root: str, kind: str,
+                    index_title: str = '') -> str:
     if (kind == 'media' and base_name in _MEDIA_DOCS
             and os.path.dirname(os.path.abspath(html_path)) == os.path.abspath(src_root)):
         return _MEDIA_DOCS[base_name]
@@ -634,8 +674,10 @@ def _doc_title_name(base_name: str, html_path: str, src_root: str, kind: str) ->
     rel = os.path.relpath(html_path, src_root) if src_root else html_path
     sub = os.path.dirname(rel)
     if sub and sub != '.':
-        m = {'vobject':'VObject','hmi':'HMI'}
-        return m.get(sub.lower(), sub.lower().capitalize())
+        leaf = os.path.basename(sub).lower()
+        return _SUBDIR_TITLES.get(leaf, leaf.capitalize())
+    if index_title:
+        return index_title
     if kind == 'spec':
         return 'B-Spec'
     if kind == 'media':
@@ -645,6 +687,20 @@ def _doc_title_name(base_name: str, html_path: str, src_root: str, kind: str) ->
     return 'B-Book'
 
 
+def _clean_page_title(title: str, kind: str, doc_title_name: str) -> str:
+    """Normalize HTML <title> into a clean TAD page title for each book."""
+    t = title.strip()
+    if kind == 'media':
+        t = re.sub(r'\s*\|\s*B-Book\s*$', ' | B-Media', t)
+    elif kind == 'book':
+        if doc_title_name == 'B-Book':
+            t = "B-Book — Developer's Systems & API Reference"
+    elif kind == 'system':
+        if doc_title_name == 'B-System':
+            t = 'B-System — Media OS (BTRON3 3.20)'
+    return t or doc_title_name
+
+
 # ── File Processor ────────────────────────────────────────────────────────────
 def _copy_asset_dir(html_dir: str, target_dir: str, name: str) -> None:
     src = os.path.join(html_dir, name)
@@ -652,7 +708,8 @@ def _copy_asset_dir(html_dir: str, target_dir: str, name: str) -> None:
     if os.path.isdir(src) and not os.path.isdir(dst):
         shutil.copytree(src, dst)
 
-def process_file(html_path: str, target_dir: str, src_root: str = '', kind: str = 'book') -> dict:
+def process_file(html_path: str, target_dir: str, src_root: str = '',
+                 kind: str = 'book', index_title: str = '') -> dict:
     os.makedirs(target_dir, exist_ok=True)
     html_dir = os.path.dirname(os.path.abspath(html_path))
     for asset in ('gif', 'img', 'figures'):
@@ -663,16 +720,17 @@ def process_file(html_path: str, target_dir: str, src_root: str = '', kind: str 
 
     # title from <title> tag
     tm = re.search(r'<title>(.*?)</title>', html, re.I|re.S)
-    title = decode_entities(strip_tags(tm.group(1))) if tm else base_name
+    raw_title = decode_entities(strip_tags(tm.group(1))) if tm else base_name
 
     elements = parse_book_html(html)
-    doc_title_name = _doc_title_name(base_name, html_path, src_root, kind)
+    doc_title_name = _doc_title_name(base_name, html_path, src_root, kind, index_title)
+    title = _clean_page_title(raw_title, kind, doc_title_name)
 
     bin_path = os.path.join(target_dir, doc_title_name+'.tad')
     txt_path = os.path.join(target_dir, doc_title_name+'.tad.txt')
 
-    bin_tad = compile_to_binary_tad(elements, html_dir)
-    sym_tad = compile_to_symbolic_tad(elements, title)
+    bin_tad = compile_to_binary_tad(elements, html_dir, kind)
+    sym_tad = compile_to_symbolic_tad(elements, title, kind)
 
     with open(bin_path,'wb') as f: f.write(bin_tad)
     with open(txt_path,'w',encoding='utf-8') as f: f.write(sym_tad)
@@ -741,8 +799,8 @@ def run_tests():
 
     chk(to_tad_href('../cores/window.html') == 'b-book/window.html',
         'Site cores link maps to tad_bin b-book')
-    chk(to_tad_href('../media/gl.html') == 'b-media/gl.html',
-        'Site media link maps to tad_bin b-media')
+    chk(to_tad_href('../media/gl.html') == 'b-media/B-GL.html',
+        'Site media link maps to tad_bin b-media B-GL')
     chk(to_tad_href('../../specs/shared_data/tad1.html') == 'b-spec/shared_data/tad1.html',
         'Site specs link maps to tad_bin b-spec')
     chk(to_tad_href('kernel.html') == 'kernel.html', 'Intra-book link stays relative')
@@ -832,17 +890,17 @@ def compile_foundational_books(target_dir: str = 'tad_bin') -> None:
         ]),
         ('p', 'セクタプール保存則 pool_free + Σ resident = 64 と enq = deq + drop により、Clean-room BTRONマイクロカーネルの通信心臓部は実行時ヒープ確保ゼロで動作する。'),
     ]
-    bfree_elements = [
-        ('h1', 'B-Free 自由なBTRON3オペレーティングシステム技術解説書'),
+    bsystem_elements = [
+        ('h1', 'B-System (BTRON3 3.20) オペレーティングシステム技術解説書'),
         ('image', 'b-spec/os_spec/kernel/gif/filesystem.gif',
          '図 3: BTRON ファイルシステム構造仕様 (Filesystem Structure)'),
-        ('h2', '設計理念と自由ソフトウェアの精神'),
-        ('p', 'Ken Sakamura教授が提唱した「万人に開かれた標準」をGPL (GNU General Public License) の下で実現するクリーンルーム実装。'),
+        ('h2', '設計理念とオープン標準の精神'),
+        ('p', 'Ken Sakamura教授が提唱した「万人に開かれた標準」をISC / DHARMAライセンスの下で実現するB-Systemクリーンルーム実装。'),
     ]
     books = [
         (os.path.join('b-spec', '01_btron3_spec'), 'BTRON3 3.20 Specification Book', btron3_elements),
         (os.path.join('b-media', '02_bcore_book'), 'B-Core InterCore Streaming Protocol Book', bcore_elements),
-        (os.path.join('b-system', '03_bfree_os_book'), 'B-Free Operating System Book', bfree_elements),
+        (os.path.join('b-system', '03_bsystem_book'), 'B-System Operating System Book', bsystem_elements),
     ]
     print('======================================================================')
     print(' B-System Foundational TAD Books (article compiler)')
@@ -861,7 +919,7 @@ def compile_foundational_books(target_dir: str = 'tad_bin') -> None:
     print('======================================================================\n')
 
 
-def compile_catalog(src_dir: str, out_dir: str, kind: str) -> int:
+def compile_catalog(src_dir: str, out_dir: str, kind: str, index_title: str = '') -> int:
     if not os.path.isdir(src_dir):
         print(f'  [SKIP] {src_dir} is not present')
         return 0
@@ -874,7 +932,7 @@ def compile_catalog(src_dir: str, out_dir: str, kind: str) -> int:
         rel = os.path.relpath(html_file, src_dir)
         sub = os.path.dirname(rel)
         tdir = out_dir if (not sub or sub == '.') else os.path.join(out_dir, sub)
-        res = process_file(html_file, tdir, src_dir, kind)
+        res = process_file(html_file, tdir, src_dir, kind, index_title)
         out_n = os.path.relpath(res['bin_path'], 'tad_bin')
         print(f"  [BOOK2TAD] {rel.ljust(42)} -> {out_n} "
               f"({res['elements_count']} items, {res['bin_bytes']} bytes)")
@@ -894,20 +952,20 @@ def compile_catalog(src_dir: str, out_dir: str, kind: str) -> int:
 ALLOWED_TOP_DIRS = {'b-book', 'b-media', 'b-spec', 'b-system', 'osal'}
 
 CATALOGS = (
-    ('doc/cores',          'tad_bin/b-book',                  'book'),
-    ('doc/media',          'tad_bin/b-media',                 'media'),
-    ('doc/specs',          'tad_bin/b-spec',                  'spec'),
-    ('apps',               'tad_bin/b-system/apps',           'system'),
-    ('settings',           'tad_bin/b-system/settings',       'system'),
-    ('doc/kernel',         'tad_bin/b-system/kernel',         'system'),
-    ('doc/virtualization', 'tad_bin/b-system/virtualization', 'system'),
-    ('doc/conformance',    'tad_bin/b-system/conformance',    'system'),
-    ('doc/verification',   'tad_bin/b-system/verification',   'system'),
+    ('doc/cores',          'tad_bin/b-book',                  'book',   'B-Book'),
+    ('doc/media',          'tad_bin/b-media',                 'media',  'B-Media'),
+    ('doc/specs',          'tad_bin/b-spec',                  'spec',   'B-Spec'),
+    ('apps',               'tad_bin/b-system/apps',           'system', 'Apps'),
+    ('settings',           'tad_bin/b-system/settings',       'system', 'Settings'),
+    ('doc/kernel',         'tad_bin/b-system/kernel',         'system', 'Kernel'),
+    ('doc/virtualization', 'tad_bin/b-system/virtualization', 'system', 'Virtualization'),
+    ('doc/conformance',    'tad_bin/b-system/conformance',    'system', 'Conformance'),
+    ('doc/verification',   'tad_bin/b-system/verification',   'system', 'Verification'),
 )
 
 SYSTEM_SINGLE_PAGES = (
-    ('index.html',       'tad_bin/b-system', 'system'),
-    ('doc/license.html', 'tad_bin/b-system', 'system'),
+    ('index.html',       'tad_bin/b-system', 'system', 'B-System'),
+    ('doc/license.html', 'tad_bin/b-system', 'system', 'License'),
 )
 
 
@@ -918,14 +976,17 @@ def _clean_tad_bin_leftovers(root: str = 'tad_bin') -> None:
         path = os.path.join(root, entry)
         if entry not in ALLOWED_TOP_DIRS or not os.path.isdir(path):
             if os.path.isdir(path) and not os.path.islink(path):
-                shutil.rmtree(path)
+                shutil.rmtree(path, ignore_errors=True)
             else:
-                os.unlink(path)
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
     # Rebuild the four HTML-compiled book folders fresh (preserve osal/).
     for d in ('b-book', 'b-media', 'b-spec', 'b-system'):
         p = os.path.join(root, d)
         if os.path.isdir(p):
-            shutil.rmtree(p)
+            shutil.rmtree(p, ignore_errors=True)
         os.makedirs(p, exist_ok=True)
     os.makedirs(os.path.join(root, 'osal'), exist_ok=True)
 
@@ -936,9 +997,9 @@ if __name__ == '__main__':
         run_tests()
 
     _clean_tad_bin_leftovers('tad_bin')
-    for src_dir, out_dir, kind in CATALOGS:
-        compile_catalog(src_dir, out_dir, kind)
-    for html_file, out_dir, kind in SYSTEM_SINGLE_PAGES:
+    for src_dir, out_dir, kind, index_title in CATALOGS:
+        compile_catalog(src_dir, out_dir, kind, index_title)
+    for html_file, out_dir, kind, index_title in SYSTEM_SINGLE_PAGES:
         if os.path.isfile(html_file):
-            process_file(html_file, out_dir, os.path.dirname(html_file) or '.', kind)
+            process_file(html_file, out_dir, os.path.dirname(html_file) or '.', kind, index_title)
     compile_foundational_books('tad_bin')
