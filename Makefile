@@ -617,6 +617,7 @@ COMMON_NO_SDL_SRCS = \
     src/desktop/font/troncode.c    \
     src/desktop/font/jis_fonts.c   \
     src/desktop/font/tibetan_fonts.c \
+    src/desktop/font/schrift.c     \
     src/desktop/window/wnd.c       \
     src/desktop/window/app_menu.c  \
     src/desktop/window/event.c     \

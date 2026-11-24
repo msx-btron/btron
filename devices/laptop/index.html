@@ -1,36 +1,278 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Laptop | B-System</title>
-  <meta name="description" content="Command post and vehicle mount. LAPTOP is 800×600, 1024×768, and 1280×1024.">
-  <link rel="stylesheet" href="../../index.css">
-  <link rel="stylesheet" href="../../ricepaper.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LAPTOP — Command Post &amp; Industrial SCADA Console | B-System µBTRON SDK</title>
+    <meta name="description" content="µBTRON SDK Tier 1 LAPTOP shell (800×600 – 1280×1024): overlapping window compositor and 12 industrial instrument controls for tactical command posts, vehicle mounts, and enterprise edge SCADA consoles.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../index.css?v=2">
+    <link rel="stylesheet" href="../../ricepaper.css">
+    <style>
+        :root {
+            --jp-font: 'Noto Sans JP', 'Inter', system-ui, -apple-system, sans-serif;
+            --mincho-font: 'Shippori Mincho', 'Noto Sans JP', serif;
+            --mono-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+            --tron-teal: #008080;
+            --tron-blue: #0057b7;
+            --tron-indigo: #283593;
+        }
+        body { font-family: var(--jp-font); letter-spacing: 0.015em; }
+        .jp-title { font-family: var(--mincho-font); }
+        .tier-breadcrumb {
+            display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1.4rem 0;
+        }
+        .tier-breadcrumb a {
+            text-decoration: none; font-weight: 700; font-size: 0.84rem;
+            padding: 0.34rem 0.78rem; border-radius: 999px;
+            border: 1px solid #cbd5e1; background: #fff; color: #003366;
+        }
+        .tier-breadcrumb a.active {
+            background: #0057b7; color: #fff; border-color: #0057b7;
+        }
+        .audit-card {
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid #d8d7d1; border-radius: 14px;
+            padding: 1.8rem 2rem; margin-bottom: 1.8rem;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+        }
+        .audit-card h3 {
+            font-family: var(--mincho-font); color: var(--tron-indigo);
+            border-bottom: 2px solid #e2e8f0; padding-bottom: 0.55rem; margin: 0 0 1rem 0;
+        }
+        .pos-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 1.2rem; margin-top: 0.8rem;
+        }
+        .pos-box {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid var(--tron-blue);
+            border-radius: 0 10px 10px 0; padding: 1.15rem 1.35rem;
+        }
+        .pos-box h4 { margin: 0 0 0.45rem 0; color: #0f172a; font-size: 1rem; }
+        .pos-box p { margin: 0 0 0.5rem 0; font-size: 0.9rem; line-height: 1.75; color: #334155; }
+        .pos-box p:last-child { margin-bottom: 0; font-size: 0.82rem; color: #64748b; line-height: 1.62; }
+        .conformance-table {
+            width: 100%; border-collapse: collapse; margin: 1rem 0 0 0; font-size: 0.92rem;
+        }
+        .conformance-table th, .conformance-table td {
+            padding: 0.72rem 0.9rem; text-align: left;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08); vertical-align: top;
+        }
+        .conformance-table th {
+            background: rgba(0, 87, 183, 0.06); color: var(--tron-blue); font-weight: 700; white-space: nowrap;
+        }
+        .mono { font-family: var(--mono-font); font-size: 0.86em; }
+        .badge-pass {
+            display: inline-block; background: #e8f5e9; color: #2e7d32;
+            border: 1px solid #a5d6a7; padding: 0.18rem 0.55rem;
+            border-radius: 6px; font-weight: 700; font-size: 0.8rem;
+        }
+        .ctl-name { font-weight: 600; color: #003366; }
+        .ctl-name small { display: block; font-weight: 500; color: #64748b; margin-top: 0.1rem; }
+        .screen-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 1.5rem; margin-top: 1.2rem;
+        }
+        .screen-card {
+            background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 12px;
+            padding: 1.1rem; display: flex; flex-direction: column;
+        }
+        .screen-card img {
+            width: 100%; height: auto; display: block; image-rendering: pixelated;
+            background: #0f172a;
+        }
+        .screen-caption { margin-top: 0.85rem; }
+        .screen-caption strong { display: block; color: #003366; font-size: 0.96rem; margin-bottom: 0.25rem; }
+        .screen-caption p { margin: 0; font-size: 0.85rem; color: #475569; line-height: 1.6; }
+    </style>
 </head>
 <body>
-  <nav class="sticky" aria-label="Site navigation">
-  <div class="nav-container">
-    <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
-    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
-      <span class="hamburger"></span>
-    </button>
-    <ul class="nav-links">
-<li><a href="../../index.html">System</a></li>
-<li><a href="../../apps/index.html">Applications</a></li>
-<li><a href="../index.html" class="active">Devices</a></li>
-<li><a href="../../doc/index.html">Books</a></li>
-<li><a href="https://depot.btron.pro/">Downloads</a></li>
-</ul>
-  </div>
-</nav>
-  <header class="rice-hero">
-    <h1>Laptop</h1>
-    <div class="rice-rule"></div>
-    <p class="rice-lede">Command post and vehicle mount. LAPTOP is 800×600, 1024×768, and 1280×1024.</p>
-  </header>
-  <main class="rice-main">
-    <p>Windows overlap. Maps and logs share the desk. The shell is selected by <code>BTRON_RES</code>, not by guessing from the framebuffer width. See the resolution table on the <a href="../index.html#resolutions">devices page</a> and the desktop frames at <a href="../index.html#desk-desktop">laptop screens</a>. Sources: <code>src/desktop/ui/desktop/</code>.</p>
-  </main>
+
+    <nav class="sticky" aria-label="Site navigation">
+        <div class="nav-container">
+            <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+            <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+                <span class="hamburger"></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="../../index.html">System</a></li>
+                <li><a href="../../apps/index.html">Applications</a></li>
+                <li><a href="../index.html" class="active">Devices</a></li>
+                <li><a href="../../doc/index.html">Books</a></li>
+                <li><a href="https://depot.btron.pro/">Downloads</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <header class="rice-hero">
+        <h1>LAPTOP · 指令卓・車載席</h1>
+        <div class="rice-rule"></div>
+        <p class="rice-lede">800×600 から 1280×1024 まで。戦術司令部コンソールおよび産業エッジ SCADA 監視卓を担う多重ウィンドウ・計器シェル。<br>
+        Command post, vehicle mount, and industrial SCADA console (800×600 – 1280×1024). Overlapping windows and 12 deterministic instrument controls.</p>
+    </header>
+
+    <main style="max-width: 1160px; margin: 0 auto; padding: 1.5rem 1.5rem 4rem;">
+
+        <nav class="tier-breadcrumb" aria-label="Device tiers">
+            <a href="../index.html">← Devices Portal</a>
+            <a href="index.html" class="active">LAPTOP</a>
+            <a href="../handheld/index.html">HANDHELD</a>
+            <a href="../pocket/index.html">POCKET</a>
+            <a href="../band/index.html">BAND</a>
+            <a href="../key/index.html">KEY</a>
+        </nav>
+
+        <!-- Academic & Commercial Positioning -->
+        <section class="audit-card">
+            <h3>戦術通信・産業エッジにおける位置づけ (Tactical &amp; Industrial Edge Positioning)</h3>
+            <div class="pos-grid">
+                <div class="pos-box">
+                    <h4>戦術司令部・車載 C4ISR (Warfare Command Post)</h4>
+                    <p>
+                        移動司令部（TOC）、装甲車載席、および通信統制卓では、戦術地図・暗号通信ログ・部隊実身キャビネット・システム端末を同時に重ねて視認する必要がある。<code>BTRON_UI_LAPTOP</code> は三段階プリエンプティブ合成（Clipper / Compositor / Presenter）により、割り込み制限下の堅牢 x86_64 UEFI SMP や Raspberry Pi 400 実機上でも 60 FPS の確定論的応答を維持し、外部ウィンドウサーバやクラウド依存を完全に排除する。
+                    </p>
+                    <p>
+                        Designed for Tactical Operations Centers (TOCs) and armored vehicle mounts, <code>BTRON_UI_LAPTOP</code> renders overlapping maps, signal logs, and Real-Object cabinets via a deterministic tri-stage compositor on bare-metal x86_64 UEFI SMP and ARM64 (Pi 400) with zero external display-server attack surface.
+                    </p>
+                </div>
+                <div class="pos-box" style="border-left-color: var(--tron-teal);">
+                    <h4>産業エッジ SCADA / DCS 監視卓 (Industrial Edge HMI)</h4>
+                    <p>
+                        変電所保護継電盤、鉄道運行管理卓、プラント分散制御システム（DCS）、およびエッジ製造ラインでは、誤操作を物理的・視覚的に防ぐ標準計器群が不可欠である。LAPTOP シェルは TRON HMI 規格に準拠した 12 種の専用計器コントロール（トグル、三点スイッチ、ロータリ、バーメータ、状態ランプ、数値表示器等）を標準装備し、長期固定構成の産業エッジ機器に高い監査性と保守性を提供する。
+                    </p>
+                    <p>
+                        Built for substations, rail dispatch desks, and factory-floor SCADA/DCS consoles, the LAPTOP shell ships 12 TRON-compliant industrial instrument controls—switches, rotaries, bar meters, status lamps, and digital readouts—guaranteeing auditable, long-lifecycle HMI parity across edge enterprise fleets.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Resolution Table -->
+        <section class="audit-card">
+            <h3>対象解像度とアーキテクチャ (Requested Resolutions &amp; Sources)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                要求値 <code class="mono">BTRON_RES</code> が 800×600 以上を指定すると <code class="mono">btron_desk_for_res()</code> は <code class="mono">LAPTOP</code> を選択する。実装ソース：<code class="mono">src/desktop/ui/desktop/</code>、<code class="mono">src/desktop/window/wnd.c</code>、<code class="mono">include/btron/desktop_res.h</code>。
+            </p>
+            <table class="conformance-table">
+                <thead>
+                    <tr><th>BTRON_RES</th><th>解像度 (Pixels)</th><th>プロファイル名</th><th>主な実機ターゲット</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="mono">BTRON_RES_VESA_1280X1024</td><td class="mono">1280×1024</td><td>VESA Desktop</td><td>x86_64 UEFI SMP 監視卓、Pi 400 HDMI</td></tr>
+                    <tr><td class="mono">BTRON_RES_WORK_1024X768</td><td class="mono">1024×768</td><td>Workspace Desktop</td><td>車載堅牢パネル、QEMU VirtIO / T-Kernel</td></tr>
+                    <tr><td class="mono">BTRON_RES_WS_800X600</td><td class="mono">800×600</td><td>Workstation Desktop</td><td>組み込み産業パネル PC、m68k / PC-98</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Screenshots Showcase -->
+        <section class="audit-card">
+            <h3>実機フレームバッファ画面 (Native LAPTOP Framebuffer Captures)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                仮想マシンや X11 を介さず、B-System のネイティブ C99 GDEV フレームバッファから直接抽出された LAPTOP シェルの実動画面。
+            </p>
+            <p style="font-size:0.86rem; color:#64748b; margin-top:0.3rem;">
+                Direct C99 headless framebuffer captures of the LAPTOP compositor, Real-Object Cabinet, terminal console, volume partitioner, and control panel.
+            </p>
+            <div class="screen-grid">
+                <div class="screen-card">
+                    <img src="../../img/screens/Desktop_Full.png" alt="B-System LAPTOP Full Desktop Workbench">
+                    <div class="screen-caption">
+                        <strong>1. ワークベンチ全体 (Command Post Workbench)</strong>
+                        <p>グローバルメニューバー、多重ウィンドウ、実身キャビネット、システム端末が同時稼働する LAPTOP 基準画面。</p>
+                    </div>
+                </div>
+                <div class="screen-card">
+                    <img src="../../img/screens/Cabinet_Menu_Opened.png" alt="Real-Object Cabinet with File Menu Opened">
+                    <div class="screen-caption">
+                        <strong>2. 実身キャビネット (Real-Object Cabinet)</strong>
+                        <p>戦術文書・設定・ログを階層的かつハイパーリンク構造で一元管理する BTRON 実身／仮身ブラウザ。</p>
+                    </div>
+                </div>
+                <div class="screen-card">
+                    <img src="../../img/screens/Terminal_Menu_Opened.png" alt="gterm Console Terminal">
+                    <div class="screen-caption">
+                        <strong>3. 端末シェル (gterm / CLU Console)</strong>
+                        <p>ANSI 準拠の対話型コンソールと CLU コマンド群。ネットワーク・ボリューム・タスク診断を直接実行。</p>
+                    </div>
+                </div>
+                <div class="screen-card">
+                    <img src="../../img/screens/DriveSetup_Menu_Opened.png" alt="Volumes DriveSetup Partition Manager">
+                    <div class="screen-caption">
+                        <strong>4. ボリューム管理 (Volumes / DriveSetup)</strong>
+                        <p>MBR/GPT 多重区画イメージ（<code>/SYS</code>・<code>/ANDERS</code>・<code>/CHOKANJI</code>）の整合検証と配備管理。</p>
+                    </div>
+                </div>
+                <div class="screen-card">
+                    <img src="../../img/screens/Preferences_Settings.png" alt="Settings Control Panel Hub">
+                    <div class="screen-caption">
+                        <strong>5. 環境設定キャビネット (Control Panel Hub)</strong>
+                        <p>外観・表示・入力・言語・通信網・音響・保全を統括する 10 大設定アプレット群。</p>
+                    </div>
+                </div>
+                <div class="screen-card">
+                    <img src="../../img/screens/Editor_Menu_Opened.png" alt="T-Editor Structured TAD Document Editor">
+                    <div class="screen-caption">
+                        <strong>6. 基本文章編集 (T-Editor / TAD Spec 3.20)</strong>
+                        <p>仮身リンク埋込と Mozc/Wylie 多言語入力に対応した標準構造化ドキュメントエディタ。</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Instrument Controls Table -->
+        <section class="audit-card" id="controls">
+            <h3>計器コントロール一式 (Industrial Instrument Controls)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                計器一式は LAPTOP の指令卓、車載席、および Raspberry Pi 400 産業パネルに標準搭載される。共通コントロール（チェックボックス、ラジオボタン、プログレス、スクロールバー、グループ、ラベル、テキストエリア、コンボボックス）と合わせて厳密な制御盤 UI を構成する。
+            </p>
+            <p style="font-size:0.86rem; color:#64748b; margin-top:0.3rem;">
+                The 12-control industrial instrument set ships exclusively on the LAPTOP tier (command post, vehicle mount, and Pi 400), complementing the standard desktop widget primitives.
+            </p>
+            <table class="conformance-table">
+                <thead>
+                    <tr><th>コントロール (Control)</th><th>役割・操作意味論 (Role &amp; Semantics)</th><th>対応シェル</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="ctl-name">押しボタン<small>Push switch</small></td><td>押下中のみ通電（モーメンタリ操作）</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">トグル<small>Toggle switch</small></td><td>二値状態の機械的ラッチ保持</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">三点スイッチ<small>Standard triad</small></td><td>三位置（AUTO / OFF / MANUAL 等）の確定選択</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">上下セレクタ<small>Up/down selector</small></td><td>離散ステップの段階的増減</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">ラジオセレクタ<small>Radio selector</small></td><td>排他的モード群からの単一選択</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">ロータリ<small>Rotary selector</small></td><td>停止ノッチ位置までの回転切替</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">スライダー<small>Slider volume</small></td><td>連続量の直線アナログ調整</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">ダイヤル<small>Dial volume</small></td><td>連続量の回転角アナログ調整</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">バーメーター<small>Bar meter</small></td><td>出力・電圧・信号強度の帯状可視化</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">状態ランプ<small>Status lamp</small></td><td>異常・稼働・待機の明滅インジケータ</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">数値表示<small>Digital display</small></td><td>固定幅の高視認デジタル計測値読取り</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                    <tr><td class="ctl-name">方向パッド<small>Universal pad</small></td><td>上下左右の連続パン・照準・軸制御</td><td><span class="badge-pass">LAPTOP</span></td></tr>
+                </tbody>
+            </table>
+        </section>
+
+    </main>
+
+
+    <footer>
+        <div class="footer-bottom">
+            <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+                <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+            </a>
+            <div class="footer-legal">
+                <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+                    &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+                </p>
+                <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+                    <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Cho-Kanji (超漢字), B-right/V, and PMC are registered trademarks of Personal Media Corporation. SONY&reg;, PlayStation&reg;, PS2&reg;, Emotion Engine&reg; (EE), Graphics Synthesizer&reg; (GS), and DualShock&reg; are registered trademarks or trademarks of Sony Group Corporation / Sony Interactive Entertainment Inc. MSX&trade;, MSX2&reg;, MSX2+&reg;, and MSX turbo R&reg; are registered trademarks of MSX Licensing Corporation and ASCII Corporation. Microsoft&reg;, MS-DOS&reg;, and Windows&reg; are registered trademarks of Microsoft Corporation. Quake&reg; is a registered trademark of id Software LLC / ZeniMax Media Inc. / Microsoft Corporation. PC-9801&reg; and PC-9821&reg; are registered trademarks of NEC Corporation. Nintendo&reg; and Nintendo 64&reg; (N64) are registered trademarks of Nintendo Co., Ltd. Apple&reg;, Macintosh&reg;, and Mac OS&reg; are registered trademarks of Apple Inc. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; is a trademark of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. Intel&reg; and Pentium&reg; are registered trademarks of Intel Corporation. Adobe&reg; and PostScript&reg; are registered trademarks of Adobe Systems Incorporated. Google&reg; and Mozc&trade; are trademarks of Google LLC. Erlang / OTP is a trademark of Telefonaktiebolaget LM Ericsson. All other manufacturer designations, silicon architectures, and software titles cited within this repository are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System implementation contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+                </p>
+                <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+                    btron.pro &nbsp;·&nbsp; High-Assurance VirtIO Hypervisor &amp; BTRON 3.20 Architecture &nbsp;·&nbsp; Under ISC / DHARMA License &nbsp;·&nbsp; Conforming to NASA/JPL Power of Ten Rules
+                </p>
+            </div>
+        </div>
+    </footer>
+
 </body>
 </html>

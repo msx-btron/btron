@@ -1,36 +1,410 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Handheld | B-System</title>
-  <meta name="description" content="The two-hand tactical set. HANDHELD reference is 640×480. Published frames are the 480×640 portrait.">
-  <link rel="stylesheet" href="../../index.css">
-  <link rel="stylesheet" href="../../ricepaper.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HANDHELD — Two-Hand Tactical Communicator &amp; Field HMI | B-System µBTRON SDK</title>
+    <meta name="description" content="µBTRON SDK Tier 2 HANDHELD shell (640×480 / 480×640 portrait): keypad-first tactical communicator and industrial field maintenance terminal with 18 live framebuffer captures and 2004–2009 ARM handset matrix.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../index.css?v=2">
+    <link rel="stylesheet" href="../../ricepaper.css">
+    <style>
+        :root {
+            --jp-font: 'Noto Sans JP', 'Inter', system-ui, -apple-system, sans-serif;
+            --mincho-font: 'Shippori Mincho', 'Noto Sans JP', serif;
+            --mono-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+            --tron-teal: #008080;
+            --tron-blue: #0057b7;
+            --tron-indigo: #283593;
+        }
+        body { font-family: var(--jp-font); letter-spacing: 0.015em; }
+        .tier-breadcrumb { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1.4rem 0; }
+        .tier-breadcrumb a {
+            text-decoration: none; font-weight: 700; font-size: 0.84rem;
+            padding: 0.34rem 0.78rem; border-radius: 999px;
+            border: 1px solid #cbd5e1; background: #fff; color: #003366;
+        }
+        .tier-breadcrumb a.active { background: #9d174d; color: #fff; border-color: #9d174d; }
+        .audit-card {
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid #d8d7d1; border-radius: 14px;
+            padding: 1.8rem 2rem; margin-bottom: 1.8rem;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+        }
+        .audit-card h3 {
+            font-family: var(--mincho-font); color: var(--tron-indigo);
+            border-bottom: 2px solid #e2e8f0; padding-bottom: 0.55rem; margin: 0 0 1rem 0;
+        }
+        .pos-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 1.2rem; margin-top: 0.8rem;
+        }
+        .pos-box {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #9d174d;
+            border-radius: 0 10px 10px 0; padding: 1.15rem 1.35rem;
+        }
+        .pos-box h4 { margin: 0 0 0.45rem 0; color: #0f172a; font-size: 1rem; }
+        .pos-box p { margin: 0 0 0.5rem 0; font-size: 0.9rem; line-height: 1.75; color: #334155; }
+        .pos-box p:last-child { margin-bottom: 0; font-size: 0.82rem; color: #64748b; line-height: 1.62; }
+        .conformance-table {
+            width: 100%; border-collapse: collapse; margin: 1rem 0 0 0; font-size: 0.9rem;
+        }
+        .conformance-table th, .conformance-table td {
+            padding: 0.7rem 0.85rem; text-align: left;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08); vertical-align: top;
+        }
+        .conformance-table th {
+            background: rgba(0, 87, 183, 0.06); color: var(--tron-blue); font-weight: 700; white-space: nowrap;
+        }
+        .mono { font-family: var(--mono-font); font-size: 0.86em; }
+        .model { font-weight: 600; color: var(--tron-blue); }
+        .badge-pass { display: inline-block; background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; padding: 0.18rem 0.55rem; border-radius: 6px; font-weight: 700; font-size: 0.8rem; }
+        .badge-partial { display: inline-block; background: #fff8e1; color: #f57f17; border: 1px solid #ffe082; padding: 0.18rem 0.55rem; border-radius: 6px; font-weight: 700; font-size: 0.8rem; }
+        .badge-fail { display: inline-block; background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; padding: 0.18rem 0.55rem; border-radius: 6px; font-weight: 700; font-size: 0.8rem; }
+        .excellent { color: #2e7d32; font-weight: 700; }
+        .good      { color: #1565c0; font-weight: 700; }
+        .medium    { color: #f57f17; font-weight: 700; }
+        .poor      { color: #c62828; font-weight: 700; }
+        .foma-gallery-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.6rem; margin-top: 1.5rem;
+        }
+        .foma-phone-card {
+            background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 14px;
+            padding: 1.1rem; display: flex; flex-direction: column; align-items: center;
+        }
+        .foma-screen-frame {
+            background: #000; border: 4px solid #1e293b; border-radius: 10px;
+            overflow: hidden; max-width: 100%; display: flex; justify-content: center;
+        }
+        .foma-screen-img { width: 100%; max-width: 300px; height: auto; display: block; image-rendering: pixelated; }
+        .foma-card-info { width: 100%; margin-top: 0.9rem; text-align: left; }
+        .foma-card-title {
+            font-size: 1rem; font-weight: 700; color: #003366; margin-bottom: 0.3rem;
+            display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+        }
+        .foma-badge {
+            font-size: 0.72rem; background: #e0f2fe; color: #0284c7;
+            border: 1px solid #bae6fd; padding: 0.14rem 0.48rem;
+            border-radius: 999px; font-weight: 600; white-space: nowrap;
+        }
+        .foma-card-desc { font-size: 0.86rem; color: #475569; line-height: 1.55; }
+        .legend-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem; margin-top: 1.4rem;
+        }
+        .legend-item {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+            padding: 0.9rem 1.1rem; font-size: 0.88rem; line-height: 1.55;
+        }
+        .legend-item strong { display: block; margin-bottom: 0.3rem; }
+    </style>
 </head>
 <body>
-  <nav class="sticky" aria-label="Site navigation">
-  <div class="nav-container">
-    <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
-    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
-      <span class="hamburger"></span>
-    </button>
-    <ul class="nav-links">
-<li><a href="../../index.html">System</a></li>
-<li><a href="../../apps/index.html">Applications</a></li>
-<li><a href="../index.html" class="active">Devices</a></li>
-<li><a href="../../doc/index.html">Books</a></li>
-<li><a href="https://depot.btron.pro\">Downloads</a></li>
-</ul>
-  </div>
-</nav>
-  <header class="rice-hero">
-    <h1>Handheld</h1>
-    <div class="rice-rule"></div>
-    <p class="rice-lede">The two-hand tactical set. HANDHELD reference is 640×480. Published frames are the 480×640 portrait.</p>
-  </header>
-  <main class="rice-main">
-    <p>Older panels at 240×345, 240×400, 240×432, 480×690, 480×854, and 480×864 are HANDHELD. Frames are on the <a href="../index.html#desk-foma">handheld screens</a>. Sources: <code>src/desktop/ui/handheld/</code>.</p>
-  </main>
+
+    <nav class="sticky" aria-label="Site navigation">
+        <div class="nav-container">
+            <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+            <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+                <span class="hamburger"></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="../../index.html">System</a></li>
+                <li><a href="../../apps/index.html">Applications</a></li>
+                <li><a href="../index.html" class="active">Devices</a></li>
+                <li><a href="../../doc/index.html">Books</a></li>
+                <li><a href="https://depot.btron.pro/">Downloads</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <header class="rice-hero">
+        <h1>HANDHELD · 両手の戦術通信機</h1>
+        <div class="rice-rule"></div>
+        <p class="rice-lede">基準 640×480、公開縦画面 480×640。5 方向キーと 3 ソフトキーで完結する戦術通信機・フィールド保守 HMI シェル。<br>
+        The two-hand tactical communicator and rugged field terminal (640×480 reference, 480×640 portrait). Deterministic keypad focus with zero touchscreen dependency.</p>
+    </header>
+
+    <main style="max-width: 1160px; margin: 0 auto; padding: 1.5rem 1.5rem 4rem;">
+
+        <nav class="tier-breadcrumb" aria-label="Device tiers">
+            <a href="../index.html">← Devices Portal</a>
+            <a href="../laptop/index.html">LAPTOP</a>
+            <a href="index.html" class="active">HANDHELD</a>
+            <a href="../pocket/index.html">POCKET</a>
+            <a href="../band/index.html">BAND</a>
+            <a href="../key/index.html">KEY</a>
+        </nav>
+
+        <!-- Academic & Commercial Positioning -->
+        <section class="audit-card">
+            <h3>戦術通信・産業エッジにおける位置づけ (Tactical &amp; Industrial Edge Positioning)</h3>
+            <div class="pos-grid">
+                <div class="pos-box">
+                    <h4>分隊・前線向け両手戦術通信機 (Tactical Squad Communicator)</h4>
+                    <p>
+                        雨天・極寒・化学防護手袋装着下では静電容量式タッチ画面が信頼性を失う。HANDHELD シェルは 5 方向キーによる確定論的フォーカス遷移と 3 系統ソフトキーを中核に据え、実身・仮身（Fusen）による連絡先・暗号メモ・通話呼出・<code>gterm</code> シェル診断を片手または両手で確実に操作できる。坂村 T-Kernel 2.0 AArch32 基盤上で動作し、デスクトップとゼロ <code>#ifdef</code> で同一ソースを共有する。
+                    </p>
+                    <p>
+                        In rain, freezing cold, or MOPP/gloved operation where capacitive touchscreens fail, HANDHELD provides deterministic 5-way keypad focus and 3 soft keys on Sakamura T-Kernel 2.0 (AArch32), running identical C99 <code>gterm</code>, <code>t_editor</code>, and Real/Virtual Body workflows with zero <code>#ifdef</code> divergence from desktop builds.
+                    </p>
+                </div>
+                <div class="pos-box" style="border-left-color: var(--tron-teal);">
+                    <h4>電力・通信・物流フィールド保守端末 (Industrial Field Terminal)</h4>
+                    <p>
+                        変電設備点検、基地局保守、鉄道保線、および危険物倉庫のハンディターミナルでは、高輝度縦長画面での一覧視認性と明示的な確認モーダルが安全基準を満たす。HANDHELD シェルは 240×345 から 480×864 に及ぶ産業・通信機縦長パネル群を単一アーキテクチャで統合し、属性シート・検索ダイアログ・電源管理シートを OS 標準として提供する。
+                    </p>
+                    <p>
+                        Tailored for utility line maintenance, rail inspection, telecom base-station servicing, and hazardous-area PDAs, HANDHELD unifies portrait panels from 240×345 through 480×864 with OS-native confirmation modals, metadata property sheets, and deterministic power-state management.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Resolutions -->
+        <section class="audit-card">
+            <h3>対象解像度 (Requested Resolutions)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                基準解像度 640×480 および 240×345〜480×864 の縦長通信機パネル群が <code class="mono">HANDHELD</code> を選択する。実装ソース：<code class="mono">src/desktop/ui/handheld/</code>、<code class="mono">src/cores/core_foma.c</code>。
+            </p>
+            <table class="conformance-table">
+                <thead>
+                    <tr><th>BTRON_RES</th><th>解像度 (Pixels)</th><th>パネル規格</th><th>適用</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="mono">BTRON_RES_SVGA_640X480</td><td class="mono">640×480</td><td>SVGA Desktop / 480×640 Portrait</td><td>基準公開フレーム・T-Kernel 2.0 AArch32</td></tr>
+                    <tr><td class="mono">BTRON_RES_FWVGA_480X864</td><td class="mono">480×864</td><td>Full Wide VGA</td><td>高精細縦長通信機（F905i / F-01A 系）</td></tr>
+                    <tr><td class="mono">BTRON_RES_FWVGA_480X854</td><td class="mono">480×854</td><td>Full Wide VGA</td><td>ワイド VGA 縦長端末（SH905i / SH-01A 系）</td></tr>
+                    <tr><td class="mono">BTRON_RES_VGAPLUS_480X690</td><td class="mono">480×690</td><td>VGA+</td><td>OMAP2430 ARM1136 端末（N903i 系）</td></tr>
+                    <tr><td class="mono">BTRON_RES_WQVGA_240X432</td><td class="mono">240×432</td><td>Wide QVGA</td><td>高視認・易操作系端末（F884i 系）</td></tr>
+                    <tr><td class="mono">BTRON_RES_WQVGA_240X400</td><td class="mono">240×400</td><td>Wide QVGA</td><td>OMAP2430 縦長端末（SH903i 系）</td></tr>
+                    <tr><td class="mono">BTRON_RES_QVGAPLUS_240X345</td><td class="mono">240×345</td><td>QVGA+</td><td>ARM9 縦長通信機（N901iC / N902i 系）</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- µBTRON-FOMA 18-Screen Showcase -->
+        <section class="audit-card" id="foma-screens">
+            <h3>HANDHELD — 480×640 実機フレームバッファ画面 (18 Native Captures)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                SDK のフレームバッファが直接描画した 480×640 VGA 縦画面。5 方向キーによるフォーカス遷移、3 ソフトキー、実身・仮身（Fusen）、および OS 標準ダイアログ一式を収録。
+            </p>
+            <p style="font-size:0.86rem; color:#64748b; margin-top:0.3rem;">
+                Direct framebuffer captures of the 480×640 portrait HANDHELD shell: core cabinet/editor/terminal applications followed by system dialogs and overlays.
+            </p>
+
+            <div class="foma-gallery-grid">
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_main.png" alt="1. 起動キャビネット (Home Cabinet)" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>1. 起動キャビネット (Home)</span><span class="foma-badge">Screen 3.1</span></div>
+                        <div class="foma-card-desc">永続ホームキャビネット。連絡先・メモ・予定・文書・アプリ実身を一覧表示。最上段に電波・時計・電池、下段に 3 ソフトキーを配置。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_contacts.png" alt="2. 連絡先キャビネット" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>2. 連絡先キャビネット</span><span class="foma-badge">Screen 3.5</span></div>
+                        <div class="foma-card-desc">五十音別グループで階層化されたアドレス帳実身。高コントラスト選択行と ▶ カーソルにより直接発信・詳細閲覧が可能。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_memo.png" alt="3. メモ一覧" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>3. メモ一覧 (実身・仮身)</span><span class="foma-badge">Screen 3.6</span></div>
+                        <div class="foma-card-desc">日付付きテキスト実身と埋込仮身（Fusen）リンクの一覧。連絡先や予定へのハイパーリンクがリスト内でシームレスに混在。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_editor.png" alt="4. 基本エディタ (T-Editor)" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>4. 基本エディタ (T-Editor)</span><span class="foma-badge">TAD Text</span></div>
+                        <div class="foma-card-desc">縦画面最適化 BTRON 基本エディタ。行番号、TAD 3.20 構造化テキスト、および青色 [仮身] ハイパーリンクを直接閲覧・編集。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_editor_menu.png" alt="T-Editor 仮身メニュー" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>T-Editor 開いたメニュー (仮身)</span><span class="foma-badge">Menu Overlay</span></div>
+                        <div class="foma-card-desc">Alt+O / 中ソフトキーで展開される [仮身(O)] メニュー。仮身リンク挿入や実身キャビネット呼出をキーパッドで直接実行。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_terminal.png" alt="gterm 端末シェル" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>gterm 端末シェル (Console)</span><span class="foma-badge">Tier 1 Shell</span></div>
+                        <div class="foma-card-desc">デスクトップと完全同一ソース（ゼロ #ifdef）の対話型端末エンジン。コマンド履歴、TIP 変換、live <code>btron:/&gt;</code> シェルを実行。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_terminal_menu.png" alt="gterm 端末メニュー" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>gterm 開いたメニュー (端末)</span><span class="foma-badge">Menu Overlay</span></div>
+                        <div class="foma-card-desc">Alt+T / 中ソフトキーで展開される [端末(T)] メニュー。端末リセット、文字コード設定、ログ保存等を 5 方向キーで操作。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_control_panel.png" alt="5. コントロールパネル" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>5. コントロールパネル</span><span class="foma-badge">Screen 3.3</span></div>
+                        <div class="foma-card-desc">表示、5 段トグル/ポケベル入力（TIP/Mozc）、省電力、通信網、TRON-Code 多国語平面、EnableWare 等の 9 項目を設定。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_other_apps.png" alt="6. アプリ一覧" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>6. アプリ一覧 (Apps)</span><span class="foma-badge">Screen 3.4</span></div>
+                        <div class="foma-card-desc">T-Editor、gterm、簡易ペイント、XMPP チャット、電卓等の 8 種モバイルアプリを数字キー 1〜8 で即座に起動。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_contact_detail.png" alt="連絡先詳細" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>連絡先詳細 (実身・仮身構造)</span><span class="foma-badge">Detail</span></div>
+                        <div class="foma-card-desc">実身内部に配置された電話発信・メール・関連メモ・予定の仮身リンク群。選択キーで目的のアプリへ即遷移。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_device_info.png" alt="端末情報" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>端末情報 (Device Info)</span><span class="foma-badge">AArch32</span></div>
+                        <div class="foma-card-desc">TI OMAP2430 (ARM1136 AArch32) SoC、坂村 T-Kernel 2.0（14 サブシステム）、VirtIO MMIO、480×640 32-bpp 仕様を表示。</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 2.2rem; padding-top: 1.3rem; border-top: 1px solid #e2e8f0;">
+                <h4 style="font-size: 1.15rem; font-weight: 700; color: #003366; margin: 0 0 0.4rem 0;">
+                    開いたダイアログ・操作メニュー (Opened Dialogs &amp; Overlays)
+                </h4>
+                <p style="font-size: 0.9rem; color: #475569; margin: 0;">
+                    BTRON HMI 設計指針に準拠した浮動メニュー、削除確認、実身属性、TIP 検索、電源管理、音声着信、および標準 About ボックス。
+                </p>
+            </div>
+
+            <div class="foma-gallery-grid">
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_menu_popup.png" alt="7. 浮動操作メニュー" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>7. 浮動操作メニュー</span><span class="foma-badge">Popup Overlay</span></div>
+                        <div class="foma-card-desc">[メニュー] キー押下時に前面展開されるコンテキストメニュー。数字キー 1〜6 直接選択と青色ハイライトを完備。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_dialog_confirm.png" alt="8. 実身削除確認ダイアログ" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>8. 実身削除確認ダイアログ</span><span class="foma-badge">Alert Modal</span></div>
+                        <div class="foma-card-desc">実身削除時の警告モーダル。仮身リンク無効化の注意文、二重枠線、[削除実行][取消] ボタンで誤操作を防止。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_dialog_properties.png" alt="9. 実身属性詳細シート" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>9. 実身属性詳細シート</span><span class="foma-badge">Properties</span></div>
+                        <div class="foma-card-desc">HFDS 実身番号、TAD Rev 3.20 種別、更新日時、レコード長、仮身参照数、アクセス権、VirtIO 保存先を表示。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_dialog_search.png" alt="10. 実身検索・TIP入力" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>10. 実身検索・TIP 入力</span><span class="foma-badge">Input / IME</span></div>
+                        <div class="foma-card-desc">テキスト入力ボックス、右上 [あ/漢] TIP/Mozc 変換状態、検索範囲ラジオボタン、および仮身検索チェックを装備。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_dialog_power.png" alt="11. 電源管理・待受設定" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>11. 電源管理・待受設定</span><span class="foma-badge">Power Modal</span></div>
+                        <div class="foma-card-desc">電池残量バーグラフ（88% / 4.12V）、スリープ待受、T-Kernel 2.0 リセット、電源切断、キー誤操作ロックを選択可能。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_dialog_call.png" alt="12. 3G 音声通話 着信呼出" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>12. 音声通話 着信呼出</span><span class="foma-badge">Telephony</span></div>
+                        <div class="foma-card-desc">着信オーバーレイ。発信者名・番号・呼出時間タイマーおよび [応答][保留][拒否] の 3 系統アクションを装備。</div>
+                    </div>
+                </div>
+                <div class="foma-phone-card">
+                    <div class="foma-screen-frame"><img src="../../img/foma/foma_dialog_about.png" alt="13. アプリ情報" class="foma-screen-img"></div>
+                    <div class="foma-card-info">
+                        <div class="foma-card-title"><span>13. アプリ情報 (About Box)</span><span class="foma-badge">Default About</span></div>
+                        <div class="foma-card-desc">デスクトップと同一の <code>app_menu_create_about_dialog</code> から自動生成される標準 About ボックス。</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2004–2009 Handset Hardware Record -->
+        <section class="audit-card" id="matrix">
+            <h3>HANDHELD 端末ハードウェア記録・QEMU 適合度 (2004–2009 Handset Matrix)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                HANDHELD シェルが対象とする 2004–2009 年の通信機パネル群。TI OMAP（ARM9 / ARM11）とルネサス SH-Mobile（SuperH）に大別され、upstream QEMU（<code>-M virt</code> / レガシー ARM）での命令セット一致とユーザーランド起動見込みを 4 段階で評価している。
+            </p>
+            <p style="font-size:0.86rem; color:#64748b; margin-top:0.3rem;">
+                Published panel dimensions and upstream QEMU AArch32 feasibility grades across the 2004–2009 TI OMAP and Renesas SH-Mobile communicator lineage.
+            </p>
+
+            <table class="conformance-table">
+                <thead>
+                    <tr>
+                        <th>端末グループ (Model Group)</th>
+                        <th>メイン画面</th>
+                        <th>SoC / CPU</th>
+                        <th>アーキテクチャ</th>
+                        <th style="text-align:center;">QEMU 適合度</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr><td class="model">Fujitsu F900i / F900iT</td><td class="mono">240×320</td><td>TI OMAP (161x)</td><td>ARM9 (ARMv5)</td><td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td></tr>
+                    <tr><td class="model">Fujitsu F901iC</td><td class="mono">240×320</td><td>SH-Mobile3</td><td>SuperH SH-3</td><td style="text-align:center;"><span class="badge-fail">Poor</span> <span class="poor">(no SH)</span></td></tr>
+                    <tr><td class="model">Fujitsu F902i</td><td class="mono">240×320</td><td>SH-Mobile</td><td>SuperH</td><td style="text-align:center;"><span class="badge-fail">Poor</span></td></tr>
+                    <tr><td class="model">Fujitsu F903i</td><td class="mono">240×320</td><td>SH-Mobile G1</td><td>SuperH + ARM</td><td style="text-align:center;"><span class="badge-partial">Medium</span> <span class="medium">(arm1136)</span></td></tr>
+                    <tr><td class="model">Fujitsu F905i</td><td class="mono">480×864</td><td>SH-Mobile G2</td><td>ARM1136 + SHX2</td><td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td></tr>
+                    <tr><td class="model">NEC N900i / N901iC</td><td class="mono">240×320 / 240×345</td><td>TI OMAP1610</td><td>ARM9 (ARMv5)</td><td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td></tr>
+                    <tr><td class="model">NEC N902i</td><td class="mono">240×345</td><td>TI OMAP</td><td>ARM9</td><td style="text-align:center;"><span class="badge-pass">Good</span></td></tr>
+                    <tr><td class="model">NEC N903i</td><td class="mono">480×690</td><td>TI OMAP2430</td><td>ARM1136 (ARMv6)</td><td style="text-align:center;"><span class="badge-pass">Excellent</span> <span class="excellent">(arm1136)</span></td></tr>
+                    <tr><td class="model">Panasonic P900i–P903i</td><td class="mono">240×320</td><td>TI OMAP (shared)</td><td>ARM9 / ARM11</td><td style="text-align:center;"><span class="badge-pass">Good–Excellent</span></td></tr>
+                    <tr><td class="model">Sharp SH900i</td><td class="mono">240×320</td><td>TI OMAP1610</td><td>ARM9</td><td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm926)</span></td></tr>
+                    <tr><td class="model">Sharp SH903i</td><td class="mono">240×400</td><td>TI OMAP2430</td><td>ARM1136</td><td style="text-align:center;"><span class="badge-pass">Excellent</span></td></tr>
+                    <tr><td class="model">Sharp SH903iTV / SH905i / SH-01A</td><td class="mono">240×400 / 480×854</td><td>SH-Mobile G1/G2/G3</td><td>ARM1136 + SuperH</td><td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td></tr>
+                    <tr><td class="model">905SH / 911SH</td><td class="mono">240×400</td><td>Proprietary multimedia</td><td>Mixed</td><td style="text-align:center;"><span class="badge-partial">Medium</span></td></tr>
+                    <tr><td class="model">Raku-Raku F880iES / F883i / F884i</td><td class="mono">240×320 / 240×432</td><td>SH-Mobile G1</td><td>ARM + SuperH</td><td style="text-align:center;"><span class="badge-partial">Medium–Good</span></td></tr>
+                    <tr><td class="model">Raku-Raku F-01A</td><td class="mono">480×864</td><td>SH-Mobile G series</td><td>ARM1136 + SuperH</td><td style="text-align:center;"><span class="badge-pass">Good</span> <span class="good">(arm1136)</span></td></tr>
+                </tbody>
+            </table>
+
+            <div class="legend-grid">
+                <div class="legend-item"><strong class="excellent">Excellent</strong><code>-M virt -cpu arm1136</code> と高い一致度を示し、実用的なユーザーランド起動が可能。</div>
+                <div class="legend-item"><strong class="good">Good</strong><code>arm926</code> または <code>arm1136</code> で利用可能。周辺チップ完全再現不要時に好適。</div>
+                <div class="legend-item"><strong class="medium">Medium</strong>ARM コアは利用可能だが SuperH 副コアは未対応。</div>
+                <div class="legend-item"><strong class="poor">Poor</strong>純 SuperH 構成。upstream QEMU に SH-Mobile LCDC・モデムが存在しない。</div>
+            </div>
+        </section>
+
+    </main>
+
+
+    <footer>
+        <div class="footer-bottom">
+            <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+                <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+            </a>
+            <div class="footer-legal">
+                <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+                    &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+                </p>
+                <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+                    <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Cho-Kanji (超漢字), B-right/V, and PMC are registered trademarks of Personal Media Corporation. SONY&reg;, PlayStation&reg;, PS2&reg;, Emotion Engine&reg; (EE), Graphics Synthesizer&reg; (GS), and DualShock&reg; are registered trademarks or trademarks of Sony Group Corporation / Sony Interactive Entertainment Inc. MSX&trade;, MSX2&reg;, MSX2+&reg;, and MSX turbo R&reg; are registered trademarks of MSX Licensing Corporation and ASCII Corporation. Microsoft&reg;, MS-DOS&reg;, and Windows&reg; are registered trademarks of Microsoft Corporation. Quake&reg; is a registered trademark of id Software LLC / ZeniMax Media Inc. / Microsoft Corporation. PC-9801&reg; and PC-9821&reg; are registered trademarks of NEC Corporation. Nintendo&reg; and Nintendo 64&reg; (N64) are registered trademarks of Nintendo Co., Ltd. Apple&reg;, Macintosh&reg;, and Mac OS&reg; are registered trademarks of Apple Inc. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; is a trademark of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. Intel&reg; and Pentium&reg; are registered trademarks of Intel Corporation. Adobe&reg; and PostScript&reg; are registered trademarks of Adobe Systems Incorporated. Google&reg; and Mozc&trade; are trademarks of Google LLC. Erlang / OTP is a trademark of Telefonaktiebolaget LM Ericsson. All other manufacturer designations, silicon architectures, and software titles cited within this repository are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System implementation contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+                </p>
+                <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+                    btron.pro &nbsp;·&nbsp; High-Assurance VirtIO Hypervisor &amp; BTRON 3.20 Architecture &nbsp;·&nbsp; Under ISC / DHARMA License &nbsp;·&nbsp; Conforming to NASA/JPL Power of Ten Rules
+                </p>
+            </div>
+        </div>
+    </footer>
+
 </body>
 </html>

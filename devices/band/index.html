@@ -1,36 +1,233 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Band | B-System</title>
-  <meta name="description" content="A strap, under 128×160.">
-  <link rel="stylesheet" href="../../index.css">
-  <link rel="stylesheet" href="../../ricepaper.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BAND — Wrist Tactical Strap &amp; Wearable Industrial HMI | B-System µBTRON SDK</title>
+    <meta name="description" content="µBTRON SDK Tier 4 BAND shell (≤128×160): milliwatt-class glanceable SegUI strap for wrist-mounted warfare communicators, medic/EOD telemetry, and industrial lone-worker safety annunciators.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../index.css?v=2">
+    <link rel="stylesheet" href="../../ricepaper.css">
+    <style>
+        :root {
+            --jp-font: 'Noto Sans JP', 'Inter', system-ui, -apple-system, sans-serif;
+            --mincho-font: 'Shippori Mincho', 'Noto Sans JP', serif;
+            --mono-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+            --tron-purple: #6d28d9;
+            --tron-teal: #008080;
+            --tron-indigo: #283593;
+        }
+        body { font-family: var(--jp-font); letter-spacing: 0.015em; }
+        .tier-breadcrumb { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1.4rem 0; }
+        .tier-breadcrumb a {
+            text-decoration: none; font-weight: 700; font-size: 0.84rem;
+            padding: 0.34rem 0.78rem; border-radius: 999px;
+            border: 1px solid #cbd5e1; background: #fff; color: #003366;
+        }
+        .tier-breadcrumb a.active { background: #6d28d9; color: #fff; border-color: #6d28d9; }
+        .audit-card {
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid #d8d7d1; border-radius: 14px;
+            padding: 1.8rem 2rem; margin-bottom: 1.8rem;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+        }
+        .audit-card h3 {
+            font-family: var(--mincho-font); color: var(--tron-indigo);
+            border-bottom: 2px solid #e2e8f0; padding-bottom: 0.55rem; margin: 0 0 1rem 0;
+        }
+        .pos-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 1.2rem; margin-top: 0.8rem;
+        }
+        .pos-box {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #6d28d9;
+            border-radius: 0 10px 10px 0; padding: 1.15rem 1.35rem;
+        }
+        .pos-box h4 { margin: 0 0 0.45rem 0; color: #0f172a; font-size: 1rem; }
+        .pos-box p { margin: 0 0 0.5rem 0; font-size: 0.9rem; line-height: 1.75; color: #334155; }
+        .pos-box p:last-child { margin-bottom: 0; font-size: 0.82rem; color: #64748b; line-height: 1.62; }
+        .conformance-table {
+            width: 100%; border-collapse: collapse; margin: 1rem 0 0 0; font-size: 0.9rem;
+        }
+        .conformance-table th, .conformance-table td {
+            padding: 0.7rem 0.85rem; text-align: left;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08); vertical-align: top;
+        }
+        .conformance-table th {
+            background: rgba(109, 40, 217, 0.07); color: #6d28d9; font-weight: 700; white-space: nowrap;
+        }
+        .mono { font-family: var(--mono-font); font-size: 0.86em; }
+        .segui-gallery-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem; margin-top: 1.4rem;
+        }
+        .segui-card {
+            background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 14px;
+            padding: 1.1rem; display: flex; flex-direction: column;
+        }
+        .segui-frame {
+            background: #000; border: 4px solid #1e293b; border-radius: 10px;
+            overflow: hidden; display: flex; justify-content: center;
+        }
+        .segui-img { width: 100%; height: auto; display: block; image-rendering: pixelated; }
+        .segui-card-info { width: 100%; margin-top: 0.85rem; text-align: left; }
+        .segui-card-title {
+            font-size: 0.98rem; font-weight: 700; color: #003366; margin-bottom: 0.25rem;
+            display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+        }
+        .segui-badge {
+            font-size: 0.72rem; background: #ede9fe; color: #6d28d9;
+            border: 1px solid #ddd6fe; padding: 0.14rem 0.48rem;
+            border-radius: 999px; font-weight: 600; white-space: nowrap;
+        }
+        .segui-card-desc { font-size: 0.85rem; color: #475569; line-height: 1.55; }
+    </style>
 </head>
 <body>
-  <nav class="sticky" aria-label="Site navigation">
-  <div class="nav-container">
-    <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
-    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
-      <span class="hamburger"></span>
-    </button>
-    <ul class="nav-links">
-<li><a href="../../index.html">System</a></li>
-<li><a href="../../apps/index.html">Applications</a></li>
-<li><a href="../index.html" class="active">Devices</a></li>
-<li><a href="../../doc/index.html">Books</a></li>
-<li><a href="https://depot.btron.pro/">Downloads</a></li>
-</ul>
-  </div>
-</nav>
-  <header class="rice-hero">
-    <h1>Band</h1>
-    <div class="rice-rule"></div>
-    <p class="rice-lede">A strap, under 128×160.</p>
-  </header>
-  <main class="rice-main">
-    <p>Series 30, QQVGA, SQVGA, SQCIF, and Arduboy sizes are BAND. The row is on the <a href="../index.html#tier-band">devices page</a>. Sources: <code>src/desktop/ui/band/</code>.</p>
-  </main>
+
+    <nav class="sticky" aria-label="Site navigation">
+        <div class="nav-container">
+            <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+            <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+                <span class="hamburger"></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="../../index.html">System</a></li>
+                <li><a href="../../apps/index.html">Applications</a></li>
+                <li><a href="../index.html" class="active">Devices</a></li>
+                <li><a href="../../doc/index.html">Books</a></li>
+                <li><a href="https://depot.btron.pro/">Downloads</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <header class="rice-hero">
+        <h1>BAND · 帯・ウェアラブル計器</h1>
+        <div class="rice-rule"></div>
+        <p class="rice-lede">128×160 以下の手首装着戦術ストラップおよび装着型産業安全警報器。一瞥判読とミリワット級稼働を両立する SegUI 省電力帯シェル。<br>
+        Wrist-mounted tactical strap and wearable industrial annunciator (≤128×160). Milliwatt-class glanceable SegUI with zero dynamic heap allocation.</p>
+    </header>
+
+    <main style="max-width: 1160px; margin: 0 auto; padding: 1.5rem 1.5rem 4rem;">
+
+        <nav class="tier-breadcrumb" aria-label="Device tiers">
+            <a href="../index.html">← Devices Portal</a>
+            <a href="../laptop/index.html">LAPTOP</a>
+            <a href="../handheld/index.html">HANDHELD</a>
+            <a href="../pocket/index.html">POCKET</a>
+            <a href="index.html" class="active">BAND</a>
+            <a href="../key/index.html">KEY</a>
+        </nav>
+
+        <!-- Academic & Commercial Positioning -->
+        <section class="audit-card">
+            <h3>戦術通信・産業エッジにおける位置づけ (Tactical &amp; Industrial Edge Positioning)</h3>
+            <div class="pos-grid">
+                <div class="pos-box">
+                    <h4>手首装着戦術ストラップ・衛生/EOD 計器 (Tactical Wrist Strap)</h4>
+                    <p>
+                        両手が塞がる爆発物処理（EOD）、前線衛生トリアージ、航空乗員、および夜間潜入任務では、0.5 秒以内に方位・暗号警報・生体テレメトリを判読できる手首表示器が求められる。BAND シェルは 128×160 以下の低輝度 OLED / 反射型 LCD 向けに暗視ゴーグル適合パレットと単一 <code>BODY</code> 帯構成を提供し、不要な無線発信やバックグラウンド処理を完全に遮断した超低消費電力稼働を実現する。
+                    </p>
+                    <p>
+                        Designed for hands-busy EOD, combat medics, flight crews, and night operations, BAND delivers sub-second glanceable waypoint, alert, and biometric telemetry on ≤128×160 NVG-compatible OLED/transflective panels with zero background telemetry leakage and milliwatt power envelopes.
+                    </p>
+                </div>
+                <div class="pos-box" style="border-left-color: var(--tron-teal);">
+                    <h4>工場安全監視バンド・クリーンルーム警報器 (Wearable Edge Annunciator)</h4>
+                    <p>
+                        化学プラントの単独作業者安全監視（マンダウン警報・ガス濃度閾値通知）、半導体クリーンルーム内のハンズフリー工程指示、および変電設備の高圧近接警告において、BAND は POCKET と共通の SegUI 宣言的フォーム定義（<code>include/btron/segui.h</code>）をそのまま縮小展開する。これにより企業は 1 つの C99 UI 仕様でポケット端末とウェアラブル警報器を同時保守できる。
+                    </p>
+                    <p>
+                        For lone-worker safety monitors, gas/high-voltage proximity alerts, and cleanroom operator straps, BAND compiles the exact same declarative SegUI layout primitives as POCKET—enabling edge enterprises to certify and maintain wearable annunciators alongside handheld terminals from one codebase.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Resolution Table -->
+        <section class="audit-card">
+            <h3>対象解像度 (Requested Resolutions)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                320×320 未満のうち 128×160 枠内に収まる全 5 モードが <code class="mono">BAND</code> を選択する。実装ソース：<code class="mono">src/desktop/ui/band/</code>、<code class="mono">include/btron/segui.h</code>。
+            </p>
+            <table class="conformance-table">
+                <thead>
+                    <tr><th>BTRON_RES</th><th>解像度 (Pixels)</th><th>パネル規格・実機系譜</th><th>主用途</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="mono">BTRON_RES_S30_128X160</td><td class="mono">128×160</td><td>Series 30 (Nokia 2630, 3500, 6650)</td><td>縦型リスト装着ストラップ・工程通知器</td></tr>
+                    <tr><td class="mono">BTRON_RES_QQVGA_160X120</td><td class="mono">160×120</td><td>QQVGA</td><td>横型リストバンド・計器バー表示</td></tr>
+                    <tr><td class="mono">BTRON_RES_SQVGA_128X128</td><td class="mono">128×128</td><td>SQVGA</td><td>正方形スマート戦術ウォッチ・警報盤</td></tr>
+                    <tr><td class="mono">BTRON_RES_SQCIF_128X96</td><td class="mono">128×96</td><td>SQCIF</td><td>超小型ウェアラブル OLED テレメトリ</td></tr>
+                    <tr><td class="mono">BTRON_RES_ARDUBOY_128X64</td><td class="mono">128×64</td><td>Arduboy / 1-bit OLED</td><td>極限省電力モノクロ帯状ステータス表示</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- SegUI Band Primitives Showcase -->
+        <section class="audit-card">
+            <h3>SegUI 帯レイアウト参照画面 (Shared SegUI Band Primitives)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                BAND は POCKET と共通の SegUI 帯エンジンで描画される。以下はヘッドレス C99 レンダラが生成した SegUI 基本プリミティブ（ホーム帯、連絡先・チャット通知、高コントラスト配色切替、システム状態表示）の実機キャプチャであり、128×160 以下の BAND パネルへ同一のウィジェット木構造のまま適用される。
+            </p>
+            <p style="font-size:0.86rem; color:#64748b; margin-top:0.3rem;">
+                Native C99 SegUI reference captures illustrating the shared band primitives—alert streams, directory status, contrast themes, and system telemetry—that scale directly into ≤128×160 BAND viewports.
+            </p>
+            <div class="segui-gallery-grid">
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/segui_demo_home.png" alt="SegUI Band Home Layout" class="segui-img"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>1. 帯状ステータス＆ホーム</span><span class="segui-badge">STATUS + BODY</span></div>
+                        <div class="segui-card-desc">最上段ステータス帯と単一伸長 BODY 帯による一瞥表示。手首角度を問わず瞬時に状態を読み取れる構造。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/segui_phone_chat.png" alt="SegUI Tactical Alert & Chat Stream" class="segui-img"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>2. 短文警報・メッセージ帯</span><span class="segui-badge">Alert Stream</span></div>
+                        <div class="segui-card-desc">戦術コールサインまたは工場異常コードを時系列で即座に通知する高視認メッセージストリーム。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/segui_demo_theme.png" alt="SegUI High-Contrast & Night-Vision Themes" class="segui-img"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>3. 暗視・高コントラスト配色</span><span class="segui-badge">NVG / Outdoor</span></div>
+                        <div class="segui-card-desc">屋外直射日光から夜間暗視環境まで、単一パレット切替で視認性を保証する SegUI テーマ機構。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/segui_phone_settings.png" alt="SegUI Compact Hardware Settings" class="segui-img"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>4. 省電力・通知パラメータ設定</span><span class="segui-badge">Low-Power</span></div>
+                        <div class="segui-card-desc">バイブレーション、無線待受、画面輝度、ロック状態を 3 ボタンのみで完結操作する設定フォーム。</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+
+    <footer>
+        <div class="footer-bottom">
+            <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+                <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+            </a>
+            <div class="footer-legal">
+                <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+                    &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+                </p>
+                <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+                    <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Cho-Kanji (超漢字), B-right/V, and PMC are registered trademarks of Personal Media Corporation. SONY&reg;, PlayStation&reg;, PS2&reg;, Emotion Engine&reg; (EE), Graphics Synthesizer&reg; (GS), and DualShock&reg; are registered trademarks or trademarks of Sony Group Corporation / Sony Interactive Entertainment Inc. MSX&trade;, MSX2&reg;, MSX2+&reg;, and MSX turbo R&reg; are registered trademarks of MSX Licensing Corporation and ASCII Corporation. Microsoft&reg;, MS-DOS&reg;, and Windows&reg; are registered trademarks of Microsoft Corporation. Quake&reg; is a registered trademark of id Software LLC / ZeniMax Media Inc. / Microsoft Corporation. PC-9801&reg; and PC-9821&reg; are registered trademarks of NEC Corporation. Nintendo&reg; and Nintendo 64&reg; (N64) are registered trademarks of Nintendo Co., Ltd. Apple&reg;, Macintosh&reg;, and Mac OS&reg; are registered trademarks of Apple Inc. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; is a trademark of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. Intel&reg; and Pentium&reg; are registered trademarks of Intel Corporation. Adobe&reg; and PostScript&reg; are registered trademarks of Adobe Systems Incorporated. Google&reg; and Mozc&trade; are trademarks of Google LLC. Erlang / OTP is a trademark of Telefonaktiebolaget LM Ericsson. All other manufacturer designations, silicon architectures, and software titles cited within this repository are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System implementation contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+                </p>
+                <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+                    btron.pro &nbsp;·&nbsp; High-Assurance VirtIO Hypervisor &amp; BTRON 3.20 Architecture &nbsp;·&nbsp; Under ISC / DHARMA License &nbsp;·&nbsp; Conforming to NASA/JPL Power of Ten Rules
+                </p>
+            </div>
+        </div>
+    </footer>
+
 </body>
 </html>

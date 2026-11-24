@@ -1,57 +1,79 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Books | B-System</title>
+  <title>仕様書と書籍 — Books | B-System</title>
   <link rel="stylesheet" href="../index.css">
   <link rel="stylesheet" href="../ricepaper.css">
 </head>
 <body>
   <nav class="sticky" aria-label="Site navigation">
-  <div class="nav-container">
-    <a href="../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
-    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
-      <span class="hamburger"></span>
-    </button>
-    <ul class="nav-links">
-<li><a href="../index.html">System</a></li>
-<li><a href="../apps/index.html">Applications</a></li>
-<li><a href="../devices/index.html">Devices</a></li>
-<li><a href="index.html" class="active">Books</a></li>
-<li><a href="https://depot.btron.pro\">Downloads</a></li>
-</ul>
-  </div>
-</nav>
+    <div class="nav-container">
+      <a href="../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="nav-links">
+        <li><a href="../index.html">System</a></li>
+        <li><a href="../apps/index.html">Applications</a></li>
+        <li><a href="../devices/index.html">Devices</a></li>
+        <li><a href="index.html" class="active">Books</a></li>
+        <li><a href="https://depot.btron.pro/">Downloads</a></li>
+      </ul>
+    </div>
+  </nav>
+
   <header class="rice-hero">
-    <p class="rice-kicker">B-System library</p>
-    <h1>Books</h1>
+    <p class="rice-kicker">B-System · BTRON 3.20 · Library</p>
+    <h1 class="jp-title">仕様書と書籍。</h1>
     <div class="rice-rule"></div>
-    <p class="rice-lede">Specifications, the developer book, the media book, conformance, and verification.</p>
+    <p class="rice-lede">BTRON3 3.20 仕様書、開発者向け B-Book、メディア仕様書、適合性監査、および Coq 形式検証記録。</p>
+    <p class="rice-lede" style="font-size:0.94rem; opacity:0.82; margin-top:0.85rem;">Specifications, the B-Book developer reference, the media book, conformance audits, and formal Coq verification dossiers.</p>
   </header>
+
   <main class="rice-main">
     <p class="rice-section-label">Books</p>
-<div class="rice-grid">
-<a class="rice-card" href="specs/index.html"><strong>Specifications</strong><span>BTRON3 3.20, rewritten as one book.</span></a>
-<a class="rice-card" href="cores/index.html"><strong>Cores</strong><span>The B-Book developer reference.</span></a>
-<a class="rice-card" href="media/index.html"><strong>Media</strong><span>Pipes, budgets, and the media pages.</span></a>
-<a class="rice-card" href="conformance/index.html"><strong>Conformance</strong><span>Implementation audit against the specification.</span></a>
-<a class="rice-card" href="verification/index.html"><strong>Verification</strong><span>The Coq dossier.</span></a>
-<a class="rice-card" href="virtualization/index.html"><strong>Virtualization</strong><span>VirtIO on the system.</span></a>
-<a class="rice-card" href="https://rt.btron.pro"><strong>RT</strong><span>Run-time study at rt.btron.pro.</span></a>
-<a class="rice-card" href="https://bx.btron.pro"><strong>BX</strong><span>Scalable Vector Machines at bx.btron.pro.</span></a>
-<a class="rice-card" href="https://msx.btron.pro"><strong>MSX</strong><span>The MSX desk at msx.btron.pro.</span></a>
-<a class="rice-card" href="history/index.html"><strong>History</strong><span>Release notes.</span></a>
-<a class="rice-card" href="history/media.html"><strong>Media OS</strong><span>BeOS Media OS Revival.</span></a>
-<a class="rice-card" href="history/index.jp.html"><strong>Media OS 日本</strong><span>BeOS Media OS Revival.</span></a>
-<a class="rice-card" href="license.html"><strong>License</strong><span>License.</span></a>
-</div>
-<p class="rice-section-label">Shelves</p>
-<div class="rice-grid">
-<a class="rice-card" href="md"><strong>Markdown</strong><span>doc/md source notes.</span></a>
-<a class="rice-card" href="pdf"><strong>PDF</strong><span>Typeset copies.</span></a>
-<a class="rice-card" href="txt"><strong>Plain text</strong><span>Cabinet and Pico text copies.</span></a>
-</div>
+    <div class="rice-grid">
+      <a class="rice-card" href="specs/index.html"><strong>Specifications</strong><span>BTRON3 3.20, rewritten as one book.</span></a>
+      <a class="rice-card" href="cores/index.html"><strong>Cores</strong><span>The B-Book developer reference.</span></a>
+      <a class="rice-card" href="media/index.html"><strong>Media</strong><span>Pipes, budgets, and the media pages.</span></a>
+      <a class="rice-card" href="conformance/index.html"><strong>Conformance</strong><span>Implementation audit against the specification.</span></a>
+      <a class="rice-card" href="verification/index.html"><strong>Verification</strong><span>The Coq dossier.</span></a>
+      <a class="rice-card" href="virtualization/index.html"><strong>Virtualization</strong><span>VirtIO on the system.</span></a>
+      <a class="rice-card" href="https://rt.btron.pro"><strong>RT</strong><span>Run-time study at rt.btron.pro.</span></a>
+      <a class="rice-card" href="https://bx.btron.pro"><strong>BX</strong><span>Scalable Vector Machines at bx.btron.pro.</span></a>
+      <a class="rice-card" href="https://msx.btron.pro"><strong>MSX</strong><span>The MSX desk at msx.btron.pro.</span></a>
+      <a class="rice-card" href="history/index.html"><strong>History</strong><span>Release notes.</span></a>
+      <a class="rice-card" href="history/media.html"><strong>Media OS</strong><span>BeOS Media OS Revival.</span></a>
+      <a class="rice-card" href="history/index.jp.html"><strong>Media OS 日本</strong><span>BeOS Media OS Revival.</span></a>
+      <a class="rice-card" href="license.html"><strong>License</strong><span>License.</span></a>
+    </div>
+    <p class="rice-section-label">Shelves</p>
+    <div class="rice-grid">
+      <a class="rice-card" href="md"><strong>Markdown</strong><span>doc/md source notes.</span></a>
+      <a class="rice-card" href="pdf"><strong>PDF</strong><span>Typeset copies.</span></a>
+      <a class="rice-card" href="txt"><strong>Plain text</strong><span>Cabinet and Pico text copies.</span></a>
+    </div>
   </main>
+
+  <footer>
+    <div class="footer-bottom">
+      <a href="../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+        <img src="../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+      </a>
+      <div class="footer-legal">
+        <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+          &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+        </p>
+        <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+          <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Cho-Kanji (超漢字), B-right/V, and PMC are registered trademarks of Personal Media Corporation. SONY&reg;, PlayStation&reg;, PS2&reg;, Emotion Engine&reg; (EE), Graphics Synthesizer&reg; (GS), and DualShock&reg; are registered trademarks or trademarks of Sony Group Corporation / Sony Interactive Entertainment Inc. MSX&trade;, MSX2&reg;, MSX2+&reg;, and MSX turbo R&reg; are registered trademarks of MSX Licensing Corporation and ASCII Corporation. Microsoft&reg;, MS-DOS&reg;, and Windows&reg; are registered trademarks of Microsoft Corporation. Quake&reg; is a registered trademark of id Software LLC / ZeniMax Media Inc. / Microsoft Corporation. PC-9801&reg; and PC-9821&reg; are registered trademarks of NEC Corporation. Nintendo&reg; and Nintendo 64&reg; (N64) are registered trademarks of Nintendo Co., Ltd. Apple&reg;, Macintosh&reg;, and Mac OS&reg; are registered trademarks of Apple Inc. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; is a trademark of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. Intel&reg; and Pentium&reg; are registered trademarks of Intel Corporation. Adobe&reg; and PostScript&reg; are registered trademarks of Adobe Systems Incorporated. Google&reg; and Mozc&trade; are trademarks of Google LLC. Erlang / OTP is a trademark of Telefonaktiebolaget LM Ericsson. All other manufacturer designations, silicon architectures, and software titles cited within this repository are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System implementation contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+        </p>
+        <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+          btron.pro &nbsp;·&nbsp; High-Assurance VirtIO Hypervisor &amp; BTRON 3.20 Architecture &nbsp;·&nbsp; Under ISC / DHARMA License &nbsp;·&nbsp; Conforming to NASA/JPL Power of Ten Rules
+        </p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

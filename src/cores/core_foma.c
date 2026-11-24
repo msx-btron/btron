@@ -300,6 +300,22 @@ ER tk_dly_tsk(RELTIM dlytim) {
     return _tk_dly_tsk(dlytim);
 }
 
+ID cre_tsk(CONST T_CTSK *pk_ctsk) {
+    return _tk_cre_tsk(pk_ctsk);
+}
+
+ER sta_tsk(ID tskid, INT stacd) {
+    return _tk_sta_tsk(tskid, stacd);
+}
+
+void dly_tsk(W dlytim) {
+    _tk_dly_tsk(dlytim);
+}
+
+void ext_tsk(void) {
+    _tk_ext_tsk();
+}
+
 typedef uint64_t SYSTIME;
 
 ER get_tim(SYSTIME *p_time) {

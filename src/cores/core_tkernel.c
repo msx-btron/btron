@@ -357,3 +357,7 @@ ER sta_tsk(ID tskid, INT stacd) {
 void dly_tsk(W dlytim) {
     _tk_dly_tsk(dlytim);
 }
+
+void ext_tsk(void) {
+    _tk_ext_tsk();
+}

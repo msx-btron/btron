@@ -1,13 +1,17 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Releases &amp; Development History — B-System (BTRON3 3.20)</title>
-    <meta name="description" content="Official B-System Alpha 1 release announcement and complete 29-phase, 1,262-commit, 136-session bilingual development chronicle of the BTRON3 3.20 cleanroom operating system.">
+    <meta name="description"
+        content="Official B-System Alpha 1 release announcement and complete 29-phase, 1,262-commit, 136-session bilingual development chronicle of the BTRON3 3.20 cleanroom operating system.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="../../index.css?v=2">
     <style>
         :root {
@@ -54,6 +58,7 @@
             gap: 0.75rem;
             margin: 1.2rem 0 1.8rem 0;
         }
+
         .stat-card {
             background: rgba(255, 255, 255, 0.85);
             border: 1px solid rgba(255, 93, 162, 0.25);
@@ -64,10 +69,12 @@
             box-shadow: 0 2px 8px rgba(107, 79, 126, 0.05);
             transition: transform 0.2s, box-shadow 0.2s;
         }
+
         .stat-card:hover {
             transform: translateY(-2px);
             box-shadow: 0 6px 16px rgba(255, 93, 162, 0.15);
         }
+
         .stat-num {
             font-size: 1.35rem;
             font-weight: 800;
@@ -78,6 +85,7 @@
             line-height: 1.15;
             margin-bottom: 0.15rem;
         }
+
         .stat-label {
             font-size: 0.72rem;
             color: #6b4f7e;
@@ -98,6 +106,7 @@
             box-shadow: 0 6px 20px rgba(107, 79, 126, 0.06);
             position: relative;
         }
+
         .phase-badge {
             display: inline-block;
             font-size: 0.76rem;
@@ -109,9 +118,11 @@
             margin-bottom: 0.75rem;
             letter-spacing: 0.04em;
         }
+
         .phase-badge-post {
             background: linear-gradient(135deg, #0057b7, #008080);
         }
+
         .phase-header {
             display: flex;
             justify-content: space-between;
@@ -122,6 +133,7 @@
             border-bottom: 1px solid rgba(255, 93, 162, 0.2);
             padding-bottom: 0.65rem;
         }
+
         .phase-title {
             font-family: var(--mincho-font);
             font-size: 1.28rem;
@@ -130,6 +142,7 @@
             margin: 0;
             line-height: 1.38;
         }
+
         .phase-title-en {
             display: block;
             font-family: 'Inter', var(--jp-font);
@@ -139,6 +152,7 @@
             margin-top: 0.18rem;
             letter-spacing: 0.01em;
         }
+
         .phase-meta {
             font-family: var(--mono-font);
             font-size: 0.78rem;
@@ -146,12 +160,14 @@
             font-weight: 500;
             letter-spacing: 0.01em;
         }
+
         .phase-jp {
             color: #3b2a47;
             font-size: 0.98rem;
             line-height: 1.85;
             margin: 0 0 0.85rem 0;
         }
+
         .phase-en {
             color: #554266;
             font-family: 'Inter', var(--jp-font);
@@ -163,6 +179,7 @@
             border-left: 3px solid rgba(0, 128, 128, 0.55);
             border-radius: 0 8px 8px 0;
         }
+
         .phase-credits {
             margin-top: 0.9rem;
             padding: 0.7rem 1rem;
@@ -173,6 +190,7 @@
             color: #4a3560;
             line-height: 1.65;
         }
+
         .phase-credits strong {
             color: #008080;
         }
@@ -186,16 +204,19 @@
             margin: 1.4rem 0;
             box-shadow: 0 4px 16px rgba(107, 79, 126, 0.06);
         }
+
         .feature-box ul {
             margin: 0.6rem 0 0 0;
             padding-left: 1.25rem;
             list-style-type: disc;
         }
+
         .feature-box li {
             margin-bottom: 0.6rem;
             line-height: 1.75;
             color: #4a3560;
         }
+
         .feature-box li:last-child {
             margin-bottom: 0;
         }
@@ -212,6 +233,7 @@
             border: 1px solid rgba(255, 93, 162, 0.3);
             box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
         }
+
         .cmd-box code {
             color: #f1fa8c;
             background: none;
@@ -243,19 +265,23 @@
             .phase-card {
                 padding: 1.3rem 1.2rem;
             }
+
             .phase-title {
                 font-size: 1.12rem;
             }
         }
     </style>
 </head>
+
 <body>
 
     <!-- Sticky Navigation -->
     <nav class="sticky">
         <div class="nav-container">
-            <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc Logo"></a>
-            <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+            <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg"
+                    alt="Synrc Logo"></a>
+            <button class="nav-toggle" aria-label="Toggle navigation"
+                onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
                 <span class="hamburger"></span>
             </button>
             <ul class="nav-links">
@@ -274,7 +300,8 @@
             <div class="hero-banner-tag">
                 <span>🚀</span> B-System Version 3.20-alpha.1「Ceremony」公式公開
             </div>
-            <h1 class="jp-title" style="margin-left: 0; text-align: center; font-size: clamp(2.2rem, 5.2vw, 4.2rem); line-height: 1.25; margin-bottom: 1.2rem;">
+            <h1 class="jp-title"
+                style="margin-left: 0; text-align: center; font-size: clamp(2.2rem, 5.2vw, 4.2rem); line-height: 1.25; margin-bottom: 1.2rem;">
                 B-System リリースノート &amp; 開発史
             </h1>
             <p class="hero-subtitle" style="text-align: center; margin: 0 auto; max-width: 780px; line-height: 1.75;">
@@ -282,8 +309,12 @@
                 初コミットから現在までの全<strong>29フェーズ</strong>・<strong>1,262コミット</strong>・<strong>136セッション</strong>（約595.2時間）のシステム進化史。
             </p>
             <div style="margin-top: 1.6rem; display: flex; flex-wrap: wrap; gap: 0.8rem; justify-content: center;">
-                <a href="#alpha-1-announcement" class="pdf-badge" style="background: linear-gradient(135deg, #ff2d95, #c026d3); color:white; box-shadow: 0 4px 14px rgba(255, 45, 149, 0.35);">🌸 Alpha 1 公開アナウンス</a>
-                <a href="#development-history" class="pdf-badge" style="background: linear-gradient(135deg, #0057b7, #008080); color:white; box-shadow: 0 4px 14px rgba(0, 87, 183, 0.35);">📜 95日間の開発全記録（29 Phases）</a>
+                <a href="#alpha-1-announcement" class="pdf-badge"
+                    style="background: linear-gradient(135deg, #ff2d95, #c026d3); color:white; box-shadow: 0 4px 14px rgba(255, 45, 149, 0.35);">🌸
+                    Alpha 1 公開アナウンス</a>
+                <a href="#development-history" class="pdf-badge"
+                    style="background: linear-gradient(135deg, #0057b7, #008080); color:white; box-shadow: 0 4px 14px rgba(0, 87, 183, 0.35);">📜
+                    95日間の開発全記録（29 Phases）</a>
                 <a href="../conformance/index.html" class="pdf-badge">📊 90% 適合性検証</a>
                 <a href="../../apps/index.html" class="pdf-badge">🖥️ アプリケーション仕様</a>
             </div>
@@ -296,27 +327,33 @@
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-num">Alpha 1</div>
-                <div class="stat-label">初版公開<br><small style="font-size:0.72rem; font-weight:500;">Initial Release</small></div>
+                <div class="stat-label">初版公開<br><small style="font-size:0.72rem; font-weight:500;">Initial
+                        Release</small></div>
             </div>
             <div class="stat-card">
                 <div class="stat-num">1,262</div>
-                <div class="stat-label">総コミット数<br><small style="font-size:0.72rem; font-weight:500;">Git Commits</small></div>
+                <div class="stat-label">総コミット数<br><small style="font-size:0.72rem; font-weight:500;">Git Commits</small>
+                </div>
             </div>
             <div class="stat-card">
                 <div class="stat-num">136</div>
-                <div class="stat-label">作業セッション<br><small style="font-size:0.72rem; font-weight:500;">Dev Sessions</small></div>
+                <div class="stat-label">作業セッション<br><small style="font-size:0.72rem; font-weight:500;">Dev
+                        Sessions</small></div>
             </div>
             <div class="stat-card">
                 <div class="stat-num">~595.2 h</div>
-                <div class="stat-label">実稼働開発時間<br><small style="font-size:0.72rem; font-weight:500;">Active Dev Time</small></div>
+                <div class="stat-label">実稼働開発時間<br><small style="font-size:0.72rem; font-weight:500;">Active Dev
+                        Time</small></div>
             </div>
             <div class="stat-card">
                 <div class="stat-num">16</div>
-                <div class="stat-label">対応カーネル<br><small style="font-size:0.72rem; font-weight:500;">Hardware Targets</small></div>
+                <div class="stat-label">対応カーネル<br><small style="font-size:0.72rem; font-weight:500;">Hardware
+                        Targets</small></div>
             </div>
             <div class="stat-card">
                 <div class="stat-num">90%</div>
-                <div class="stat-label">適合性合格率<br><small style="font-size:0.72rem; font-weight:500;">Audit Tests Passed</small></div>
+                <div class="stat-label">適合性合格率<br><small style="font-size:0.72rem; font-weight:500;">Audit Tests
+                        Passed</small></div>
             </div>
         </div>
 
@@ -324,42 +361,63 @@
         <!-- SECTION 1: ALPHA 1 RELEASE ANNOUNCEMENT                     -->
         <!-- ═══════════════════════════════════════════════════════════ -->
         <section id="alpha-1-announcement" style="margin-top: 2rem;">
-            <h2>第1部：B-System Alpha 1「Ceremony」公式リリース<br><span style="font-size: 0.65em; font-weight: 600; color: #6b4f7e; font-family: var(--jp-font);">Part 1 — Official Announcement: B-System Alpha 1 ("Ceremony")</span></h2>
+            <h2>第1部：B-System Alpha 1「Ceremony」公式リリース<br><span
+                    style="font-size: 0.65em; font-weight: 600; color: #6b4f7e; font-family: var(--jp-font);">Part 1 —
+                    Official Announcement: B-System Alpha 1 ("Ceremony")</span></h2>
 
             <div class="highlight-quote">
                 <strong>「初めてマシンに火を入れる瞬間は、賭け事ではなく厳粛な儀式であるべきだ —— スキー・ブートローダーはすべての起動を意図的で、美しき所作へと昇華させる。」</strong><br>
-                <span style="font-size: 0.88rem; color: #704b75;">"The first time you turn on a machine should feel like a ceremony, not a gamble — Bootloader makes every boot a deliberate, beautiful act."</span>
+                <span style="font-size: 0.88rem; color: #704b75;">"The first time you turn on a machine should feel like
+                    a ceremony, not a gamble — Bootloader makes every boot a deliberate, beautiful act."</span>
             </div>
 
             <p style="font-size: 1.05rem; line-height: 1.8; color: #3b2a47;">
-                Synrc Research Centerは、<strong>B-System Alpha 1（バージョン 3.20-alpha.1、コードネーム「Ceremony」）</strong>の正式公開をお知らせします。
-                B-Systemは、日本のパーソナルコンピュータ規格の金字塔である<strong>BTRON3 SPEC 3.20</strong>仕様に準拠したクリーンルーム再構築OSです。標準C99で設計され、坂村健博士とTRONプロジェクトが提唱した直感的な造形美、リアルタイム応答性、そして実身・仮身ハイパーデータ構造を現代のオープンソース環境に甦らせます。
+                Synrc Research Centerは、<strong>B-System Alpha 1（バージョン
+                    3.20-alpha.1、コードネーム「Ceremony」）</strong>の正式公開をお知らせします。
+                B-Systemは、日本のパーソナルコンピュータ規格の金字塔である<strong>BTRON3 SPEC
+                    3.20</strong>仕様に準拠したクリーンルーム再構築OSです。標準C99で設計され、坂村健博士とTRONプロジェクトが提唱した直感的な造形美、リアルタイム応答性、そして実身・仮身ハイパーデータ構造を現代のオープンソース環境に甦らせます。
             </p>
 
             <div class="feature-box">
                 <h3 style="margin-top: 0; color: #ff2d95;">Alpha 1 の主な機能と到達点（Release Highlights）</h3>
-                <p style="margin-bottom: 0.5rem; color: #4a3560;">集中的なシステム開発を結実させ、単一C99コードベースから完全に再現可能なリリースパッケージを構築しました：</p>
+                <p style="margin-bottom: 0.5rem; color: #4a3560;">集中的なシステム開発を結実させ、単一C99コードベースから完全に再現可能なリリースパッケージを構築しました：
+                </p>
                 <ul>
-                    <li><strong>16アーキテクチャ統合対応：</strong> 単一のBSD Makefileから、POSIX開発ホスト、ARM QEMU VirtIO、Raspberry Pi 2B/3B/4B/400実機ベアメタル、坂村T-Kernel 2.0、x86_64 UEFI SMPワークステーション、NEC PC-9801/PC-9821 VM、Motorola 68040、MIPS32r2、Sony PlayStation 2（Emotion Engine）、FOMAモバイル、PlayStation 3 PPU、およびRP2040/RP2350 PicoCalcまでを統合起動。</li>
-                    <li><strong>ダイレクトMultiboot単一段階ローディング：</strong> 脆弱な2段階MBR/VBRチェーンローダーを撤廃し、Multiboot 1ヘッダー（<code>0x1BADB002</code>）によりファームウェア／QEMUから1MB空間へ直接展開。</li>
-                    <li><strong>本物の「実身／仮身」ハイパーデータエンジン：</strong> 文書内にキャビネット内の実身（Real Body）へのポインタ（仮身・Virtual Body）を無制限に埋め込める坂村ハイパーメディア構造を忠実に実装。</li>
-                    <li><strong>Mozc TIPネイティブ日本語・チベット語・サンスクリット語多言語基盤：</strong> Google Mozcかな漢字変換エンジン（<code>mozc_kkc.c</code>）、TRON Text Input Primitives（TIP/IFE）、チベット文字EWTS Wylie入力、注音符号（Bopomofo）、およびサンスクリット語デーヴァナーガリー書体を内蔵。</li>
-                    <li><strong>創作・開発・エミュレーション統合アプリケーション群：</strong> Workbench、Terminal、Commander、Editor、Clarity、Review、Browser、Mail/Chat、Cassette、Paint、Orchestra DAW、Quake I 3D、B-MSX、ANS Forth、Media Matrix SDK、Volumes、および10種の環境設定アプレットを完備。</li>
-                    <li><strong>公式TAD電子書籍群を標準同梱：</strong> BTRON3仕様書、T-Kernel 2.0、B-Free OS（1994年）、B-System（2026年）、およびB-Book技術仕様書をバイナリTAD（<code>.tad</code>）として自動生成・格納。</li>
-                    <li><strong>適合性テスト90%合格と形式検証：</strong> 370項目（全410検証項目中90.2%）の仕様要件が自動検証スイートを通過。さらにCoq定理証明器によるマイクロカーネル・B-FS・メディアパイプラインの数学的安全性検証を併設。</li>
+                    <li><strong>16アーキテクチャ統合対応：</strong> 単一のBSD Makefileから、POSIX開発ホスト、ARM QEMU VirtIO、Raspberry Pi
+                        2B/3B/4B/400実機ベアメタル、坂村T-Kernel 2.0、x86_64 UEFI SMPワークステーション、NEC PC-9801/PC-9821 VM、Motorola
+                        68040、MIPS32r2、Sony PlayStation 2（Emotion Engine）、FOMAモバイル、PlayStation 3 PPU、およびRP2040/RP2350
+                        PicoCalcまでを統合起動。</li>
+                    <li><strong>ダイレクトMultiboot単一段階ローディング：</strong> 脆弱な2段階MBR/VBRチェーンローダーを撤廃し、Multiboot
+                        1ヘッダー（<code>0x1BADB002</code>）によりファームウェア／QEMUから1MB空間へ直接展開。</li>
+                    <li><strong>本物の「実身／仮身」ハイパーデータエンジン：</strong> 文書内にキャビネット内の実身（Real Body）へのポインタ（仮身・Virtual
+                        Body）を無制限に埋め込める坂村ハイパーメディア構造を忠実に実装。</li>
+                    <li><strong>Mozc TIPネイティブ日本語・チベット語・サンスクリット語多言語基盤：</strong> Google
+                        Mozcかな漢字変換エンジン（<code>mozc_kkc.c</code>）、TRON Text Input Primitives（TIP/IFE）、チベット文字EWTS
+                        Wylie入力、注音符号（Bopomofo）、およびサンスクリット語デーヴァナーガリー書体を内蔵。</li>
+                    <li><strong>創作・開発・エミュレーション統合アプリケーション群：</strong>
+                        Workbench、Terminal、Commander、Editor、Clarity、Review、Browser、Mail/Chat、Cassette、Paint、Orchestra
+                        DAW、Quake I 3D、B-MSX、ANS Forth、Media Matrix SDK、Volumes、および10種の環境設定アプレットを完備。</li>
+                    <li><strong>公式TAD電子書籍群を標準同梱：</strong> BTRON3仕様書、T-Kernel 2.0、B-Free
+                        OS（1994年）、B-System（2026年）、およびB-Book技術仕様書をバイナリTAD（<code>.tad</code>）として自動生成・格納。</li>
+                    <li><strong>適合性テスト90%合格と形式検証：</strong>
+                        370項目（全410検証項目中90.2%）の仕様要件が自動検証スイートを通過。さらにCoq定理証明器によるマイクロカーネル・B-FS・メディアパイプラインの数学的安全性検証を併設。</li>
                 </ul>
             </div>
 
             <div class="feature-box" style="border-left-color: #008080;">
-                <h3 style="margin-top: 0; color: #008080;">対応カーネル一覧と先駆者トリビュート（Unified Targets &amp; Pioneer Tributes）</h3>
+                <h3 style="margin-top: 0; color: #008080;">対応カーネル一覧と先駆者トリビュート（Unified Targets &amp; Pioneer Tributes）
+                </h3>
                 <p style="margin-bottom: 0; color: #4a3560; line-height: 1.75;">
-                    B-Systemでは、日本の組み込みリアルタイムOSおよびシステムプログラミングの道を切り拓いた先駆者たち（高田広章、常田浩、横林貴広、坂村健、内田公太、Awe Morris、横山孝典、板垣史彦、久夛良木健、進藤雅弘、新部裕、本田晋也）への敬意を込め、各ターゲットにその名を冠しています。各カーネルの詳細な機能・アーキテクチャ解説および起動コマンドは、<a href="../../apps/Boot.html" style="color: #ff2d95; font-weight: 700; text-decoration: underline;">ブートローダー製品ページ（Boot.html）の統合カーネル表</a>にて完全掲載されています。
+                    B-Systemでは、日本の組み込みリアルタイムOSおよびシステムプログラミングの道を切り拓いた先駆者たち（高田広章、常田浩、横林貴広、坂村健、内田公太、Awe
+                    Morris、横山孝典、板垣史彦、久夛良木健、進藤雅弘、新部裕、本田晋也）への敬意を込め、各ターゲットにその名を冠しています。各カーネルの詳細な機能・アーキテクチャ解説および起動コマンドは、<a
+                        href="../../apps/Boot.html"
+                        style="color: #ff2d95; font-weight: 700; text-decoration: underline;">ブートローダー製品ページ（Boot.html）の統合カーネル表</a>にて完全掲載されています。
                 </p>
             </div>
 
             <h3 style="margin-top: 2rem;">クイックスタート（Quickstart）</h3>
             <div class="cmd-box">
-<pre>$ git clone https://github.com/bitedits/btron.git &amp;&amp; cd btron
+                <pre>$ git clone https://github.com/bitedits/btron.git &amp;&amp; cd btron
 $ make run-posix     # POSIX  Cleanroom
 $ make run-qemu      # VirtIO Cleanroom
 $ make run-sakamura  # VirtIO T-Kernel
@@ -380,12 +438,21 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
         <!-- SECTION 2: DEVELOPMENT HISTORY — 29 RELEASE PHASES          -->
         <!-- ═══════════════════════════════════════════════════════════ -->
         <section id="development-history" style="margin-top: 4rem;">
-            <h2>第2部：初コミットからの全開発記録<br><span style="font-size: 0.72em; font-weight: 600; color: #6b4f7e; font-family: var(--jp-font);">エンジニアリング・ログ (Development History Log)</span></h2>
+            <h2>第2部：初コミットからの全開発記録<br><span
+                    style="font-size: 0.72em; font-weight: 600; color: #6b4f7e; font-family: var(--jp-font);">エンジニアリング・ログ
+                    (Development History Log)</span></h2>
             <p style="font-size: 1.05rem; line-height: 1.85; color: #3b2a47; margin-bottom: 0.4rem;">
-                B-Systemは、<strong>マキシム・ソハツキー</strong>（Maxim Sokhatsky / Namdak Tonpa / 5HT）により、2026年8月22日から11月24日までの<strong>95日間</strong>にわたる集中的な開発スプリントで設計・実装されました。計<strong>1,262コミット</strong>、<strong>136セッション</strong>（実稼働<strong>約595.2時間</strong>）にわたり、空のGitリポジトリから、極小のRP2040マイクロコントローラやFPGA SoC、PlayStation 2/3、そして64ビットUEFI SMPワークステーションまでを単一C99ソースツリーで貫く仕様準拠OSへと進化を遂げました。
+                B-Systemは、<strong>マキシム・ソハツキー</strong>（Maxim Sokhatsky / Namdak Tonpa /
+                5HT）により、2026年8月22日から11月24日までの<strong>95日間</strong>にわたる集中的な開発スプリントで設計・実装されました。計<strong>1,262コミット</strong>、<strong>136セッション</strong>（実稼働<strong>約595.2時間</strong>）にわたり、空のGitリポジトリから、極小のRP2040マイクロコントローラやFPGA
+                SoC、PlayStation 2/3、そして64ビットUEFI SMPワークステーションまでを単一C99ソースツリーで貫く仕様準拠OSへと進化を遂げました。
             </p>
             <p class="section-lead-en">
-                Engineered by Maxim Sokhatsky (Namdak Tonpa / 5HT) across a continuous 95-day sprint (August 22 – November 24, 2026), B-System evolved through 1,262 commits and 136 active sessions (~595.2 engineering hours) from an empty repository into a cleanroom BTRON3 3.20 operating system spanning 16 hardware targets, formal Coq proofs, real-time 3D/DAW subsystems, and deterministic embedded toolkits. Each phase card below consolidates the underlying session telemetry into a dual-language architectural release chronicle.
+                Engineered by Maxim Sokhatsky (Namdak Tonpa / 5HT) across a continuous 95-day sprint (August 22 –
+                November 24, 2026), B-System evolved through 1,262 commits and 136 active sessions (~595.2 engineering
+                hours) from an empty repository into a cleanroom BTRON3 3.20 operating system spanning 16 hardware
+                targets, formal Coq proofs, real-time 3D/DAW subsystems, and deterministic embedded toolkits. Each phase
+                card below consolidates the underlying session telemetry into a dual-language architectural release
+                chronicle.
             </p>
             <br>
 
@@ -393,14 +460,22 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 1 · Architecture</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">BTRON3 正規ヘッダ体系とマイクロカーネル礎石<span class="phase-title-en">Canonical BTRON3 Headers &amp; Microkernel Bedrock</span></h3>
-                    <span class="phase-meta">Sessions 1–3 · Commits 1–84 (236bc32..5f86885) · Aug 22–24 · ~11.7 h · +31,991 / -7,205 lines</span>
+                    <h3 class="phase-title">BTRON3 正規ヘッダ体系とマイクロカーネル礎石<span class="phase-title-en">Canonical BTRON3
+                            Headers &amp; Microkernel Bedrock</span></h3>
+                    <span class="phase-meta">Sessions 1–3 · Commits 1–84 (236bc32..5f86885) · Aug 22–24 · ~11.7 h ·
+                        +31,991 / -7,205 lines</span>
                 </div>
                 <p class="phase-jp">
-                    2026年8月22日深夜（<code>236bc32</code>）、B-Systemのクリーンルーム実装が幕を開けました。わずか数時間で正規の日本語BTRON3標準ヘッダ体系（<code>&lt;btron/btron.h&gt;</code>、<code>types.h</code>、<code>itron.h</code>、<code>dp.h</code>、<code>wnd.h</code>、<code>vobj.h</code>）とTRON基本データ型（<code>W</code>、<code>H</code>、<code>UW</code>、<code>ID</code>、<code>RECT</code>、<code>COLOR</code>）を確立。続くセッションでは、カーネルメッセージバス、プロセス管理（<code>kernel/proc</code>、<code>kernel/message</code>）、動的メモリアロケータ、オブジェクトマネージャ（<code>omgr</code>）、坂村ウィンドウマネージャ（<code>wnd.c</code>）、ポップアップメニュー、システムパネル、部品（Parts）、トレイ、TIPキーボード処理系、フロッピーディスク形式、およびDisplay Primitives（DP）が一体となって稼働を開始しました。同時にBTRON3仕様書のウクライナ語翻訳と厳密な技術用語辞書（<code>glossary.txt</code>）を編纂し、以降の全サブシステムにおける命名と意味論の不変基準を定めました。
+                    2026年8月22日深夜（<code>236bc32</code>）、B-Systemのクリーンルーム実装が幕を開けました。わずか数時間で正規の日本語BTRON3標準ヘッダ体系（<code>&lt;btron/btron.h&gt;</code>、<code>types.h</code>、<code>itron.h</code>、<code>dp.h</code>、<code>wnd.h</code>、<code>vobj.h</code>）とTRON基本データ型（<code>W</code>、<code>H</code>、<code>UW</code>、<code>ID</code>、<code>RECT</code>、<code>COLOR</code>）を確立。続くセッションでは、カーネルメッセージバス、プロセス管理（<code>kernel/proc</code>、<code>kernel/message</code>）、動的メモリアロケータ、オブジェクトマネージャ（<code>omgr</code>）、坂村ウィンドウマネージャ（<code>wnd.c</code>）、ポップアップメニュー、システムパネル、部品（Parts）、トレイ、TIPキーボード処理系、フロッピーディスク形式、およびDisplay
+                    Primitives（DP）が一体となって稼働を開始しました。同時にBTRON3仕様書のウクライナ語翻訳と厳密な技術用語辞書（<code>glossary.txt</code>）を編纂し、以降の全サブシステムにおける命名と意味論の不変基準を定めました。
                 </p>
                 <p class="phase-en">
-                    Initialized at commit <code>236bc32</code>, Phase 1 established the canonical BTRON3 C99 header contract (<code>btron.h</code>, <code>itron.h</code>, <code>dp.h</code>, <code>wnd.h</code>, <code>vobj.h</code>) and scalar type system. Within 72 hours, core kernel IPC, process scheduling, memory allocation, the Object Manager (<code>omgr</code>), Sakamura Window Manager, Display Primitives, and the formal technical glossary (<code>glossary.txt</code>) were operational alongside Ukrainian specification translations.
+                    Initialized at commit <code>236bc32</code>, Phase 1 established the canonical BTRON3 C99 header
+                    contract (<code>btron.h</code>, <code>itron.h</code>, <code>dp.h</code>, <code>wnd.h</code>,
+                    <code>vobj.h</code>) and scalar type system. Within 72 hours, core kernel IPC, process scheduling,
+                    memory allocation, the Object Manager (<code>omgr</code>), Sakamura Window Manager, Display
+                    Primitives, and the formal technical glossary (<code>glossary.txt</code>) were operational alongside
+                    Ukrainian specification translations.
                 </p>
             </div>
 
@@ -408,14 +483,24 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 2 · Virtualization &amp; Silicon</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">VirtIO 1.4 準仮想化と坂村 T-Kernel 2.0 実機統合<span class="phase-title-en">VirtIO 1.4 Paravirtualization &amp; Bare-Metal T-Kernel 2.0 Ingestion</span></h3>
-                    <span class="phase-meta">Sessions 4–8 · Commits 85–131 (7b6633f..74ace11) · Aug 25–27 · ~17.5 h · +50,917 / -762 lines</span>
+                    <h3 class="phase-title">VirtIO 1.4 準仮想化と坂村 T-Kernel 2.0 実機統合<span class="phase-title-en">VirtIO 1.4
+                            Paravirtualization &amp; Bare-Metal T-Kernel 2.0 Ingestion</span></h3>
+                    <span class="phase-meta">Sessions 4–8 · Commits 85–131 (7b6633f..74ace11) · Aug 25–27 · ~17.5 h ·
+                        +50,917 / -762 lines</span>
                 </div>
                 <p class="phase-jp">
-                    ホスト上のエミュレーションからハイパーバイザーおよび実機ベアメタルへの飛躍を果たしたフェーズです。準仮想化I/O仕様であるVirtIO 1.4 MMIO（<code>doc/virtualization/index.html</code>）とSDL2パススルー基盤を策定し、QEMU向けの独立ビルドターゲット、GPU描画、絶対座標タブレットポインティングを確立。8月26日未明の6.5時間に及ぶ集中スプリントでは、クリーンルームIME設計評価を経て、坂村T-Kernel 2.0の完全なソースツリー（48,000行以上）を統合しました。横林貴広氏によるBCM2836（Raspberry Pi 2B Cortex-A7）低レベルドライバを移植し、Raspberry Pi 4（BCM2711）初期配線、マルチコアバナー識別とCPUアフィニティ、macOS Clang・Linux・Windows WSLのクロスビルド強化、およびデスクトップモジュールの分離（<code>apps/desktop</code>）とフリースタンディングELFリンカスクリプトの整備を完了しました。
+                    ホスト上のエミュレーションからハイパーバイザーおよび実機ベアメタルへの飛躍を果たしたフェーズです。準仮想化I/O仕様であるVirtIO 1.4
+                    MMIO（<code>doc/virtualization/index.html</code>）とSDL2パススルー基盤を策定し、QEMU向けの独立ビルドターゲット、GPU描画、絶対座標タブレットポインティングを確立。8月26日未明の6.5時間に及ぶ集中スプリントでは、クリーンルームIME設計評価を経て、坂村T-Kernel
+                    2.0の完全なソースツリー（48,000行以上）を統合しました。横林貴広氏によるBCM2836（Raspberry Pi 2B Cortex-A7）低レベルドライバを移植し、Raspberry Pi
+                    4（BCM2711）初期配線、マルチコアバナー識別とCPUアフィニティ、macOS Clang・Linux・Windows
+                    WSLのクロスビルド強化、およびデスクトップモジュールの分離（<code>apps/desktop</code>）とフリースタンディングELFリンカスクリプトの整備を完了しました。
                 </p>
                 <p class="phase-en">
-                    Transitioning from host simulation to hypervisor and bare-metal execution, Phase 2 formalized the VirtIO 1.4 MMIO specification, separated POSIX and QEMU targets, and ingested the full 48,000-line Sakamura T-Kernel 2.0 source tree. Low-level BCM2836 (Raspberry Pi 2B) drivers, early BCM2711 (Pi 4) bringup, freestanding linker scripts, and cross-platform toolchain hardening across macOS Clang, Linux, and WSL were completed.
+                    Transitioning from host simulation to hypervisor and bare-metal execution, Phase 2 formalized the
+                    VirtIO 1.4 MMIO specification, separated POSIX and QEMU targets, and ingested the full 48,000-line
+                    Sakamura T-Kernel 2.0 source tree. Low-level BCM2836 (Raspberry Pi 2B) drivers, early BCM2711 (Pi 4)
+                    bringup, freestanding linker scripts, and cross-platform toolchain hardening across macOS Clang,
+                    Linux, and WSL were completed.
                 </p>
             </div>
 
@@ -423,14 +508,23 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 3 · Input &amp; CI</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">Mozc ネイティブ日本語入力と継続的インテグレーション<span class="phase-title-en">Cleanroom Mozc Kana-Kanji IME &amp; Dual-Platform CI</span></h3>
-                    <span class="phase-meta">Sessions 9–10 · Commits 132–150 (323edac..93fd13e) · Aug 28–29 · ~6.3 h · +14,667 / -456 lines</span>
+                    <h3 class="phase-title">Mozc ネイティブ日本語入力と継続的インテグレーション<span class="phase-title-en">Cleanroom Mozc
+                            Kana-Kanji IME &amp; Dual-Platform CI</span></h3>
+                    <span class="phase-meta">Sessions 9–10 · Commits 132–150 (323edac..93fd13e) · Aug 28–29 · ~6.3 h ·
+                        +14,667 / -456 lines</span>
                 </div>
                 <p class="phase-jp">
-                    日本のパーソナルワークステーションの根幹をなすネイティブ日本語入力（IME）をクリーンルームで実現しました。Google Mozcに基づくかな漢字変換エンジン（<code>mozc_kkc.c</code>）およびTRON標準のText Input Primitives（<code>tip_ife.c</code>、<code>tip_task.c</code>）を統合し、入力フロントエンド（IFE）タスクディスパッチャ、辞書引き、F10キーによる英数・ひらがな・カタカナ相互変換、ならびに画面上の変換候補ポップアップを実装。あわせてGitHub Actions上にmacOSとUbuntu LinuxのデュアルCI自動検証マトリクスを構築し、すべてのコミットに対して再現可能な自動ビルド保証を導入しました。
+                    日本のパーソナルワークステーションの根幹をなすネイティブ日本語入力（IME）をクリーンルームで実現しました。Google
+                    Mozcに基づくかな漢字変換エンジン（<code>mozc_kkc.c</code>）およびTRON標準のText Input
+                    Primitives（<code>tip_ife.c</code>、<code>tip_task.c</code>）を統合し、入力フロントエンド（IFE）タスクディスパッチャ、辞書引き、F10キーによる英数・ひらがな・カタカナ相互変換、ならびに画面上の変換候補ポップアップを実装。あわせてGitHub
+                    Actions上にmacOSとUbuntu LinuxのデュアルCI自動検証マトリクスを構築し、すべてのコミットに対して再現可能な自動ビルド保証を導入しました。
                 </p>
                 <p class="phase-en">
-                    Phase 3 delivered native Japanese text entry via a cleanroom C99 port of the Mozc Kana-Kanji conversion engine (<code>mozc_kkc.c</code>) coupled to TRON Text Input Primitives (<code>tip_ife.c</code>, <code>tip_task.c</code>), supporting F10 mode transliteration and live candidate overlays. A dual-platform GitHub Actions CI matrix (macOS and Ubuntu Linux) was simultaneously deployed to enforce build reproducibility.
+                    Phase 3 delivered native Japanese text entry via a cleanroom C99 port of the Mozc Kana-Kanji
+                    conversion engine (<code>mozc_kkc.c</code>) coupled to TRON Text Input Primitives
+                    (<code>tip_ife.c</code>, <code>tip_task.c</code>), supporting F10 mode transliteration and live
+                    candidate overlays. A dual-platform GitHub Actions CI matrix (macOS and Ubuntu Linux) was
+                    simultaneously deployed to enforce build reproducibility.
                 </p>
             </div>
 
@@ -438,14 +532,23 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 4 · Hyper-Data &amp; Books</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">実身・仮身エンジンと 4 大公式 TAD 電子書籍<span class="phase-title-en">Real/Virtual Body Hyper-Data Engine &amp; Native TAD Books</span></h3>
-                    <span class="phase-meta">Sessions 11–13 · Commits 151–181 (f9b253e..8b105b5) · Aug 29–30 · ~12.1 h · +5,850 / -374 lines</span>
+                    <h3 class="phase-title">実身・仮身エンジンと 4 大公式 TAD 電子書籍<span class="phase-title-en">Real/Virtual Body
+                            Hyper-Data Engine &amp; Native TAD Books</span></h3>
+                    <span class="phase-meta">Sessions 11–13 · Commits 151–181 (f9b253e..8b105b5) · Aug 29–30 · ~12.1 h ·
+                        +5,850 / -374 lines</span>
                 </div>
                 <p class="phase-jp">
-                    8月29日の9.9時間に及ぶマラソンスプリントにより、BTRONアーキテクチャの真髄である「実身・仮身（Real Body / Virtual Body）」ハイパーデータエンジン（<code>vobj.c</code>）、バイナリTADパーサ、キャビネット（CAB）ブラウザを完成させました。Elixir製バッチコンパイラ（<code>scripts/html2tad.exs</code>）を新規開発し、106本の技術文書から1MB超のバイナリTAD（<code>.tad</code>）アーカイブを自動生成。BTRON3仕様書、T-Kernel 2.0、B-Free OS（1994年）、B-System（2026年）の4大公式電子書籍をOS標準資産として完全内蔵しました。続くセッションではMozc・RTK・Meditation 2.2の各サブライセンス監査とオープンソース法令遵守文書、仕様PDFリンク同期を完了しています。
+                    8月29日の9.9時間に及ぶマラソンスプリントにより、BTRONアーキテクチャの真髄である「実身・仮身（Real Body / Virtual
+                    Body）」ハイパーデータエンジン（<code>vobj.c</code>）、バイナリTADパーサ、キャビネット（CAB）ブラウザを完成させました。Elixir製バッチコンパイラ（<code>scripts/html2tad.exs</code>）を新規開発し、106本の技術文書から1MB超のバイナリTAD（<code>.tad</code>）アーカイブを自動生成。BTRON3仕様書、T-Kernel
+                    2.0、B-Free OS（1994年）、B-System（2026年）の4大公式電子書籍をOS標準資産として完全内蔵しました。続くセッションではMozc・RTK・Meditation
+                    2.2の各サブライセンス監査とオープンソース法令遵守文書、仕様PDFリンク同期を完了しています。
                 </p>
                 <p class="phase-en">
-                    Anchored by a 9.9-hour sprint, Phase 4 realized BTRON's defining Real Body / Virtual Body (実身／仮身) hyper-data graph (<code>vobj.c</code>), binary TAD parser, and Cabinet explorer. An Elixir compiler (<code>html2tad.exs</code>) compiled 106 specification documents into four embedded native TAD reference books, followed by formal open-source license auditing across Mozc, RTK, and Meditation 2.2 components.
+                    Anchored by a 9.9-hour sprint, Phase 4 realized BTRON's defining Real Body / Virtual Body (実身／仮身)
+                    hyper-data graph (<code>vobj.c</code>), binary TAD parser, and Cabinet explorer. An Elixir compiler
+                    (<code>html2tad.exs</code>) compiled 106 specification documents into four embedded native TAD
+                    reference books, followed by formal open-source license auditing across Mozc, RTK, and Meditation
+                    2.2 components.
                 </p>
             </div>
 
@@ -453,14 +556,21 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 5 · Desktop &amp; Dispatch</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">スライディングタブ UI、XMPP 通信、多態カーネル基盤<span class="phase-title-en">Sliding Title Tabs, XMPP Chat &amp; Polymorphic Kernel Dispatch</span></h3>
-                    <span class="phase-meta">Sessions 14–17 · Commits 182–213 (9b88456..e7bf6e0) · Aug 31 – Sept 1 · ~11.8 h · +5,074 / -1,034 lines</span>
+                    <h3 class="phase-title">スライディングタブ UI、XMPP 通信、多態カーネル基盤<span class="phase-title-en">Sliding Title
+                            Tabs, XMPP Chat &amp; Polymorphic Kernel Dispatch</span></h3>
+                    <span class="phase-meta">Sessions 14–17 · Commits 182–213 (9b88456..e7bf6e0) · Aug 31 – Sept 1 ·
+                        ~11.8 h · +5,074 / -1,034 lines</span>
                 </div>
                 <p class="phase-jp">
-                    BeOSの造形美に着想を得た黄色いスライディング・ウィンドウタイトルタブ、レトロなウィンドウ装飾、自由なスタッキングおよび非アクティブ窓のディミング効果を導入しました。30KBの超軽量XMPPチャットクライアント（<code>src/apps/chat.c</code>、<code>CHAT.md</code>）とANSIカラー端末（<code>gterm.c</code>）を拡充しつつ、中核オーケストレーションヘッダ（<code>include/btron/core.h</code>）を再確立。POSIX・VirtIO・T-Kernel・Yokoの各ターゲットを単一インタフェースで束ねる多態カーネルディスパッチ（<code>core_posix.c</code>、<code>core_virtio.c</code>、<code>core_tkernel.c</code>、<code>core_yoko.c</code>）を完成させ、コードベース全域の呼称を正統なTRON用語「実身・仮身（Body）」へ統一するとともに、Raspberry Pi 2BベアメタルのUSB HID初期化シーケンスを立ち上げました。
+                    BeOSの造形美に着想を得た黄色いスライディング・ウィンドウタイトルタブ、レトロなウィンドウ装飾、自由なスタッキングおよび非アクティブ窓のディミング効果を導入しました。30KBの超軽量XMPPチャットクライアント（<code>src/apps/chat.c</code>、<code>CHAT.md</code>）とANSIカラー端末（<code>gterm.c</code>）を拡充しつつ、中核オーケストレーションヘッダ（<code>include/btron/core.h</code>）を再確立。POSIX・VirtIO・T-Kernel・Yokoの各ターゲットを単一インタフェースで束ねる多態カーネルディスパッチ（<code>core_posix.c</code>、<code>core_virtio.c</code>、<code>core_tkernel.c</code>、<code>core_yoko.c</code>）を完成させ、コードベース全域の呼称を正統なTRON用語「実身・仮身（Body）」へ統一するとともに、Raspberry
+                    Pi 2BベアメタルのUSB HID初期化シーケンスを立ち上げました。
                 </p>
                 <p class="phase-en">
-                    Phase 5 introduced BeOS-inspired yellow sliding title tabs, window dimming, a 30 KB native XMPP chat client (<code>chat.c</code>), and an enhanced ANSI terminal. Architecturally, it unified runtime execution behind polymorphic kernel dispatch (<code>core.h</code> across POSIX, VirtIO, T-Kernel, and Yoko), normalized terminology codebase-wide to Real/Virtual Body semantics, and initiated Raspberry Pi 2B bare-metal USB HID bringup.
+                    Phase 5 introduced BeOS-inspired yellow sliding title tabs, window dimming, a 30 KB native XMPP chat
+                    client (<code>chat.c</code>), and an enhanced ANSI terminal. Architecturally, it unified runtime
+                    execution behind polymorphic kernel dispatch (<code>core.h</code> across POSIX, VirtIO, T-Kernel,
+                    and Yoko), normalized terminology codebase-wide to Real/Virtual Body semantics, and initiated
+                    Raspberry Pi 2B bare-metal USB HID bringup.
                 </p>
             </div>
 
@@ -468,14 +578,22 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 6 · Conformance</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">BTRON 3.20 公式適合性認証スイートと 90% 合格証明<span class="phase-title-en">BTRON 3.20 Conformance Suite &amp; Raspberry Pi USB HID Verification</span></h3>
-                    <span class="phase-meta">Session 18 · Commits 214–243 (74be5db..39b1877) · Sept 1 · ~6.9 h · +6,756 / -536 lines</span>
+                    <h3 class="phase-title">BTRON 3.20 公式適合性認証スイートと 90% 合格証明<span class="phase-title-en">BTRON 3.20
+                            Conformance Suite &amp; Raspberry Pi USB HID Verification</span></h3>
+                    <span class="phase-meta">Session 18 · Commits 214–243 (74be5db..39b1877) · Sept 1 · ~6.9 h · +6,756
+                        / -536 lines</span>
                 </div>
                 <p class="phase-jp">
-                    BTRON 3.20仕様への厳密な適合性を定量的かつ客観的に証明する公式認証体系（<code>CERTIFICATION.md</code>、<code>doc/conformance/index.html</code>）を策定しました。自動検証バイナリ（<code>verify/btron_verify.c</code>）は全60件の自動テストスイートを完全通過し、全410仕様項目のうち370項目（適合率90.2%）の実装準拠を実証。未実装領域では仕様どおり<code>E_NOSPT</code>を返す誠実な境界設計を徹底しました。同時にCIパイプラインへの検証統合とRaspberry Pi 2B実機USB HID検証ハーネス（<code>test_tkernel.sh</code>）を完備し、コミュニティへの敬意として<code>@bookazoid_</code>トリビュートを刻みました。
+                    BTRON
+                    3.20仕様への厳密な適合性を定量的かつ客観的に証明する公式認証体系（<code>CERTIFICATION.md</code>、<code>doc/conformance/index.html</code>）を策定しました。自動検証バイナリ（<code>verify/btron_verify.c</code>）は全60件の自動テストスイートを完全通過し、全410仕様項目のうち370項目（適合率90.2%）の実装準拠を実証。未実装領域では仕様どおり<code>E_NOSPT</code>を返す誠実な境界設計を徹底しました。同時にCIパイプラインへの検証統合とRaspberry
+                    Pi 2B実機USB
+                    HID検証ハーネス（<code>test_tkernel.sh</code>）を完備し、コミュニティへの敬意として<code>@bookazoid_</code>トリビュートを刻みました。
                 </p>
                 <p class="phase-en">
-                    Phase 6 institutionalized formal specification accountability through <code>CERTIFICATION.md</code> and the automated verification runner (<code>verify/btron_verify.c</code>), passing 60/60 automated test suites and auditing 370 of 410 BTRON 3.20 requirements (90.2% conformance) with strict <code>E_NOSPT</code> boundary reporting, integrated into CI alongside Pi 2B USB HID verification.
+                    Phase 6 institutionalized formal specification accountability through <code>CERTIFICATION.md</code>
+                    and the automated verification runner (<code>verify/btron_verify.c</code>), passing 60/60 automated
+                    test suites and auditing 370 of 410 BTRON 3.20 requirements (90.2% conformance) with strict
+                    <code>E_NOSPT</code> boundary reporting, integrated into CI alongside Pi 2B USB HID verification.
                 </p>
             </div>
 
@@ -483,14 +601,26 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 7 · Unification</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">UEFI SMP・PC-98・ARM64 と 14 アプリ群の大統合<span class="phase-title-en">Multi-Target Grand Unification: x86_64 UEFI SMP, PC-98 &amp; Pi 4B</span></h3>
-                    <span class="phase-meta">Sessions 19–21 · Commits 244–280 (1797716..ed92f3b) · Sept 2 · ~7.4 h · +7,252 / -237 lines</span>
+                    <h3 class="phase-title">UEFI SMP・PC-98・ARM64 と 14 アプリ群の大統合<span class="phase-title-en">Multi-Target
+                            Grand Unification: x86_64 UEFI SMP, PC-98 &amp; Pi 4B</span></h3>
+                    <span class="phase-meta">Sessions 19–21 · Commits 244–280 (1797716..ed92f3b) · Sept 2 · ~7.4 h ·
+                        +7,252 / -237 lines</span>
                 </div>
                 <p class="phase-jp">
-                    Alpha 1公開へ向けたシステム大統合フェーズです。脆弱な多段ブートを排したダイレクトMultiboot単一段階起動（<code>core_boot.c</code>）を確立し、内田公太氏に捧げる64ビットx86_64 UEFI SMPカーネル（<code>btron-uchida.elf</code>：ACPI MADT / LAPIC / GOP対応）およびAwe Morris氏に捧げるNEC PC-9801/PC-9821 VMカーネル（<code>btron-morris.elf</code>：プレナーVRAM・ポート0xF2 A20制御）を完成。さらに64ビットAArch64 Raspberry Pi 4Bターゲット（<code>core_arm64.c</code>）、<code>startx</code>デスクトップ起動コマンド、14種のコンシューマアプリ群と8種の設定パネルを統合し、先駆者トリビュートを冠した7大カーネルマトリクスを成立させました。
+                    Alpha
+                    1公開へ向けたシステム大統合フェーズです。脆弱な多段ブートを排したダイレクトMultiboot単一段階起動（<code>core_boot.c</code>）を確立し、内田公太氏に捧げる64ビットx86_64
+                    UEFI SMPカーネル（<code>btron-uchida.elf</code>：ACPI MADT / LAPIC / GOP対応）およびAwe Morris氏に捧げるNEC
+                    PC-9801/PC-9821 VMカーネル（<code>btron-morris.elf</code>：プレナーVRAM・ポート0xF2 A20制御）を完成。さらに64ビットAArch64
+                    Raspberry Pi
+                    4Bターゲット（<code>core_arm64.c</code>）、<code>startx</code>デスクトップ起動コマンド、14種のコンシューマアプリ群と8種の設定パネルを統合し、先駆者トリビュートを冠した7大カーネルマトリクスを成立させました。
                 </p>
                 <p class="phase-en">
-                    Culminating the initial Alpha 1 milestone, Phase 7 replaced fragile staged loaders with direct Multiboot loading (<code>core_boot.c</code>) and delivered the x86_64 UEFI SMP kernel (<code>btron-uchida.elf</code> with ACPI MADT/LAPIC/GOP), the NEC PC-9801/9821 kernel (<code>btron-morris.elf</code>), and the 64-bit ARM64 Raspberry Pi 4B target (<code>core_arm64.c</code>), unifying 14 desktop applications across a 7-kernel pioneer tribute matrix.
+                    Culminating the initial Alpha 1 milestone, Phase 7 replaced fragile staged loaders with direct
+                    Multiboot loading (<code>core_boot.c</code>) and delivered the x86_64 UEFI SMP kernel
+                    (<code>btron-uchida.elf</code> with ACPI MADT/LAPIC/GOP), the NEC PC-9801/9821 kernel
+                    (<code>btron-morris.elf</code>), and the 64-bit ARM64 Raspberry Pi 4B target
+                    (<code>core_arm64.c</code>), unifying 14 desktop applications across a 7-kernel pioneer tribute
+                    matrix.
                 </p>
             </div>
 
@@ -498,14 +628,26 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 8 · Multilingual &amp; Audio</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">チベット語 TRON-Code、Hi-Fi カセット、10 大設定キャビネット<span class="phase-title-en">Tibetan U-chen &amp; Wylie IME, Cassette Deck &amp; Settings Cabinet</span></h3>
-                    <span class="phase-meta">Sessions 22–23 · Commits 281–307 (59e792c..3788ce3) · Sept 3 · ~12.9 h · +15,460 / -2,533 lines</span>
+                    <h3 class="phase-title">チベット語 TRON-Code、Hi-Fi カセット、10 大設定キャビネット<span class="phase-title-en">Tibetan
+                            U-chen &amp; Wylie IME, Cassette Deck &amp; Settings Cabinet</span></h3>
+                    <span class="phase-meta">Sessions 22–23 · Commits 281–307 (59e792c..3788ce3) · Sept 3 · ~12.9 h ·
+                        +15,460 / -2,533 lines</span>
                 </div>
                 <p class="phase-jp">
-                    多言語処理とマルチメディア表現を飛躍的に拡張しました。TRON-Code第1面を拡張して16×16ドットのチベット文字U-chenビットマップ書体（<code>tibetan_fonts.c</code>）、EWTS Wylie入力メソッド（<code>wylie.c</code>）、チベット語形態素辞書、および般若心経チベット語本文を搭載し、TIP入力環境での英数・かな・カナ・チベット語即時切替を確立。オーディオ領域ではSONY TC-K777ESの設計思想を継承したステレオカセットデッキ「Cassette」（<code>audio_player.c</code>：3ヘッド・デュアルキャプスタン、Type I–IVテープセレクタ、ドルビーB/C NR・HX Pro、回転リール物理描画、16セグメントVUメータ）を実装しました。あわせてMatrix表計算、Cabinet実身エクスプローラ、10大独立アプレットからなる環境設定キャビネット、Nyan Catアニメーション付きAboutダイアログ（<code>about.c</code>）、Dave Cutler氏トリビュート、TADブラウザ自動改行、およびmacOS QEMU高倍率表示を完成させています。
+                    多言語処理とマルチメディア表現を飛躍的に拡張しました。TRON-Code第1面を拡張して16×16ドットのチベット文字U-chenビットマップ書体（<code>tibetan_fonts.c</code>）、EWTS
+                    Wylie入力メソッド（<code>wylie.c</code>）、チベット語形態素辞書、および般若心経チベット語本文を搭載し、TIP入力環境での英数・かな・カナ・チベット語即時切替を確立。オーディオ領域ではSONY
+                    TC-K777ESの設計思想を継承したステレオカセットデッキ「Cassette」（<code>audio_player.c</code>：3ヘッド・デュアルキャプスタン、Type
+                    I–IVテープセレクタ、ドルビーB/C NR・HX
+                    Pro、回転リール物理描画、16セグメントVUメータ）を実装しました。あわせてMatrix表計算、Cabinet実身エクスプローラ、10大独立アプレットからなる環境設定キャビネット、Nyan
+                    Catアニメーション付きAboutダイアログ（<code>about.c</code>）、Dave Cutler氏トリビュート、TADブラウザ自動改行、およびmacOS
+                    QEMU高倍率表示を完成させています。
                 </p>
                 <p class="phase-en">
-                    Phase 8 expanded TRON-Code Plane 1 with a 16×16 Tibetan U-chen bitmap font (<code>tibetan_fonts.c</code>), EWTS Wylie input method (<code>wylie.c</code>), dictionary, and Heart Sutra corpus. It also shipped the SONY TC-K777ES-inspired Cassette Hi-Fi deck (<code>audio_player.c</code>) with animated tape reels and VU meters, the 10-applet Settings Cabinet, Matrix spreadsheet, TAD word wrapping, and the animated System About dialog.
+                    Phase 8 expanded TRON-Code Plane 1 with a 16×16 Tibetan U-chen bitmap font
+                    (<code>tibetan_fonts.c</code>), EWTS Wylie input method (<code>wylie.c</code>), dictionary, and
+                    Heart Sutra corpus. It also shipped the SONY TC-K777ES-inspired Cassette Hi-Fi deck
+                    (<code>audio_player.c</code>) with animated tape reels and VU meters, the 10-applet Settings
+                    Cabinet, Matrix spreadsheet, TAD word wrapping, and the animated System About dialog.
                 </p>
             </div>
 
@@ -513,14 +655,24 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 9 · HMI &amp; Menus</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">全画面グローバルメニューと共通アプリメニュー基盤<span class="phase-title-en">TRON Global Menu Bar, Deduplicated App Menus &amp; Retro Iconography</span></h3>
-                    <span class="phase-meta">Session 24 · Commits 308–323 (add97a1..60a2de5) · Sept 4 · ~3.2 h · +6,106 / -720 lines</span>
+                    <h3 class="phase-title">全画面グローバルメニューと共通アプリメニュー基盤<span class="phase-title-en">TRON Global Menu Bar,
+                            Deduplicated App Menus &amp; Retro Iconography</span></h3>
+                    <span class="phase-meta">Session 24 · Commits 308–323 (add97a1..60a2de5) · Sept 4 · ~3.2 h · +6,106
+                        / -720 lines</span>
                 </div>
                 <p class="phase-jp">
-                    TRON HMI仕様に完全準拠した全画面トップシステムメニューバー「［BTRON］グローバルメニュー」（<code>global_menu.c</code>）を新設しました。BeOS Deskbar着想の階層カスケードポップアップ、流体追従ホバー（Fluid Tracking）、キーボードアクセラレータ（Alt+? / Alt+P / Alt+O / F12）、日本語時計・カレンダー表示を統合。さらにEditor・Browser・Cabinet・Terminal間で重複していた個別メニューコードを全面撤廃し、Classic 3DベベルとModern Flat Cardの双方を動的切替可能な「共通アプリケーションメニュー基盤」（<code>app_menu.c</code>）、統一Nano Aboutダイアログ生成機構、および全アプリ共通の32×32ドット・レトロGIF/PNGアイコン群（<code>assets/icons/</code>）を整備しました。
+                    TRON HMI仕様に完全準拠した全画面トップシステムメニューバー「［BTRON］グローバルメニュー」（<code>global_menu.c</code>）を新設しました。BeOS
+                    Deskbar着想の階層カスケードポップアップ、流体追従ホバー（Fluid Tracking）、キーボードアクセラレータ（Alt+? / Alt+P / Alt+O /
+                    F12）、日本語時計・カレンダー表示を統合。さらにEditor・Browser・Cabinet・Terminal間で重複していた個別メニューコードを全面撤廃し、Classic 3DベベルとModern
+                    Flat Cardの双方を動的切替可能な「共通アプリケーションメニュー基盤」（<code>app_menu.c</code>）、統一Nano
+                    Aboutダイアログ生成機構、および全アプリ共通の32×32ドット・レトロGIF/PNGアイコン群（<code>assets/icons/</code>）を整備しました。
                 </p>
                 <p class="phase-en">
-                    Phase 9 introduced the TRON HMI-compliant Global Menu Bar and Japanese Deskbar (<code>global_menu.c</code>) featuring cascading dropdowns, fluid hover tracking, and keyboard accelerators. Redundant per-app menu code was consolidated into a shared Common Application Menu engine (<code>app_menu.c</code>) supporting live switching between Classic 3D Bevel and Modern Flat Card styles, paired with a unified 32×32 retro icon library.
+                    Phase 9 introduced the TRON HMI-compliant Global Menu Bar and Japanese Deskbar
+                    (<code>global_menu.c</code>) featuring cascading dropdowns, fluid hover tracking, and keyboard
+                    accelerators. Redundant per-app menu code was consolidated into a shared Common Application Menu
+                    engine (<code>app_menu.c</code>) supporting live switching between Classic 3D Bevel and Modern Flat
+                    Card styles, paired with a unified 32×32 retro icon library.
                 </p>
             </div>
 
@@ -528,14 +680,23 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 10 · DocOps &amp; MIDI</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">ヘッドレス実機画面抽出、Orchestra 演奏サーバ、約物ホモトピー定理<span class="phase-title-en">Zero-VM Screenshot Pipeline, Live MIDI Server &amp; Theorem 1 Encoding</span></h3>
-                    <span class="phase-meta">Session 25 · Commits 324–348 (9f36ada..588415b) · Sept 4 · ~7.1 h · +8,323 / -2,338 lines</span>
+                    <h3 class="phase-title">ヘッドレス実機画面抽出、Orchestra 演奏サーバ、約物ホモトピー定理<span class="phase-title-en">Zero-VM
+                            Screenshot Pipeline, Live MIDI Server &amp; Theorem 1 Encoding</span></h3>
+                    <span class="phase-meta">Session 25 · Commits 324–348 (9f36ada..588415b) · Sept 4 · ~7.1 h · +8,323
+                        / -2,338 lines</span>
                 </div>
                 <p class="phase-jp">
-                    仮想マシンやX11を一切用いず、ヘッドレスC99フレームバッファから透過ウィンドウ枠をピクセルパーフェクトに抽出するDocOps自動画面撮影パイプライン（<code>capture_screens.c</code>、<code>raw_to_png.py</code>、<code>populate_doc_screens.py</code>）を確立しました。全15アプリ・10設定パネル・孤立メニュー展開・Aboutダイアログの透過PNG生成とHTML自動注入を100ミリ秒未満で完結させます。音楽領域では、外部依存ゼロのC99 GStreamer互換メディアパイプライン、32ポートMIDIルーティングマトリクス、SMPTE/MTCマスタークロックを備えたライブMIDI演奏サーバ「管弦楽（Orchestra）」（<code>orchestra.c</code>）を投入。さらに一般約物領域のホモトピー的符号化定理（Theorem 1: $(\phi^{-1} \circ \phi)(S) = S$）を証明・実装し、約物文字の不可逆化・亀甲括弧化欠陥を根絶しました。
+                    仮想マシンやX11を一切用いず、ヘッドレスC99フレームバッファから透過ウィンドウ枠をピクセルパーフェクトに抽出するDocOps自動画面撮影パイプライン（<code>capture_screens.c</code>、<code>raw_to_png.py</code>、<code>populate_doc_screens.py</code>）を確立しました。全15アプリ・10設定パネル・孤立メニュー展開・Aboutダイアログの透過PNG生成とHTML自動注入を100ミリ秒未満で完結させます。音楽領域では、外部依存ゼロのC99
+                    GStreamer互換メディアパイプライン、32ポートMIDIルーティングマトリクス、SMPTE/MTCマスタークロックを備えたライブMIDI演奏サーバ「管弦楽（Orchestra）」（<code>orchestra.c</code>）を投入。さらに一般約物領域のホモトピー的符号化定理（Theorem
+                    1: $(\phi^{-1} \circ \phi)(S) = S$）を証明・実装し、約物文字の不可逆化・亀甲括弧化欠陥を根絶しました。
                 </p>
                 <p class="phase-en">
-                    Phase 10 established the zero-VM headless screenshot pipeline (<code>capture_screens.c</code>, <code>raw_to_png.py</code>, <code>populate_doc_screens.py</code>), rendering isolated transparent ARGB window frames across all apps and settings in under 100 ms. It also unveiled the Orchestra live MIDI server (<code>orchestra.c</code>) with a zero-dependency C99 media pipeline and 32-port routing, and proved Theorem 1 (homotopical punctuation encoding) to guarantee lossless General Punctuation round-tripping.
+                    Phase 10 established the zero-VM headless screenshot pipeline (<code>capture_screens.c</code>,
+                    <code>raw_to_png.py</code>, <code>populate_doc_screens.py</code>), rendering isolated transparent
+                    ARGB window frames across all apps and settings in under 100 ms. It also unveiled the Orchestra live
+                    MIDI server (<code>orchestra.c</code>) with a zero-dependency C99 media pipeline and 32-port
+                    routing, and proved Theorem 1 (homotopical punctuation encoding) to guarantee lossless General
+                    Punctuation round-tripping.
                 </p>
             </div>
 
@@ -543,14 +704,27 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 11 · Multi-Arch &amp; Mobile</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">m68k・MIPS・FOMA モバイル UI と NORTIA Windows 統合<span class="phase-title-en">Motorola 68k, MIPS, µBTRON-FOMA Mobile Platform &amp; NORTIA Builds</span></h3>
-                    <span class="phase-meta">Sessions 26–30 · Commits 349–450 (48d3268..6d4e8cc) · Sept 4–9 · ~38.2 h · 101 commits</span>
+                    <h3 class="phase-title">m68k・MIPS・FOMA モバイル UI と NORTIA Windows 統合<span
+                            class="phase-title-en">Motorola 68k, MIPS, µBTRON-FOMA Mobile Platform &amp; NORTIA
+                            Builds</span></h3>
+                    <span class="phase-meta">Sessions 26–30 · Commits 349–450 (48d3268..6d4e8cc) · Sept 4–9 · ~38.2 h ·
+                        101 commits</span>
                 </div>
                 <p class="phase-jp">
-                    CPUアーキテクチャとフォームファクタの境界を一気に押し広げた5日間・101コミットの拡張フェーズです。Motorola 68000/68040（<code>m68k</code>）移植とマウス・キーボード・デスクトップアイコン表示、Raspberry Pi 2B/3B/4B向けVGAフレームバッファ入力、MIPSワークステーション初期起動、PlayStation 2二段階シェル起動とフォント描画、およびイベント分離層（Eventing Separation Layer）を実現。さらに縦長携帯端末向け「µBTRON-FOMA」モバイルプラットフォーム（<code>gterm</code>、<code>t_editor</code>、Aboutボックス、Ctrl+Gマウス解放、モバイルCSS）とB-Bookハイパーテキスト文書体系を整備しました。UEFIおよびPC-98でのマウス操作対応、VirtIOサウンド基盤、Windows MSYS2/MINGW64環境「NORTIA」向けの完全POSIX/QEMUビルド、BSD Makefileの近代化、そして<code>Language.html</code>自動画面撮影パイプラインの拡張を完遂しています。
+                    CPUアーキテクチャとフォームファクタの境界を一気に押し広げた5日間・101コミットの拡張フェーズです。Motorola
+                    68000/68040（<code>m68k</code>）移植とマウス・キーボード・デスクトップアイコン表示、Raspberry Pi
+                    2B/3B/4B向けVGAフレームバッファ入力、MIPSワークステーション初期起動、PlayStation 2二段階シェル起動とフォント描画、およびイベント分離層（Eventing
+                    Separation
+                    Layer）を実現。さらに縦長携帯端末向け「µBTRON-FOMA」モバイルプラットフォーム（<code>gterm</code>、<code>t_editor</code>、Aboutボックス、Ctrl+Gマウス解放、モバイルCSS）とB-Bookハイパーテキスト文書体系を整備しました。UEFIおよびPC-98でのマウス操作対応、VirtIOサウンド基盤、Windows
+                    MSYS2/MINGW64環境「NORTIA」向けの完全POSIX/QEMUビルド、BSD
+                    Makefileの近代化、そして<code>Language.html</code>自動画面撮影パイプラインの拡張を完遂しています。
                 </p>
                 <p class="phase-en">
-                    Spanning 101 commits across five intensive sessions, Phase 11 expanded B-System to Motorola 68000/68040, MIPS, early PlayStation 2 boot, and the portrait-oriented µBTRON-FOMA mobile platform. It introduced the Eventing Separation Layer, UEFI/PC-98 mouse input, VirtIO audio, full NORTIA (MSYS2/MINGW64) Windows POSIX and QEMU build targets, modernized BSD Makefiles, and the foundational B-Book hypertext architecture.
+                    Spanning 101 commits across five intensive sessions, Phase 11 expanded B-System to Motorola
+                    68000/68040, MIPS, early PlayStation 2 boot, and the portrait-oriented µBTRON-FOMA mobile platform.
+                    It introduced the Eventing Separation Layer, UEFI/PC-98 mouse input, VirtIO audio, full NORTIA
+                    (MSYS2/MINGW64) Windows POSIX and QEMU build targets, modernized BSD Makefiles, and the foundational
+                    B-Book hypertext architecture.
                 </p>
             </div>
 
@@ -558,14 +732,22 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 12 · Storage &amp; Licensing</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">B-FS・Vector-FS 形式モデル、Volumes 管理、Dharma License 2.0<span class="phase-title-en">B-FS Architecture, Journaling Formal Models &amp; DriveSetup Volumes</span></h3>
-                    <span class="phase-meta">Sessions 31–36 · Commits 451–529 (5bba655..c1a157e) · Sept 10–16 · ~33.0 h · 78 commits</span>
+                    <h3 class="phase-title">B-FS・Vector-FS 形式モデル、Volumes 管理、Dharma License 2.0<span
+                            class="phase-title-en">B-FS Architecture, Journaling Formal Models &amp; DriveSetup
+                            Volumes</span></h3>
+                    <span class="phase-meta">Sessions 31–36 · Commits 451–529 (5bba655..c1a157e) · Sept 10–16 · ~33.0 h
+                        · 78 commits</span>
                 </div>
                 <p class="phase-jp">
-                    永続ストレージとファイルシステム設計を理論・実装の両面から体系化したフェーズです。台湾注音符号（BOPOMOFO）入力とCLU仕様（<code>CLU.md</code>）を策定し、独自のB-FSファイルシステム（<code>FS.md</code>）を構築。<code>/SYS</code>および<code>/CHOKANJI</code>ボリュームマウント、<code>df</code>のCLUボリューム一覧、<code>fs -a/-r/-l/-g/-t</code>操作群、厳格なボリューム分離とFIDセキュリティ、<code>stat</code>/<code>pwd</code>コマンドを実装し、FreeBSD・NetBSD・Alpine・macOSでのクロスCI安定化を達成しました。さらにVector-FSデータベース層とジャーナリングFSの形式モデル検証を基盤として、惑星規模のグローバル区画コード体系を備えたディスク管理アプリ「Volumes（DriveSetup）」を投入。専用ビルド領域<code>/.build/</code>の分離、ファイルコピー・ハッシュ検証テスト、Dharma License 2.0採択、および<code>btron.pro</code>公式ドメイン（CNAME）整備を完了しました。
+                    永続ストレージとファイルシステム設計を理論・実装の両面から体系化したフェーズです。台湾注音符号（BOPOMOFO）入力とCLU仕様（<code>CLU.md</code>）を策定し、独自のB-FSファイルシステム（<code>FS.md</code>）を構築。<code>/SYS</code>および<code>/CHOKANJI</code>ボリュームマウント、<code>df</code>のCLUボリューム一覧、<code>fs -a/-r/-l/-g/-t</code>操作群、厳格なボリューム分離とFIDセキュリティ、<code>stat</code>/<code>pwd</code>コマンドを実装し、FreeBSD・NetBSD・Alpine・macOSでのクロスCI安定化を達成しました。さらにVector-FSデータベース層とジャーナリングFSの形式モデル検証を基盤として、惑星規模のグローバル区画コード体系を備えたディスク管理アプリ「Volumes（DriveSetup）」を投入。専用ビルド領域<code>/.build/</code>の分離、ファイルコピー・ハッシュ検証テスト、Dharma
+                    License 2.0採択、および<code>btron.pro</code>公式ドメイン（CNAME）整備を完了しました。
                 </p>
                 <p class="phase-en">
-                    Phase 12 architected B-System's storage stack from formal theory to disk tools: introducing Bopomofo input, the CLU specification, and B-FS with <code>/SYS</code> and <code>/CHOKANJI</code> mounts, strict FID isolation, and cross-BSD/Alpine/macOS CI parity. Built upon Vector-FS and journaling formal models, it shipped the Volumes (DriveSetup) partition manager, adopted Dharma License 2.0, and anchored the <code>btron.pro</code> publication domain.
+                    Phase 12 architected B-System's storage stack from formal theory to disk tools: introducing Bopomofo
+                    input, the CLU specification, and B-FS with <code>/SYS</code> and <code>/CHOKANJI</code> mounts,
+                    strict FID isolation, and cross-BSD/Alpine/macOS CI parity. Built upon Vector-FS and journaling
+                    formal models, it shipped the Volumes (DriveSetup) partition manager, adopted Dharma License 2.0,
+                    and anchored the <code>btron.pro</code> publication domain.
                 </p>
             </div>
 
@@ -573,14 +755,23 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 13 · Bare-Metal ARM64</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">Raspberry Pi 400 一体型キーボードと無遅延 xHCI スタック<span class="phase-title-en">Broadcom BCM2711 Bringup, Physical Keyboard &amp; Zero-Lag USB HID</span></h3>
-                    <span class="phase-meta">Sessions 37–38 · Commits 530–563 (ff6f22f..64fd811) · Sept 16–18 · ~26.1 h · 34 commits</span>
+                    <h3 class="phase-title">Raspberry Pi 400 一体型キーボードと無遅延 xHCI スタック<span class="phase-title-en">Broadcom
+                            BCM2711 Bringup, Physical Keyboard &amp; Zero-Lag USB HID</span></h3>
+                    <span class="phase-meta">Sessions 37–38 · Commits 530–563 (ff6f22f..64fd811) · Sept 16–18 · ~26.1 h
+                        · 34 commits</span>
                 </div>
                 <p class="phase-jp">
-                    Broadcom BCM2711を搭載したキーボード一体型パーソナルコンピュータ「Raspberry Pi 400」実機ベアメタルへの完全対応を達成しました。Clarityフレーム移動（<code>9497fe0</code>）、Ceremony 1か月マイルストーン総括（<code>ff6f22f</code>）、POSIX準拠マクロ整備を経て、Pi 400本体内蔵の物理キーボードドライバ（<code>working keyboard Pi 400</code>）、xHCI USBホストコントローラ、光学マウスプロトコル復号、ダブルバッファリング、ハードウェアキーリピートをゼロから実機起動。実シリコン上での確定論的かつ無遅延なマウスポインタ操作（<code>64fd811</code>）を確立しました。
+                    Broadcom BCM2711を搭載したキーボード一体型パーソナルコンピュータ「Raspberry Pi
+                    400」実機ベアメタルへの完全対応を達成しました。Clarityフレーム移動（<code>9497fe0</code>）、Ceremony
+                    1か月マイルストーン総括（<code>ff6f22f</code>）、POSIX準拠マクロ整備を経て、Pi
+                    400本体内蔵の物理キーボードドライバ（<code>working keyboard Pi 400</code>）、xHCI
+                    USBホストコントローラ、光学マウスプロトコル復号、ダブルバッファリング、ハードウェアキーリピートをゼロから実機起動。実シリコン上での確定論的かつ無遅延なマウスポインタ操作（<code>64fd811</code>）を確立しました。
                 </p>
                 <p class="phase-en">
-                    Phase 13 achieved full bare-metal bringup on Broadcom BCM2711 (Raspberry Pi 400), including its integrated physical keyboard, xHCI USB host controller stack, optical mouse protocol decoding, double buffering, and hardware key repeat—delivering deterministic, zero-lag pointer interaction directly on ARM64 silicon alongside Clarity frame movement refinements.
+                    Phase 13 achieved full bare-metal bringup on Broadcom BCM2711 (Raspberry Pi 400), including its
+                    integrated physical keyboard, xHCI USB host controller stack, optical mouse protocol decoding,
+                    double buffering, and hardware key repeat—delivering deterministic, zero-lag pointer interaction
+                    directly on ARM64 silicon alongside Clarity frame movement refinements.
                 </p>
             </div>
 
@@ -588,14 +779,24 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 14 · Compositor &amp; GPU</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">三段階合成パイプライン、Invalidation API、VideoCore ポーリング<span class="phase-title-en">Preemptive Backbuffering, Spike-Free Dragging &amp; Hardware Polling</span></h3>
-                    <span class="phase-meta">Sessions 39–41 · Commits 564–612 (2d39cc2..326bbbb) · Sept 19–21 · ~27.0 h · 49 commits</span>
+                    <h3 class="phase-title">三段階合成パイプライン、Invalidation API、VideoCore ポーリング<span
+                            class="phase-title-en">Preemptive Backbuffering, Spike-Free Dragging &amp; Hardware
+                            Polling</span></h3>
+                    <span class="phase-meta">Sessions 39–41 · Commits 564–612 (2d39cc2..326bbbb) · Sept 19–21 · ~27.0 h
+                        · 49 commits</span>
                 </div>
                 <p class="phase-jp">
-                    グラフィックス描画と入力サブシステムを根本刷新したフェーズです。ポインタ入力バッファのリークおよびリングバッファ飽和（<code>buffer leaking / compactification</code>）を数学的に解消し、xHCI設計青写真（<code>XHCI.txt</code>）、NuttXアーキテクチャ比較、非同期イベント論文（<code>c1c2e06</code>）を執筆。描画層では、割り込みやDMAが利用できない極小環境でも60fpsを維持する「プリエンプティブ・バックバッファリング」（矩形和・積演算）と、Clipper・Compositor・Presenterの三段階パイプライン（<code>3bdddb5</code>）を確立しました。ウィンドウ移動開始時の座標スパイクを完全排除したドラッグプロトコル、移動中タイトルバー半透明プレビュー（<code>8a19ea4</code>）、Windows 286着想の無効化（Invalidation）API（<code>3291090</code>）、およびVideoCore IV/VI GPUのハードウェア状態ポーリング最適化（<code>gpu.txt</code>、<code>e0cf509</code>）を完遂しました。
+                    グラフィックス描画と入力サブシステムを根本刷新したフェーズです。ポインタ入力バッファのリークおよびリングバッファ飽和（<code>buffer leaking / compactification</code>）を数学的に解消し、xHCI設計青写真（<code>XHCI.txt</code>）、NuttXアーキテクチャ比較、非同期イベント論文（<code>c1c2e06</code>）を執筆。描画層では、割り込みやDMAが利用できない極小環境でも60fpsを維持する「プリエンプティブ・バックバッファリング」（矩形和・積演算）と、Clipper・Compositor・Presenterの三段階パイプライン（<code>3bdddb5</code>）を確立しました。ウィンドウ移動開始時の座標スパイクを完全排除したドラッグプロトコル、移動中タイトルバー半透明プレビュー（<code>8a19ea4</code>）、Windows
+                    286着想の無効化（Invalidation）API（<code>3291090</code>）、およびVideoCore IV/VI
+                    GPUのハードウェア状態ポーリング最適化（<code>gpu.txt</code>、<code>e0cf509</code>）を完遂しました。
                 </p>
                 <p class="phase-en">
-                    Phase 14 overhauled the input and graphics pipelines: eliminating pointer ringbuffer leaks via compactification, authoring <code>XHCI.txt</code> and an asynchronous event paper, and deploying an IRQ-free preemptive backbuffering architecture with a tri-stage Clipper/Compositor/Presenter pipeline (<code>3bdddb5</code>). It eliminated window-drag coordinate spikes, added translucent drag previews and a Windows 286-inspired Invalidation API (<code>3291090</code>), and replaced VideoCore IV/VI spin delays with active hardware status polling.
+                    Phase 14 overhauled the input and graphics pipelines: eliminating pointer ringbuffer leaks via
+                    compactification, authoring <code>XHCI.txt</code> and an asynchronous event paper, and deploying an
+                    IRQ-free preemptive backbuffering architecture with a tri-stage Clipper/Compositor/Presenter
+                    pipeline (<code>3bdddb5</code>). It eliminated window-drag coordinate spikes, added translucent drag
+                    previews and a Windows 286-inspired Invalidation API (<code>3291090</code>), and replaced VideoCore
+                    IV/VI spin delays with active hardware status polling.
                 </p>
             </div>
 
@@ -603,14 +804,28 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 15 · Console &amp; Embedded</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">PlayStation 2 実機稼働、ゼロヒープ SegUI、B-Book 全 13 章<span class="phase-title-en">Emotion Engine R5900 Port, NASA-Rule-3 SegUI &amp; B-Book Manual</span></h3>
-                    <span class="phase-meta">Sessions 42–44 · Commits 613–631 (f60c309..b407cc7) · Sept 24–26 · ~8.8 h · 19 commits</span>
+                    <h3 class="phase-title">PlayStation 2 実機稼働、ゼロヒープ SegUI、B-Book 全 13 章<span
+                            class="phase-title-en">Emotion Engine R5900 Port, NASA-Rule-3 SegUI &amp; B-Book
+                            Manual</span></h3>
+                    <span class="phase-meta">Sessions 42–44 · Commits 613–631 (f60c309..b407cc7) · Sept 24–26 · ~8.8 h ·
+                        19 commits</span>
                 </div>
                 <p class="phase-jp">
-                    Sony PlayStation 2（Emotion Engine R5900 64ビットMIPS-III）への完全クリーンルーム移植（<code>core_ps2.c</code>）を達成しました。GS 4MB eDRAMへのHost-to-Local GIF DMAブリッター（<code>ps2_gs_flush</code>）、DualShock 2アナログ速度積分ドライバ（<code>ps2_pad.c</code>）、SIO0 UARTシリアルコンソール、OHCI USBマウス・キーボード、および非破壊カーソル復元（<code>cursor_saved</code>）を完備。並行して家電・携帯電話・極小組み込み機器向けに、起動後の動的ヒープ確保を一切排した（NASA JPL Rule 3準拠）UIツールキット「SegUI（セグメンテーションUI）」（<code>include/btron/segui.h</code>、<code>src/segui/</code>）を新設しました。さらにBeBook着想の公式技術仕様書「B-Book」の全13サブシステム（新章<code>fs.html</code>：Chokanji/B-FS V1/V2および標準ボリューム群、拡張<code>drivers.html</code>：PCIeデバイスツリー・コンソール保存）と、久夛良木健氏・進藤雅弘氏を讃える12カーネルMultibootマトリクス（<code>Boot.html</code>）を完成させています。
+                    Sony PlayStation 2（Emotion Engine R5900
+                    64ビットMIPS-III）への完全クリーンルーム移植（<code>core_ps2.c</code>）を達成しました。GS 4MB eDRAMへのHost-to-Local GIF
+                    DMAブリッター（<code>ps2_gs_flush</code>）、DualShock 2アナログ速度積分ドライバ（<code>ps2_pad.c</code>）、SIO0
+                    UARTシリアルコンソール、OHCI
+                    USBマウス・キーボード、および非破壊カーソル復元（<code>cursor_saved</code>）を完備。並行して家電・携帯電話・極小組み込み機器向けに、起動後の動的ヒープ確保を一切排した（NASA
+                    JPL Rule
+                    3準拠）UIツールキット「SegUI（セグメンテーションUI）」（<code>include/btron/segui.h</code>、<code>src/segui/</code>）を新設しました。さらにBeBook着想の公式技術仕様書「B-Book」の全13サブシステム（新章<code>fs.html</code>：Chokanji/B-FS
+                    V1/V2および標準ボリューム群、拡張<code>drivers.html</code>：PCIeデバイスツリー・コンソール保存）と、久夛良木健氏・進藤雅弘氏を讃える12カーネルMultibootマトリクス（<code>Boot.html</code>）を完成させています。
                 </p>
                 <p class="phase-en">
-                    Phase 15 brought B-System natively to the Sony PlayStation 2 Emotion Engine (<code>core_ps2.c</code>) with 4 MB eDRAM GIF DMA blitting, DualShock 2 analog velocity integration, and OHCI USB HID. It also debuted SegUI (<code>segui.h</code>)—a NASA JPL Rule 3 zero-post-boot-heap UI toolkit for handsets and appliances—and completed the 13-chapter B-Book reference manual alongside a 12-kernel Multiboot matrix honoring Ken Kutaragi and Masahiro Shindo.
+                    Phase 15 brought B-System natively to the Sony PlayStation 2 Emotion Engine
+                    (<code>core_ps2.c</code>) with 4 MB eDRAM GIF DMA blitting, DualShock 2 analog velocity integration,
+                    and OHCI USB HID. It also debuted SegUI (<code>segui.h</code>)—a NASA JPL Rule 3 zero-post-boot-heap
+                    UI toolkit for handsets and appliances—and completed the 13-chapter B-Book reference manual
+                    alongside a 12-kernel Multiboot matrix honoring Ken Kutaragi and Masahiro Shindo.
                 </p>
             </div>
 
@@ -618,18 +833,31 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 16 · 3D Graphics</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">OpenGL ES 1.1 統一基盤 — TinyGL &amp; VirtIO-GPU デュアルバックエンド<span class="phase-title-en">OpenGL ES 1.1 Dispatch, EGL-Lite Bridge &amp; Bare-Metal/VirGL Backends</span></h3>
-                    <span class="phase-meta">Session 45 · Commits 632–647 (b94549f..beb4261) · Sept 26–27 · ~4.8 h · 16 commits</span>
+                    <h3 class="phase-title">OpenGL ES 1.1 統一基盤 — TinyGL &amp; VirtIO-GPU デュアルバックエンド<span
+                            class="phase-title-en">OpenGL ES 1.1 Dispatch, EGL-Lite Bridge &amp; Bare-Metal/VirGL
+                            Backends</span></h3>
+                    <span class="phase-meta">Session 45 · Commits 632–647 (b94549f..beb4261) · Sept 26–27 · ~4.8 h · 16
+                        commits</span>
                 </div>
                 <p class="phase-jp">
-                    B-Systemの3Dグラフィックス基盤（<code>src/gl/</code>）をゼロから構築しました。統一ディスパッチテーブル（<code>gl_dispatch.c</code>）とEGL-liteウィンドウサーフェスブリッジ（<code>egl_surface.c</code>）を核に、x86_64 UEFIベアメタル向けのTinyGLソフトウェアラスタライザ（<code>backend_tinygl.c</code>：VESA LFB直接描画）と、POSIX・QEMU・Sakamura T-Kernel向けのVirtIO-GPU 3Dハードウェアアクセラレーション（<code>backend_virgl.c</code>）というデュアルバックエンド体系を確立。4×4行列スタック、グーロー平滑シェーディング、法線変換、環境光・拡散反射ライティング、ディスプレイリスト（<code>glGenLists</code>〜<code>glCallList</code>）、デプスバッファ三角形ラスタライザを完備し、BTRONウィンドウマネージャ配下で60fps回転する<code>glgears</code>（<code>src/apps/glgears.c</code>）とAPICタイマースケジューラを統合しました。背面カリング符号修正と<code>SDL_PIXELFORMAT_ARGB8888</code>／<code>SDL_BLENDMODE_NONE</code>への全面統一により、UEFI実機と100%同一の発色精度を達成しています。
+                    B-Systemの3Dグラフィックス基盤（<code>src/gl/</code>）をゼロから構築しました。統一ディスパッチテーブル（<code>gl_dispatch.c</code>）とEGL-liteウィンドウサーフェスブリッジ（<code>egl_surface.c</code>）を核に、x86_64
+                    UEFIベアメタル向けのTinyGLソフトウェアラスタライザ（<code>backend_tinygl.c</code>：VESA LFB直接描画）と、POSIX・QEMU・Sakamura
+                    T-Kernel向けのVirtIO-GPU
+                    3Dハードウェアアクセラレーション（<code>backend_virgl.c</code>）というデュアルバックエンド体系を確立。4×4行列スタック、グーロー平滑シェーディング、法線変換、環境光・拡散反射ライティング、ディスプレイリスト（<code>glGenLists</code>〜<code>glCallList</code>）、デプスバッファ三角形ラスタライザを完備し、BTRONウィンドウマネージャ配下で60fps回転する<code>glgears</code>（<code>src/apps/glgears.c</code>）とAPICタイマースケジューラを統合しました。背面カリング符号修正と<code>SDL_PIXELFORMAT_ARGB8888</code>／<code>SDL_BLENDMODE_NONE</code>への全面統一により、UEFI実機と100%同一の発色精度を達成しています。
                 </p>
                 <p class="phase-en">
-                    Phase 16 established B-System's OpenGL ES 1.1 architecture (<code>src/gl/</code>) with unified dispatch, an EGL-lite window surface bridge, and dual backends: TinyGL software rasterization directly to VESA LFB on bare-metal UEFI, and cleanroom VirtIO-GPU 3D (virgl) hardware acceleration on POSIX/QEMU/T-Kernel. Window-integrated 60 FPS <code>glgears</code>, backface culling fixes, and strict ARGB8888/opaque blending guaranteed identical color fidelity across bare metal and virtualization.
+                    Phase 16 established B-System's OpenGL ES 1.1 architecture (<code>src/gl/</code>) with unified
+                    dispatch, an EGL-lite window surface bridge, and dual backends: TinyGL software rasterization
+                    directly to VESA LFB on bare-metal UEFI, and cleanroom VirtIO-GPU 3D (virgl) hardware acceleration
+                    on POSIX/QEMU/T-Kernel. Window-integrated 60 FPS <code>glgears</code>, backface culling fixes, and
+                    strict ARGB8888/opaque blending guaranteed identical color fidelity across bare metal and
+                    virtualization.
                 </p>
                 <div class="phase-credits">
                     <strong>謝辞とクレジット（Acknowledgements &amp; Credits）：</strong>
-                    TinyGL創始者 <strong>Fabrice Bellard</strong> 氏、32ビット近代化を担った <strong>C-Chads</strong> コミュニティ、glgears・Mesa 3D創始者 <strong>Brian Paul</strong> 氏、VirtIO-GPU / virgl仕様策定者 <strong>Gerd Hoffmann</strong> 氏、そしてTRONアーキテクチャ創始者 <strong>坂村健</strong> 博士に深く敬意を表します。
+                    TinyGL創始者 <strong>Fabrice Bellard</strong> 氏、32ビット近代化を担った <strong>C-Chads</strong>
+                    コミュニティ、glgears・Mesa 3D創始者 <strong>Brian Paul</strong> 氏、VirtIO-GPU / virgl仕様策定者 <strong>Gerd
+                        Hoffmann</strong> 氏、そしてTRONアーキテクチャ創始者 <strong>坂村健</strong> 博士に深く敬意を表します。
                 </div>
             </div>
 
@@ -637,18 +865,27 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 17 · 3D &amp; Formal Proofs</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">Quake I 完全移植、Coq 数学的形式検証、Linux/BSD 互換層<span class="phase-title-en">Cleanroom Quake I Engine, Coq Kernel Safety Proofs &amp; POSIX Layer</span></h3>
-                    <span class="phase-meta">Sessions 46–51 · Commits 648–734 (13162a3..250719f) · Sept 27 – Oct 1 · ~40.7 h · 87 commits</span>
+                    <h3 class="phase-title">Quake I 完全移植、Coq 数学的形式検証、Linux/BSD 互換層<span class="phase-title-en">Cleanroom
+                            Quake I Engine, Coq Kernel Safety Proofs &amp; POSIX Layer</span></h3>
+                    <span class="phase-meta">Sessions 46–51 · Commits 648–734 (13162a3..250719f) · Sept 27 – Oct 1 ·
+                        ~40.7 h · 87 commits</span>
                 </div>
                 <p class="phase-jp">
-                    3Dリアルタイムゲームエンジンと数学的形式検証という二大領域を同時制覇したフェーズです。id Softwareの名作『Quake I』を完全クリーンルーム移植（<code>src/quake/</code>）し、BSPマップ読み込み、ライトマップ合成、エイリアスモデル描画、キーボード・マウス操作、音響処理、およびQEMU上でのVirGL 3Dハードウェアアクセラレーションによる60fps稼働を確立。あわせて非同期I/Oテスト（<code>test-async</code>）、GStreamerパイプライン試作（<code>gst.c</code>）を経て、仏INRIA開発の定理証明支援系「Coq」によるTRONマイクロカーネル形式検証モデル（<code>verify/models/</code>、<code>btron-coq.pdf</code>）を導入し、プロセススケジューラ・コア間IPC・メディアパイプラインの安全性を機械検査済み定理として証明しました。さらにTessronタイリングエンジン、TRON仕様15.2.3–15.7.4プロパティ検証、およびUNIXツール群を稼働させるLinux/BSD互換サブシステム（<code>src/clu/be/</code>、<code>src/clu/fs.c</code>）を整備しました。
+                    3Dリアルタイムゲームエンジンと数学的形式検証という二大領域を同時制覇したフェーズです。id Softwareの名作『Quake
+                    I』を完全クリーンルーム移植（<code>src/quake/</code>）し、BSPマップ読み込み、ライトマップ合成、エイリアスモデル描画、キーボード・マウス操作、音響処理、およびQEMU上でのVirGL
+                    3Dハードウェアアクセラレーションによる60fps稼働を確立。あわせて非同期I/Oテスト（<code>test-async</code>）、GStreamerパイプライン試作（<code>gst.c</code>）を経て、仏INRIA開発の定理証明支援系「Coq」によるTRONマイクロカーネル形式検証モデル（<code>verify/models/</code>、<code>btron-coq.pdf</code>）を導入し、プロセススケジューラ・コア間IPC・メディアパイプラインの安全性を機械検査済み定理として証明しました。さらにTessronタイリングエンジン、TRON仕様15.2.3–15.7.4プロパティ検証、およびUNIXツール群を稼働させるLinux/BSD互換サブシステム（<code>src/clu/be/</code>、<code>src/clu/fs.c</code>）を整備しました。
                 </p>
                 <p class="phase-en">
-                    Phase 17 united real-time 3D gaming with formal methods: porting id Software's <em>Quake I</em> (<code>src/quake/</code>) with BSP maps, lightmaps, alias models, and 60 FPS VirGL acceleration, while introducing Coq formal verification models (<code>verify/models/</code>) proving safety invariants for the TRON scheduler, intercore IPC, and media pipeline. It concluded with the Tessron tiling engine and Linux/BSD POSIX compatibility layers (<code>src/clu/be/</code>).
+                    Phase 17 united real-time 3D gaming with formal methods: porting id Software's <em>Quake I</em>
+                    (<code>src/quake/</code>) with BSP maps, lightmaps, alias models, and 60 FPS VirGL acceleration,
+                    while introducing Coq formal verification models (<code>verify/models/</code>) proving safety
+                    invariants for the TRON scheduler, intercore IPC, and media pipeline. It concluded with the Tessron
+                    tiling engine and Linux/BSD POSIX compatibility layers (<code>src/clu/be/</code>).
                 </p>
                 <div class="phase-credits">
                     <strong>謝辞とクレジット（Acknowledgements &amp; Credits）：</strong>
-                    Quake創始者 <strong>John Carmack</strong> 氏、グラフィックス最適化の巨匠 <strong>Michael Abrash</strong> 氏、およびVirGLプロトコルの <strong>Gerd Hoffmann</strong> 氏に敬意を表します。
+                    Quake創始者 <strong>John Carmack</strong> 氏、グラフィックス最適化の巨匠 <strong>Michael Abrash</strong>
+                    氏、およびVirGLプロトコルの <strong>Gerd Hoffmann</strong> 氏に敬意を表します。
                 </div>
             </div>
 
@@ -656,14 +893,23 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 18 · Scripting &amp; DSP</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">超漢字 MicroScript、BPK 相互運用、LilCu64 プロシージャル音響<span class="phase-title-en">Chokanji MicroScript Interpreter, BPK Packages &amp; B-Sound DSP</span></h3>
-                    <span class="phase-meta">Sessions 52–56 · Commits 735–807 (15e9ee8..c92e2b0) · Oct 1–6 · ~58.1 h · 73 commits</span>
+                    <h3 class="phase-title">超漢字 MicroScript、BPK 相互運用、LilCu64 プロシージャル音響<span
+                            class="phase-title-en">Chokanji MicroScript Interpreter, BPK Packages &amp; B-Sound
+                            DSP</span></h3>
+                    <span class="phase-meta">Sessions 52–56 · Commits 735–807 (15e9ee8..c92e2b0) · Oct 1–6 · ~58.1 h ·
+                        73 commits</span>
                 </div>
                 <p class="phase-jp">
-                    パーソナルメディア社「超漢字（B-right/V）」との高度な相互運用性と、独自のリアルタイム音響・映像表現を確立しました。<code>btron-coq.pdf</code>形式検証論文の公開に続き、超漢字スクリプト言語「MicroScript」のインタプリタコア（<code>src/chokanji/microscript.c</code>、<code>MicroScript.html</code>）、PMCスタイリング、BPKパッケージ処理系（<code>bpk_core.c</code>）、STB画像デコーダ（<code>stb_image.h</code>）、Paintスクロール修正を実装。デモシーン＆メディア領域では、64バイト級の幾何学プロシージャルデモ「Lil Cube 64」（<code>demo/lilcu64_demo.c</code>）と、ポリフォニック発振器・エンベロープフィルタ・4トラック作曲シンセサイザを統合した「B-Sound」DSP音響プロセッサ（<code>lilcu64_synth.c</code>、<code>lilcu64_score.c</code>、<code>lilcu64_wa.c</code>）を完成させ、WebAudioトラック群の完全移植と音響コレオグラフィ文書化を達成しました。
+                    パーソナルメディア社「超漢字（B-right/V）」との高度な相互運用性と、独自のリアルタイム音響・映像表現を確立しました。<code>btron-coq.pdf</code>形式検証論文の公開に続き、超漢字スクリプト言語「MicroScript」のインタプリタコア（<code>src/chokanji/microscript.c</code>、<code>MicroScript.html</code>）、PMCスタイリング、BPKパッケージ処理系（<code>bpk_core.c</code>）、STB画像デコーダ（<code>stb_image.h</code>）、Paintスクロール修正を実装。デモシーン＆メディア領域では、64バイト級の幾何学プロシージャルデモ「Lil
+                    Cube
+                    64」（<code>demo/lilcu64_demo.c</code>）と、ポリフォニック発振器・エンベロープフィルタ・4トラック作曲シンセサイザを統合した「B-Sound」DSP音響プロセッサ（<code>lilcu64_synth.c</code>、<code>lilcu64_score.c</code>、<code>lilcu64_wa.c</code>）を完成させ、WebAudioトラック群の完全移植と音響コレオグラフィ文書化を達成しました。
                 </p>
                 <p class="phase-en">
-                    Phase 18 delivered Chokanji interoperability via the MicroScript interpreter (<code>microscript.c</code>), PMC styling, and BPK package format (<code>bpk_core.c</code>), alongside STB image decoding and formal publication of <code>btron-coq.pdf</code>. On the media frontier, it debuted the 64-byte-class <em>Lil Cube 64</em> procedural demo and the B-Sound polyphonic DSP synthesizer architecture across four musical tracks.
+                    Phase 18 delivered Chokanji interoperability via the MicroScript interpreter
+                    (<code>microscript.c</code>), PMC styling, and BPK package format (<code>bpk_core.c</code>),
+                    alongside STB image decoding and formal publication of <code>btron-coq.pdf</code>. On the media
+                    frontier, it debuted the 64-byte-class <em>Lil Cube 64</em> procedural demo and the B-Sound
+                    polyphonic DSP synthesizer architecture across four musical tracks.
                 </p>
             </div>
 
@@ -671,18 +917,31 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 19 · Hardware Preservation</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">B-MSX クリーンルーム実機エミュレータと XMB 1.0 流体 UI<span class="phase-title-en">MSX/turboR Emulation (Z80/R800, V9958, SCC/OPLL) &amp; Cross Media Bar</span></h3>
-                    <span class="phase-meta">Sessions 57–71 · Commits 808–874 (7f45fcf..d516863) · Oct 6–14 · ~56.0 h · 67 commits</span>
+                    <h3 class="phase-title">B-MSX クリーンルーム実機エミュレータと XMB 1.0 流体 UI<span class="phase-title-en">MSX/turboR
+                            Emulation (Z80/R800, V9958, SCC/OPLL) &amp; Cross Media Bar</span></h3>
+                    <span class="phase-meta">Sessions 57–71 · Commits 808–874 (7f45fcf..d516863) · Oct 6–14 · ~56.0 h ·
+                        67 commits</span>
                 </div>
                 <p class="phase-jp">
-                    超漢字FSツリー検証とB-Gameスタック構想から出発し、日本のパーソナルコンピュータ史の金字塔であるMSX・MSX2・MSX2+・MSX turboRの完全クリーンルーム・ハードウェアエミュレータ「B-MSX」（<code>src/emulators/msx/</code>、<code>B-MSX SPEC</code>）を築き上げました。Zilog Z80およびASCII R800 16ビットCPUコア（<code>z80.c</code>、<code>r800.c</code>）、Yamaha V9938/V9958 VDP、PSG（AY-3-8910）、コナミSCC波形メモリ音源、Yamaha YM2413 OPLL FM音源、PCMサンプリング音源を網羅し、C-BIOSおよび名作タイトル群の完全動作とGeo3Dベクトルグラフィックスアクセラレータを達成。並行してPlayStation着想の流体UI「XMB 1.0」（<code>src/apps/xmb.c</code>）を投入し、PlayStation 2低レベルMMIO・GS VRAMコンパクション・デュアルコンテキストEE/GSアクセラレーションとPS2技術解説書（<code>PS2.txt</code>）の基盤を固めました。
+                    超漢字FSツリー検証とB-Gameスタック構想から出発し、日本のパーソナルコンピュータ史の金字塔であるMSX・MSX2・MSX2+・MSX
+                    turboRの完全クリーンルーム・ハードウェアエミュレータ「B-MSX」（<code>src/emulators/msx/</code>、<code>B-MSX SPEC</code>）を築き上げました。Zilog
+                    Z80およびASCII R800 16ビットCPUコア（<code>z80.c</code>、<code>r800.c</code>）、Yamaha V9938/V9958
+                    VDP、PSG（AY-3-8910）、コナミSCC波形メモリ音源、Yamaha YM2413 OPLL
+                    FM音源、PCMサンプリング音源を網羅し、C-BIOSおよび名作タイトル群の完全動作とGeo3Dベクトルグラフィックスアクセラレータを達成。並行してPlayStation着想の流体UI「XMB
+                    1.0」（<code>src/apps/xmb.c</code>）を投入し、PlayStation 2低レベルMMIO・GS
+                    VRAMコンパクション・デュアルコンテキストEE/GSアクセラレーションとPS2技術解説書（<code>PS2.txt</code>）の基盤を固めました。
                 </p>
                 <p class="phase-en">
-                    Phase 19 built B-MSX (<code>src/emulators/msx/</code>), a cleanroom hardware emulator covering MSX through MSX turboR with Z80/R800 CPUs, Yamaha V9938/V9958 VDP, PSG/SCC/OPLL/PCM audio, C-BIOS execution, and the Geo3D vector accelerator. In parallel, it launched the fluid XMB 1.0 Cross Media Bar (<code>xmb.c</code>) and established PS2 EE/GS dual-context hardware rendering and the <code>PS2.txt</code> architecture handbook.
+                    Phase 19 built B-MSX (<code>src/emulators/msx/</code>), a cleanroom hardware emulator covering MSX
+                    through MSX turboR with Z80/R800 CPUs, Yamaha V9938/V9958 VDP, PSG/SCC/OPLL/PCM audio, C-BIOS
+                    execution, and the Geo3D vector accelerator. In parallel, it launched the fluid XMB 1.0 Cross Media
+                    Bar (<code>xmb.c</code>) and established PS2 EE/GS dual-context hardware rendering and the
+                    <code>PS2.txt</code> architecture handbook.
                 </p>
                 <div class="phase-credits">
                     <strong>謝辞とクレジット（Acknowledgements &amp; Credits）：</strong>
-                    MSX共同創始者 <strong>西和彦</strong> 氏、<strong>ビル・ゲイツ</strong> 氏、およびASCII R800アーキテクチャの立役者 <strong>山下良蔵</strong> 氏に敬意を表します。
+                    MSX共同創始者 <strong>西和彦</strong> 氏、<strong>ビル・ゲイツ</strong> 氏、およびASCII R800アーキテクチャの立役者
+                    <strong>山下良蔵</strong> 氏に敬意を表します。
                 </div>
             </div>
 
@@ -690,14 +949,23 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 20 · Emotion Engine &amp; VU0</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">PS2 EE/GS ハードウェア加速、VU0 マイクロコード、協調 RTOS<span class="phase-title-en">GIF DMA Ringbuffers, VU0 Geometry Offload &amp; Multi-Window OpenGL</span></h3>
-                    <span class="phase-meta">Sessions 72–80 · Commits 875–938 (3b22e0f..54b6f19) · Oct 14–20 · ~57.8 h · 64 commits</span>
+                    <h3 class="phase-title">PS2 EE/GS ハードウェア加速、VU0 マイクロコード、協調 RTOS<span class="phase-title-en">GIF DMA
+                            Ringbuffers, VU0 Geometry Offload &amp; Multi-Window OpenGL</span></h3>
+                    <span class="phase-meta">Sessions 72–80 · Commits 875–938 (3b22e0f..54b6f19) · Oct 14–20 · ~57.8 h ·
+                        64 commits</span>
                 </div>
                 <p class="phase-jp">
-                    Sony PlayStation 2のハードウェア潜在能力を極限まで引き出したフェーズです。GSディスプレイリスト連結とテクスチャ転送帯域最適化、Host-to-Local GIF DMAリングバッファ、ベクトルユニット「VU0」アセンブリマイクロコードによるLil Cube 64幾何学オフロード（<code>ps2_vu0_kernel.c</code>）、専用PS2レンダリングスレッド（<code>ac342b19</code>）、PS2ハードウェアEE/GS上でのXMB波動レンダリング初表示、およびPS2専用アプリランチャー（<code>b6a662e0</code>）を完成させました。マルチウィンドウ環境で各窓が独立したOpenGLコンテキストを保持しつつ協調RTOSスケジューラで60fpsを維持し、多ノードクラスタ仕様「GScube」を探索。あわせて環境設定アプリ群のレスポンシブUI刷新、<code>gterm.c</code>のANSIエスケープシーケンス準拠強化、およびQuake I 3D操作チューニングを完了しました。
+                    Sony PlayStation 2のハードウェア潜在能力を極限まで引き出したフェーズです。GSディスプレイリスト連結とテクスチャ転送帯域最適化、Host-to-Local GIF
+                    DMAリングバッファ、ベクトルユニット「VU0」アセンブリマイクロコードによるLil Cube
+                    64幾何学オフロード（<code>ps2_vu0_kernel.c</code>）、専用PS2レンダリングスレッド（<code>ac342b19</code>）、PS2ハードウェアEE/GS上でのXMB波動レンダリング初表示、およびPS2専用アプリランチャー（<code>b6a662e0</code>）を完成させました。マルチウィンドウ環境で各窓が独立したOpenGLコンテキストを保持しつつ協調RTOSスケジューラで60fpsを維持し、多ノードクラスタ仕様「GScube」を探索。あわせて環境設定アプリ群のレスポンシブUI刷新、<code>gterm.c</code>のANSIエスケープシーケンス準拠強化、およびQuake
+                    I 3D操作チューニングを完了しました。
                 </p>
                 <p class="phase-en">
-                    Phase 20 unlocked full hardware-accelerated rendering on the PlayStation 2 via GS display-list chaining, VU0 vector microcode geometry offload (<code>ps2_vu0_kernel.c</code>), a dedicated PS2 render thread, hardware-rendered XMB trigonometric waves, and cooperative RTOS multi-window OpenGL multitasking. It also explored GScube clustering, refactored the Settings suite for responsive layout, and tightened ANSI terminal and Quake I controls.
+                    Phase 20 unlocked full hardware-accelerated rendering on the PlayStation 2 via GS display-list
+                    chaining, VU0 vector microcode geometry offload (<code>ps2_vu0_kernel.c</code>), a dedicated PS2
+                    render thread, hardware-rendered XMB trigonometric waves, and cooperative RTOS multi-window OpenGL
+                    multitasking. It also explored GScube clustering, refactored the Settings suite for responsive
+                    layout, and tightened ANSI terminal and Quake I controls.
                 </p>
             </div>
 
@@ -705,14 +973,25 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge">Phase 21 · Pro DAW Workstation</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">Orchestra DAW 全面完成、SMF エンジン、Paula 音響、真正鍵盤幾何学<span class="phase-title-en">Five-Window DAW, SMF Type 0/1, Amiga Paula LFO &amp; Piano Roll Geometry</span></h3>
-                    <span class="phase-meta">Sessions 81–89 · Commits 939–1015 (8dd2915..0aeb7f0) · Oct 21–28 · ~54.2 h · 77 commits</span>
+                    <h3 class="phase-title">Orchestra DAW 全面完成、SMF エンジン、Paula 音響、真正鍵盤幾何学<span
+                            class="phase-title-en">Five-Window DAW, SMF Type 0/1, Amiga Paula LFO &amp; Piano Roll
+                            Geometry</span></h3>
+                    <span class="phase-meta">Sessions 81–89 · Commits 939–1015 (8dd2915..0aeb7f0) · Oct 21–28 · ~54.2 h
+                        · 77 commits</span>
                 </div>
                 <p class="phase-jp">
-                    B-Systemの創作環境を象徴するプロフェッショナルDAW「管弦楽（Orchestra）」（<code>src/media/orchestra.c</code>）を全面完成させました。ピアノロール（<code>orchestra_piano.c</code>）、マルチトラックタイムライン（<code>orchestra_arrange.c</code>）、マルチチャンネルミキサー（<code>orchestra_mix.c</code>）、楽譜ノーテーション（<code>orchestra_score.c</code>）、インサートエフェクト（<code>orchestra_insert.c</code>）の5大連動ウィンドウを統合。標準MIDIファイル（SMF Type 0/1）録音・再生・出力（<code>orchestra_smf.c</code>）、Amiga「Paula」8ビット5.2Hz/18セントビブラートLFO合成、TRONインダストリアル8鋸波Swarmatron音響、LukHashマルチトラック楽曲（<code>/SYS/*.orch</code>）、および白鍵境界上に黒鍵中心を厳密一致させた真正アコースティック鍵盤ジオメトリを確立しました。同時にD'asm Commander解析ツール、MSX DSK（FAT12）フロッピーマウント、影絵デモ「Kagee」、Uraraテーマ刷新、TinyGL 16,780画素グリッド検証、および全テスト100%合格（<code>make test</code>）を達成しています。
+                    B-Systemの創作環境を象徴するプロフェッショナルDAW「管弦楽（Orchestra）」（<code>src/media/orchestra.c</code>）を全面完成させました。ピアノロール（<code>orchestra_piano.c</code>）、マルチトラックタイムライン（<code>orchestra_arrange.c</code>）、マルチチャンネルミキサー（<code>orchestra_mix.c</code>）、楽譜ノーテーション（<code>orchestra_score.c</code>）、インサートエフェクト（<code>orchestra_insert.c</code>）の5大連動ウィンドウを統合。標準MIDIファイル（SMF
+                    Type
+                    0/1）録音・再生・出力（<code>orchestra_smf.c</code>）、Amiga「Paula」8ビット5.2Hz/18セントビブラートLFO合成、TRONインダストリアル8鋸波Swarmatron音響、LukHashマルチトラック楽曲（<code>/SYS/*.orch</code>）、および白鍵境界上に黒鍵中心を厳密一致させた真正アコースティック鍵盤ジオメトリを確立しました。同時にD'asm
+                    Commander解析ツール、MSX DSK（FAT12）フロッピーマウント、影絵デモ「Kagee」、Uraraテーマ刷新、TinyGL
+                    16,780画素グリッド検証、および全テスト100%合格（<code>make test</code>）を達成しています。
                 </p>
                 <p class="phase-en">
-                    Phase 21 completed the five-window Orchestra DAW workstation (Piano Roll, Arrange, Mixer, Score, Inserts) with SMF Type 0/1 recording/playback, Amiga Paula 8-bit vibrato LFO synthesis, 8-saw Swarmatron clusters, LukHash scores, and acoustically accurate piano-roll key geometry. Concurrently, it delivered D'asm Commander, FAT12 MSX DSK mounting, the Kagee shadow-play demo, Urara theme refinements, and 100% passing verification suites.
+                    Phase 21 completed the five-window Orchestra DAW workstation (Piano Roll, Arrange, Mixer, Score,
+                    Inserts) with SMF Type 0/1 recording/playback, Amiga Paula 8-bit vibrato LFO synthesis, 8-saw
+                    Swarmatron clusters, LukHash scores, and acoustically accurate piano-roll key geometry.
+                    Concurrently, it delivered D'asm Commander, FAT12 MSX DSK mounting, the Kagee shadow-play demo,
+                    Urara theme refinements, and 100% passing verification suites.
                 </p>
             </div>
 
@@ -722,14 +1001,26 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge phase-badge-post">Phase 22 · PostScript &amp; Firmware</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">PostScript/PDF 仮想マシン（SPS）、Review 閲覧器、B-MSX T-BIOS<span class="phase-title-en">Freestanding SPS/PDF VM, Review Reader, HD64180 &amp; Cleanroom T-BIOS</span></h3>
-                    <span class="phase-meta">Sessions 90–99 · Commits 1016–1045 (5ed6a96..5af4d28) · Oct 28–31 · ~9.5 h · +24,957 / -507 lines</span>
+                    <h3 class="phase-title">PostScript/PDF 仮想マシン（SPS）、Review 閲覧器、B-MSX T-BIOS<span
+                            class="phase-title-en">Freestanding SPS/PDF VM, Review Reader, HD64180 &amp; Cleanroom
+                            T-BIOS</span></h3>
+                    <span class="phase-meta">Sessions 90–99 · Commits 1016–1045 (5ed6a96..5af4d28) · Oct 28–31 · ~9.5 h
+                        · +24,957 / -507 lines</span>
                 </div>
                 <p class="phase-jp">
-                    Alpha 1公開直後の次期基盤構築として、PostScriptおよびPDFをベアメタル環境でネイティブ解釈・描画する軽量仮想マシン「SPS（Simple PostScript）」（<code>src/clu/ps_vm.c</code>、<code>src/clu/sps.c</code>、<code>doc/txt/DPS.txt</code>）と、TrueTypeアウトライン描画の礎となる<code>schrift.h</code>、および文書閲覧アプリ「Review / Reader」（<code>apps/Reader.html</code>）を投入しました。フリースタンディングARM64 BSS境界への静的ページバッファ最適化とCI整備を実施しつつ、Hitachi HD64180拡張命令系、Aurel Vault修正、Yamaha ROMパラメータ厳密化、Bad Apple再生修正を経て、完全クリーンルームMSX互換ファームウェア「B-MSX T-BIOS」（<code>doc/txt/T-BIOS.txt</code>）と各国・各機種構成プロファイルを確立。法的透明性を高める商標・著作権帰属宣言と家紋スプラッシュ画面の整備も完了しました。
+                    Alpha 1公開直後の次期基盤構築として、PostScriptおよびPDFをベアメタル環境でネイティブ解釈・描画する軽量仮想マシン「SPS（Simple
+                    PostScript）」（<code>src/clu/ps_vm.c</code>、<code>src/clu/sps.c</code>、<code>doc/txt/DPS.txt</code>）と、TrueTypeアウトライン描画の礎となる<code>schrift.h</code>、および文書閲覧アプリ「Review
+                    / Reader」（<code>apps/Reader.html</code>）を投入しました。フリースタンディングARM64
+                    BSS境界への静的ページバッファ最適化とCI整備を実施しつつ、Hitachi HD64180拡張命令系、Aurel Vault修正、Yamaha ROMパラメータ厳密化、Bad
+                    Apple再生修正を経て、完全クリーンルームMSX互換ファームウェア「B-MSX
+                    T-BIOS」（<code>doc/txt/T-BIOS.txt</code>）と各国・各機種構成プロファイルを確立。法的透明性を高める商標・著作権帰属宣言と家紋スプラッシュ画面の整備も完了しました。
                 </p>
                 <p class="phase-en">
-                    Launching the post-Alpha 1 cycle, Phase 22 introduced the freestanding PostScript/PDF virtual machine (<code>ps_vm.c</code>, <code>sps.c</code>), early <code>schrift.h</code> font integration, and the Review/Reader document viewer, tuned to fit bare-metal ARM64 BSS constraints. On the emulation front, it added HD64180 support, fixed Aurel Vault and Bad Apple playback, and debuted the cleanroom B-MSX T-BIOS firmware alongside formal legal/trademark disclosures.
+                    Launching the post-Alpha 1 cycle, Phase 22 introduced the freestanding PostScript/PDF virtual
+                    machine (<code>ps_vm.c</code>, <code>sps.c</code>), early <code>schrift.h</code> font integration,
+                    and the Review/Reader document viewer, tuned to fit bare-metal ARM64 BSS constraints. On the
+                    emulation front, it added HD64180 support, fixed Aurel Vault and Bad Apple playback, and debuted the
+                    cleanroom B-MSX T-BIOS firmware alongside formal legal/trademark disclosures.
                 </p>
             </div>
 
@@ -737,14 +1028,27 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge phase-badge-post">Phase 23 · FPGA Silicon &amp; BX</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">Bluespec FPGA MSX turboR SoC 完全合成と BX-8/16/32/64 系列<span class="phase-title-en">Synthesizable BSV MSX turboR SoC, Verilator Co-Sim &amp; BX Hardware Line</span></h3>
-                    <span class="phase-meta">Sessions 100–104 · Commits 1046–1080 (cbd9592..9cca464) · Nov 1–2 · ~19.1 h · +15,516 / -443 lines</span>
+                    <h3 class="phase-title">Bluespec FPGA MSX turboR SoC 完全合成と BX-8/16/32/64 系列<span
+                            class="phase-title-en">Synthesizable BSV MSX turboR SoC, Verilator Co-Sim &amp; BX Hardware
+                            Line</span></h3>
+                    <span class="phase-meta">Sessions 100–104 · Commits 1046–1080 (cbd9592..9cca464) · Nov 1–2 · ~19.1 h
+                        · +15,516 / -443 lines</span>
                 </div>
                 <p class="phase-jp">
-                    ソフトウェアエミュレーションから実ハードウェア論理合成（RTL/FPGA）へと領域を拡張した画期的フェーズです。Bluespec SystemVerilog（BSV）と純C99 Verilator協調シミュレーションハーネスを用い、MSX turboR完全SoC（<code>src/emulators/bx8/bsv/TopMSXTurboR.bsv</code>、<code>doc/md/MSX-FPGA.md</code>）を全6フェーズで一挙に完遂：マスタークロック＆メモリアービタ、Z80A/R800デュアルCPU・ハードウェア乗算器・T9769C S1990ハンドオフ、SlotManager＆メモリマッパによるC-BIOSブート、Yamaha V9958 VDP・ブリッター、PSG/SCC/PCM音響＆PPIキーボード、そしてULX3SおよびTang Primer 20Kボード向けYosysオープンソース合成フローを検証しました。同時にTamazusa仕様（<code>btron-tamazusa.pdf</code>）と、8ビットから64ビットに至る独自ハードウェアアーキテクチャ系列「BX-8 / BX-16 / BX-32 / BX-64」（ブートROMおよび5冊の技術論文PDF群）を体系化しています。
+                    ソフトウェアエミュレーションから実ハードウェア論理合成（RTL/FPGA）へと領域を拡張した画期的フェーズです。Bluespec SystemVerilog（BSV）と純C99
+                    Verilator協調シミュレーションハーネスを用い、MSX
+                    turboR完全SoC（<code>src/emulators/bx8/bsv/TopMSXTurboR.bsv</code>、<code>doc/md/MSX-FPGA.md</code>）を全6フェーズで一挙に完遂：マスタークロック＆メモリアービタ、Z80A/R800デュアルCPU・ハードウェア乗算器・T9769C
+                    S1990ハンドオフ、SlotManager＆メモリマッパによるC-BIOSブート、Yamaha V9958
+                    VDP・ブリッター、PSG/SCC/PCM音響＆PPIキーボード、そしてULX3SおよびTang Primer
+                    20Kボード向けYosysオープンソース合成フローを検証しました。同時にTamazusa仕様（<code>btron-tamazusa.pdf</code>）と、8ビットから64ビットに至る独自ハードウェアアーキテクチャ系列「BX-8
+                    / BX-16 / BX-32 / BX-64」（ブートROMおよび5冊の技術論文PDF群）を体系化しています。
                 </p>
                 <p class="phase-en">
-                    Phase 23 crossed from software emulation into synthesizable silicon: completing all six Bluespec SystemVerilog (BSV) phases of a full MSX turboR FPGA SoC (<code>TopMSXTurboR.bsv</code>) verified via C99 Verilator co-simulation—spanning dual Z80A/R800 execution, S1990 switching, V9958 VDP, PSG/SCC/PCM audio, and Yosys synthesis for ULX3S and Tang Primer 20K boards—alongside the Tamazusa and BX-8/16/32/64 hardware specifications.
+                    Phase 23 crossed from software emulation into synthesizable silicon: completing all six Bluespec
+                    SystemVerilog (BSV) phases of a full MSX turboR FPGA SoC (<code>TopMSXTurboR.bsv</code>) verified
+                    via C99 Verilator co-simulation—spanning dual Z80A/R800 execution, S1990 switching, V9958 VDP,
+                    PSG/SCC/PCM audio, and Yosys synthesis for ULX3S and Tang Primer 20K boards—alongside the Tamazusa
+                    and BX-8/16/32/64 hardware specifications.
                 </p>
             </div>
 
@@ -752,14 +1056,26 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge phase-badge-post">Phase 24 · Forth &amp; OpenFirmware</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">V9968 アフィン描画、ANS Forth、T-FW OpenFirmware、Mars ボクセル<span class="phase-title-en">V9968/Geo3D v2.0, IEEE 1275 T-FW OpenFirmware &amp; Voxel Flight Demos</span></h3>
-                    <span class="phase-meta">Sessions 105–108 · Commits 1081–1108 (e244f78..3008046) · Nov 4–5 · ~10.8 h · +11,921 / -681 lines</span>
+                    <h3 class="phase-title">V9968 アフィン描画、ANS Forth、T-FW OpenFirmware、Mars ボクセル<span
+                            class="phase-title-en">V9968/Geo3D v2.0, IEEE 1275 T-FW OpenFirmware &amp; Voxel Flight
+                            Demos</span></h3>
+                    <span class="phase-meta">Sessions 105–108 · Commits 1081–1108 (e244f78..3008046) · Nov 4–5 · ~10.8 h
+                        · +11,921 / -681 lines</span>
                 </div>
                 <p class="phase-jp">
-                    グラフィックス拡張と標準ファームウェア言語の二本柱を確立しました。B-MSXにおいて拡張カートリッジ「Yamaha V9968」アフィンポリゴンラスタライザ（<code>v9968.c</code>）および「Geo3D v2.0」コプロセッサを実装し、T-BIOSを標準ファームウェアへ昇格。続いてIEEE 1275 OpenFirmwareの系譜を継ぐ標準ANS Forthコア（<code>src/clu/forth_core.c</code>、<code>forth16.c</code>、<code>doc/md/LANGUAGES-FORTH.md</code>）とデバイスツリー内省機構「T-FW OpenFirmware」（<code>forth_devtree.c</code>、<code>apps/Firmware.html</code>）を新設し、CLU ForthとMSX 16ビットOpenFirmwareのエントリポイントを完全統一しました。実証デモとして、ウィンドウリサイズコールバック（<code>WND-ON-PAINT</code>）と物理飛行・弾道ジャンプを備えたマンデルブロ集合（<code>mandelbrot.fth</code>）および火星地形ボクセルデモ「Mars」（<code>mars.fth</code>、<code>src/demo/mars.c</code>、Z80アセンブリ実装）を16ビットMSXとB-Systemデスクトップ双方で完全パリティ稼働させています。
+                    グラフィックス拡張と標準ファームウェア言語の二本柱を確立しました。B-MSXにおいて拡張カートリッジ「Yamaha
+                    V9968」アフィンポリゴンラスタライザ（<code>v9968.c</code>）および「Geo3D v2.0」コプロセッサを実装し、T-BIOSを標準ファームウェアへ昇格。続いてIEEE 1275
+                    OpenFirmwareの系譜を継ぐ標準ANS
+                    Forthコア（<code>src/clu/forth_core.c</code>、<code>forth16.c</code>、<code>doc/md/LANGUAGES-FORTH.md</code>）とデバイスツリー内省機構「T-FW
+                    OpenFirmware」（<code>forth_devtree.c</code>、<code>apps/Firmware.html</code>）を新設し、CLU ForthとMSX
+                    16ビットOpenFirmwareのエントリポイントを完全統一しました。実証デモとして、ウィンドウリサイズコールバック（<code>WND-ON-PAINT</code>）と物理飛行・弾道ジャンプを備えたマンデルブロ集合（<code>mandelbrot.fth</code>）および火星地形ボクセルデモ「Mars」（<code>mars.fth</code>、<code>src/demo/mars.c</code>、Z80アセンブリ実装）を16ビットMSXとB-Systemデスクトップ双方で完全パリティ稼働させています。
                 </p>
                 <p class="phase-en">
-                    Phase 24 added V9968 affine polygon rasterization and the Geo3D v2.0 coprocessor to B-MSX while promoting T-BIOS to default firmware. It then delivered a unified ANS Forth core and IEEE 1275-inspired T-FW OpenFirmware (<code>forth_core.c</code>, <code>forth_devtree.c</code>) spanning CLU and 16-bit MSX, validated by interactive Mandelbrot and Mars voxel-terrain demos with <code>WND-ON-PAINT</code> callbacks and flight physics.
+                    Phase 24 added V9968 affine polygon rasterization and the Geo3D v2.0 coprocessor to B-MSX while
+                    promoting T-BIOS to default firmware. It then delivered a unified ANS Forth core and IEEE
+                    1275-inspired T-FW OpenFirmware (<code>forth_core.c</code>, <code>forth_devtree.c</code>) spanning
+                    CLU and 16-bit MSX, validated by interactive Mandelbrot and Mars voxel-terrain demos with
+                    <code>WND-ON-PAINT</code> callbacks and flight physics.
                 </p>
             </div>
 
@@ -767,14 +1083,27 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge phase-badge-post">Phase 25 · Bare-Metal Audio &amp; PS2 3D</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">Pi 400 HDMI/UAC1/Bluetooth 音響、構造刷新、PS2 Quake EE/GS<span class="phase-title-en">ARM64 V3D/HDMI/UAC1/B-BT Audio, Tree Unification &amp; PS2 Hardware Quake</span></h3>
-                    <span class="phase-meta">Sessions 109–119 · Commits 1109–1155 (df5cee2..ea213a9) · Nov 7–10 · ~28.0 h · 47 commits</span>
+                    <h3 class="phase-title">Pi 400 HDMI/UAC1/Bluetooth 音響、構造刷新、PS2 Quake EE/GS<span
+                            class="phase-title-en">ARM64 V3D/HDMI/UAC1/B-BT Audio, Tree Unification &amp; PS2 Hardware
+                            Quake</span></h3>
+                    <span class="phase-meta">Sessions 109–119 · Commits 1109–1155 (df5cee2..ea213a9) · Nov 7–10 · ~28.0
+                        h · 47 commits</span>
                 </div>
                 <p class="phase-jp">
-                    実機マルチメディア性能の極致とコードベースの構造的純化を同時に達成した47コミットの大型フェーズです。Raspberry Pi 4B/400（<code>yoko4</code>）において入力バジェット制御とV3D/VC4ハードウェアGPU基盤（<code>v3d.h</code>、<code>v3d_qpu.h</code>）を安定化させ、ベアメタル音響スタック（<code>doc/md/CORES-ARM64-SOUND.md</code>）を一挙に完備——BCM2711 HDMIデジタル音声、xHCI経由USB DAC UAC1（48kHz 16-bit）、さらに独自Bluetoothスタック「B-BT」（HCI/L2CAP/AVDTP/A2DP SBC 48kHz）を実装しました。並行して全ソースツリーのディレクトリ構造を責務別に大再編（<code>doc/txt/STRUCTURE.txt</code>）。PlayStation 2ではISO9660 CDVD光学メディアストリーミング、実行時バックエンド動的切替、フリッカー根絶、タイルバジェット最適化を経て、EE/GSハードウェアOpenGL ESバックエンド上で『Quake I』がネイティブ稼働する歴史的到達点を記録しました。
+                    実機マルチメディア性能の極致とコードベースの構造的純化を同時に達成した47コミットの大型フェーズです。Raspberry Pi
+                    4B/400（<code>yoko4</code>）において入力バジェット制御とV3D/VC4ハードウェアGPU基盤（<code>v3d.h</code>、<code>v3d_qpu.h</code>）を安定化させ、ベアメタル音響スタック（<code>doc/md/CORES-ARM64-SOUND.md</code>）を一挙に完備——BCM2711
+                    HDMIデジタル音声、xHCI経由USB DAC UAC1（48kHz 16-bit）、さらに独自Bluetoothスタック「B-BT」（HCI/L2CAP/AVDTP/A2DP SBC
+                    48kHz）を実装しました。並行して全ソースツリーのディレクトリ構造を責務別に大再編（<code>doc/txt/STRUCTURE.txt</code>）。PlayStation
+                    2ではISO9660 CDVD光学メディアストリーミング、実行時バックエンド動的切替、フリッカー根絶、タイルバジェット最適化を経て、EE/GSハードウェアOpenGL ESバックエンド上で『Quake
+                    I』がネイティブ稼働する歴史的到達点を記録しました。
                 </p>
                 <p class="phase-en">
-                    Phase 25 stabilized Raspberry Pi 400 (<code>yoko4</code>) input budgeting and V3D/VC4 GPU foundations while shipping a complete bare-metal ARM64 audio stack: BCM2711 HDMI audio, xHCI USB DAC UAC1 (48 kHz 16-bit), and the cleanroom B-BT Bluetooth A2DP/SBC stack. Alongside a clean repository-wide directory reorganization (<code>STRUCTURE.txt</code>), it achieved PlayStation 2 ISO9660 CDVD streaming, flicker removal, and hardware-accelerated EE/GS OpenGL ES <em>Quake I</em> execution.
+                    Phase 25 stabilized Raspberry Pi 400 (<code>yoko4</code>) input budgeting and V3D/VC4 GPU
+                    foundations while shipping a complete bare-metal ARM64 audio stack: BCM2711 HDMI audio, xHCI USB DAC
+                    UAC1 (48 kHz 16-bit), and the cleanroom B-BT Bluetooth A2DP/SBC stack. Alongside a clean
+                    repository-wide directory reorganization (<code>STRUCTURE.txt</code>), it achieved PlayStation 2
+                    ISO9660 CDVD streaming, flicker removal, and hardware-accelerated EE/GS OpenGL ES <em>Quake I</em>
+                    execution.
                 </p>
             </div>
 
@@ -782,14 +1111,22 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge phase-badge-post">Phase 26 · Security &amp; Runtime</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">SQCSA セキュリティ監査体系、境界安全 libstr、RT 標準ランタイム<span class="phase-title-en">Static Security CI Gates, Bounds-Checked Spans &amp; Freestanding RT Layer</span></h3>
-                    <span class="phase-meta">Sessions 120–121 · Commits 1156–1175 (116759b..3e544fe) · Nov 11–12 · ~11.7 h · 20 commits</span>
+                    <h3 class="phase-title">SQCSA セキュリティ監査体系、境界安全 libstr、RT 標準ランタイム<span class="phase-title-en">Static
+                            Security CI Gates, Bounds-Checked Spans &amp; Freestanding RT Layer</span></h3>
+                    <span class="phase-meta">Sessions 120–121 · Commits 1156–1175 (116759b..3e544fe) · Nov 11–12 · ~11.7
+                        h · 20 commits</span>
                 </div>
                 <p class="phase-jp">
-                    ミッションクリティカルOSとしての堅牢性を引き上げる包括的セキュリティ監査フェーズです。静的・動的品質基準「SQCSA（Static Quality &amp; Code Security Audit）」（<code>doc/txt/SQCSA.txt</code>、<code>scripts/security_report.py</code>、<code>tools/sqcsa_update.py</code>）を確立し、拡張ツリー全域のセキュリティレビューをCIゲート化（<code>make sec-libstr</code>、<code>make sec-be</code>）。メモリ安全性を保証するスライス型（<code>include/btron/span.h</code>）、境界厳密検査付き文字列ライブラリ（<code>include/rt/libstr.h</code>）、カーネル空間コピー検証（<code>test_kcopy.c</code>、<code>test_fs_span.c</code>、<code>test_libstr_bounds.c</code>）を導入しました。あわせてフリースタンディング標準ランタイム<code>include/rt/</code>および仕様ページ<code>rt.html</code>を体系化し、<code>termios.h</code>・<code>strings.h</code>整備とFreeBSD/OpenBSD向け<code>SIGWINCH</code>可視性修正によりPOSIX/BSD全環境での厳格なビルド整合性を確立しました。
+                    ミッションクリティカルOSとしての堅牢性を引き上げる包括的セキュリティ監査フェーズです。静的・動的品質基準「SQCSA（Static Quality &amp; Code Security
+                    Audit）」（<code>doc/txt/SQCSA.txt</code>、<code>scripts/security_report.py</code>、<code>tools/sqcsa_update.py</code>）を確立し、拡張ツリー全域のセキュリティレビューをCIゲート化（<code>make sec-libstr</code>、<code>make sec-be</code>）。メモリ安全性を保証するスライス型（<code>include/btron/span.h</code>）、境界厳密検査付き文字列ライブラリ（<code>include/rt/libstr.h</code>）、カーネル空間コピー検証（<code>test_kcopy.c</code>、<code>test_fs_span.c</code>、<code>test_libstr_bounds.c</code>）を導入しました。あわせてフリースタンディング標準ランタイム<code>include/rt/</code>および仕様ページ<code>rt.html</code>を体系化し、<code>termios.h</code>・<code>strings.h</code>整備とFreeBSD/OpenBSD向け<code>SIGWINCH</code>可視性修正によりPOSIX/BSD全環境での厳格なビルド整合性を確立しました。
                 </p>
                 <p class="phase-en">
-                    Phase 26 institutionalized codebase-wide security auditing via SQCSA (<code>SQCSA.txt</code>, <code>security_report.py</code>) integrated directly into CI (<code>make sec-libstr</code>, <code>make sec-be</code>). It introduced bounds-checked memory spans (<code>span.h</code>), hardened string primitives (<code>libstr.h</code>), dedicated kernel-copy/bounds test suites, and a cleaned-up freestanding runtime layer (<code>include/rt/</code>, <code>rt.html</code>) with FreeBSD/OpenBSD portability fixes.
+                    Phase 26 institutionalized codebase-wide security auditing via SQCSA (<code>SQCSA.txt</code>,
+                    <code>security_report.py</code>) integrated directly into CI (<code>make sec-libstr</code>,
+                    <code>make sec-be</code>). It introduced bounds-checked memory spans (<code>span.h</code>), hardened
+                    string primitives (<code>libstr.h</code>), dedicated kernel-copy/bounds test suites, and a
+                    cleaned-up freestanding runtime layer (<code>include/rt/</code>, <code>rt.html</code>) with
+                    FreeBSD/OpenBSD portability fixes.
                 </p>
             </div>
 
@@ -797,14 +1134,23 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge phase-badge-post">Phase 27 · PS3, Typography &amp; Setup</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">PS3 Cell PPU 起動、梵字・音楽書体、Osal 文献群、B-Installer<span class="phase-title-en">PlayStation 3 PPU Bringup, Sanskrit/Music Fonts &amp; Native OS Installer</span></h3>
-                    <span class="phase-meta">Sessions 122–127 · Commits 1176–1207 (bb7256a..77bed7b) · Nov 16–19 · ~20.6 h · +46,850 / -1,456 lines</span>
+                    <h3 class="phase-title">PS3 Cell PPU 起動、梵字・音楽書体、Osal 文献群、B-Installer<span
+                            class="phase-title-en">PlayStation 3 PPU Bringup, Sanskrit/Music Fonts &amp; Native OS
+                            Installer</span></h3>
+                    <span class="phase-meta">Sessions 122–127 · Commits 1176–1207 (bb7256a..77bed7b) · Nov 16–19 · ~20.6
+                        h · +46,850 / -1,456 lines</span>
                 </div>
                 <p class="phase-jp">
-                    新たなゲーム機シリコン、古典語・音楽組版、そして実機導入インストーラを一挙に拓いたフェーズです。Sony PlayStation 3（Cell Broadband Engine PPU）のベアメタル初期ブートおよびリンカスクリプト（<code>src/drivers/playstation3/hello.S</code>、<code>ppu.ld</code>）を立ち上げ、VirtIOブロックデバイス（<code>virtio_blk.c</code>）、SVG描画基盤、スタック肥大化防止と<code>.nocache</code>重複解消のCI修正を実施。文字・タイポグラフィ領域では16×16サンスクリット語デーヴァナーガリー書体（<code>sanskrit_fonts.inc</code>）、数学太字・黒板太字数字、上付き・下付きクリッピング修正、さらにUnifont由来の音楽記号（♭♯♮）および様相論理演算子グリフを搭載しました。Clarity電子書籍リーダー（<code>clarity_book.c</code>）にチベット仏教古典文献コーパス（<code>assets/osal/</code>）を統合し、プログレスバー付きネイティブOSインストーラ「B-Installer」（<code>src/apps/volumes/b_installer.c</code>）による実機ファイル展開機能を完成させました。
+                    新たなゲーム機シリコン、古典語・音楽組版、そして実機導入インストーラを一挙に拓いたフェーズです。Sony PlayStation 3（Cell Broadband Engine
+                    PPU）のベアメタル初期ブートおよびリンカスクリプト（<code>src/drivers/playstation3/hello.S</code>、<code>ppu.ld</code>）を立ち上げ、VirtIOブロックデバイス（<code>virtio_blk.c</code>）、SVG描画基盤、スタック肥大化防止と<code>.nocache</code>重複解消のCI修正を実施。文字・タイポグラフィ領域では16×16サンスクリット語デーヴァナーガリー書体（<code>sanskrit_fonts.inc</code>）、数学太字・黒板太字数字、上付き・下付きクリッピング修正、さらにUnifont由来の音楽記号（♭♯♮）および様相論理演算子グリフを搭載しました。Clarity電子書籍リーダー（<code>clarity_book.c</code>）にチベット仏教古典文献コーパス（<code>assets/osal/</code>）を統合し、プログレスバー付きネイティブOSインストーラ「B-Installer」（<code>src/apps/volumes/b_installer.c</code>）による実機ファイル展開機能を完成させました。
                 </p>
                 <p class="phase-en">
-                    Phase 27 initiated bare-metal PlayStation 3 Cell PPU bringup (<code>hello.S</code>, <code>ppu.ld</code>), added VirtIO block storage and SVG support, and expanded B-System's typography with 16×16 Sanskrit Devanagari fonts, mathematical double-struck digits, and musical/modal-logic glyphs (♭, ♯, ♮). It also bundled the classical Tibetan Osal corpus into Clarity Book (<code>clarity_book.c</code>) and shipped the native B-Installer (<code>b_installer.c</code>) with real-time file-copy progress.
+                    Phase 27 initiated bare-metal PlayStation 3 Cell PPU bringup (<code>hello.S</code>,
+                    <code>ppu.ld</code>), added VirtIO block storage and SVG support, and expanded B-System's typography
+                    with 16×16 Sanskrit Devanagari fonts, mathematical double-struck digits, and musical/modal-logic
+                    glyphs (♭, ♯, ♮). It also bundled the classical Tibetan Osal corpus into Clarity Book
+                    (<code>clarity_book.c</code>) and shipped the native B-Installer (<code>b_installer.c</code>) with
+                    real-time file-copy progress.
                 </p>
             </div>
 
@@ -812,14 +1158,28 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge phase-badge-post">Phase 28 · Microcontroller 3D</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">RP2040/RP2350 PicoCalc、SegUI Palm、デュアルコア PicoGL、Quake Pico<span class="phase-title-en">Bare-Metal PicoCalc Suite, Dual-Core PicoGL &amp; 9–14 FPS Quake Pico</span></h3>
-                    <span class="phase-meta">Sessions 128–134 · Commits 1208–1244 (1656dfc..193bcc2) · Nov 20–23 · ~21.7 h · +41,262 / -3,388 lines</span>
+                    <h3 class="phase-title">RP2040/RP2350 PicoCalc、SegUI Palm、デュアルコア PicoGL、Quake Pico<span
+                            class="phase-title-en">Bare-Metal PicoCalc Suite, Dual-Core PicoGL &amp; 9–14 FPS Quake
+                            Pico</span></h3>
+                    <span class="phase-meta">Sessions 128–134 · Commits 1208–1244 (1656dfc..193bcc2) · Nov 20–23 · ~21.7
+                        h · +41,262 / -3,388 lines</span>
                 </div>
                 <p class="phase-jp">
-                    極小マイクロコントローラ上でフル機能のデスクトップOSと3Dエンジンを駆動させるというシステム工学の極限に挑んだフェーズです。Raspberry Pi Pico（RP2040 / RP2350）およびポケット端末「PicoCalc」向けの完全ベアメタルターゲット（<code>core_pico.c</code>、<code>core_segui.c</code>、<code>boot2_rp2040.S</code>、<code>i2ckbd_stm32.c</code>、<code>pico_rtos.h</code>、<code>CORES-PICO.txt</code>）を構築し、Palm OS着想の極小UIモード「SegUI Palm」（<code>segui_palm.c</code>）とPicoCalc専用アプリ群（Browser、Cabinet、Chat、Contacts、Editor、Phone、Terminal、XMB、glgears）の自動画面検証を確立。さらにデュアルコアCore 1並列スパンラスタライザを内蔵した超軽量3Dグラフィックスライブラリ「B-GL PicoGL」（<code>src/desktop/graphics/picogl/</code>）をゼロから設計し、264KB級SRAM制約下で『Quake I』を<strong>実測9–14 FPS</strong>で描画する「Quake Pico」（<code>MEDIA-QUAKE-PICO.md</code>）とXMBリボン統合を達成しました。
+                    極小マイクロコントローラ上でフル機能のデスクトップOSと3Dエンジンを駆動させるというシステム工学の極限に挑んだフェーズです。Raspberry Pi Pico（RP2040 /
+                    RP2350）およびポケット端末「PicoCalc」向けの完全ベアメタルターゲット（<code>core_pico.c</code>、<code>core_segui.c</code>、<code>boot2_rp2040.S</code>、<code>i2ckbd_stm32.c</code>、<code>pico_rtos.h</code>、<code>CORES-PICO.txt</code>）を構築し、Palm
+                    OS着想の極小UIモード「SegUI
+                    Palm」（<code>segui_palm.c</code>）とPicoCalc専用アプリ群（Browser、Cabinet、Chat、Contacts、Editor、Phone、Terminal、XMB、glgears）の自動画面検証を確立。さらにデュアルコアCore
+                    1並列スパンラスタライザを内蔵した超軽量3Dグラフィックスライブラリ「B-GL
+                    PicoGL」（<code>src/desktop/graphics/picogl/</code>）をゼロから設計し、264KB級SRAM制約下で『Quake I』を<strong>実測9–14
+                        FPS</strong>で描画する「Quake Pico」（<code>MEDIA-QUAKE-PICO.md</code>）とXMBリボン統合を達成しました。
                 </p>
                 <p class="phase-en">
-                    Pushing B-System to microcontroller extremes, Phase 28 delivered bare-metal RP2040/RP2350 PicoCalc targets (<code>core_pico.c</code>, <code>core_segui.c</code>, <code>boot2_rp2040.S</code>, STM32 I2C keyboard HAL) and the Palm-inspired SegUI pocket suite covering 12 handheld apps. Engineering a custom dual-core span rasterizer—B-GL PicoGL (<code>src/desktop/graphics/picogl/</code>)—it achieved <strong>9–14 FPS</strong> bare-metal <em>Quake I</em> rendering on Pico hardware alongside accelerated XMB ribbons.
+                    Pushing B-System to microcontroller extremes, Phase 28 delivered bare-metal RP2040/RP2350 PicoCalc
+                    targets (<code>core_pico.c</code>, <code>core_segui.c</code>, <code>boot2_rp2040.S</code>, STM32 I2C
+                    keyboard HAL) and the Palm-inspired SegUI pocket suite covering 12 handheld apps. Engineering a
+                    custom dual-core span rasterizer—B-GL PicoGL (<code>src/desktop/graphics/picogl/</code>)—it achieved
+                    <strong>9–14 FPS</strong> bare-metal <em>Quake I</em> rendering on Pico hardware alongside
+                    accelerated XMB ribbons.
                 </p>
             </div>
 
@@ -827,14 +1187,25 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
             <div class="phase-card">
                 <span class="phase-badge phase-badge-post">Phase 29 · Portal &amp; Matrix SDK</span>
                 <div class="phase-header">
-                    <h3 class="phase-title">公式ポータル刷新、Media Matrix SDK、整数 16.16 libschrift ラスタライザ<span class="phase-title-en">Device-Line Portal Restructure, Matrix SDK &amp; Pure-Integer 16.16 TrueType</span></h3>
-                    <span class="phase-meta">Sessions 135–136 · Commits 1245–1262 (6700a37..594475f) · Nov 23–24 · ~12.2 h · +17,449 / -11,080 lines</span>
+                    <h3 class="phase-title">公式ポータル刷新、Media Matrix SDK、整数 16.16 libschrift ラスタライザ<span
+                            class="phase-title-en">Device-Line Portal Restructure, Matrix SDK &amp; Pure-Integer 16.16
+                            TrueType</span></h3>
+                    <span class="phase-meta">Sessions 135–136 · Commits 1245–1262 (6700a37..594475f) · Nov 23–24 · ~12.2
+                        h · +17,449 / -11,080 lines</span>
                 </div>
                 <p class="phase-jp">
-                    製品ドキュメント体系とベクタータイポグラフィの完成度を一気に引き上げた最新フェーズです。公式サイト全体を新デザイン・デバイス別階層（<code>devices/band</code>、<code>handheld</code>、<code>key</code>、<code>laptop</code>、<code>pocket</code>）へ全面刷新し、<code>tool_book2tad.py</code> TADコンパイラ・<code>vobj_manager.c</code>・<code>tad_browser.c</code>の堅牢化、法的通知整備、および第2次セキュリティ監査を完了。さらに最新スプリントでは、FPU非搭載の組み込みCPUからワークステーションまでビット完全一致で動作する<strong>純整数16.16固定小数点TrueTypeラスタライザ</strong>へ<code>libschrift</code>（<code>src/desktop/font/schrift.c</code>、<code>include/btron/schrift.h</code>）を全面刷新しました。この新フォントエンジンを実証するリアルタイムデジタルレイン＆グリフアトラス基盤「Media Matrix SDK」（<code>src/media/matrix/</code>、<code>apps/Matrix.html</code>、<code>doc/md/MEDIA-MATRIX.md</code>、<code>test_matrix.c</code>）をデスクトップ・SegUI双方へ統合し、学術的厳密さと視覚的完成度の新たな到達点を刻んでいます。
+                    製品ドキュメント体系とベクタータイポグラフィの完成度を一気に引き上げた最新フェーズです。公式サイト全体を新デザイン・デバイス別階層（<code>devices/band</code>、<code>handheld</code>、<code>key</code>、<code>laptop</code>、<code>pocket</code>）へ全面刷新し、<code>tool_book2tad.py</code>
+                    TADコンパイラ・<code>vobj_manager.c</code>・<code>tad_browser.c</code>の堅牢化、法的通知整備、および第2次セキュリティ監査を完了。さらに最新スプリントでは、FPU非搭載の組み込みCPUからワークステーションまでビット完全一致で動作する<strong>純整数16.16固定小数点TrueTypeラスタライザ</strong>へ<code>libschrift</code>（<code>src/desktop/font/schrift.c</code>、<code>include/btron/schrift.h</code>）を全面刷新しました。この新フォントエンジンを実証するリアルタイムデジタルレイン＆グリフアトラス基盤「Media
+                    Matrix
+                    SDK」（<code>src/media/matrix/</code>、<code>apps/Matrix.html</code>、<code>doc/md/MEDIA-MATRIX.md</code>、<code>test_matrix.c</code>）をデスクトップ・SegUI双方へ統合し、学術的厳密さと視覚的完成度の新たな到達点を刻んでいます。
                 </p>
                 <p class="phase-en">
-                    The latest milestone restructured the official portal across five hardware form-factor lines (Band, Handheld, Key, Laptop, Pocket), hardened the TAD compiler and Virtual Object manager, and completed a second full security audit. It then re-engineered <code>libschrift</code> (<code>schrift.c</code>) into a deterministic pure-integer 16.16 fixed-point TrueType rasterizer and launched the Media Matrix SDK (<code>src/media/matrix/</code>, <code>MEDIA-MATRIX.md</code>, <code>test_matrix.c</code>) across both desktop and SegUI targets.
+                    The latest milestone restructured the official portal across five hardware form-factor lines (Band,
+                    Handheld, Key, Laptop, Pocket), hardened the TAD compiler and Virtual Object manager, and completed
+                    a second full security audit. It then re-engineered <code>libschrift</code> (<code>schrift.c</code>)
+                    into a deterministic pure-integer 16.16 fixed-point TrueType rasterizer and launched the Media
+                    Matrix SDK (<code>src/media/matrix/</code>, <code>MEDIA-MATRIX.md</code>,
+                    <code>test_matrix.c</code>) across both desktop and SegUI targets.
                 </p>
             </div>
 
@@ -844,10 +1215,14 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
                     29フェーズにわたる継続的進化を受け、今後のB-System Beta 1開発ロードマップでは以下の主要領域に注力します：
                 </p>
                 <ul>
-                    <li><strong>内蔵C99コンパイラ（Integrated C99 Compiler）：</strong> Fabrice BellardのTCC設計に基づく超軽量Cコンパイラを移植し、B-System上での完全セルフホスティング開発環境を確立。</li>
-                    <li><strong>完全なseL4マイクロカーネル・ペルソナ（seL4 Persona）：</strong> Synrc VE OS.1環境下でミッションクリティカル・エッジ計算を支える形式検証済みマイクロカーネル・ペルソナの拡充。</li>
-                    <li><strong>HTML 4.1 / TADハイパーメディアWebエンジン：</strong> Web TADストリームのネイティブ描画と North Star Browser による軽量Webブラウジング機能。</li>
-                    <li><strong>Raspberry Pi 5・PlayStation 3実機シリコン展開：</strong> BCM2712 / RP1サウスブリッジおよびCell Broadband Engine（PPU/SPU）の実機ハードウェア検証の深化。</li>
+                    <li><strong>内蔵C99コンパイラ（Integrated C99 Compiler）：</strong> Fabrice
+                        BellardのTCC設計に基づく超軽量Cコンパイラを移植し、B-System上での完全セルフホスティング開発環境を確立。</li>
+                    <li><strong>完全なseL4マイクロカーネル・ペルソナ（seL4 Persona）：</strong> Synrc VE
+                        OS.1環境下でミッションクリティカル・エッジ計算を支える形式検証済みマイクロカーネル・ペルソナの拡充。</li>
+                    <li><strong>HTML 4.1 / TADハイパーメディアWebエンジン：</strong> Web TADストリームのネイティブ描画と North Star Browser
+                        による軽量Webブラウジング機能。</li>
+                    <li><strong>Raspberry Pi 5・PlayStation 3実機シリコン展開：</strong> BCM2712 / RP1サウスブリッジおよびCell Broadband
+                        Engine（PPU/SPU）の実機ハードウェア検証の深化。</li>
                 </ul>
             </div>
         </section>
@@ -855,12 +1230,25 @@ $ make all &amp;&amp; make test &amp;&amp; make verify</pre>
     </main>
 
     <!-- Cross-App Global Footer -->
-    <footer class="app-footer">
-        <div class="app-footer-top" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; padding: 1rem 2rem; border-top: 1px solid rgba(255,93,162,0.2); background: rgba(255,240,248,0.6);">
-            <a href="../../index.html" style="color: #ff2d95; text-decoration:none; font-weight:700;">← VirtIO TRON トップへ戻る</a>
-            <span style="font-size: 0.85rem; color: #704b75;">B-System &nbsp;·&nbsp; Synrc Research Center &nbsp;·&nbsp; バージョン 3.20-alpha.1「Ceremony」</span>
+    <footer style="background: #14171a; padding: clamp(2.5rem, 6vw, 4rem) clamp(1.25rem, 5vw, 3.5rem) 3rem; color: #98a1a9; margin-top: 2rem;">
+        <div style="text-align: center; display: flex; flex-direction: column; align-items: center; gap: 1.4rem;">
+            <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none;">
+                <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+            </a>
+            <div style="max-width: 920px; margin: 0 auto; line-height: 1.8; font-size: 0.77rem; color: #78838d; text-align: center;">
+                <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+                    &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+                </p>
+                <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+                    <b style="color:#b8c0c8;">TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Cho-Kanji (超漢字), B-right/V, and PMC are registered trademarks of Personal Media Corporation. SONY&reg;, PlayStation&reg;, PS2&reg;, Emotion Engine&reg; (EE), Graphics Synthesizer&reg; (GS), and DualShock&reg; are registered trademarks or trademarks of Sony Group Corporation / Sony Interactive Entertainment Inc. MSX&trade;, MSX2&reg;, MSX2+&reg;, and MSX turbo R&reg; are registered trademarks of MSX Licensing Corporation and ASCII Corporation. Microsoft&reg;, MS-DOS&reg;, and Windows&reg; are registered trademarks of Microsoft Corporation. Quake&reg; is a registered trademark of id Software LLC / ZeniMax Media Inc. / Microsoft Corporation. PC-9801&reg; and PC-9821&reg; are registered trademarks of NEC Corporation. Nintendo&reg; and Nintendo 64&reg; (N64) are registered trademarks of Nintendo Co., Ltd. Apple&reg;, Macintosh&reg;, and Mac OS&reg; are registered trademarks of Apple Inc. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; is a trademark of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. Intel&reg; and Pentium&reg; are registered trademarks of Intel Corporation. Adobe&reg; and PostScript&reg; are registered trademarks of Adobe Systems Incorporated. Google&reg; and Mozc&trade; are trademarks of Google LLC. Erlang / OTP is a trademark of Telefonaktiebolaget LM Ericsson. All other manufacturer designations, silicon architectures, and software titles cited within this repository are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System implementation contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+                </p>
+                <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+                    btron.pro &nbsp;·&nbsp; High-Assurance VirtIO Hypervisor &amp; BTRON 3.20 Architecture &nbsp;·&nbsp; Under ISC / DHARMA License &nbsp;·&nbsp; Conforming to NASA/JPL Power of Ten Rules
+                </p>
+            </div>
         </div>
     </footer>
 
 </body>
+
 </html>

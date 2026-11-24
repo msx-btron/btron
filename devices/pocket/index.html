@@ -1,36 +1,321 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pocket | B-System</title>
-  <meta name="description" content="One hand, under 320×320. 320×240 and 240×320 stay POCKET.">
-  <link rel="stylesheet" href="../../index.css">
-  <link rel="stylesheet" href="../../ricepaper.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>POCKET — One-Hand LoRa Communicator &amp; Pocket Edge HMI | B-System µBTRON SDK</title>
+    <meta name="description" content="µBTRON SDK Tier 3 POCKET shell (<320×320, PicoCalc 320×320 reference): zero-heap SegUI 4-band layout for one-hand LoRa mesh tactical communicators and RP2040/RP2350 industrial edge pendants.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../index.css?v=2">
+    <link rel="stylesheet" href="../../ricepaper.css">
+    <style>
+        :root {
+            --jp-font: 'Noto Sans JP', 'Inter', system-ui, -apple-system, sans-serif;
+            --mincho-font: 'Shippori Mincho', 'Noto Sans JP', serif;
+            --mono-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+            --tron-teal: #008080;
+            --tron-blue: #0057b7;
+            --tron-indigo: #283593;
+        }
+        body { font-family: var(--jp-font); letter-spacing: 0.015em; }
+        .tier-breadcrumb { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1.4rem 0; }
+        .tier-breadcrumb a {
+            text-decoration: none; font-weight: 700; font-size: 0.84rem;
+            padding: 0.34rem 0.78rem; border-radius: 999px;
+            border: 1px solid #cbd5e1; background: #fff; color: #003366;
+        }
+        .tier-breadcrumb a.active { background: #0f766e; color: #fff; border-color: #0f766e; }
+        .audit-card {
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid #d8d7d1; border-radius: 14px;
+            padding: 1.8rem 2rem; margin-bottom: 1.8rem;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+        }
+        .audit-card h3 {
+            font-family: var(--mincho-font); color: var(--tron-indigo);
+            border-bottom: 2px solid #e2e8f0; padding-bottom: 0.55rem; margin: 0 0 1rem 0;
+        }
+        .pos-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 1.2rem; margin-top: 0.8rem;
+        }
+        .pos-box {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #0f766e;
+            border-radius: 0 10px 10px 0; padding: 1.15rem 1.35rem;
+        }
+        .pos-box h4 { margin: 0 0 0.45rem 0; color: #0f172a; font-size: 1rem; }
+        .pos-box p { margin: 0 0 0.5rem 0; font-size: 0.9rem; line-height: 1.75; color: #334155; }
+        .pos-box p:last-child { margin-bottom: 0; font-size: 0.82rem; color: #64748b; line-height: 1.62; }
+        .conformance-table {
+            width: 100%; border-collapse: collapse; margin: 1rem 0 0 0; font-size: 0.9rem;
+        }
+        .conformance-table th, .conformance-table td {
+            padding: 0.7rem 0.85rem; text-align: left;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08); vertical-align: top;
+        }
+        .conformance-table th {
+            background: rgba(15, 118, 110, 0.08); color: #0f766e; font-weight: 700; white-space: nowrap;
+        }
+        .mono { font-family: var(--mono-font); font-size: 0.86em; }
+        .segui-band-list {
+            display: flex; flex-wrap: wrap; gap: 0.6rem; list-style: none;
+            margin: 1.2rem 0 0 0; padding: 0;
+        }
+        .segui-band-list li {
+            display: flex; align-items: baseline; gap: 0.5rem;
+            background: #f1f5f9; border: 1px solid #cbd5e1; border-left: 4px solid #0f766e;
+            border-radius: 8px; padding: 0.45rem 0.7rem; font-size: 0.82rem; color: #475569;
+        }
+        .segui-band-list li b { color: #003366; font-family: var(--mono-font); }
+        .segui-band-list li span { color: #0f766e; font-weight: 700; }
+        .segui-gallery-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 1.6rem; margin-top: 1.5rem;
+        }
+        .segui-card {
+            background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 14px;
+            padding: 1.1rem; display: flex; flex-direction: column;
+        }
+        .segui-frame {
+            background: #000; border: 4px solid #1e293b; border-radius: 10px;
+            overflow: hidden; display: flex; justify-content: center;
+        }
+        .segui-img { width: 100%; max-width: 320px; height: auto; display: block; image-rendering: pixelated; }
+        .segui-card-info { width: 100%; margin-top: 0.9rem; text-align: left; }
+        .segui-card-title {
+            font-size: 1rem; font-weight: 700; color: #003366; margin-bottom: 0.2rem;
+            display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+        }
+        .segui-card-sub { font-size: 0.76rem; color: #64748b; font-family: var(--mono-font); margin-bottom: 0.4rem; }
+        .segui-badge {
+            font-size: 0.72rem; background: #ccfbf1; color: #0f766e;
+            border: 1px solid #99f6e4; padding: 0.14rem 0.48rem;
+            border-radius: 999px; font-weight: 600; white-space: nowrap;
+        }
+        .segui-card-desc { font-size: 0.86rem; color: #475569; line-height: 1.55; }
+    </style>
 </head>
 <body>
-  <nav class="sticky" aria-label="Site navigation">
-  <div class="nav-container">
-    <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
-    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
-      <span class="hamburger"></span>
-    </button>
-    <ul class="nav-links">
-<li><a href="../../index.html">System</a></li>
-<li><a href="../../apps/index.html">Applications</a></li>
-<li><a href="../index.html" class="active">Devices</a></li>
-<li><a href="../../doc/index.html">Books</a></li>
-<li><a href="https://depot.btron.pro/">Downloads</a></li>
-</ul>
-  </div>
-</nav>
-  <header class="rice-hero">
-    <h1>Pocket</h1>
-    <div class="rice-rule"></div>
-    <p class="rice-lede">One hand, under 320×320. 320×240 and 240×320 stay POCKET.</p>
-  </header>
-  <main class="rice-main">
-    <p>Series 40, Series 60, QCIF, and Game Boy sizes are in this shell. Frames are on the <a href="../index.html#segui-screens">pocket screens</a>. Sources: <code>src/desktop/ui/pocket/</code>.</p>
-  </main>
+
+    <nav class="sticky" aria-label="Site navigation">
+        <div class="nav-container">
+            <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+            <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+                <span class="hamburger"></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="../../index.html">System</a></li>
+                <li><a href="../../apps/index.html">Applications</a></li>
+                <li><a href="../index.html" class="active">Devices</a></li>
+                <li><a href="../../doc/index.html">Books</a></li>
+                <li><a href="https://depot.btron.pro/">Downloads</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <header class="rice-hero">
+        <h1>POCKET · 掌の戦術通信機</h1>
+        <div class="rice-rule"></div>
+        <p class="rice-lede">320×320 未満の片手端末および PicoCalc（RP2040/RP2350）基準シェル。ゼロヒープ SegUI 4 帯レイアウトで LoRa メッシュ通信と現場計器を統合。<br>
+        One-hand pocket communicator (&lt;320×320, PicoCalc 320×320 reference). NASA JPL Rule 3 zero-heap SegUI for LoRa mesh comms and microcontroller edge tools.</p>
+    </header>
+
+    <main style="max-width: 1160px; margin: 0 auto; padding: 1.5rem 1.5rem 4rem;">
+
+        <nav class="tier-breadcrumb" aria-label="Device tiers">
+            <a href="../index.html">← Devices Portal</a>
+            <a href="../laptop/index.html">LAPTOP</a>
+            <a href="../handheld/index.html">HANDHELD</a>
+            <a href="index.html" class="active">POCKET</a>
+            <a href="../band/index.html">BAND</a>
+            <a href="../key/index.html">KEY</a>
+        </nav>
+
+        <!-- Academic & Commercial Positioning -->
+        <section class="audit-card">
+            <h3>戦術通信・産業エッジにおける位置づけ (Tactical &amp; Industrial Edge Positioning)</h3>
+            <div class="pos-grid">
+                <div class="pos-box">
+                    <h4>低 SWaP 偵察用 LoRa メッシュ通信機 (Low-SWaP LoRa Communicator)</h4>
+                    <p>
+                        セルラー網や衛星リンクが遮断された前線偵察・災害現場において、ポケットサイズの低消費電力 LoRa メッシュ端末は不可欠である。POCKET シェルは 264 KB SRAM クラスの RP2040/RP2350 マイコン上で起動後の動的メモリ確保をゼロに抑え（NASA JPL Rule 3）、LoRa チャット・連絡先・UART 端末・TAD 手引書閲覧・およびデュアルコア PicoGL 3D 描画までを単一ファームウェアで完結させる。
+                    </p>
+                    <p>
+                        Engineered for off-grid reconnaissance and contested DDIL environments, POCKET executes on 264 KB SRAM RP2040/RP2350 microcontrollers with zero post-boot heap allocation (NASA JPL Rule 3), integrating LoRa mesh chat, address directories, UART console diagnostics, local TAD manuals, and dual-core PicoGL 3D rendering.
+                    </p>
+                </div>
+                <div class="pos-box" style="border-left-color: var(--tron-blue);">
+                    <h4>現場 PLC 試運転・計測ペンダント (Pocket Industrial Edge Pendant)</h4>
+                    <p>
+                        工場 PLC の現場デバッグ、CNC/ロボットティーチングペンダント、携帯型オシロスコープ、および環境計測ロガーでは、高価な Linux SoM を使わず即座に起動する確定論的 HMI が求められる。POCKET の SegUI 4 帯レイアウト（STATUS / TABBAR / BODY / SOFTKEY）は画面高さ予算をコンパイル時に保証し、SPI0 SDHC ボリューム操作と PL011 UART ミラーリングを標準提供する。
+                    </p>
+                    <p>
+                        For PLC commissioning tools, robotics teach pendants, and portable edge instruments, POCKET eliminates heavyweight Linux SoM boot latency. Its statically budgeted 4-band SegUI architecture guarantees deterministic frame timing alongside native SPI0 SDHC volume browsing and PL011 UART0 console mirroring.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Resolutions & Band Budget -->
+        <section class="audit-card">
+            <h3>対象解像度と SegUI 4 帯予算 (Requested Resolutions &amp; Band Budget)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                320×320 未満のうち BAND（≤128×160）および KEY（&lt;100×100）を除く全モードが <code class="mono">POCKET</code> に割り当てられる（240×320 は 320×240 の縦位置として POCKET を維持）。実装ソース：<code class="mono">src/desktop/ui/pocket/</code>、<code class="mono">src/desktop/industrial/segui/segui_palm.c</code>、<code class="mono">src/cores/core_pico.c</code>。
+            </p>
+            <ul class="segui-band-list">
+                <li><b>STATUS</b><span>22 px</span><em>clock, battery &amp; link</em></li>
+                <li><b>TABBAR</b><span>22 px</span><em>omitted on single-tab forms</em></li>
+                <li><b>BODY</b><span>stretch</span><em>only stretchable band</em></li>
+                <li><b>SOFTKEY</b><span>26 px</span><em>three tactile captions</em></li>
+            </ul>
+            <table class="conformance-table">
+                <thead>
+                    <tr><th>BTRON_RES</th><th>解像度 (Pixels)</th><th>プロファイル名</th><th>備考</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="mono">BTRON_RES_VGA_320X240</td><td class="mono">320×240 / 240×320</td><td>QVGA Pocket</td><td>横・縦双方で POCKET 維持</td></tr>
+                    <tr><td class="mono">BTRON_RES_HQVGA_240X160</td><td class="mono">240×160</td><td>HQVGA</td><td>横型コンパクト計測機・携帯機</td></tr>
+                    <tr><td class="mono">BTRON_RES_S40_208X208</td><td class="mono">208×208</td><td>Series 40 Square</td><td>正方形エッジ計器パネル</td></tr>
+                    <tr><td class="mono">BTRON_RES_S60_176X208</td><td class="mono">176×208</td><td>Series 60</td><td>片手テンキー通信機</td></tr>
+                    <tr><td class="mono">BTRON_RES_QCIF_176X144</td><td class="mono">176×144</td><td>QCIF</td><td>低帯域映像・計測モニター</td></tr>
+                    <tr><td class="mono">BTRON_RES_GB_160X144</td><td class="mono">160×144</td><td>Game Boy</td><td>省電力反射型 LCD ハンドヘルド</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- 12 PicoCalc SegUI Captures -->
+        <section class="audit-card" id="segui-screens">
+            <h3>POCKET — PicoCalc 320×320 実機フレーム (12 Native SegUI Captures)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                掌の基準パネルである PicoCalc（320×320、<code class="mono">segui_profile_picocalc</code>）上で動作する全 12 アプリの実動画面。ランチャー、UART 端末、ゼロヒープエディタ、TAD ブラウザ、LoRa メッシュチャット、さらにデュアルコア PicoGL による 9–14 FPS の Quake e1m1 までを単一環境で実装。
+            </p>
+            <p style="font-size:0.86rem; color:#64748b; margin-top:0.3rem;">
+                Twelve live captures from the 320×320 PicoCalc reference shell (<code>segui_profile_picocalc</code>): Palm-style 3×3 launcher, UART console, LoRa mesh chat, hardware preferences, XMB ribbon, and dual-core PicoGL 3D.
+            </p>
+
+            <div class="segui-gallery-grid">
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_launcher.png" alt="1. PicoCalc Palm OS Launcher" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>1. PicoCalc Launcher</span><span class="segui-badge">320×320 3×3</span></div>
+                        <div class="segui-card-sub">Home / Launcher</div>
+                        <div class="segui-card-desc">12×12 ピクセルアートアイコンを備えた工業デザイン 3×3 ランチャーグリッド。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_terminal.png" alt="2. B-System Terminal" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>2. B-System Terminal</span><span class="segui-badge">Shell</span></div>
+                        <div class="segui-card-sub">1. Terminal</div>
+                        <div class="segui-card-desc">PL011 UART0 と双方向ミラーリングされる <code>SEGUI_W_TEXT</code> コンソールリング。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_editor.png" alt="3. B-System Editor" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>3. B-System Editor</span><span class="segui-badge">TAD / Text</span></div>
+                        <div class="segui-card-sub">2. Editor</div>
+                        <div class="segui-card-desc">RAM <code>/SYS</code> 領域へ直接保存するゼロヒープ・スクラッチパッドエディタ。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_browser.png" alt="4. TAD / Manual Browser" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>4. TAD / Manual Browser</span><span class="segui-badge">Hypertext</span></div>
+                        <div class="segui-card-sub">3. Browser</div>
+                        <div class="segui-card-desc">オフライン戦術手引書・整備マニュアルを閲覧する 2 フォーム・ハイパーテキストリーダー。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_cabinet.png" alt="5. Real-Object Cabinet" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>5. Real-Object Cabinet</span><span class="segui-badge">Volumes</span></div>
+                        <div class="segui-card-sub">4. Cabinet</div>
+                        <div class="segui-card-desc">内蔵 <code>/SYS</code> RAM ボリュームおよび SPI0 SDHC カード上の実身を直接参照。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_glgears.png" alt="6. GLGears 3D Benchmark" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>6. GLGears 3D Benchmark</span><span class="segui-badge">10 KiB Z</span></div>
+                        <div class="segui-card-sub">5. GLGears</div>
+                        <div class="segui-card-desc">10 KiB 帯状 16-bit Z バッファを用いた 3 歯車ランバート照明ソフトウェアラスタライザ。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_contacts.png" alt="7. Contacts" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>7. Contacts</span><span class="segui-badge">Directory</span></div>
+                        <div class="segui-card-sub">6. Contacts</div>
+                        <div class="segui-card-desc">選択したコールサインから直接 LoRa チャットスレッドへ遷移するアドレス帳。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_phone.png" alt="8. Phone Dialer & Recents" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>8. Phone Dialer &amp; Recents</span><span class="segui-badge">Dialer</span></div>
+                        <div class="segui-card-sub">7. Phone</div>
+                        <div class="segui-card-desc">片手操作に最適化された 3×4 数値ダイヤルパッドおよび発着信履歴ログ。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_chat.png" alt="9. LoRa Mesh Chat" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>9. LoRa Mesh Chat</span><span class="segui-badge">LoRa Chat</span></div>
+                        <div class="segui-card-sub">8. Chat</div>
+                        <div class="segui-card-desc">オフグリッド暗号化メッセンジャー向けの 2 フォーム LoRa スレッド＆サークル通信機。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_prefs.png" alt="10. PicoCalc Preferences" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>10. PicoCalc Preferences</span><span class="segui-badge">Hardware</span></div>
+                        <div class="segui-card-sub">9. Preferences</div>
+                        <div class="segui-card-desc">LCD/キーボード輝度、配色テーマ、電池電圧、SRAM 残量、BOOTSEL・電源制御を一括管理。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_xmb.png" alt="11. XMB" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>11. XMB</span><span class="segui-badge">Opened</span></div>
+                        <div class="segui-card-sub">XMB</div>
+                        <div class="segui-card-desc">余弦波リボンと階層アイコンを備えた Pico XMB 描画器（<code>xmb_pico_paint</code>）。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_quake.png" alt="12. Quake e1m1" class="segui-img" width="320" height="320"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>12. Quake e1m1</span><span class="segui-badge">9–14 FPS</span></div>
+                        <div class="segui-card-sub">Quake Pico</div>
+                        <div class="segui-card-desc">デュアルコア B-GL PicoGL により 128×96 ターゲットへ実測 9–14 FPS で描画する Quake エンジン。</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+
+    <footer>
+        <div class="footer-bottom">
+            <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+                <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+            </a>
+            <div class="footer-legal">
+                <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+                    &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+                </p>
+                <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+                    <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Cho-Kanji (超漢字), B-right/V, and PMC are registered trademarks of Personal Media Corporation. SONY&reg;, PlayStation&reg;, PS2&reg;, Emotion Engine&reg; (EE), Graphics Synthesizer&reg; (GS), and DualShock&reg; are registered trademarks or trademarks of Sony Group Corporation / Sony Interactive Entertainment Inc. MSX&trade;, MSX2&reg;, MSX2+&reg;, and MSX turbo R&reg; are registered trademarks of MSX Licensing Corporation and ASCII Corporation. Microsoft&reg;, MS-DOS&reg;, and Windows&reg; are registered trademarks of Microsoft Corporation. Quake&reg; is a registered trademark of id Software LLC / ZeniMax Media Inc. / Microsoft Corporation. PC-9801&reg; and PC-9821&reg; are registered trademarks of NEC Corporation. Nintendo&reg; and Nintendo 64&reg; (N64) are registered trademarks of Nintendo Co., Ltd. Apple&reg;, Macintosh&reg;, and Mac OS&reg; are registered trademarks of Apple Inc. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; is a trademark of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. Intel&reg; and Pentium&reg; are registered trademarks of Intel Corporation. Adobe&reg; and PostScript&reg; are registered trademarks of Adobe Systems Incorporated. Google&reg; and Mozc&trade; are trademarks of Google LLC. Erlang / OTP is a trademark of Telefonaktiebolaget LM Ericsson. All other manufacturer designations, silicon architectures, and software titles cited within this repository are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System implementation contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+                </p>
+                <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+                    btron.pro &nbsp;·&nbsp; High-Assurance VirtIO Hypervisor &amp; BTRON 3.20 Architecture &nbsp;·&nbsp; Under ISC / DHARMA License &nbsp;·&nbsp; Conforming to NASA/JPL Power of Ten Rules
+                </p>
+            </div>
+        </div>
+    </footer>
+
 </body>
 </html>

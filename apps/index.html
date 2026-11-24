@@ -1,70 +1,92 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Applications | B-System</title>
+  <title>アプリケーション — Applications | B-System</title>
   <link rel="stylesheet" href="../index.css">
   <link rel="stylesheet" href="../ricepaper.css">
 </head>
 <body>
   <nav class="sticky" aria-label="Site navigation">
-  <div class="nav-container">
-    <a href="../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
-    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
-      <span class="hamburger"></span>
-    </button>
-    <ul class="nav-links">
-<li><a href="../index.html">System</a></li>
-<li><a href="index.html" class="active">Applications</a></li>
-<li><a href="../devices/index.html">Devices</a></li>
-<li><a href="../doc/index.html">Books</a></li>
-<li><a href="https://depot.btron.pro/">Downloads</a></li>
-</ul>
-  </div>
-</nav>
+    <div class="nav-container">
+      <a href="../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+      <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+        <span class="hamburger"></span>
+      </button>
+      <ul class="nav-links">
+        <li><a href="../index.html">System</a></li>
+        <li><a href="index.html" class="active">Applications</a></li>
+        <li><a href="../devices/index.html">Devices</a></li>
+        <li><a href="../doc/index.html">Books</a></li>
+        <li><a href="https://depot.btron.pro/">Downloads</a></li>
+      </ul>
+    </div>
+  </nav>
+
   <header class="rice-hero">
-    <p class="rice-kicker">B-System · desk</p>
-    <h1>Applications</h1>
+    <p class="rice-kicker">B-System · BTRON 3.20 · Applications</p>
+    <h1 class="jp-title">アプリケーション。</h1>
     <div class="rice-rule"></div>
-    <p class="rice-lede">The applications that sit on the B-System desk. Each page is the specification of one program.</p>
+    <p class="rice-lede">B-System の机の上に並ぶネイティブ C99 アプリケーション群。各ページが 1 つの実身アプリケーションの仕様書である。</p>
+    <p class="rice-lede" style="font-size:0.94rem; opacity:0.82; margin-top:0.85rem;">The native C99 applications that sit on the B-System desk. Each page is the formal specification of one program.</p>
   </header>
+
   <main class="rice-main">
     <p class="rice-section-label">Released</p>
-<div class="rice-grid">
-<a class="rice-card" href="Chat.html"><strong>Chat</strong><span>Messages on the real-body desk.</span></a>
-<a class="rice-card" href="Cabinet.html"><strong>Cabinet</strong><span>Real bodies and virtual bodies.</span></a>
-<a class="rice-card" href="Clarity.html"><strong>Clarity</strong><span>Frames, movements, and the reading desk.</span></a>
-<a class="rice-card" href="Browser.html"><strong>Browser</strong><span>The TAD document browser.</span></a>
-<a class="rice-card" href="Review.html"><strong>Review</strong><span>Review of a real body.</span></a>
-<a class="rice-card" href="Editor.html"><strong>Editor</strong><span>The T-Editor document surface.</span></a>
-<a class="rice-card" href="Workbench.html"><strong>Workbench</strong><span>The desk, the tracker, and the global menu.</span></a>
-<a class="rice-card" href="Volumes.html"><strong>Volumes</strong><span>Disks, partitions, and B-FS volumes.</span></a>
-<a class="rice-card" href="Clock.html"><strong>Clock</strong><span>Analog and digital system clock.</span></a>
-<a class="rice-card" href="Preferences.html"><strong>Preferences</strong><span>Appearance, display, language, and sound.</span></a>
-<a class="rice-card" href="Terminal.html"><strong>Terminal</strong><span>gterm, the graphical terminal.</span></a>
-<a class="rice-card" href="Cassette.html"><strong>Cassette</strong><span>Tape-style media playback.</span></a>
-<a class="rice-card" href="Paint.html"><strong>Paint</strong><span>The drawing desk.</span></a>
-<a class="rice-card" href="Orchestra.html"><strong>Orchestra</strong><span>The scheduled music desk.</span></a>
-<a class="rice-card" href="MSX.html"><strong>MSX</strong><span>tronMSX, the MSX2+ home computer.</span></a>
-<a class="rice-card" href="XMB.html"><strong>XMB</strong><span>The cross-media bar.</span></a>
-<a class="rice-card" href="SDK.html"><strong>SDK</strong><span>The developer kit on the desk.</span></a>
-<a class="rice-card" href="Quake.html"><strong>Quake</strong><span>Quake on the B-System desk.</span></a>
-<a class="rice-card" href="Boot.html"><strong>Boot</strong><span>Installed application page.</span></a>
-<a class="rice-card" href="Commander.html"><strong>Commander</strong><span>Installed application page.</span></a>
-<a class="rice-card" href="Commands.html"><strong>Commands</strong><span>Installed application page.</span></a>
-</div>
-<p class="rice-section-label">In development</p>
-<div class="rice-grid">
-<a class="rice-card" href="Chokanji.html"><strong>Chokanji</strong><span>B-right/V Cho-Kanji compatibility.</span></a>
-<a class="rice-card" href="Calculator.html"><strong>Calculator</strong><span>Installed application page.</span></a>
-<a class="rice-card" href="Firmware.html"><strong>Firmware</strong><span>Installed application page.</span></a>
-<a class="rice-card" href="Mail.html"><strong>Mail</strong><span>Installed application page.</span></a>
-<a class="rice-card" href="Matrix.html"><strong>Matrix</strong><span>Digital Rain screensaver &amp; libschrift TrueType Font SDK demo.</span></a>
-<a class="rice-card" href="MicroScript.html"><strong>MicroScript</strong><span>Installed application page.</span></a>
-<a class="rice-card" href="Notebook.html"><strong>Notebook</strong><span>Installed application page.</span></a>
-<a class="rice-card" href="Reader.html"><strong>Reader</strong><span>Installed application page.</span></a>
-</div>
+    <div class="rice-grid">
+      <a class="rice-card" href="Chat.html"><strong>Chat</strong><span>Messages on the real-body desk.</span></a>
+      <a class="rice-card" href="Cabinet.html"><strong>Cabinet</strong><span>Real bodies and virtual bodies.</span></a>
+      <a class="rice-card" href="Clarity.html"><strong>Clarity</strong><span>Frames, movements, and the reading desk.</span></a>
+      <a class="rice-card" href="Browser.html"><strong>Browser</strong><span>The TAD document browser.</span></a>
+      <a class="rice-card" href="Review.html"><strong>Review</strong><span>Review of a real body.</span></a>
+      <a class="rice-card" href="Editor.html"><strong>Editor</strong><span>The T-Editor document surface.</span></a>
+      <a class="rice-card" href="Workbench.html"><strong>Workbench</strong><span>The desk, the tracker, and the global menu.</span></a>
+      <a class="rice-card" href="Volumes.html"><strong>Volumes</strong><span>Disks, partitions, and B-FS volumes.</span></a>
+      <a class="rice-card" href="Clock.html"><strong>Clock</strong><span>Analog and digital system clock.</span></a>
+      <a class="rice-card" href="Preferences.html"><strong>Preferences</strong><span>Appearance, display, language, and sound.</span></a>
+      <a class="rice-card" href="Terminal.html"><strong>Terminal</strong><span>gterm, the graphical terminal.</span></a>
+      <a class="rice-card" href="Cassette.html"><strong>Cassette</strong><span>Tape-style media playback.</span></a>
+      <a class="rice-card" href="Paint.html"><strong>Paint</strong><span>The drawing desk.</span></a>
+      <a class="rice-card" href="Orchestra.html"><strong>Orchestra</strong><span>The scheduled music desk.</span></a>
+      <a class="rice-card" href="MSX.html"><strong>MSX</strong><span>tronMSX, the MSX2+ home computer.</span></a>
+      <a class="rice-card" href="XMB.html"><strong>XMB</strong><span>The cross-media bar.</span></a>
+      <a class="rice-card" href="SDK.html"><strong>SDK</strong><span>The developer kit on the desk.</span></a>
+      <a class="rice-card" href="Quake.html"><strong>Quake</strong><span>Quake on the B-System desk.</span></a>
+      <a class="rice-card" href="Boot.html"><strong>Boot</strong><span>Installed application page.</span></a>
+      <a class="rice-card" href="Commander.html"><strong>Commander</strong><span>Installed application page.</span></a>
+      <a class="rice-card" href="Commands.html"><strong>Commands</strong><span>Installed application page.</span></a>
+    </div>
+    <p class="rice-section-label">In development</p>
+    <div class="rice-grid">
+      <a class="rice-card" href="Chokanji.html"><strong>Chokanji</strong><span>B-right/V Cho-Kanji compatibility.</span></a>
+      <a class="rice-card" href="Calculator.html"><strong>Calculator</strong><span>Installed application page.</span></a>
+      <a class="rice-card" href="Firmware.html"><strong>Firmware</strong><span>Installed application page.</span></a>
+      <a class="rice-card" href="Mail.html"><strong>Mail</strong><span>Installed application page.</span></a>
+      <a class="rice-card" href="Matrix.html"><strong>Matrix</strong><span>Digital Rain screensaver &amp; libschrift TrueType Font SDK demo.</span></a>
+      <a class="rice-card" href="MicroScript.html"><strong>MicroScript</strong><span>Installed application page.</span></a>
+      <a class="rice-card" href="Notebook.html"><strong>Notebook</strong><span>Installed application page.</span></a>
+      <a class="rice-card" href="Reader.html"><strong>Reader</strong><span>Installed application page.</span></a>
+    </div>
   </main>
+
+  <footer>
+    <div class="footer-bottom">
+      <a href="../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+        <img src="../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+      </a>
+      <div class="footer-legal">
+        <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+          &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+        </p>
+        <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+          <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Cho-Kanji (超漢字), B-right/V, and PMC are registered trademarks of Personal Media Corporation. SONY&reg;, PlayStation&reg;, PS2&reg;, Emotion Engine&reg; (EE), Graphics Synthesizer&reg; (GS), and DualShock&reg; are registered trademarks or trademarks of Sony Group Corporation / Sony Interactive Entertainment Inc. MSX&trade;, MSX2&reg;, MSX2+&reg;, and MSX turbo R&reg; are registered trademarks of MSX Licensing Corporation and ASCII Corporation. Microsoft&reg;, MS-DOS&reg;, and Windows&reg; are registered trademarks of Microsoft Corporation. Quake&reg; is a registered trademark of id Software LLC / ZeniMax Media Inc. / Microsoft Corporation. PC-9801&reg; and PC-9821&reg; are registered trademarks of NEC Corporation. Nintendo&reg; and Nintendo 64&reg; (N64) are registered trademarks of Nintendo Co., Ltd. Apple&reg;, Macintosh&reg;, and Mac OS&reg; are registered trademarks of Apple Inc. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; is a trademark of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. Intel&reg; and Pentium&reg; are registered trademarks of Intel Corporation. Adobe&reg; and PostScript&reg; are registered trademarks of Adobe Systems Incorporated. Google&reg; and Mozc&trade; are trademarks of Google LLC. Erlang / OTP is a trademark of Telefonaktiebolaget LM Ericsson. All other manufacturer designations, silicon architectures, and software titles cited within this repository are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System implementation contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+        </p>
+        <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+          btron.pro &nbsp;·&nbsp; High-Assurance VirtIO Hypervisor &amp; BTRON 3.20 Architecture &nbsp;·&nbsp; Under ISC / DHARMA License &nbsp;·&nbsp; Conforming to NASA/JPL Power of Ten Rules
+        </p>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>

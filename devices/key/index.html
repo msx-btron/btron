@@ -1,36 +1,227 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Key | B-System</title>
-  <meta name="description" content="The key panel. CALC is any mode whose both sides are under 100.">
-  <link rel="stylesheet" href="../../index.css">
-  <link rel="stylesheet" href="../../ricepaper.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KEY (CALC) — COMSEC Key-Fill Panel &amp; Micro-PLC HMI | B-System µBTRON SDK</title>
+    <meta name="description" content="µBTRON SDK Tier 5 KEY (CALC) shell (<100×100): ultra-compact deterministic HMI for COMSEC cryptographic key-fill loaders, tactical radio frontplates, and micro-PLC industrial faceplates.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&family=Noto+Sans+JP:wght@400;500;600;700;800&family=Shippori+Mincho:wght@600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="../../index.css?v=2">
+    <link rel="stylesheet" href="../../ricepaper.css">
+    <style>
+        :root {
+            --jp-font: 'Noto Sans JP', 'Inter', system-ui, -apple-system, sans-serif;
+            --mincho-font: 'Shippori Mincho', 'Noto Sans JP', serif;
+            --mono-font: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+            --tron-amber: #b45309;
+            --tron-teal: #008080;
+            --tron-indigo: #283593;
+        }
+        body { font-family: var(--jp-font); letter-spacing: 0.015em; }
+        .tier-breadcrumb { display: flex; flex-wrap: wrap; gap: 0.5rem; margin: 0 0 1.4rem 0; }
+        .tier-breadcrumb a {
+            text-decoration: none; font-weight: 700; font-size: 0.84rem;
+            padding: 0.34rem 0.78rem; border-radius: 999px;
+            border: 1px solid #cbd5e1; background: #fff; color: #003366;
+        }
+        .tier-breadcrumb a.active { background: #b45309; color: #fff; border-color: #b45309; }
+        .audit-card {
+            background: rgba(255, 255, 255, 0.96);
+            border: 1px solid #d8d7d1; border-radius: 14px;
+            padding: 1.8rem 2rem; margin-bottom: 1.8rem;
+            box-shadow: 0 4px 18px rgba(0, 0, 0, 0.04);
+        }
+        .audit-card h3 {
+            font-family: var(--mincho-font); color: var(--tron-indigo);
+            border-bottom: 2px solid #e2e8f0; padding-bottom: 0.55rem; margin: 0 0 1rem 0;
+        }
+        .pos-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 1.2rem; margin-top: 0.8rem;
+        }
+        .pos-box {
+            background: #f8fafc; border: 1px solid #e2e8f0; border-left: 4px solid #b45309;
+            border-radius: 0 10px 10px 0; padding: 1.15rem 1.35rem;
+        }
+        .pos-box h4 { margin: 0 0 0.45rem 0; color: #0f172a; font-size: 1rem; }
+        .pos-box p { margin: 0 0 0.5rem 0; font-size: 0.9rem; line-height: 1.75; color: #334155; }
+        .pos-box p:last-child { margin-bottom: 0; font-size: 0.82rem; color: #64748b; line-height: 1.62; }
+        .conformance-table {
+            width: 100%; border-collapse: collapse; margin: 1rem 0 0 0; font-size: 0.9rem;
+        }
+        .conformance-table th, .conformance-table td {
+            padding: 0.7rem 0.85rem; text-align: left;
+            border-bottom: 1px solid rgba(0, 0, 0, 0.08); vertical-align: top;
+        }
+        .conformance-table th {
+            background: rgba(180, 83, 9, 0.08); color: #b45309; font-weight: 700; white-space: nowrap;
+        }
+        .mono { font-family: var(--mono-font); font-size: 0.86em; }
+        .segui-gallery-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+            gap: 1.5rem; margin-top: 1.4rem;
+        }
+        .segui-card {
+            background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 14px;
+            padding: 1.1rem; display: flex; flex-direction: column;
+        }
+        .segui-frame {
+            background: #000; border: 4px solid #1e293b; border-radius: 10px;
+            overflow: hidden; display: flex; justify-content: center;
+        }
+        .segui-img { width: 100%; max-width: 320px; height: auto; display: block; image-rendering: pixelated; }
+        .segui-card-info { width: 100%; margin-top: 0.85rem; text-align: left; }
+        .segui-card-title {
+            font-size: 0.98rem; font-weight: 700; color: #003366; margin-bottom: 0.25rem;
+            display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+        }
+        .segui-badge {
+            font-size: 0.72rem; background: #fef3c7; color: #b45309;
+            border: 1px solid #fde68a; padding: 0.14rem 0.48rem;
+            border-radius: 999px; font-weight: 600; white-space: nowrap;
+        }
+        .segui-card-desc { font-size: 0.85rem; color: #475569; line-height: 1.55; }
+    </style>
 </head>
 <body>
-  <nav class="sticky" aria-label="Site navigation">
-  <div class="nav-container">
-    <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
-    <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
-      <span class="hamburger"></span>
-    </button>
-    <ul class="nav-links">
-<li><a href="../../index.html">System</a></li>
-<li><a href="../../apps/index.html">Applications</a></li>
-<li><a href="../index.html" class="active">Devices</a></li>
-<li><a href="../../doc/index.html">Books</a></li>
-<li><a href="https://depot.btron.pro\">Downloads</a></li>
-</ul>
-  </div>
-</nav>
-  <header class="rice-hero">
-    <h1>Key</h1>
-    <div class="rice-rule"></div>
-    <p class="rice-lede">The key panel. CALC is any mode whose both sides are under 100.</p>
-  </header>
-  <main class="rice-main">
-    <p>Nokia 5110, 3310, and 1100 sizes, plus QQCIF, are the key shell. The row is on the <a href="../index.html#tier-calc">devices page</a>. Sources: <code>src/desktop/ui/calc/</code> and <code>src/desktop/ui/hmi/</code>.</p>
-  </main>
+
+    <nav class="sticky" aria-label="Site navigation">
+        <div class="nav-container">
+            <a href="../../index.html" class="logo"><img width="48" src="https://n2o.dev/img/synrc.svg" alt="Synrc"></a>
+            <button class="nav-toggle" aria-label="Toggle navigation" onclick="document.querySelector('.nav-links').classList.toggle('open'); this.classList.toggle('open');">
+                <span class="hamburger"></span>
+            </button>
+            <ul class="nav-links">
+                <li><a href="../../index.html">System</a></li>
+                <li><a href="../../apps/index.html">Applications</a></li>
+                <li><a href="../index.html" class="active">Devices</a></li>
+                <li><a href="../../doc/index.html">Books</a></li>
+                <li><a href="https://depot.btron.pro/">Downloads</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <header class="rice-hero">
+        <h1>KEY (CALC) · 鍵盤・超小型計器</h1>
+        <div class="rice-rule"></div>
+        <p class="rice-lede">両辺 100 ピクセル未満（84×48〜96×68）。COMSEC 暗号鍵注入器、戦術無線機前面盤、および超小型 PLC 盤を担う極限最小シェル。<br>
+        The key panel (&lt;100×100, 84×48 – 96×68). Minimal, fully auditable C99 HMI for COMSEC key-fill devices, radio frontplates, and micro-PLC faceplates.</p>
+    </header>
+
+    <main style="max-width: 1160px; margin: 0 auto; padding: 1.5rem 1.5rem 4rem;">
+
+        <nav class="tier-breadcrumb" aria-label="Device tiers">
+            <a href="../index.html">← Devices Portal</a>
+            <a href="../laptop/index.html">LAPTOP</a>
+            <a href="../handheld/index.html">HANDHELD</a>
+            <a href="../pocket/index.html">POCKET</a>
+            <a href="../band/index.html">BAND</a>
+            <a href="index.html" class="active">KEY</a>
+        </nav>
+
+        <!-- Academic & Commercial Positioning -->
+        <section class="audit-card">
+            <h3>戦術通信・産業エッジにおける位置づけ (Tactical &amp; Industrial Edge Positioning)</h3>
+            <div class="pos-grid">
+                <div class="pos-box">
+                    <h4>COMSEC 暗号鍵注入器・戦術無線機前面盤 (COMSEC &amp; Radio Frontplate)</h4>
+                    <p>
+                        戦術無線機の周波数ホッピング制御盤や暗号鍵注入器（Key-Fill Device）では、形式検証可能な極小コードサイズ、数週間単位の電池持続、およびゼロ動的メモリ確保による完全なメモリ消去（Zeroize）保証が不可欠である。KEY（CALC）シェルは 84×48〜96×68 の高コントラスト反射型 LCD 上で 1 ピクセル単位の固定レイアウトを提供し、物理テンキー入力と確実な状態遷移を保証する。
+                    </p>
+                    <p>
+                        Built for COMSEC key-fill loaders, frequency-hop tactical radio frontplates, and austere field calculators, KEY (CALC) operates on 84×48 to 96×68 transflective LCDs with weeks-long battery autonomy, statically auditable zero-heap C99 code, and deterministic zeroize-ready state machines.
+                    </p>
+                </div>
+                <div class="pos-box" style="border-left-color: var(--tron-teal);">
+                    <h4>超小型 PLC 盤・スマート計量器・安全インターロック (Micro-PLC Faceplate HMI)</h4>
+                    <p>
+                        DIN レール装着型マイクロ PLC、スマート電力・流量計、ポンプ・空調制御盤、および安全インターロック盤では、1 枚の小型 LCD に数値・モード・異常コードを寸分の狂いなく表示する必要がある。KEY シェルは <code>src/desktop/ui/calc/</code> および <code>src/desktop/ui/hmi/</code> により、上位階層と同一の TRON 設計思想を 100×100 未満の極小面へ継承し、認証取得コストと長期部品供給リスクを最小化する。
+                    </p>
+                    <p>
+                        Targeting DIN-rail micro-PLCs, utility smart meters, HVAC/pump controllers, and safety interlock keypads, KEY brings the µBTRON HMI contract down to sub-100×100 panels—allowing industrial edge OEMs to standardize telemetry and keypad workflows across every product tier.
+                    </p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Resolution Table -->
+        <section class="audit-card">
+            <h3>対象解像度 (Requested Resolutions)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                幅・高さの双方が 100 ピクセル未満である全 6 モードが <code class="mono">CALC</code>（KEY）シェルを選択する。実装ソース：<code class="mono">src/desktop/ui/calc/</code>、<code class="mono">src/desktop/ui/hmi/</code>、<code class="mono">include/btron/segui.h</code>。
+            </p>
+            <table class="conformance-table">
+                <thead>
+                    <tr><th>BTRON_RES</th><th>解像度 (Pixels)</th><th>パネル規格・実機系譜</th><th>主用途</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td class="mono">BTRON_RES_N7110_96X60</td><td class="mono">96×60</td><td>Nokia 7110</td><td>無線機前面ステータス・暗号スロット選択</td></tr>
+                    <tr><td class="mono">BTRON_RES_N1100_96X64</td><td class="mono">96×64</td><td>TI-81, Nokia 1100 / 3410 / 3510i / 6310i</td><td>野戦計算機・COMSEC 鍵注入端末</td></tr>
+                    <tr><td class="mono">BTRON_RES_N1280_96X68</td><td class="mono">96×68</td><td>Nokia 1280 / 1600 / 2600</td><td>高視認 DIN レール制御盤・計量器</td></tr>
+                    <tr><td class="mono">BTRON_RES_QQCIF_88X72</td><td class="mono">88×72</td><td>QQCIF</td><td>超小型エッジ計測器・センサハブ盤</td></tr>
+                    <tr><td class="mono">BTRON_RES_N5110I_84X84</td><td class="mono">84×84</td><td>Nokia 5110i</td><td>正方形マイクロ PLC 前面表示器</td></tr>
+                    <tr><td class="mono">BTRON_RES_N3310_84X48</td><td class="mono">84×48</td><td>Nokia 3310 / 3330 / 5110 / 8210 (PCD8544)</td><td>極限最小モノクロ LCD・安全インターロック</td></tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- Micro-Panel Primitives Showcase -->
+        <section class="audit-card">
+            <h3>SegUI 極小ウィジェット・キーパッド参照 (Shared Micro-Panel Primitives)</h3>
+            <p style="color:#334155; line-height:1.8;">
+                KEY（CALC）は POCKET / BAND と同じ SegUI プリミティブ（数値キーパッド、チェック・トグル、システム情報読取り、高コントラスト配色）を極小画面制約へ射影して描画する。
+            </p>
+            <p style="font-size:0.86rem; color:#64748b; margin-top:0.3rem;">
+                Native SegUI captures demonstrating the keypad, discrete widget, diagnostic readout, and high-contrast primitives compiled down to sub-100×100 KEY/CALC panels.
+            </p>
+            <div class="segui-gallery-grid">
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/picocalc_phone.png" alt="Numeric Keypad & Direct Code Entry" class="segui-img"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>1. 3×4 数値・鍵コード入力</span><span class="segui-badge">Keypad</span></div>
+                        <div class="segui-card-desc">周波数・暗号鍵番号・PLC パラメータを誤打なく入力する確定論的テンキーレイアウト。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/segui_demo_widgets.png" alt="SegUI Discrete Controls & Indicators" class="segui-img"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>2. 離散スイッチ・状態インジケータ</span><span class="segui-badge">HMI Widgets</span></div>
+                        <div class="segui-card-desc">チェック、トグル、進捗バー、異常フラグを 1-bit モノクロ環境でも判別可能な幾何形状で描画。</div>
+                    </div>
+                </div>
+                <div class="segui-card">
+                    <div class="segui-frame"><img src="../../img/segui/segui_demo_info.png" alt="SegUI Hardware & Firmware Diagnostic Readout" class="segui-img"></div>
+                    <div class="segui-card-info">
+                        <div class="segui-card-title"><span>3. ファームウェア・自己診断読取り</span><span class="segui-badge">Diagnostics</span></div>
+                        <div class="segui-card-desc">チェックサム、稼働時間、SRAM 消費、ハードウェア版数を即座に監査表示する情報画面。</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+
+    <footer>
+        <div class="footer-bottom">
+            <a href="../../sakazaki.svg" title="Sakazaki Clan Kamon — 二蓋笠 (Nigai-gasa)" style="display: inline-block; text-decoration: none; margin-bottom: 0.2rem;">
+                <img src="../../sakazaki.svg" alt="Sakazaki Order Logo" style="width: 108px; height: auto; display: block; opacity: 0.88;">
+            </a>
+            <div class="footer-legal">
+                <p style="margin: 0 0 0.85rem; font-weight: 500; letter-spacing: 0.04em; color: #b8c0c8; font-size: 0.81rem;">
+                    &copy; 2026 Cryptographic Telesystems, LLC. Ukraine. All rights reserved.
+                </p>
+                <p style="margin: 0 0 0.9rem; line-height: 1.75;">
+                    <b>TRADEMARK &amp; STATUTORY COMPLIANCE DISCLOSURE:</b> TRON, BTRON, ITRON, T-Kernel, and T-Engine are registered trademarks or trademarks of TRON Forum and Professor Ken Sakamura. Cho-Kanji (超漢字), B-right/V, and PMC are registered trademarks of Personal Media Corporation. SONY&reg;, PlayStation&reg;, PS2&reg;, Emotion Engine&reg; (EE), Graphics Synthesizer&reg; (GS), and DualShock&reg; are registered trademarks or trademarks of Sony Group Corporation / Sony Interactive Entertainment Inc. MSX&trade;, MSX2&reg;, MSX2+&reg;, and MSX turbo R&reg; are registered trademarks of MSX Licensing Corporation and ASCII Corporation. Microsoft&reg;, MS-DOS&reg;, and Windows&reg; are registered trademarks of Microsoft Corporation. Quake&reg; is a registered trademark of id Software LLC / ZeniMax Media Inc. / Microsoft Corporation. PC-9801&reg; and PC-9821&reg; are registered trademarks of NEC Corporation. Nintendo&reg; and Nintendo 64&reg; (N64) are registered trademarks of Nintendo Co., Ltd. Apple&reg;, Macintosh&reg;, and Mac OS&reg; are registered trademarks of Apple Inc. Raspberry Pi&reg; is a trademark of Raspberry Pi Ltd. Broadcom&reg; is a trademark of Broadcom Inc. ARM&reg; and Cortex&reg; are registered trademarks of Arm Limited. Intel&reg; and Pentium&reg; are registered trademarks of Intel Corporation. Adobe&reg; and PostScript&reg; are registered trademarks of Adobe Systems Incorporated. Google&reg; and Mozc&trade; are trademarks of Google LLC. Erlang / OTP is a trademark of Telefonaktiebolaget LM Ericsson. All other manufacturer designations, silicon architectures, and software titles cited within this repository are the property of their respective trademark holders and are referenced strictly under statutory fair use doctrine for non-commercial historical preservation, register-level hardware documentation, and cleanroom interoperability engineering. B-System implementation contains no proprietary vendor microcode, firmware ROMs, or copyrighted assets.
+                </p>
+                <p style="margin: 0; line-height: 1.75; color: #69747e; font-size: 0.74rem;">
+                    btron.pro &nbsp;·&nbsp; High-Assurance VirtIO Hypervisor &amp; BTRON 3.20 Architecture &nbsp;·&nbsp; Under ISC / DHARMA License &nbsp;·&nbsp; Conforming to NASA/JPL Power of Ten Rules
+                </p>
+            </div>
+        </div>
+    </footer>
+
 </body>
 </html>
