@@ -15,6 +15,7 @@ enum {
     XMB_GO_BROWSER,
     XMB_GO_CABINET,
     XMB_GO_GEARS,
+    XMB_GO_MATRIX,
     XMB_GO_CHAT,
     XMB_GO_PREFS
 };

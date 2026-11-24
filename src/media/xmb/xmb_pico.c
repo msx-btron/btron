@@ -55,6 +55,7 @@ static const xmb_item_t s_items_apps[] = {
     { IC_APP_TAD,    "閲覧 (Browser)",  XMB_GO_BROWSER },
     { IC_APP_DRIVE,  "書庫 (Cabinet)",  XMB_GO_CABINET },
     { IC_GEAR,       "歯車 (GLGears)",  XMB_GO_GEARS },
+    { IC_PROMPT,     "行列 (Matrix)",   XMB_GO_MATRIX },
     { IC_APP_CHAT,   "対話 (Chat)",     XMB_GO_CHAT }
 };
 

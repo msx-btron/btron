@@ -59,6 +59,7 @@ __attribute__((weak, weak_import)) WND* open_msx_window(void);
 __attribute__((weak, weak_import)) WND* open_lilcu64_demo_window(void);
 __attribute__((weak, weak_import)) WND* open_xmb_window(void);
 __attribute__((weak, weak_import)) WND* open_glgears_window(void);
+__attribute__((weak, weak_import)) WND* open_matrix_window(void);
 __attribute__((weak, weak_import)) WND* open_review_window(void);
 __attribute__((weak, weak_import)) WND* open_mars_window(void);
 /* Cho-Kanji suite */
@@ -189,6 +190,7 @@ static GMenuHeader g_headers[GMENU_HEADER_COUNT] = {
             { "Lil Cu 64 Demo (3D Demoscene...)",    "Ctrl+L", GMENU_CMD_APP_DEMO,       FALSE, FALSE, TRUE },
             { "XMB (横断メディアメニュー...)",        "",       GMENU_CMD_APP_XMB,        FALSE, FALSE, TRUE },
             { "GL 歯車 (GLGears 3D...)",             "",       GMENU_CMD_APP_GEARS,      FALSE, FALSE, TRUE },
+            { "行列雨 (Matrix Font SDK...)",         "",       GMENU_CMD_APP_MATRIX,     FALSE, FALSE, TRUE },
             { "---", "", GMENU_CMD_NONE, TRUE, FALSE, FALSE },
             /* ── 超漢字 Cho-Kanji Suite ── */
             { "超漢字: キャビネット (Cabinet...)",       "Ctrl+K", GMENU_CMD_APP_CK_CABINET,     FALSE, FALSE, TRUE },
@@ -568,6 +570,9 @@ static void global_menu_execute_cmd(int cmd) {
             break;
         case GMENU_CMD_APP_GEARS:
             if (open_glgears_window) open_glgears_window();
+            break;
+        case GMENU_CMD_APP_MATRIX:
+            if (open_matrix_window) open_matrix_window();
             break;
 
         /* ── アプリ(A) — Cho-Kanji suite ── */

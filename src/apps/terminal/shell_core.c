@@ -42,7 +42,7 @@ int btron_shell_core_exec(const char *line, BtronShellOutFn out, void *ctx,
     if (*line == '\0') return 1;
 
     if (s_streq(line, "help") || s_streq(line, "?")) {
-        out("B-System Shell: help ver mem ls cat df diag echo ps reboot\n", ctx);
+        out("B-System Shell: help ver mem ls cat df diag echo matrix ps reboot\n", ctx);
         return 1;
     }
     if (s_streq(line, "diag")) {
@@ -104,6 +104,33 @@ int btron_shell_core_exec(const char *line, BtronShellOutFn out, void *ctx,
     if (s_starts(line, "echo ")) {
         out(line + 5, ctx);
         out("\n", ctx);
+        return 1;
+    }
+    if (s_streq(line, "matrix") || s_starts(line, "matrix ")) {
+        const char *arg = s_starts(line, "matrix ") ? (line + 7) : "";
+        int mode = 1; /* MATRIX_MODE_CLASSIC */
+        while (*arg == ' ') arg++;
+        if (*arg != '\0') {
+            if (s_streq(arg, "trinity")       || s_streq(arg, "1")) mode = 0;
+            else if (s_streq(arg, "classic")  || s_streq(arg, "2")) mode = 1;
+            else if (s_streq(arg, "resurrections") || s_streq(arg, "3")) mode = 2;
+            else if (s_streq(arg, "operator") || s_streq(arg, "4")) mode = 3;
+            else if (s_streq(arg, "megacity") || s_streq(arg, "5")) mode = 4;
+            else if (s_streq(arg, "pride")    || s_streq(arg, "6")) mode = 5;
+            else {
+                out("matrix: modes: trinity classic resurrections operator megacity pride\n", ctx);
+                return 1;
+            }
+        }
+        if (hooks && hooks->launch_matrix) {
+            if (hooks->launch_matrix(mode)) {
+                out("Launching Matrix screensaver...\n", ctx);
+            } else {
+                out("matrix: not built in this image\n", ctx);
+            }
+        } else {
+            out("matrix: no display hook\n", ctx);
+        }
         return 1;
     }
     if (hooks && hooks->fallback_exec) {

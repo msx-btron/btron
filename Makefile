@@ -417,6 +417,10 @@ VIRGL_SRCS = \
     src/desktop/graphics/gles/egl_surface.c \
     src/desktop/graphics/virgl/backend_virgl.c \
     src/media/sdk/glgears.c \
+    src/media/matrix/matrix_atlas.c \
+    src/media/matrix/matrix_sim.c \
+    src/media/matrix/matrix_render.c \
+    src/media/matrix/matrix_app.c \
     src/media/xmb/xmb.c \
     src/media/xmb/xmb_wave.c \
     $(QUAKE_SRCS) \
@@ -475,6 +479,10 @@ GL_SRCS = \
     src/desktop/graphics/gles/backend_tinygl.c \
     src/desktop/graphics/virgl/backend_virgl.c \
     src/media/sdk/glgears.c \
+    src/media/matrix/matrix_atlas.c \
+    src/media/matrix/matrix_sim.c \
+    src/media/matrix/matrix_render.c \
+    src/media/matrix/matrix_app.c \
     src/media/xmb/xmb.c \
     src/media/xmb/xmb_wave.c \
     $(QUAKE_SRCS) \
@@ -2489,6 +2497,39 @@ test-start-sim: .build/test_start_sim
 test-xmb-pico: .build/test_xmb_pico
 	@./.build/test_xmb_pico
 
+.build/test_matrix: verify/tests/test_matrix.c \
+		src/desktop/font/schrift.c \
+		src/media/matrix/matrix_atlas.c \
+		src/media/matrix/matrix_sim.c \
+		src/media/matrix/matrix_render.c
+	@mkdir -p .build
+	$(CC) -std=c99 -O2 -Wall -Wextra -Werror -Iinclude \
+		verify/tests/test_matrix.c \
+		src/desktop/font/schrift.c \
+		src/media/matrix/matrix_atlas.c \
+		src/media/matrix/matrix_sim.c \
+		src/media/matrix/matrix_render.c -o $@
+
+test-matrix: .build/test_matrix
+	@./.build/test_matrix
+
+.build/capture_matrix: tools/capture_matrix.c \
+		src/desktop/font/schrift.c \
+		src/media/matrix/matrix_atlas.c \
+		src/media/matrix/matrix_sim.c \
+		src/media/matrix/matrix_render.c
+	@mkdir -p .build
+	$(CC) -std=c99 -O2 -Wall -Wextra -Werror -Iinclude \
+		tools/capture_matrix.c \
+		src/desktop/font/schrift.c \
+		src/media/matrix/matrix_atlas.c \
+		src/media/matrix/matrix_sim.c \
+		src/media/matrix/matrix_render.c -o $@
+
+capture-matrix: .build/capture_matrix
+	@mkdir -p img/screens
+	@./.build/capture_matrix
+
 .build/test_picogl_gears_fps: verify/tests/test_picogl_gears_fps.c \
 		src/desktop/graphics/picogl/picogl_span.c \
 		src/desktop/graphics/picogl/picogl_ctx.c \
@@ -4289,6 +4330,11 @@ CAPTURE_SEGUI_SRCS = tools/capture_segui.c \
                      src/desktop/graphics/picogl/picogl_span.c \
                      src/desktop/graphics/picogl/picogl_host_core1.c \
                      src/media/sdk/glgears_segui.c \
+                     src/desktop/font/schrift.c \
+                     src/media/matrix/matrix_atlas.c \
+                     src/media/matrix/matrix_sim.c \
+                     src/media/matrix/matrix_render.c \
+                     src/media/matrix/matrix_segui.c \
                      src/apps/cabinet/cabinet_core.c \
                      src/apps/editor/teditor_core.c \
                      src/apps/browser/tad_parser.c \
@@ -4612,6 +4658,11 @@ PICOCALC_COMMON_C := src/drivers/pico/hal_rp2xxx.c \
                      src/apps/chat/chat_core.c \
                      src/apps/terminal/shell_core.c \
                      src/media/sdk/glgears_segui.c \
+                     src/desktop/font/schrift.c \
+                     src/media/matrix/matrix_atlas.c \
+                     src/media/matrix/matrix_sim.c \
+                     src/media/matrix/matrix_render.c \
+                     src/media/matrix/matrix_segui.c \
                      src/desktop/graphics/picogl/picogl_span.c \
                      src/desktop/graphics/picogl/picogl_ctx.c \
                      src/drivers/pico/pico_core1.c \
@@ -4625,7 +4676,7 @@ PICOCALC_COMMON_C := src/drivers/pico/hal_rp2xxx.c \
 # Quake image: drop GLGears (112x96 color + iz) and XMB. The eight shell
 # apps stay. Their objects are not the SRAM that the start level needs.
 ifeq ($(PICOCALC_APP),quake)
-PICOCALC_COMMON_C := $(filter-out src/media/sdk/glgears_segui.c src/media/xmb/xmb_pico.c,$(PICOCALC_COMMON_C))
+PICOCALC_COMMON_C := $(filter-out src/media/sdk/glgears_segui.c src/media/xmb/xmb_pico.c src/desktop/font/schrift.c src/media/matrix/matrix_atlas.c src/media/matrix/matrix_sim.c src/media/matrix/matrix_render.c src/media/matrix/matrix_segui.c,$(PICOCALC_COMMON_C))
 PICOCALC_COMMON_C += src/media/quake/sim/start_sim.c .build/quake-e1m1/start_blob.c
 # quake-e1m1 precedes .build so start_blob.h is the e1m1 cook, not the hall.
 PICOCALC_CFLAGS += -I.build/quake-e1m1 -I.build -Isrc/media/quake/sim -Isrc/desktop/graphics/picogl
@@ -4712,6 +4763,26 @@ $(PICOCALC_BUILD)/glgears_segui.o: src/media/sdk/glgears_segui.c
 $(PICOCALC_BUILD)/xmb_pico.o: src/media/xmb/xmb_pico.c src/media/xmb/xmb_pico.h src/media/xmb/xmb_pico_icons.h
 	@mkdir -p $(PICOCALC_BUILD)
 	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -Isrc/drivers/pico/libc_shim -Isrc/desktop/graphics/picogl -c $< -o $@
+
+$(PICOCALC_BUILD)/schrift.o: src/desktop/font/schrift.c include/btron/schrift.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -DMATRIX_PICO_PROFILE -Isrc/drivers/pico/libc_shim -c $< -o $@
+
+$(PICOCALC_BUILD)/matrix_atlas.o: src/media/matrix/matrix_atlas.c src/media/matrix/matrix_internal.h src/media/matrix/matrix_modes.h src/media/matrix/matrix_ttf_embed.inc include/btron/schrift.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -DMATRIX_PICO_PROFILE -Isrc/drivers/pico/libc_shim -c $< -o $@
+
+$(PICOCALC_BUILD)/matrix_sim.o: src/media/matrix/matrix_sim.c src/media/matrix/matrix_internal.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -DMATRIX_PICO_PROFILE -Isrc/drivers/pico/libc_shim -c $< -o $@
+
+$(PICOCALC_BUILD)/matrix_render.o: src/media/matrix/matrix_render.c src/media/matrix/matrix_internal.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -DMATRIX_PICO_PROFILE -Isrc/drivers/pico/libc_shim -c $< -o $@
+
+$(PICOCALC_BUILD)/matrix_segui.o: src/media/matrix/matrix_segui.c src/media/matrix/matrix_internal.h
+	@mkdir -p $(PICOCALC_BUILD)
+	$(PICO_CC) $(PICOCALC_CFLAGS) -O2 -DMATRIX_PICO_PROFILE -Isrc/drivers/pico/libc_shim -c $< -o $@
 
 $(PICOCALC_BUILD)/picogl_span.o: src/desktop/graphics/picogl/picogl_span.c
 	@mkdir -p $(PICOCALC_BUILD)

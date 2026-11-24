@@ -98,6 +98,10 @@ FILE "drone1m1.dem"              BIN   assets/quake/drone1m1.dem
 FILE "clarity.png"               PNG   assets/icons/clarity.png
 FILE "Clarity-Sample.TAD"        TAD   -
 
+# Matrix Digital Rain TrueType Font Assets (Rezmason/matrix, MIT)
+FILE "Matrix-Code.ttf"           BIN   assets/ttf/Matrix-Code.ttf
+FILE "Matrix-Resurrected.ttf"    BIN   assets/ttf/Matrix-Resurrected.ttf
+
 # assets/msx — B-MSX cartridges, and the C-BIOS they boot under.
 #
 # A BIN line is a byte-exact copy: the payload's bytes go into one RT_DATABOX record, which is the

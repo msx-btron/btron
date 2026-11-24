@@ -142,6 +142,8 @@ __attribute__((weak)) WND *open_quake_window(int x, int y, int width, int height
 
 __attribute__((weak)) WND *open_xmb_window(void) { return NULL; }
 __attribute__((weak)) WND *open_glgears_window(void) { return NULL; }
+__attribute__((weak)) WND *open_matrix_window(void) { return NULL; }
+__attribute__((weak)) WND *open_matrix_window_mode(int mode) { (void)mode; return NULL; }
 __attribute__((weak)) WND *open_lilcu64_demo_window(void) { return NULL; }
 __attribute__((weak)) WND *open_msx_window(void) { return NULL; }
 __attribute__((weak)) WND *open_msx_window_with_rom(const char *path)
@@ -247,6 +249,7 @@ static WND *open_quake_app_wnd(void) {
 static const CluApp s_clu_apps[] = {
     { "xmb",        "Cross Media Bar (XMB)",                    open_xmb_window },
     { "gears",      "GLGears (OpenGL ES 1.1 / TinyGL)",         open_glgears_window },
+    { "matrix",     "Matrix Digital Rain (libschrift Font SDK)", open_matrix_window },
     { "cu",         "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
     { "lilcu",      "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },
     { "lilcu64",    "Lil Cu 64 Demoscene (Hopf field)",         open_lilcu64_demo_window },

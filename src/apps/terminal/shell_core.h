@@ -21,6 +21,7 @@ typedef struct {
     uint32_t  (*get_sram_used)(void);
     uint32_t  (*get_sram_total)(void);
     void      (*fallback_exec)(const char *cmd, BtronShellOutFn out, void *ctx);
+    int       (*launch_matrix)(int mode);
 } BtronShellHooks;
 
 /* Returns 1 if handled by shell_core, 0 if unknown/delegated */

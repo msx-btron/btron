@@ -1,1576 +1,1255 @@
-/* This file is part of libschrift.
+/*
+ * B-System / BTRON3 Native TrueType Rasterizer (Clean-Room libschrift Port)
  *
- * © 2019-2022 Thomas Oltmann and contributors
+ * Clean-room B-RT / NASA JPL Power-of-10 / MISRA C:2012 implementation:
+ *   - Zero POSIX / Win32 dependencies (freestanding & hosted B-RT compatible)
+ *   - Zero dynamic heap allocation (NASA JPL Rule 3)
+ *   - Zero recursion (NASA JPL Rule 1); explicit bounded stacks & loops (Rule 2)
+ *   - Q16.16 / Q8 fixed-point outline, Bezier, and analytic coverage core
+ *     (zero soft-float instructions on non-FPU ARMv6-M / RP2040 / m68k)
  *
- * Permission to use, copy, modify, and/or distribute this software for any
- * purpose with or without fee is hereby granted, provided that the above
- * copyright notice and this permission notice appear in all copies.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
- * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
- * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
- * ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
- * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
- * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
- * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
+ * Credits & License:
+ *   API & algorithmic lineage from libschrift
+ *   © 2019-2022 Thomas Oltmann and contributors (ISC License).
+ *   B-System B-RT / NASA JPL MISRA C rewrite © 2026 Synrc Research Center.
+ */
 
-#include <assert.h>
-#include <errno.h>
-#include <math.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <btron/schrift.h>
 #include <string.h>
 
-#if defined(_MSC_VER)
-# define restrict __restrict
-#endif
+#define SCHRIFT_VERSION          "0.10.2-btron"
 
-#if defined(_WIN32)
-# define WIN32_LEAN_AND_MEAN 1
-# include <windows.h>
+#define SFT_MAGIC_TTF            0x00010000u
+#define SFT_MAGIC_TRUE           0x74727565u
+
+#define SFT_MAX_TABLES           64u
+#define SFT_MAX_CMAP_SUBTABLES   32u
+#define SFT_MAX_CMAP_GROUPS      4096u
+#define SFT_MAX_COMPOUND_ITEMS   16u
+#if defined(PICO_REAL_HW) || defined(MATRIX_PICO_PROFILE)
+#define SFT_MAX_BEZIER_STACK     16u
+#define SFT_MAX_BEZIER_DEPTH     4u
 #else
-# define _POSIX_C_SOURCE 1
-# include <fcntl.h>
-# include <sys/mman.h>
-# include <sys/stat.h>
-# include <unistd.h>
+#define SFT_MAX_BEZIER_STACK     32u
+#define SFT_MAX_BEZIER_DEPTH     5u
+#endif
+#define SFT_STATIC_FONT_SLOTS    8u
+
+#define SFT_PT_ON_CURVE          0x01u
+#define SFT_PT_X_SHORT           0x02u
+#define SFT_PT_Y_SHORT           0x04u
+#define SFT_PT_REPEAT            0x08u
+#define SFT_PT_X_SAME_OR_POS     0x10u
+#define SFT_PT_Y_SAME_OR_POS     0x20u
+
+#define SFT_COMP_ARG_16BIT       0x0001u
+#define SFT_COMP_ARGS_XY         0x0002u
+#define SFT_COMP_SCALE           0x0008u
+#define SFT_COMP_MORE            0x0020u
+#define SFT_COMP_XY_SCALE        0x0040u
+#define SFT_COMP_2X2             0x0080u
+
+#define SFT_SUB_SHIFT            8
+#define SFT_SUB_ONE              256
+#define SFT_SUB_MASK             255
+#define SFT_FLAT_TOL_Q8          32   /* 0.125 px in Q8 */
+
+typedef struct SFT_XformQ16
+{
+    int32_t m00;
+    int32_t m01;
+    int32_t m10;
+    int32_t m11;
+    int32_t tx; /* Q8 pixel offset */
+    int32_t ty; /* Q8 pixel offset */
+} SFT_XformQ16;
+
+typedef struct SFT_BezierItem
+{
+    SFT_PtQ8 p0;
+    SFT_PtQ8 p1;
+    SFT_PtQ8 p2;
+    uint8_t  depth;
+} SFT_BezierItem;
+
+static SFT_Font s_font_pool[SFT_STATIC_FONT_SLOTS];
+
+#if !defined(PICO_REAL_HW) && !defined(MATRIX_PICO_PROFILE)
+static SFT_Scratch s_compat_scratch;
 #endif
 
-#include "schrift.h"
+/* ── Safe big-endian readers (bounds checked, overflow safe) ────────────── */
 
-#define SCHRIFT_VERSION "0.10.2"
-
-#define FILE_MAGIC_ONE             0x00010000
-#define FILE_MAGIC_TWO             0x74727565
-
-#define HORIZONTAL_KERNING         0x01
-#define MINIMUM_KERNING            0x02
-#define CROSS_STREAM_KERNING       0x04
-#define OVERRIDE_KERNING           0x08
-
-#define POINT_IS_ON_CURVE          0x01
-#define X_CHANGE_IS_SMALL          0x02
-#define Y_CHANGE_IS_SMALL          0x04
-#define REPEAT_FLAG                0x08
-#define X_CHANGE_IS_ZERO           0x10
-#define X_CHANGE_IS_POSITIVE       0x10
-#define Y_CHANGE_IS_ZERO           0x20
-#define Y_CHANGE_IS_POSITIVE       0x20
-
-#define OFFSETS_ARE_LARGE          0x001
-#define ACTUAL_XY_OFFSETS          0x002
-#define GOT_A_SINGLE_SCALE         0x008
-#define THERE_ARE_MORE_COMPONENTS  0x020
-#define GOT_AN_X_AND_Y_SCALE       0x040
-#define GOT_A_SCALE_MATRIX         0x080
-
-/* macros */
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
-#define SIGN(x)   (((x) > 0) - ((x) < 0))
-/* Allocate values on the stack if they are small enough, else spill to heap. */
-#define STACK_ALLOC(var, type, thresh, count) \
-	type var##_stack_[thresh] = {0}; \
-	var = (count) <= (thresh) ? var##_stack_ : calloc(sizeof(type), count);
-#define STACK_FREE(var) \
-	if (var != var##_stack_) free(var);
-
-enum { SrcMapping, SrcUser };
-
-/* structs */
-typedef struct Point   Point;
-typedef struct Line    Line;
-typedef struct Curve   Curve;
-typedef struct Cell    Cell;
-typedef struct Outline Outline;
-typedef struct Raster  Raster;
-
-struct Point { double x, y; };
-struct Line  { uint_least16_t beg, end; };
-struct Curve { uint_least16_t beg, end, ctrl; };
-struct Cell  { double area, cover; };
-
-struct Outline
+static int sft_safe_range(uint32_t total, uint32_t off, uint32_t len)
 {
-	Point *points;
-	Curve *curves;
-	Line  *lines;
-	uint_least16_t numPoints;
-	uint_least16_t capPoints;
-	uint_least16_t numCurves;
-	uint_least16_t capCurves;
-	uint_least16_t numLines;
-	uint_least16_t capLines;
-};
-
-struct Raster
-{
-	Cell *cells;
-	int   width;
-	int   height;
-};
-
-struct SFT_Font
-{
-	const uint8_t *memory;
-	uint_fast32_t  size;
-#if defined(_WIN32)
-	HANDLE         mapping;
-#endif
-	int            source;
-	
-	uint_least16_t unitsPerEm;
-	int_least16_t  locaFormat;
-	uint_least16_t numLongHmtx;
-};
-
-/* function declarations */
-/* generic utility functions */
-static void *sft_reallocarray(void *optr, size_t nmemb, size_t size);
-static inline int fast_floor(double x);
-static inline int fast_ceil (double x);
-/* file loading */
-static int  map_file  (SFT_Font *font, const char *filename);
-static void unmap_file(SFT_Font *font);
-static int  init_font (SFT_Font *font);
-/* simple mathematical operations */
-static Point midpoint(Point a, Point b);
-static void transform_points(unsigned int numPts, Point *points, double trf[6]);
-static void clip_points(unsigned int numPts, Point *points, int width, int height);
-/* 'outline' data structure management */
-static int  init_outline(Outline *outl);
-static void free_outline(Outline *outl);
-static int  grow_points (Outline *outl);
-static int  grow_curves (Outline *outl);
-static int  grow_lines  (Outline *outl);
-/* TTF parsing utilities */
-static inline int is_safe_offset(SFT_Font *font, uint_fast32_t offset, uint_fast32_t margin);
-static void *csearch(const void *key, const void *base,
-	size_t nmemb, size_t size, int (*compar)(const void *, const void *));
-static int  cmpu16(const void *a, const void *b);
-static int  cmpu32(const void *a, const void *b);
-static inline uint_least8_t  getu8 (SFT_Font *font, uint_fast32_t offset);
-static inline int_least8_t   geti8 (SFT_Font *font, uint_fast32_t offset);
-static inline uint_least16_t getu16(SFT_Font *font, uint_fast32_t offset);
-static inline int_least16_t  geti16(SFT_Font *font, uint_fast32_t offset);
-static inline uint_least32_t getu32(SFT_Font *font, uint_fast32_t offset);
-static int gettable(SFT_Font *font, char tag[4], uint_fast32_t *offset);
-/* codepoint to glyph id translation */
-static int  cmap_fmt4(SFT_Font *font, uint_fast32_t table, SFT_UChar charCode, uint_fast32_t *glyph);
-static int  cmap_fmt6(SFT_Font *font, uint_fast32_t table, SFT_UChar charCode, uint_fast32_t *glyph);
-static int  glyph_id(SFT_Font *font, SFT_UChar charCode, uint_fast32_t *glyph);
-/* glyph metrics lookup */
-static int  hor_metrics(SFT_Font *font, uint_fast32_t glyph, int *advanceWidth, int *leftSideBearing);
-static int  glyph_bbox(const SFT *sft, uint_fast32_t outline, int box[4]);
-/* decoding outlines */
-static int  outline_offset(SFT_Font *font, uint_fast32_t glyph, uint_fast32_t *offset);
-static int  simple_flags(SFT_Font *font, uint_fast32_t *offset, uint_fast16_t numPts, uint8_t *flags);
-static int  simple_points(SFT_Font *font, uint_fast32_t offset, uint_fast16_t numPts, uint8_t *flags, Point *points);
-static int  decode_contour(uint8_t *flags, uint_fast16_t basePoint, uint_fast16_t count, Outline *outl);
-static int  simple_outline(SFT_Font *font, uint_fast32_t offset, unsigned int numContours, Outline *outl);
-static int  compound_outline(SFT_Font *font, uint_fast32_t offset, int recDepth, Outline *outl);
-static int  decode_outline(SFT_Font *font, uint_fast32_t offset, int recDepth, Outline *outl);
-/* tesselation */
-static int  is_flat(Outline *outl, Curve curve);
-static int  tesselate_curve(Curve curve, Outline *outl);
-static int  tesselate_curves(Outline *outl);
-/* silhouette rasterization */
-static void draw_line(Raster buf, Point origin, Point goal);
-static void draw_lines(Outline *outl, Raster buf);
-/* post-processing */
-static void post_process(Raster buf, uint8_t *image);
-/* glyph rendering */
-static int  render_outline(Outline *outl, double transform[6], SFT_Image image);
-
-/* function implementations */
-
-const char *
-sft_version(void)
-{
-	return SCHRIFT_VERSION;
+    if (off > total) {
+        return 0;
+    }
+    if (len > (total - off)) {
+        return 0;
+    }
+    return 1;
 }
 
-/* Loads a font from a user-supplied memory range. */
-SFT_Font *
-sft_loadmem(const void *mem, size_t size)
+static uint16_t sft_u16(const uint8_t *m, uint32_t off)
 {
-	SFT_Font *font;
-	if (size > UINT32_MAX) {
-		return NULL;
-	}
-	if (!(font = calloc(1, sizeof *font))) {
-		return NULL;
-	}
-	font->memory = mem;
-	font->size   = (uint_fast32_t) size;
-	font->source = SrcUser;
-	if (init_font(font) < 0) {
-		sft_freefont(font);
-		return NULL;
-	}
-	return font;
+    return (uint16_t)(((uint16_t)m[off] << 8) | (uint16_t)m[off + 1u]);
 }
 
-/* Loads a font from the file system. To do so, it has to map the entire font into memory. */
-SFT_Font *
-sft_loadfile(char const *filename)
+static int16_t sft_i16(const uint8_t *m, uint32_t off)
 {
-	SFT_Font *font;
-	if (!(font = calloc(1, sizeof *font))) {
-		return NULL;
-	}
-	if (map_file(font, filename) < 0) {
-		free(font);
-		return NULL;
-	}
-	if (init_font(font) < 0) {
-		sft_freefont(font);
-		return NULL;
-	}
-	return font;
+    return (int16_t)sft_u16(m, off);
 }
 
-void
-sft_freefont(SFT_Font *font)
+static uint32_t sft_u32(const uint8_t *m, uint32_t off)
 {
-	if (!font) return;
-	/* Only unmap if we mapped it ourselves. */
-	if (font->source == SrcMapping)
-		unmap_file(font);
-	free(font);
+    return ((uint32_t)m[off] << 24)
+         | ((uint32_t)m[off + 1u] << 16)
+         | ((uint32_t)m[off + 2u] << 8)
+         |  (uint32_t)m[off + 3u];
 }
 
-int
-sft_lmetrics(const SFT *sft, SFT_LMetrics *metrics)
+static int32_t sft_abs32(int32_t v)
 {
-	double factor;
-	uint_fast32_t hhea;
-	memset(metrics, 0, sizeof *metrics);
-	if (gettable(sft->font, "hhea", &hhea) < 0)
-		return -1;
-	if (!is_safe_offset(sft->font, hhea, 36))
-		return -1;
-	factor = sft->yScale / sft->font->unitsPerEm;
-	metrics->ascender  = geti16(sft->font, hhea + 4) * factor;
-	metrics->descender = geti16(sft->font, hhea + 6) * factor;
-	metrics->lineGap   = geti16(sft->font, hhea + 8) * factor;
-	return 0;
+    return (v < 0) ? -v : v;
 }
 
-int
-sft_lookup(const SFT *sft, SFT_UChar codepoint, SFT_Glyph *glyph)
+static int32_t sft_floor_q8(int32_t v)
 {
-	return glyph_id(sft->font, codepoint, glyph);
+    return (v >= 0) ? (v >> SFT_SUB_SHIFT) : -(((-v) + SFT_SUB_MASK) >> SFT_SUB_SHIFT);
 }
 
-int
-sft_gmetrics(const SFT *sft, SFT_Glyph glyph, SFT_GMetrics *metrics)
+static int32_t sft_ceil_q8(int32_t v)
 {
-	int adv, lsb;
-	double xScale = sft->xScale / sft->font->unitsPerEm;
-	uint_fast32_t outline;
-	int bbox[4];
-
-	memset(metrics, 0, sizeof *metrics);
-
-	if (hor_metrics(sft->font, glyph, &adv, &lsb) < 0)
-		return -1;
-	metrics->advanceWidth    = adv * xScale;
-	metrics->leftSideBearing = lsb * xScale + sft->xOffset;
-
-	if (outline_offset(sft->font, glyph, &outline) < 0)
-		return -1;
-	if (!outline)
-		return 0;
-	if (glyph_bbox(sft, outline, bbox) < 0)
-		return -1;
-	metrics->minWidth  = bbox[2] - bbox[0] + 1;
-	metrics->minHeight = bbox[3] - bbox[1] + 1;
-	metrics->yOffset   = sft->flags & SFT_DOWNWARD_Y ? -bbox[3] : bbox[1];
-
-	return 0;
+    return (v >= 0) ? ((v + SFT_SUB_MASK) >> SFT_SUB_SHIFT) : -((-v) >> SFT_SUB_SHIFT);
 }
 
-int
-sft_kerning(const SFT *sft, SFT_Glyph leftGlyph, SFT_Glyph rightGlyph,
-            SFT_Kerning *kerning)
+/* ── SFNT table lookup ──────────────────────────────────────────────────── */
+
+static int sft_find_table(const uint8_t *mem, uint32_t size,
+                          const char tag[4], uint32_t *outOff, uint32_t *outLen)
 {
-	void *match;
-	uint_fast32_t offset;
-	unsigned int numTables, numPairs, length, format, flags;
-	int value;
-	uint8_t key[4];
+    uint16_t numTables;
+    uint16_t i;
 
-	memset(kerning, 0, sizeof *kerning);
-
-	if (gettable(sft->font, "kern", &offset) < 0)
-		return 0;
-
-	/* Read kern table header. */
-	if (!is_safe_offset(sft->font, offset, 4))
-		return -1;
-	if (getu16(sft->font, offset) != 0)
-		return 0;
-	numTables = getu16(sft->font, offset + 2);
-	offset += 4;
-
-	while (numTables > 0) {
-		/* Read subtable header. */
-		if (!is_safe_offset(sft->font, offset, 6))
-			return -1;
-		length = getu16(sft->font, offset + 2);
-		format = getu8 (sft->font, offset + 4);
-		flags  = getu8 (sft->font, offset + 5);
-		offset += 6;
-
-		if (format == 0 && (flags & HORIZONTAL_KERNING) && !(flags & MINIMUM_KERNING)) {
-			/* Read format 0 header. */
-			if (!is_safe_offset(sft->font, offset, 8))
-				return -1;
-			numPairs = getu16(sft->font, offset);
-			offset += 8;
-			if (!is_safe_offset(sft->font, offset, (uint_fast32_t) numPairs * 6))
-				return -1;
-			/* Look up character code pair via binary search. */
-			key[0] = (leftGlyph  >> 8) & 0xFF;
-			key[1] =  leftGlyph  & 0xFF;
-			key[2] = (rightGlyph >> 8) & 0xFF;
-			key[3] =  rightGlyph & 0xFF;
-			if ((match = bsearch(key, sft->font->memory + offset,
-				numPairs, 6, cmpu32)) != NULL) {
-				
-				value = geti16(sft->font, (uint_fast32_t) ((uint8_t *) match - sft->font->memory + 4));
-				if (flags & CROSS_STREAM_KERNING) {
-					kerning->yShift += value;
-				} else {
-					kerning->xShift += value;
-				}
-			}
-
-		}
-
-		offset += length;
-		--numTables;
-	}
-
-	kerning->xShift = kerning->xShift / sft->font->unitsPerEm * sft->xScale;
-	kerning->yShift = kerning->yShift / sft->font->unitsPerEm * sft->yScale;
-
-	return 0;
+    if (!sft_safe_range(size, 0u, 12u)) {
+        return -1;
+    }
+    numTables = sft_u16(mem, 4u);
+    if (numTables > SFT_MAX_TABLES) {
+        numTables = SFT_MAX_TABLES;
+    }
+    for (i = 0u; i < numTables; i++) {
+        uint32_t rec = 12u + ((uint32_t)i * 16u);
+        if (!sft_safe_range(size, rec, 16u)) {
+            return -1;
+        }
+        if ((mem[rec]      == (uint8_t)tag[0]) &&
+            (mem[rec + 1u] == (uint8_t)tag[1]) &&
+            (mem[rec + 2u] == (uint8_t)tag[2]) &&
+            (mem[rec + 3u] == (uint8_t)tag[3])) {
+            uint32_t toff = sft_u32(mem, rec + 8u);
+            uint32_t tlen = sft_u32(mem, rec + 12u);
+            if (!sft_safe_range(size, toff, tlen)) {
+                return -1;
+            }
+            *outOff = toff;
+            if (outLen != NULL) {
+                *outLen = tlen;
+            }
+            return 0;
+        }
+    }
+    return -1;
 }
 
-int
-sft_render(const SFT *sft, SFT_Glyph glyph, SFT_Image image)
+static int sft_select_cmap(SFT_Font *font, uint32_t cmapBase)
 {
-	uint_fast32_t outline;
-	double transform[6];
-	int bbox[4];
-	Outline outl;
+    uint16_t nsub;
+    uint16_t i;
+    uint32_t bestOff = 0u;
+    uint16_t bestFmt = 0u;
+    uint8_t  bestPrio = 0u;
 
-	if (outline_offset(sft->font, glyph, &outline) < 0)
-		return -1;
-	if (!outline)
-		return 0;
-	if (glyph_bbox(sft, outline, bbox) < 0)
-		return -1;
-	/* Set up the transformation matrix such that
-	 * the transformed bounding boxes min corner lines
-	 * up with the (0, 0) point. */
-	transform[0] = sft->xScale / sft->font->unitsPerEm;
-	transform[1] = 0.0;
-	transform[2] = 0.0;
-	transform[4] = sft->xOffset - bbox[0];
-	if (sft->flags & SFT_DOWNWARD_Y) {
-		transform[3] = -sft->yScale / sft->font->unitsPerEm;
-		transform[5] = bbox[3] - sft->yOffset;
-	} else {
-		transform[3] = +sft->yScale / sft->font->unitsPerEm;
-		transform[5] = sft->yOffset - bbox[1];
-	}
-	
-	memset(&outl, 0, sizeof outl);
-	if (init_outline(&outl) < 0)
-		goto failure;
+    if (!sft_safe_range(font->size, cmapBase, 4u)) {
+        return -1;
+    }
+    nsub = sft_u16(font->memory, cmapBase + 2u);
+    if (nsub > SFT_MAX_CMAP_SUBTABLES) {
+        nsub = SFT_MAX_CMAP_SUBTABLES;
+    }
+    for (i = 0u; i < nsub; i++) {
+        uint32_t rec = cmapBase + 4u + ((uint32_t)i * 8u);
+        uint16_t pid;
+        uint16_t eid;
+        uint32_t subOff;
+        uint16_t fmt;
+        uint8_t  prio = 0u;
 
-	if (decode_outline(sft->font, outline, 0, &outl) < 0)
-		goto failure;
-	if (render_outline(&outl, transform, image) < 0)
-		goto failure;
-
-	free_outline(&outl);
-	return 0;
-
-failure:
-	free_outline(&outl);
-	return -1;
+        if (!sft_safe_range(font->size, rec, 8u)) {
+            break;
+        }
+        pid = sft_u16(font->memory, rec);
+        eid = sft_u16(font->memory, rec + 2u);
+        subOff = cmapBase + sft_u32(font->memory, rec + 4u);
+        if (!sft_safe_range(font->size, subOff, 2u)) {
+            continue;
+        }
+        fmt = sft_u16(font->memory, subOff);
+        if ((pid == 3u && eid == 10u) || (pid == 0u && eid == 4u)) {
+            if (fmt == 12u) { prio = 4u; }
+        } else if ((pid == 3u && eid == 1u) || (pid == 0u && eid == 3u)) {
+            if (fmt == 4u) { prio = 3u; }
+        } else if (pid == 0u) {
+            if (fmt == 4u) { prio = 2u; }
+            else if (fmt == 12u) { prio = 2u; }
+        } else if (pid == 3u && eid == 0u && fmt == 4u) {
+            prio = 1u;
+        }
+        if (prio > bestPrio) {
+            bestPrio = prio;
+            bestOff = subOff;
+            bestFmt = fmt;
+        }
+    }
+    if (bestPrio == 0u) {
+        return -1;
+    }
+    font->cmapOff = bestOff;
+    font->cmapFormat = bestFmt;
+    return 0;
 }
 
-/* This is sqrt(SIZE_MAX+1), as s1*s2 <= SIZE_MAX
- * if both s1 < MUL_NO_OVERFLOW and s2 < MUL_NO_OVERFLOW */
-#define MUL_NO_OVERFLOW	((size_t)1 << (sizeof(size_t) * 4))
+/* ── Font initialization ────────────────────────────────────────────────── */
 
-/* OpenBSD's reallocarray() standard libary function.
- * A wrapper for realloc() that takes two size args like calloc().
- * Useful because it eliminates common integer overflow bugs. */
-static void *
-sft_reallocarray(void *optr, size_t nmemb, size_t size)
+const char *sft_version(void)
 {
-	if ((nmemb >= MUL_NO_OVERFLOW || size >= MUL_NO_OVERFLOW) &&
-	    nmemb > 0 && SIZE_MAX / nmemb < size) {
-		errno = ENOMEM;
-		return NULL;
-	}
-	return realloc(optr, size * nmemb);
+    return SCHRIFT_VERSION;
 }
 
-/* TODO maybe we should use long here instead of int. */
-static inline int
-fast_floor(double x)
+int sft_init_mem(SFT_Font *outFont, const void *mem, size_t size)
 {
-	int i = (int) x;
-	return i - (i > x);
+    const uint8_t *bytes;
+    uint32_t magic;
+    uint32_t headOff = 0u;
+    uint32_t maxpOff = 0u;
+    uint32_t cmapBase = 0u;
+    uint32_t sz32;
+
+    if ((outFont == NULL) || (mem == NULL) || (size < 12u) || (size > 0x7FFFFFFFu)) {
+        return -1;
+    }
+    memset(outFont, 0, sizeof(*outFont));
+    bytes = (const uint8_t *)mem;
+    sz32 = (uint32_t)size;
+
+    magic = sft_u32(bytes, 0u);
+    if ((magic != SFT_MAGIC_TTF) && (magic != SFT_MAGIC_TRUE)) {
+        return -1;
+    }
+
+    outFont->memory = bytes;
+    outFont->size = sz32;
+
+    if (sft_find_table(bytes, sz32, "head", &headOff, NULL) < 0) { return -1; }
+    if (sft_find_table(bytes, sz32, "maxp", &maxpOff, NULL) < 0) { return -1; }
+    if (sft_find_table(bytes, sz32, "hhea", &outFont->hheaOff, NULL) < 0) { return -1; }
+    if (sft_find_table(bytes, sz32, "hmtx", &outFont->hmtxOff, NULL) < 0) { return -1; }
+    if (sft_find_table(bytes, sz32, "loca", &outFont->locaOff, NULL) < 0) { return -1; }
+    if (sft_find_table(bytes, sz32, "glyf", &outFont->glyfOff, NULL) < 0) { return -1; }
+    if (sft_find_table(bytes, sz32, "cmap", &cmapBase, NULL) < 0) { return -1; }
+    (void)sft_find_table(bytes, sz32, "kern", &outFont->kernOff, NULL);
+
+    if (!sft_safe_range(sz32, headOff, 54u) ||
+        !sft_safe_range(sz32, maxpOff, 6u)  ||
+        !sft_safe_range(sz32, outFont->hheaOff, 36u)) {
+        return -1;
+    }
+
+    outFont->unitsPerEm  = sft_u16(bytes, headOff + 18u);
+    outFont->locaFormat  = sft_i16(bytes, headOff + 50u);
+    outFont->numGlyphs   = sft_u16(bytes, maxpOff + 4u);
+    outFont->numLongHmtx = sft_u16(bytes, outFont->hheaOff + 34u);
+
+    if ((outFont->unitsPerEm == 0u) ||
+        ((outFont->locaFormat != 0) && (outFont->locaFormat != 1)) ||
+        (outFont->numLongHmtx == 0u)) {
+        return -1;
+    }
+    if (sft_select_cmap(outFont, cmapBase) < 0) {
+        return -1;
+    }
+    outFont->inUse = 1u;
+    return 0;
 }
 
-static inline int
-fast_ceil(double x)
+SFT_Font *sft_loadmem(const void *mem, size_t size)
 {
-	int i = (int) x;
-	return i + (i < x);
+    uint32_t i;
+    for (i = 0u; i < SFT_STATIC_FONT_SLOTS; i++) {
+        if (s_font_pool[i].inUse == 0u) {
+            if (sft_init_mem(&s_font_pool[i], mem, size) == 0) {
+                return &s_font_pool[i];
+            }
+            return NULL;
+        }
+    }
+    return NULL;
 }
 
-#if defined(_WIN32)
-
-static int
-map_file(SFT_Font *font, const char *filename)
+SFT_Font *sft_loadfile(const char *filename)
 {
-	HANDLE file;
-	DWORD high, low;
-
-	font->mapping = NULL;
-	font->memory  = NULL;
-
-	file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
-	if (file == INVALID_HANDLE_VALUE) {
-		return -1;
-	}
-
-	low = GetFileSize(file, &high);
-	if (low == INVALID_FILE_SIZE) {
-		CloseHandle(file);
-		return -1;
-	}
-
-	font->size = (size_t)high << (8 * sizeof(DWORD)) | low;
-
-	font->mapping = CreateFileMapping(file, NULL, PAGE_READONLY, high, low, NULL);
-	if (!font->mapping) {
-		CloseHandle(file);
-		return -1;
-	}
-
-	CloseHandle(file);
-
-	font->memory = MapViewOfFile(font->mapping, FILE_MAP_READ, 0, 0, 0);
-	if (!font->memory) {
-		CloseHandle(font->mapping);
-		font->mapping = NULL;
-		return -1;
-	}
-
-	return 0;
+    /* Freestanding B-RT builds use sft_init_mem / sft_loadmem directly. */
+    (void)filename;
+    return NULL;
 }
 
-static void
-unmap_file(SFT_Font *font)
+void sft_freefont(SFT_Font *font)
 {
-	if (font->memory) {
-		UnmapViewOfFile(font->memory);
-		font->memory = NULL;
-	}
-	if (font->mapping) {
-		CloseHandle(font->mapping);
-		font->mapping = NULL;
-	}
+    if (font != NULL) {
+        font->inUse = 0u;
+        font->memory = NULL;
+        font->size = 0u;
+    }
 }
 
+/* ── Codepoint lookup (cmap Format 4 & Format 12) ───────────────────────── */
+
+static int sft_cmap_fmt4(const SFT_Font *font, uint32_t cp, SFT_Glyph *outGlyph)
+{
+    uint32_t base = font->cmapOff;
+    uint16_t segX2;
+    uint16_t segCount;
+    uint32_t endOff;
+    uint32_t startOff;
+    uint32_t deltaOff;
+    uint32_t rangeOff;
+    uint16_t lo;
+    uint16_t hi;
+    uint16_t step;
+
+    if (cp > 0xFFFFu) {
+        *outGlyph = 0u;
+        return 0;
+    }
+    if (!sft_safe_range(font->size, base, 14u)) {
+        return -1;
+    }
+    segX2 = sft_u16(font->memory, base + 6u);
+    segCount = (uint16_t)(segX2 >> 1);
+    if ((segCount == 0u) || ((segX2 & 1u) != 0u)) {
+        return -1;
+    }
+    endOff   = base + 14u;
+    startOff = endOff + segX2 + 2u;
+    deltaOff = startOff + segX2;
+    rangeOff = deltaOff + segX2;
+    if (!sft_safe_range(font->size, rangeOff, segX2)) {
+        return -1;
+    }
+
+    lo = 0u;
+    hi = (uint16_t)(segCount - 1u);
+    for (step = 0u; step < 16u; step++) {
+        uint16_t mid = (uint16_t)((lo + hi) >> 1);
+        uint16_t endCode = sft_u16(font->memory, endOff + ((uint32_t)mid * 2u));
+        if ((uint16_t)cp <= endCode) {
+            if (mid == lo) { break; }
+            hi = mid;
+        } else {
+            if (lo == hi) { break; }
+            lo = (uint16_t)(mid + 1u);
+        }
+    }
+    {
+        uint32_t idx2 = (uint32_t)hi * 2u;
+        uint16_t endCode   = sft_u16(font->memory, endOff + idx2);
+        uint16_t startCode = sft_u16(font->memory, startOff + idx2);
+        if ((uint16_t)cp < startCode || (uint16_t)cp > endCode) {
+            *outGlyph = 0u;
+            return 0;
+        }
+        {
+            int16_t  idDelta = sft_i16(font->memory, deltaOff + idx2);
+            uint16_t idRange = sft_u16(font->memory, rangeOff + idx2);
+            if (idRange == 0u) {
+                *outGlyph = (SFT_Glyph)((uint16_t)((int32_t)cp + (int32_t)idDelta));
+                return 0;
+            }
+            {
+                uint32_t gOff = (rangeOff + idx2) + (uint32_t)idRange
+                              + ((cp - (uint32_t)startCode) * 2u);
+                uint16_t gid;
+                if (!sft_safe_range(font->size, gOff, 2u)) {
+                    return -1;
+                }
+                gid = sft_u16(font->memory, gOff);
+                if (gid != 0u) {
+                    gid = (uint16_t)((int32_t)gid + (int32_t)idDelta);
+                }
+                *outGlyph = (SFT_Glyph)gid;
+                return 0;
+            }
+        }
+    }
+}
+
+static int sft_cmap_fmt12(const SFT_Font *font, uint32_t cp, SFT_Glyph *outGlyph)
+{
+    uint32_t base = font->cmapOff;
+    uint32_t nGroups;
+    uint32_t lo;
+    uint32_t hi;
+    uint32_t step;
+
+    if (!sft_safe_range(font->size, base, 16u)) {
+        return -1;
+    }
+    nGroups = sft_u32(font->memory, base + 12u);
+    if (nGroups == 0u) {
+        *outGlyph = 0u;
+        return 0;
+    }
+    if (nGroups > SFT_MAX_CMAP_GROUPS) {
+        nGroups = SFT_MAX_CMAP_GROUPS;
+    }
+    if (!sft_safe_range(font->size, base + 16u, nGroups * 12u)) {
+        return -1;
+    }
+    lo = 0u;
+    hi = nGroups - 1u;
+    for (step = 0u; step < 16u && lo <= hi; step++) {
+        uint32_t mid = lo + ((hi - lo) >> 1);
+        uint32_t rec = base + 16u + (mid * 12u);
+        uint32_t sCode = sft_u32(font->memory, rec);
+        uint32_t eCode = sft_u32(font->memory, rec + 4u);
+        if (cp < sCode) {
+            if (mid == 0u) { break; }
+            hi = mid - 1u;
+        } else if (cp > eCode) {
+            lo = mid + 1u;
+        } else {
+            uint32_t startGid = sft_u32(font->memory, rec + 8u);
+            *outGlyph = (SFT_Glyph)(startGid + (cp - sCode));
+            return 0;
+        }
+    }
+    *outGlyph = 0u;
+    return 0;
+}
+
+int sft_lookup_font(const SFT_Font *font, SFT_UChar codepoint, SFT_Glyph *glyph)
+{
+    if ((font == NULL) || (font->memory == NULL) || (glyph == NULL)) {
+        return -1;
+    }
+    if (font->cmapFormat == 4u) {
+        return sft_cmap_fmt4(font, (uint32_t)codepoint, glyph);
+    }
+    if (font->cmapFormat == 12u) {
+        return sft_cmap_fmt12(font, (uint32_t)codepoint, glyph);
+    }
+    return -1;
+}
+
+int sft_lookup(const SFT *sft, SFT_UChar codepoint, SFT_Glyph *glyph)
+{
+    if (sft == NULL) {
+        return -1;
+    }
+    return sft_lookup_font(sft->font, codepoint, glyph);
+}
+
+/* ── Glyph outline offset & metrics (Q16.16 core) ───────────────────────── */
+
+static int sft_glyph_outline_range(const SFT_Font *font, SFT_Glyph glyph,
+                                   uint32_t *outOff, uint32_t *outLen)
+{
+    uint32_t g = (uint32_t)glyph;
+    uint32_t off0;
+    uint32_t off1;
+
+    if (g >= (uint32_t)font->numGlyphs) {
+        return -1;
+    }
+    if (font->locaFormat == 0) {
+        uint32_t p = font->locaOff + (g * 2u);
+        if (!sft_safe_range(font->size, p, 4u)) { return -1; }
+        off0 = (uint32_t)sft_u16(font->memory, p) * 2u;
+        off1 = (uint32_t)sft_u16(font->memory, p + 2u) * 2u;
+    } else {
+        uint32_t p = font->locaOff + (g * 4u);
+        if (!sft_safe_range(font->size, p, 8u)) { return -1; }
+        off0 = sft_u32(font->memory, p);
+        off1 = sft_u32(font->memory, p + 4u);
+    }
+    if (off1 < off0) {
+        return -1;
+    }
+    *outLen = off1 - off0;
+    if (*outLen == 0u) {
+        *outOff = 0u;
+        return 0;
+    }
+    *outOff = font->glyfOff + off0;
+    if (!sft_safe_range(font->size, *outOff, *outLen)) {
+        return -1;
+    }
+    return 0;
+}
+
+static int sft_hor_metrics(const SFT_Font *font, SFT_Glyph glyph,
+                           uint16_t *outAdv, int16_t *outLsb)
+{
+    uint32_t g = (uint32_t)glyph;
+    uint32_t nLong = (uint32_t)font->numLongHmtx;
+
+    if (g < nLong) {
+        uint32_t p = font->hmtxOff + (g * 4u);
+        if (!sft_safe_range(font->size, p, 4u)) { return -1; }
+        *outAdv = sft_u16(font->memory, p);
+        *outLsb = sft_i16(font->memory, p + 2u);
+    } else {
+        uint32_t lastAdv = font->hmtxOff + ((nLong - 1u) * 4u);
+        uint32_t lsbOff  = font->hmtxOff + (nLong * 4u) + ((g - nLong) * 2u);
+        if (!sft_safe_range(font->size, lastAdv, 2u) ||
+            !sft_safe_range(font->size, lsbOff, 2u)) {
+            return -1;
+        }
+        *outAdv = sft_u16(font->memory, lastAdv);
+        *outLsb = sft_i16(font->memory, lsbOff);
+    }
+    return 0;
+}
+
+static int32_t sft_scale_fu_to_q8(int32_t fu, int32_t scaleQ16, uint16_t upem)
+{
+    int64_t num = (int64_t)fu * (int64_t)scaleQ16;
+    int64_t den = (int64_t)upem << 8; /* Q16 -> Q8 */
+    return (int32_t)(num / den);
+}
+
+int sft_gmetrics_q16(const SFT_Font *font, SFT_Glyph glyph,
+                     int32_t xScaleQ16, int32_t yScaleQ16, uint32_t flags,
+                     SFT_GMetricsQ16 *metrics)
+{
+    uint16_t adv = 0u;
+    int16_t  lsb = 0;
+    uint32_t gOff = 0u;
+    uint32_t gLen = 0u;
+
+    if ((font == NULL) || (font->memory == NULL) || (metrics == NULL)) {
+        return -1;
+    }
+    memset(metrics, 0, sizeof(*metrics));
+    if (sft_hor_metrics(font, glyph, &adv, &lsb) < 0) {
+        return -1;
+    }
+    metrics->advanceWidthQ16    = (int32_t)(((int64_t)adv * (int64_t)xScaleQ16) / (int64_t)font->unitsPerEm);
+    metrics->leftSideBearingQ16 = (int32_t)(((int64_t)lsb * (int64_t)xScaleQ16) / (int64_t)font->unitsPerEm);
+
+    if (sft_glyph_outline_range(font, glyph, &gOff, &gLen) < 0) {
+        return -1;
+    }
+    if (gLen < 10u) {
+        return 0; /* empty glyph (e.g. space) */
+    }
+    {
+        int16_t xMin = sft_i16(font->memory, gOff + 2u);
+        int16_t yMin = sft_i16(font->memory, gOff + 4u);
+        int16_t xMax = sft_i16(font->memory, gOff + 6u);
+        int16_t yMax = sft_i16(font->memory, gOff + 8u);
+        int32_t bx0  = sft_floor_q8(sft_scale_fu_to_q8(xMin, xScaleQ16, font->unitsPerEm));
+        int32_t bx1  = sft_ceil_q8 (sft_scale_fu_to_q8(xMax, xScaleQ16, font->unitsPerEm));
+        int32_t by0;
+        int32_t by1;
+
+        if ((flags & SFT_DOWNWARD_Y) != 0u) {
+            by0 = sft_floor_q8(sft_scale_fu_to_q8(-yMax, yScaleQ16, font->unitsPerEm));
+            by1 = sft_ceil_q8 (sft_scale_fu_to_q8(-yMin, yScaleQ16, font->unitsPerEm));
+        } else {
+            by0 = sft_floor_q8(sft_scale_fu_to_q8(yMin, yScaleQ16, font->unitsPerEm));
+            by1 = sft_ceil_q8 (sft_scale_fu_to_q8(yMax, yScaleQ16, font->unitsPerEm));
+        }
+        metrics->yOffset   = by0;
+        metrics->minWidth  = (bx1 > bx0) ? (bx1 - bx0 + 1) : 0;
+        metrics->minHeight = (by1 > by0) ? (by1 - by0 + 1) : 0;
+    }
+    return 0;
+}
+
+/* ── Outline decoding & iterative Bezier tessellation (Q8) ──────────────── */
+
+static int sft_add_point(SFT_Scratch *sc, SFT_PtQ8 p, uint16_t *outIdx)
+{
+    if (sc->numPoints >= SFT_MAX_POINTS) {
+        return -1;
+    }
+    *outIdx = sc->numPoints;
+    sc->points[sc->numPoints] = p;
+    sc->numPoints++;
+    return 0;
+}
+
+static int sft_add_line(SFT_Scratch *sc, uint16_t beg, uint16_t end)
+{
+    if (sc->numLines >= SFT_MAX_LINES) {
+        return -1;
+    }
+    sc->lines[sc->numLines].beg = beg;
+    sc->lines[sc->numLines].end = end;
+    sc->numLines++;
+    return 0;
+}
+
+static int sft_tessellate_quad(SFT_Scratch *sc, SFT_PtQ8 p0, SFT_PtQ8 p1, SFT_PtQ8 p2)
+{
+    SFT_BezierItem stack[SFT_MAX_BEZIER_STACK];
+    uint32_t sp = 0u;
+    uint32_t iter;
+
+    stack[sp].p0 = p0;
+    stack[sp].p1 = p1;
+    stack[sp].p2 = p2;
+    stack[sp].depth = 0u;
+    sp++;
+
+    for (iter = 0u; iter < 128u && sp > 0u; iter++) {
+        SFT_BezierItem cur;
+        int32_t dx;
+        int32_t dy;
+
+        sp--;
+        cur = stack[sp];
+        dx = sft_abs32(cur.p0.x + cur.p2.x - (2 * cur.p1.x));
+        dy = sft_abs32(cur.p0.y + cur.p2.y - (2 * cur.p1.y));
+
+        if ((dx <= SFT_FLAT_TOL_Q8 && dy <= SFT_FLAT_TOL_Q8) ||
+            (cur.depth >= SFT_MAX_BEZIER_DEPTH) ||
+            ((sp + 2u) > SFT_MAX_BEZIER_STACK)) {
+            uint16_t i0 = 0u;
+            uint16_t i1 = 0u;
+            if (sft_add_point(sc, cur.p0, &i0) < 0) { return -1; }
+            if (sft_add_point(sc, cur.p2, &i1) < 0) { return -1; }
+            if (sft_add_line(sc, i0, i1) < 0)       { return -1; }
+        } else {
+            SFT_PtQ8 a1;
+            SFT_PtQ8 b1;
+            SFT_PtQ8 mid;
+            a1.x  = (cur.p0.x + cur.p1.x) >> 1;
+            a1.y  = (cur.p0.y + cur.p1.y) >> 1;
+            b1.x  = (cur.p1.x + cur.p2.x) >> 1;
+            b1.y  = (cur.p1.y + cur.p2.y) >> 1;
+            mid.x = (a1.x + b1.x) >> 1;
+            mid.y = (a1.y + b1.y) >> 1;
+
+            stack[sp].p0 = mid;
+            stack[sp].p1 = b1;
+            stack[sp].p2 = cur.p2;
+            stack[sp].depth = (uint8_t)(cur.depth + 1u);
+            sp++;
+
+            stack[sp].p0 = cur.p0;
+            stack[sp].p1 = a1;
+            stack[sp].p2 = mid;
+            stack[sp].depth = (uint8_t)(cur.depth + 1u);
+            sp++;
+        }
+    }
+    return 0;
+}
+
+static SFT_PtQ8 sft_xform_point(int32_t fx, int32_t fy, const SFT_XformQ16 *xf)
+{
+    SFT_PtQ8 p;
+    int64_t xq24 = ((int64_t)fx * (int64_t)xf->m00) + ((int64_t)fy * (int64_t)xf->m01);
+    int64_t yq24 = ((int64_t)fx * (int64_t)xf->m10) + ((int64_t)fy * (int64_t)xf->m11);
+    p.x = (int32_t)(xq24 >> 16) + xf->tx;
+    p.y = (int32_t)(yq24 >> 16) + xf->ty;
+    return p;
+}
+
+static int sft_decode_simple_glyph(const SFT_Font *font, uint32_t gOff, uint32_t gLen,
+                                   uint16_t numContours, const SFT_XformQ16 *xf,
+                                   SFT_Scratch *sc)
+{
+    uint32_t pos = gOff + 10u;
+    uint32_t endBound = gOff + gLen;
+    uint16_t c;
+    uint16_t numPts;
+    uint16_t instrLen;
+    uint16_t p;
+    uint16_t basePt = sc->numPoints;
+    int32_t  accX = 0;
+    int32_t  accY = 0;
+
+    if ((numContours == 0u) || (numContours > SFT_MAX_CONTOURS)) {
+        return (numContours == 0u) ? 0 : -1;
+    }
+    if (!sft_safe_range(endBound, pos, ((uint32_t)numContours * 2u) + 2u)) {
+        return -1;
+    }
+    for (c = 0u; c < numContours; c++) {
+        sc->contourEnds[c] = sft_u16(font->memory, pos);
+        pos += 2u;
+    }
+    numPts = (uint16_t)(sc->contourEnds[numContours - 1u] + 1u);
+    if ((numPts == 0u) || (((uint32_t)basePt + (uint32_t)numPts) > SFT_MAX_POINTS)) {
+        return -1;
+    }
+
+    instrLen = sft_u16(font->memory, pos);
+    pos += 2u;
+    if (!sft_safe_range(endBound, pos, (uint32_t)instrLen)) {
+        return -1;
+    }
+    pos += (uint32_t)instrLen;
+
+    /* Read flags (with RLE repeat) */
+    p = 0u;
+    while (p < numPts) {
+        uint8_t fl;
+        if (pos >= endBound) { return -1; }
+        fl = font->memory[pos++];
+        sc->pointFlags[p++] = fl;
+        if ((fl & SFT_PT_REPEAT) != 0u) {
+            uint8_t rep;
+            uint8_t r;
+            if (pos >= endBound) { return -1; }
+            rep = font->memory[pos++];
+            for (r = 0u; r < rep && p < numPts; r++) {
+                sc->pointFlags[p++] = fl;
+            }
+        }
+    }
+
+    /* Read X deltas */
+    for (p = 0u; p < numPts; p++) {
+        uint8_t fl = sc->pointFlags[p];
+        if ((fl & SFT_PT_X_SHORT) != 0u) {
+            int32_t dx;
+            if (pos >= endBound) { return -1; }
+            dx = (int32_t)font->memory[pos++];
+            accX += ((fl & SFT_PT_X_SAME_OR_POS) != 0u) ? dx : -dx;
+        } else if ((fl & SFT_PT_X_SAME_OR_POS) == 0u) {
+            if (!sft_safe_range(endBound, pos, 2u)) { return -1; }
+            accX += (int32_t)sft_i16(font->memory, pos);
+            pos += 2u;
+        }
+        sc->points[basePt + p].x = accX;
+    }
+
+    /* Read Y deltas & transform to Q8 pixel space */
+    for (p = 0u; p < numPts; p++) {
+        uint8_t fl = sc->pointFlags[p];
+        if ((fl & SFT_PT_Y_SHORT) != 0u) {
+            int32_t dy;
+            if (pos >= endBound) { return -1; }
+            dy = (int32_t)font->memory[pos++];
+            accY += ((fl & SFT_PT_Y_SAME_OR_POS) != 0u) ? dy : -dy;
+        } else if ((fl & SFT_PT_Y_SAME_OR_POS) == 0u) {
+            if (!sft_safe_range(endBound, pos, 2u)) { return -1; }
+            accY += (int32_t)sft_i16(font->memory, pos);
+            pos += 2u;
+        }
+        sc->points[basePt + p] = sft_xform_point(sc->points[basePt + p].x, accY, xf);
+    }
+    sc->numPoints = (uint16_t)(basePt + numPts);
+
+    /* Emit contour lines & tessellated quadratic curves */
+    {
+        uint16_t cStart = 0u;
+        for (c = 0u; c < numContours; c++) {
+            uint16_t cEnd = sc->contourEnds[c];
+            uint16_t cnt;
+            uint16_t i;
+            SFT_PtQ8 curOn;
+            SFT_PtQ8 ctrl;
+            uint8_t  hasCtrl = 0u;
+            uint16_t firstIdx = 0u;
+
+            if ((cEnd < cStart) || (cEnd >= numPts)) { return -1; }
+            cnt = (uint16_t)(cEnd - cStart + 1u);
+
+            if ((sc->pointFlags[cStart] & SFT_PT_ON_CURVE) != 0u) {
+                curOn = sc->points[basePt + cStart];
+                firstIdx = (uint16_t)(basePt + cStart);
+            } else if ((sc->pointFlags[cEnd] & SFT_PT_ON_CURVE) != 0u) {
+                curOn = sc->points[basePt + cEnd];
+                firstIdx = (uint16_t)(basePt + cEnd);
+            } else {
+                SFT_PtQ8 pa = sc->points[basePt + cStart];
+                SFT_PtQ8 pb = sc->points[basePt + cEnd];
+                curOn.x = (pa.x + pb.x) >> 1;
+                curOn.y = (pa.y + pb.y) >> 1;
+                if (sft_add_point(sc, curOn, &firstIdx) < 0) { return -1; }
+            }
+            ctrl = curOn;
+
+            for (i = 0u; i <= cnt; i++) {
+                uint16_t local = (uint16_t)(cStart + ((i == cnt) ? 0u : i));
+                SFT_PtQ8 pt = sc->points[basePt + local];
+                uint8_t on = (uint8_t)(sc->pointFlags[local] & SFT_PT_ON_CURVE);
+
+                if ((i == 0u) && ((sc->pointFlags[cStart] & SFT_PT_ON_CURVE) != 0u)) {
+                    continue;
+                }
+                if ((i == cnt) && ((sc->pointFlags[cStart] & SFT_PT_ON_CURVE) == 0u)) {
+                    if (hasCtrl != 0u) {
+                        if (sft_tessellate_quad(sc, curOn, ctrl, sc->points[firstIdx]) < 0) { return -1; }
+                    } else {
+                        uint16_t i0 = 0u;
+                        if (sft_add_point(sc, curOn, &i0) < 0) { return -1; }
+                        if (sft_add_line(sc, i0, firstIdx) < 0) { return -1; }
+                    }
+                    break;
+                }
+
+                if (on != 0u) {
+                    if (hasCtrl != 0u) {
+                        if (sft_tessellate_quad(sc, curOn, ctrl, pt) < 0) { return -1; }
+                        hasCtrl = 0u;
+                    } else {
+                        uint16_t i0 = 0u;
+                        uint16_t i1 = 0u;
+                        if (sft_add_point(sc, curOn, &i0) < 0) { return -1; }
+                        if (sft_add_point(sc, pt, &i1) < 0)    { return -1; }
+                        if (sft_add_line(sc, i0, i1) < 0)      { return -1; }
+                    }
+                    curOn = pt;
+                } else {
+                    if (hasCtrl != 0u) {
+                        SFT_PtQ8 mid;
+                        mid.x = (ctrl.x + pt.x) >> 1;
+                        mid.y = (ctrl.y + pt.y) >> 1;
+                        if (sft_tessellate_quad(sc, curOn, ctrl, mid) < 0) { return -1; }
+                        curOn = mid;
+                    }
+                    ctrl = pt;
+                    hasCtrl = 1u;
+                }
+            }
+            cStart = (uint16_t)(cEnd + 1u);
+        }
+    }
+    return 0;
+}
+
+static int sft_decode_glyph(const SFT_Font *font, SFT_Glyph glyph,
+                            const SFT_XformQ16 *rootXf, SFT_Scratch *sc)
+{
+    uint32_t gOff = 0u;
+    uint32_t gLen = 0u;
+    int16_t  numContours;
+
+    if (sft_glyph_outline_range(font, glyph, &gOff, &gLen) < 0) {
+        return -1;
+    }
+    if (gLen < 10u) {
+        return 0;
+    }
+    numContours = sft_i16(font->memory, gOff);
+    if (numContours >= 0) {
+        return sft_decode_simple_glyph(font, gOff, gLen, (uint16_t)numContours, rootXf, sc);
+    }
+
+    /* Iterative compound glyph decode (NASA JPL Rule 1: no recursion) */
+    {
+        uint32_t pos = gOff + 10u;
+        uint32_t endBound = gOff + gLen;
+        uint32_t item;
+
+        for (item = 0u; item < SFT_MAX_COMPOUND_ITEMS; item++) {
+            uint16_t flags;
+            uint16_t subGlyph;
+            int32_t  arg1 = 0;
+            int32_t  arg2 = 0;
+            int32_t  a = 16384; /* F2Dot14 1.0 */
+            int32_t  b = 0;
+            int32_t  c = 0;
+            int32_t  d = 16384;
+            SFT_XformQ16 subXf;
+            uint32_t subOff = 0u;
+            uint32_t subLen = 0u;
+
+            if (!sft_safe_range(endBound, pos, 4u)) { return -1; }
+            flags    = sft_u16(font->memory, pos);
+            subGlyph = sft_u16(font->memory, pos + 2u);
+            pos += 4u;
+
+            if ((flags & SFT_COMP_ARG_16BIT) != 0u) {
+                if (!sft_safe_range(endBound, pos, 4u)) { return -1; }
+                arg1 = (int32_t)sft_i16(font->memory, pos);
+                arg2 = (int32_t)sft_i16(font->memory, pos + 2u);
+                pos += 4u;
+            } else {
+                if (!sft_safe_range(endBound, pos, 2u)) { return -1; }
+                arg1 = (int32_t)(int8_t)font->memory[pos];
+                arg2 = (int32_t)(int8_t)font->memory[pos + 1u];
+                pos += 2u;
+            }
+            if ((flags & SFT_COMP_SCALE) != 0u) {
+                if (!sft_safe_range(endBound, pos, 2u)) { return -1; }
+                a = (int32_t)sft_i16(font->memory, pos);
+                d = a;
+                pos += 2u;
+            } else if ((flags & SFT_COMP_XY_SCALE) != 0u) {
+                if (!sft_safe_range(endBound, pos, 4u)) { return -1; }
+                a = (int32_t)sft_i16(font->memory, pos);
+                d = (int32_t)sft_i16(font->memory, pos + 2u);
+                pos += 4u;
+            } else if ((flags & SFT_COMP_2X2) != 0u) {
+                if (!sft_safe_range(endBound, pos, 8u)) { return -1; }
+                a = (int32_t)sft_i16(font->memory, pos);
+                b = (int32_t)sft_i16(font->memory, pos + 2u);
+                c = (int32_t)sft_i16(font->memory, pos + 4u);
+                d = (int32_t)sft_i16(font->memory, pos + 6u);
+                pos += 8u;
+            }
+
+            subXf.m00 = (int32_t)((((int64_t)rootXf->m00 * a) + ((int64_t)rootXf->m01 * b)) >> 14);
+            subXf.m01 = (int32_t)((((int64_t)rootXf->m00 * c) + ((int64_t)rootXf->m01 * d)) >> 14);
+            subXf.m10 = (int32_t)((((int64_t)rootXf->m10 * a) + ((int64_t)rootXf->m11 * b)) >> 14);
+            subXf.m11 = (int32_t)((((int64_t)rootXf->m10 * c) + ((int64_t)rootXf->m11 * d)) >> 14);
+            subXf.tx  = rootXf->tx;
+            subXf.ty  = rootXf->ty;
+            if ((flags & SFT_COMP_ARGS_XY) != 0u) {
+                SFT_PtQ8 delta = sft_xform_point(arg1, arg2, rootXf);
+                subXf.tx = delta.x;
+                subXf.ty = delta.y;
+            }
+
+            if (sft_glyph_outline_range(font, (SFT_Glyph)subGlyph, &subOff, &subLen) == 0 && subLen >= 10u) {
+                int16_t subC = sft_i16(font->memory, subOff);
+                if (subC >= 0) {
+                    if (sft_decode_simple_glyph(font, subOff, subLen, (uint16_t)subC, &subXf, sc) < 0) {
+                        return -1;
+                    }
+                }
+            }
+            if ((flags & SFT_COMP_MORE) == 0u) {
+                break;
+            }
+        }
+    }
+    return 0;
+}
+
+/* ── Exact analytic Q8 scanline coverage rasterizer (zero float) ────────── */
+
+static void sft_accum_segment_row(SFT_CellQ8 *cells, int width, int height,
+                                  int32_t x0, int32_t y0, int32_t x1, int32_t y1)
+{
+    int32_t iy = sft_floor_q8((y0 < y1) ? y0 : y1);
+    int32_t dy = y1 - y0;
+    int32_t ix0;
+    int32_t ix1;
+
+    if ((dy == 0) || (iy < 0) || (iy >= height)) {
+        return;
+    }
+    ix0 = sft_floor_q8(x0);
+    ix1 = sft_floor_q8(x1);
+
+    if (ix0 == ix1) {
+        int32_t cx = (ix0 < 0) ? 0 : ix0;
+        if (cx < width) {
+            int32_t xm = ((x0 + x1) >> 1) - (cx << SFT_SUB_SHIFT);
+            if (xm < 0) { xm = 0; }
+            if (xm > SFT_SUB_ONE) { xm = SFT_SUB_ONE; }
+            cells[(iy * width) + cx].cover += dy;
+            cells[(iy * width) + cx].area  += dy * xm;
+        }
+        return;
+    }
+
+    /* Segment crosses multiple X pixel columns within one Y scanline */
+    {
+        int32_t step = (x1 > x0) ? 1 : -1;
+        int32_t curX = x0;
+        int32_t curY = y0;
+        int32_t totalDx = x1 - x0;
+        int32_t col = ix0;
+        int32_t guard;
+
+        for (guard = 0; guard < 256; guard++) {
+            int32_t nextX;
+            int32_t nextY;
+            int32_t segDy;
+            int32_t cx;
+
+            if (col == ix1) {
+                nextX = x1;
+                nextY = y1;
+            } else {
+                nextX = (step > 0) ? ((col + 1) << SFT_SUB_SHIFT) : (col << SFT_SUB_SHIFT);
+                nextY = y0 + (int32_t)(((int64_t)(nextX - x0) * (int64_t)dy) / (int64_t)totalDx);
+            }
+            segDy = nextY - curY;
+            cx = (col < 0) ? 0 : col;
+            if ((segDy != 0) && (cx < width)) {
+                int32_t xm = ((curX + nextX) >> 1) - (cx << SFT_SUB_SHIFT);
+                if (xm < 0) { xm = 0; }
+                if (xm > SFT_SUB_ONE) { xm = SFT_SUB_ONE; }
+                cells[(iy * width) + cx].cover += segDy;
+                cells[(iy * width) + cx].area  += segDy * xm;
+            }
+            if (col == ix1) {
+                break;
+            }
+            curX = nextX;
+            curY = nextY;
+            col += step;
+        }
+    }
+}
+
+static void sft_draw_line_q8(SFT_CellQ8 *cells, int width, int height,
+                             SFT_PtQ8 p0, SFT_PtQ8 p1)
+{
+    int32_t dy = p1.y - p0.y;
+    int32_t dx = p1.x - p0.x;
+    int32_t iy0;
+    int32_t iy1;
+    int32_t step;
+    int32_t curX = p0.x;
+    int32_t curY = p0.y;
+    int32_t row;
+    int32_t guard;
+
+    if (dy == 0) {
+        return;
+    }
+    iy0 = sft_floor_q8(p0.y);
+    iy1 = sft_floor_q8(p1.y);
+    if (dy < 0 && ((p0.y & SFT_SUB_MASK) == 0)) { iy0--; }
+    if (dy > 0 && ((p1.y & SFT_SUB_MASK) == 0)) { iy1--; }
+
+    if (iy0 == iy1) {
+        sft_accum_segment_row(cells, width, height, p0.x, p0.y, p1.x, p1.y);
+        return;
+    }
+
+    step = (dy > 0) ? 1 : -1;
+    row = iy0;
+    for (guard = 0; guard < 256; guard++) {
+        int32_t nextY;
+        int32_t nextX;
+
+        if (row == iy1) {
+            nextY = p1.y;
+            nextX = p1.x;
+        } else {
+            nextY = (step > 0) ? ((row + 1) << SFT_SUB_SHIFT) : (row << SFT_SUB_SHIFT);
+            nextX = p0.x + (int32_t)(((int64_t)(nextY - p0.y) * (int64_t)dx) / (int64_t)dy);
+        }
+        sft_accum_segment_row(cells, width, height, curX, curY, nextX, nextY);
+        if (row == iy1) {
+            break;
+        }
+        curX = nextX;
+        curY = nextY;
+        row += step;
+    }
+}
+
+static void sft_post_process_q8(const SFT_CellQ8 *cells, uint8_t *dst,
+                                int width, int height)
+{
+    int y;
+    for (y = 0; y < height; y++) {
+        int32_t accum = 0;
+        const SFT_CellQ8 *rowCells = &cells[y * width];
+        uint8_t *rowOut = &dst[y * width];
+        int x;
+        for (x = 0; x < width; x++) {
+            int32_t cov;
+            accum += rowCells[x].cover;
+            cov = ((accum << SFT_SUB_SHIFT) - rowCells[x].area) >> SFT_SUB_SHIFT;
+            if (cov < 0)   { cov = -cov; }
+            if (cov > 255) { cov = 255; }
+            rowOut[x] = (uint8_t)cov;
+        }
+    }
+}
+
+int sft_render_q16(const SFT_Font *font, SFT_Glyph glyph,
+                   int32_t xScaleQ16, int32_t yScaleQ16,
+                   int32_t xOffsetQ16, int32_t yOffsetQ16, uint32_t flags,
+                   SFT_Image image, SFT_Scratch *scratch)
+{
+    uint32_t gOff = 0u;
+    uint32_t gLen = 0u;
+    uint32_t cellCount;
+    SFT_XformQ16 xf;
+    int16_t xMin;
+    int16_t yMin;
+    int16_t yMax;
+    int32_t bx0;
+    int32_t by0;
+    uint16_t i;
+
+    if ((font == NULL) || (font->memory == NULL) || (scratch == NULL) ||
+        (image.pixels == NULL) || (image.width <= 0) || (image.height <= 0)) {
+        return -1;
+    }
+    cellCount = (uint32_t)image.width * (uint32_t)image.height;
+    if (cellCount > SFT_MAX_RASTER_CELLS) {
+        return -1;
+    }
+    memset(image.pixels, 0, (size_t)cellCount);
+
+    if (sft_glyph_outline_range(font, glyph, &gOff, &gLen) < 0) {
+        return -1;
+    }
+    if (gLen < 10u) {
+        return 0; /* empty glyph */
+    }
+
+    xMin = sft_i16(font->memory, gOff + 2u);
+    yMin = sft_i16(font->memory, gOff + 4u);
+    yMax = sft_i16(font->memory, gOff + 8u);
+
+    bx0 = sft_floor_q8(sft_scale_fu_to_q8(xMin, xScaleQ16, font->unitsPerEm));
+    if ((flags & SFT_DOWNWARD_Y) != 0u) {
+        by0 = sft_floor_q8(sft_scale_fu_to_q8(-yMax, yScaleQ16, font->unitsPerEm));
+    } else {
+        by0 = sft_floor_q8(sft_scale_fu_to_q8(yMin, yScaleQ16, font->unitsPerEm));
+    }
+
+    xf.m00 = (int32_t)(((int64_t)xScaleQ16 << 8) / (int64_t)font->unitsPerEm);
+    xf.m01 = 0;
+    xf.m10 = 0;
+    xf.m11 = (int32_t)(((int64_t)yScaleQ16 << 8) / (int64_t)font->unitsPerEm);
+    if ((flags & SFT_DOWNWARD_Y) != 0u) {
+        xf.m11 = -xf.m11;
+    }
+    xf.tx = (xOffsetQ16 >> 8) - (bx0 << SFT_SUB_SHIFT);
+    xf.ty = (yOffsetQ16 >> 8) - (by0 << SFT_SUB_SHIFT);
+
+    scratch->numPoints = 0u;
+    scratch->numLines  = 0u;
+    if (sft_decode_glyph(font, glyph, &xf, scratch) < 0) {
+        return -1;
+    }
+
+    memset(scratch->cells, 0, (size_t)cellCount * sizeof(SFT_CellQ8));
+    for (i = 0u; i < scratch->numLines; i++) {
+        uint16_t b = scratch->lines[i].beg;
+        uint16_t e = scratch->lines[i].end;
+        if ((b < scratch->numPoints) && (e < scratch->numPoints)) {
+            sft_draw_line_q8(scratch->cells, image.width, image.height,
+                             scratch->points[b], scratch->points[e]);
+        }
+    }
+    sft_post_process_q8(scratch->cells, (uint8_t *)image.pixels, image.width, image.height);
+    return 0;
+}
+
+/* ── Standard libschrift-compatible double wrappers ─────────────────────── */
+
+int sft_lmetrics(const SFT *sft, SFT_LMetrics *metrics)
+{
+    double factor;
+    if ((sft == NULL) || (sft->font == NULL) || (sft->font->memory == NULL) || (metrics == NULL)) {
+        return -1;
+    }
+    memset(metrics, 0, sizeof(*metrics));
+    factor = sft->yScale / (double)sft->font->unitsPerEm;
+    metrics->ascender  = (double)sft_i16(sft->font->memory, sft->font->hheaOff + 4u) * factor;
+    metrics->descender = (double)sft_i16(sft->font->memory, sft->font->hheaOff + 6u) * factor;
+    metrics->lineGap   = (double)sft_i16(sft->font->memory, sft->font->hheaOff + 8u) * factor;
+    return 0;
+}
+
+int sft_gmetrics(const SFT *sft, SFT_Glyph glyph, SFT_GMetrics *metrics)
+{
+    SFT_GMetricsQ16 mq;
+    if ((sft == NULL) || (metrics == NULL)) {
+        return -1;
+    }
+    if (sft_gmetrics_q16(sft->font, glyph,
+                         (int32_t)(sft->xScale * 65536.0),
+                         (int32_t)(sft->yScale * 65536.0),
+                         (uint32_t)sft->flags, &mq) < 0) {
+        return -1;
+    }
+    metrics->advanceWidth    = (double)mq.advanceWidthQ16 / 65536.0;
+    metrics->leftSideBearing = (double)mq.leftSideBearingQ16 / 65536.0;
+    metrics->yOffset         = (int)mq.yOffset;
+    metrics->minWidth        = (int)mq.minWidth;
+    metrics->minHeight       = (int)mq.minHeight;
+    return 0;
+}
+
+int sft_kerning(const SFT *sft, SFT_Glyph leftGlyph, SFT_Glyph rightGlyph,
+                SFT_Kerning *kerning)
+{
+    const SFT_Font *font;
+    uint32_t base;
+    uint16_t nTables;
+    uint16_t nPairs;
+    uint32_t key;
+    uint32_t lo;
+    uint32_t hi;
+    uint32_t step;
+
+    if ((sft == NULL) || (sft->font == NULL) || (kerning == NULL)) {
+        return -1;
+    }
+    memset(kerning, 0, sizeof(*kerning));
+    font = sft->font;
+    if (font->kernOff == 0u) {
+        return 0;
+    }
+    base = font->kernOff;
+    if (!sft_safe_range(font->size, base, 4u)) {
+        return 0;
+    }
+    nTables = sft_u16(font->memory, base + 2u);
+    if ((nTables == 0u) || !sft_safe_range(font->size, base + 4u, 14u)) {
+        return 0;
+    }
+    nPairs = sft_u16(font->memory, base + 10u);
+    if ((nPairs == 0u) || !sft_safe_range(font->size, base + 18u, (uint32_t)nPairs * 6u)) {
+        return 0;
+    }
+    key = (((uint32_t)leftGlyph & 0xFFFFu) << 16) | ((uint32_t)rightGlyph & 0xFFFFu);
+    lo = 0u;
+    hi = (uint32_t)nPairs - 1u;
+    for (step = 0u; step < 16u && lo <= hi; step++) {
+        uint32_t mid = lo + ((hi - lo) >> 1);
+        uint32_t rec = base + 18u + (mid * 6u);
+        uint32_t cur = sft_u32(font->memory, rec);
+        if (key < cur) {
+            if (mid == 0u) { break; }
+            hi = mid - 1u;
+        } else if (key > cur) {
+            lo = mid + 1u;
+        } else {
+            int16_t val = sft_i16(font->memory, rec + 4u);
+            kerning->xShift = ((double)val * sft->xScale) / (double)font->unitsPerEm;
+            return 0;
+        }
+    }
+    return 0;
+}
+
+int sft_render(const SFT *sft, SFT_Glyph glyph, SFT_Image image)
+{
+#if defined(PICO_REAL_HW) || defined(MATRIX_PICO_PROFILE)
+    (void)sft; (void)glyph; (void)image;
+    return -1; /* MCU targets use sft_render_q16() with caller-owned scratch */
 #else
-
-static int
-map_file(SFT_Font *font, const char *filename)
-{
-	struct stat info;
-	int fd;
-	font->memory = MAP_FAILED;
-	font->size   = 0;
-	font->source = SrcMapping;
-	if ((fd = open(filename, O_RDONLY)) < 0) {
-		return -1;
-	}
-	if (fstat(fd, &info) < 0) {
-		close(fd);
-		return -1;
-	}
-	/* FIXME do some basic validation on info.st_size maybe - it is signed for example, so it *could* be negative .. */
-	font->memory = mmap(NULL, (size_t) info.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
-	font->size   = (uint_fast32_t) info.st_size;
-	close(fd);
-	return font->memory == MAP_FAILED ? -1 : 0;
-}
-
-static void
-unmap_file(SFT_Font *font)
-{
-	assert(font->memory != MAP_FAILED);
-	munmap((void *) font->memory, font->size);
-}
-
+    if (sft == NULL) {
+        return -1;
+    }
+    return sft_render_q16(sft->font, glyph,
+                          (int32_t)(sft->xScale * 65536.0),
+                          (int32_t)(sft->yScale * 65536.0),
+                          (int32_t)(sft->xOffset * 65536.0),
+                          (int32_t)(sft->yOffset * 65536.0),
+                          (uint32_t)sft->flags,
+                          image, &s_compat_scratch);
 #endif
-
-static int
-init_font(SFT_Font *font)
-{
-	uint_fast32_t scalerType, head, hhea;
-
-	if (!is_safe_offset(font, 0, 12))
-		return -1;
-	/* Check for a compatible scalerType (magic number). */
-	scalerType = getu32(font, 0);
-	if (scalerType != FILE_MAGIC_ONE && scalerType != FILE_MAGIC_TWO)
-		return -1;
-
-	if (gettable(font, "head", &head) < 0)
-		return -1;
-	if (!is_safe_offset(font, head, 54))
-		return -1;
-	font->unitsPerEm = getu16(font, head + 18);
-	font->locaFormat = geti16(font, head + 50);
-	
-	if (gettable(font, "hhea", &hhea) < 0)
-		return -1;
-	if (!is_safe_offset(font, hhea, 36))
-		return -1;
-	font->numLongHmtx = getu16(font, hhea + 34);
-
-	return 0;
 }
-
-static Point
-midpoint(Point a, Point b)
-{
-	return (Point) {
-		0.5 * (a.x + b.x),
-		0.5 * (a.y + b.y)
-	};
-}
-
-/* Applies an affine linear transformation matrix to a set of points. */
-static void
-transform_points(unsigned int numPts, Point *points, double trf[6])
-{
-	Point pt;
-	unsigned int i;
-	for (i = 0; i < numPts; ++i) {
-		pt = points[i];
-		points[i] = (Point) {
-			pt.x * trf[0] + pt.y * trf[2] + trf[4],
-			pt.x * trf[1] + pt.y * trf[3] + trf[5]
-		};
-	}
-}
-
-static void
-clip_points(unsigned int numPts, Point *points, int width, int height)
-{
-	Point pt;
-	unsigned int i;
-
-	for (i = 0; i < numPts; ++i) {
-		pt = points[i];
-
-		if (pt.x < 0.0) {
-			points[i].x = 0.0;
-		}
-		if (pt.x >= width) {
-			points[i].x = nextafter(width, 0.0);
-		}
-		if (pt.y < 0.0) {
-			points[i].y = 0.0;
-		}
-		if (pt.y >= height) {
-			points[i].y = nextafter(height, 0.0);
-		}
-	}
-}
-
-static int
-init_outline(Outline *outl)
-{
-	/* TODO Smaller initial allocations */
-	outl->numPoints = 0;
-	outl->capPoints = 64;
-	if (!(outl->points = malloc(outl->capPoints * sizeof *outl->points)))
-		return -1;
-	outl->numCurves = 0;
-	outl->capCurves = 64;
-	if (!(outl->curves = malloc(outl->capCurves * sizeof *outl->curves)))
-		return -1;
-	outl->numLines = 0;
-	outl->capLines = 64;
-	if (!(outl->lines = malloc(outl->capLines * sizeof *outl->lines)))
-		return -1;
-	return 0;
-}
-
-static void
-free_outline(Outline *outl)
-{
-	free(outl->points);
-	free(outl->curves);
-	free(outl->lines);
-}
-
-static int
-grow_points(Outline *outl)
-{
-	void *mem;
-	uint_fast16_t cap;
-	assert(outl->capPoints);
-	/* Since we use uint_fast16_t for capacities, we have to be extra careful not to trigger integer overflow. */
-	if (outl->capPoints > UINT16_MAX / 2)
-		return -1;
-	cap = (uint_fast16_t) (2U * outl->capPoints);
-	if (!(mem = sft_reallocarray(outl->points, cap, sizeof *outl->points)))
-		return -1;
-	outl->capPoints = (uint_least16_t) cap;
-	outl->points    = mem;
-	return 0;
-}
-
-static int
-grow_curves(Outline *outl)
-{
-	void *mem;
-	uint_fast16_t cap;
-	assert(outl->capCurves);
-	if (outl->capCurves > UINT16_MAX / 2)
-		return -1;
-	cap = (uint_fast16_t) (2U * outl->capCurves);
-	if (!(mem = sft_reallocarray(outl->curves, cap, sizeof *outl->curves)))
-		return -1;
-	outl->capCurves = (uint_least16_t) cap;
-	outl->curves    = mem;
-	return 0;
-}
-
-static int
-grow_lines(Outline *outl)
-{
-	void *mem;
-	uint_fast16_t cap;
-	assert(outl->capLines);
-	if (outl->capLines > UINT16_MAX / 2)
-		return -1;
-	cap = (uint_fast16_t) (2U * outl->capLines);
-	if (!(mem = sft_reallocarray(outl->lines, cap, sizeof *outl->lines)))
-		return -1;
-	outl->capLines = (uint_least16_t) cap;
-	outl->lines    = mem;
-	return 0;
-}
-
-static inline int
-is_safe_offset(SFT_Font *font, uint_fast32_t offset, uint_fast32_t margin)
-{
-	if (offset > font->size) return 0;
-	if (font->size - offset < margin) return 0;
-	return 1;
-}
-
-/* Like bsearch(), but returns the next highest element if key could not be found. */
-static void *
-csearch(const void *key, const void *base,
-	size_t nmemb, size_t size,
-	int (*compar)(const void *, const void *))
-{
-	const uint8_t *bytes = base, *sample;
-	size_t low = 0, high = nmemb - 1, mid;
-	if (!nmemb) return NULL;
-	while (low != high) {
-		mid = low + (high - low) / 2;
-		sample = bytes + mid * size;
-		if (compar(key, sample) > 0) {
-			low = mid + 1;
-		} else {
-			high = mid;
-		}
-	}
-	return (uint8_t *) bytes + low * size;
-}
-
-/* Used as a comparison function for [bc]search(). */
-static int
-cmpu16(const void *a, const void *b)
-{
-	return memcmp(a, b, 2);
-}
-
-/* Used as a comparison function for [bc]search(). */
-static int
-cmpu32(const void *a, const void *b)
-{
-	return memcmp(a, b, 4);
-}
-
-static inline uint_least8_t
-getu8(SFT_Font *font, uint_fast32_t offset)
-{
-	assert(offset + 1 <= font->size);
-	return *(font->memory + offset);
-}
-
-static inline int_least8_t
-geti8(SFT_Font *font, uint_fast32_t offset)
-{
-	return (int_least8_t) getu8(font, offset);
-}
-
-static inline uint_least16_t
-getu16(SFT_Font *font, uint_fast32_t offset)
-{
-	assert(offset + 2 <= font->size);
-	const uint8_t *base = font->memory + offset;
-	uint_least16_t b1 = base[0], b0 = base[1]; 
-	return (uint_least16_t) (b1 << 8 | b0);
-}
-
-static inline int16_t
-geti16(SFT_Font *font, uint_fast32_t offset)
-{
-	return (int_least16_t) getu16(font, offset);
-}
-
-static inline uint32_t
-getu32(SFT_Font *font, uint_fast32_t offset)
-{
-	assert(offset + 4 <= font->size);
-	const uint8_t *base = font->memory + offset;
-	uint_least32_t b3 = base[0], b2 = base[1], b1 = base[2], b0 = base[3]; 
-	return (uint_least32_t) (b3 << 24 | b2 << 16 | b1 << 8 | b0);
-}
-
-static int
-gettable(SFT_Font *font, char tag[4], uint_fast32_t *offset)
-{
-	void *match;
-	unsigned int numTables;
-	/* No need to bounds-check access to the first 12 bytes - this gets already checked by init_font(). */
-	numTables = getu16(font, 4);
-	if (!is_safe_offset(font, 12, (uint_fast32_t) numTables * 16))
-		return -1;
-	if (!(match = bsearch(tag, font->memory + 12, numTables, 16, cmpu32)))
-		return -1;
-	*offset = getu32(font, (uint_fast32_t) ((uint8_t *) match - font->memory + 8));
-	return 0;
-}
-
-static int
-cmap_fmt4(SFT_Font *font, uint_fast32_t table, SFT_UChar charCode, SFT_Glyph *glyph)
-{
-	const uint8_t *segPtr;
-	uint_fast32_t segIdxX2;
-	uint_fast32_t endCodes, startCodes, idDeltas, idRangeOffsets, idOffset;
-	uint_fast16_t segCountX2, idRangeOffset, startCode, shortCode, idDelta, id;
-	uint8_t key[2] = { (uint8_t) (charCode >> 8), (uint8_t) charCode };
-	/* cmap format 4 only supports the Unicode BMP. */
-	if (charCode > 0xFFFF) {
-		*glyph = 0;
-		return 0;
-	}
-	shortCode = (uint_fast16_t) charCode;
-	if (!is_safe_offset(font, table, 8))
-		return -1;
-	segCountX2 = getu16(font, table);
-	if ((segCountX2 & 1) || !segCountX2)
-		return -1;
-	/* Find starting positions of the relevant arrays. */
-	endCodes       = table + 8;
-	startCodes     = endCodes + segCountX2 + 2;
-	idDeltas       = startCodes + segCountX2;
-	idRangeOffsets = idDeltas + segCountX2;
-	if (!is_safe_offset(font, idRangeOffsets, segCountX2))
-		return -1;
-	/* Find the segment that contains shortCode by binary searching over
-	 * the highest codes in the segments. */
-	segPtr = csearch(key, font->memory + endCodes, segCountX2 / 2, 2, cmpu16);
-	segIdxX2 = (uint_fast32_t) (segPtr - (font->memory + endCodes));
-	/* Look up segment info from the arrays & short circuit if the spec requires. */
-	if ((startCode = getu16(font, startCodes + segIdxX2)) > shortCode)
-		return 0;
-	idDelta = getu16(font, idDeltas + segIdxX2);
-	if (!(idRangeOffset = getu16(font, idRangeOffsets + segIdxX2))) {
-		/* Intentional integer under- and overflow. */
-		*glyph = (shortCode + idDelta) & 0xFFFF;
-		return 0;
-	}
-	/* Calculate offset into glyph array and determine ultimate value. */
-	idOffset = idRangeOffsets + segIdxX2 + idRangeOffset + 2U * (unsigned int) (shortCode - startCode);
-	if (!is_safe_offset(font, idOffset, 2))
-		return -1;
-	id = getu16(font, idOffset);
-	/* Intentional integer under- and overflow. */
-	*glyph = id ? (id + idDelta) & 0xFFFF : 0;
-	return 0;
-}
-
-static int
-cmap_fmt6(SFT_Font *font, uint_fast32_t table, SFT_UChar charCode, SFT_Glyph *glyph)
-{
-	unsigned int firstCode, entryCount;
-	/* cmap format 6 only supports the Unicode BMP. */
-	if (charCode > 0xFFFF) {
-		*glyph = 0;
-		return 0;
-	}
-	if (!is_safe_offset(font, table, 4))
-		return -1;
-	firstCode  = getu16(font, table);
-	entryCount = getu16(font, table + 2);
-	if (!is_safe_offset(font, table, 4 + 2 * entryCount))
-		return -1;
-	if (charCode < firstCode)
-		return -1;
-	charCode -= firstCode;
-	if (!(charCode < entryCount))
-		return -1;
-	*glyph = getu16(font, table + 4 + 2 * charCode);
-	return 0;
-}
-
-static int
-cmap_fmt12_13(SFT_Font *font, uint_fast32_t table, SFT_UChar charCode, SFT_Glyph *glyph, int which)
-{
-	uint32_t len, numEntries;
-	uint_fast32_t i;
-
-	*glyph = 0;
-
-    /* check that the entire header is present */
-	if (!is_safe_offset(font, table, 16))
-		return -1;
-
-	len = getu32(font, table + 4);
-
-	/* A minimal header is 16 bytes */
-	if (len < 16)
-		return -1;
-
-	if (!is_safe_offset(font, table, len))
-		return -1;
-
-	numEntries = getu32(font, table + 12);
-
-	/* Ensure the declared number of groups fits within the subtable. */
-	if (numEntries > (len - 16) / 12)
-		return -1;
-
-	for (i = 0; i < numEntries; ++i) {
-		uint32_t firstCode, lastCode, glyphOffset;
-		firstCode = getu32(font, table + (i * 12) + 16);
-		lastCode = getu32(font, table + (i * 12) + 16 + 4);
-		if (charCode < firstCode || charCode > lastCode)
-			continue;
-		glyphOffset = getu32(font, table + (i * 12) + 16 + 8);
-		if (which == 12)
-			*glyph = (charCode-firstCode) + glyphOffset;
-		else
-			*glyph = glyphOffset;
-		return 0;
-	}
-
-	return 0;
-}
-
-/* Maps Unicode code points to glyph indices. */
-static int
-glyph_id(SFT_Font *font, SFT_UChar charCode, SFT_Glyph *glyph)
-{
-	uint_fast32_t cmap, entry, table;
-	unsigned int idx, numEntries;
-	int type, format;
-	
-	*glyph = 0;
-
-	if (gettable(font, "cmap", &cmap) < 0)
-		return -1;
-
-	if (!is_safe_offset(font, cmap, 4))
-		return -1;
-	numEntries = getu16(font, cmap + 2);
-
-	if (!is_safe_offset(font, cmap, 4 + numEntries * 8))
-		return -1;
-
-	/* First look for a 'full repertoire'/non-BMP map. */
-	for (idx = 0; idx < numEntries; ++idx) {
-		entry = cmap + 4 + idx * 8;
-		type = getu16(font, entry) * 0100 + getu16(font, entry + 2);
-		/* Complete unicode map */
-		if (type == 0004 || type == 0312) {
-			table = cmap + getu32(font, entry + 4);
-			if (!is_safe_offset(font, table, 8))
-				return -1;
-			/* Dispatch based on cmap format. */
-			format = getu16(font, table);
-			switch (format) {
-			case 12:
-				return cmap_fmt12_13(font, table, charCode, glyph, 12);
-			default:
-				return -1;
-			}
-		}
-	}
-
-	/* If no 'full repertoire' cmap was found, try looking for a BMP map. */
-	for (idx = 0; idx < numEntries; ++idx) {
-		entry = cmap + 4 + idx * 8;
-		type = getu16(font, entry) * 0100 + getu16(font, entry + 2);
-		/* Unicode BMP */
-		if (type == 0003 || type == 0301) {
-			table = cmap + getu32(font, entry + 4);
-			if (!is_safe_offset(font, table, 6))
-				return -1;
-			/* Dispatch based on cmap format. */
-			switch (getu16(font, table)) {
-			case 4:
-				return cmap_fmt4(font, table + 6, charCode, glyph);
-			case 6:
-				return cmap_fmt6(font, table + 6, charCode, glyph);
-			default:
-				return -1;
-			}
-		}
-	}
-
-	return -1;
-}
-
-static int
-hor_metrics(SFT_Font *font, SFT_Glyph glyph, int *advanceWidth, int *leftSideBearing)
-{
-	uint_fast32_t hmtx, offset, boundary;
-	if (gettable(font, "hmtx", &hmtx) < 0)
-		return -1;
-	if (glyph < font->numLongHmtx) {
-		/* glyph is inside long metrics segment. */
-		offset = hmtx + 4 * glyph;
-		if (!is_safe_offset(font, offset, 4))
-			return -1;
-		*advanceWidth = getu16(font, offset);
-		*leftSideBearing = geti16(font, offset + 2);
-		return 0;
-	} else {
-		/* glyph is inside short metrics segment. */
-		boundary = hmtx + 4U * (uint_fast32_t) font->numLongHmtx;
-		if (boundary < 4)
-			return -1;
-		
-		offset = boundary - 4;
-		if (!is_safe_offset(font, offset, 4))
-			return -1;
-		*advanceWidth = getu16(font, offset);
-		
-		offset = boundary + 2 * (glyph - font->numLongHmtx);
-		if (!is_safe_offset(font, offset, 2))
-			return -1;
-		*leftSideBearing = geti16(font, offset);
-		return 0;
-	}
-}
-
-static int
-glyph_bbox(const SFT *sft, uint_fast32_t outline, int box[4])
-{
-	double xScale, yScale;
-	/* Read the bounding box from the font file verbatim. */
-	if (!is_safe_offset(sft->font, outline, 10))
-		return -1;
-	box[0] = geti16(sft->font, outline + 2);
-	box[1] = geti16(sft->font, outline + 4);
-	box[2] = geti16(sft->font, outline + 6);
-	box[3] = geti16(sft->font, outline + 8);
-	if (box[2] <= box[0] || box[3] <= box[1])
-		return -1;
-	/* Transform the bounding box into SFT coordinate space. */
-	xScale = sft->xScale / sft->font->unitsPerEm;
-	yScale = sft->yScale / sft->font->unitsPerEm;
-	box[0] = (int) floor(box[0] * xScale + sft->xOffset);
-	box[1] = (int) floor(box[1] * yScale + sft->yOffset);
-	box[2] = (int) ceil (box[2] * xScale + sft->xOffset);
-	box[3] = (int) ceil (box[3] * yScale + sft->yOffset);
-	return 0;
-}
-
-/* Returns the offset into the font that the glyph's outline is stored at. */
-static int
-outline_offset(SFT_Font *font, SFT_Glyph glyph, uint_fast32_t *offset)
-{
-	uint_fast32_t loca, glyf;
-	uint_fast32_t base, this, next;
-
-	if (gettable(font, "loca", &loca) < 0)
-		return -1;
-	if (gettable(font, "glyf", &glyf) < 0)
-		return -1;
-
-	if (font->locaFormat == 0) {
-		base = loca + 2 * glyph;
-
-		if (!is_safe_offset(font, base, 4))
-			return -1;
-		
-		this = 2U * (uint_fast32_t) getu16(font, base);
-		next = 2U * (uint_fast32_t) getu16(font, base + 2);
-	} else {
-		base = loca + 4 * glyph;
-
-		if (!is_safe_offset(font, base, 8))
-			return -1;
-
-		this = getu32(font, base);
-		next = getu32(font, base + 4);
-	}
-
-	*offset = this == next ? 0 : glyf + this;
-	return 0;
-}
-
-/* For a 'simple' outline, determines each point of the outline with a set of flags. */
-static int
-simple_flags(SFT_Font *font, uint_fast32_t *offset, uint_fast16_t numPts, uint8_t *flags)
-{
-	uint_fast32_t off = *offset;
-	uint_fast16_t i;
-	uint8_t value = 0, repeat = 0;
-	for (i = 0; i < numPts; ++i) {
-		if (repeat) {
-			--repeat;
-		} else {
-			if (!is_safe_offset(font, off, 1))
-				return -1;
-			value = getu8(font, off++);
-			if (value & REPEAT_FLAG) {
-				if (!is_safe_offset(font, off, 1))
-					return -1;
-				repeat = getu8(font, off++);
-			}
-		}
-		flags[i] = value;
-	}
-	*offset = off;
-	return 0;
-}
-
-/* For a 'simple' outline, decodes both X and Y coordinates for each point of the outline. */
-static int
-simple_points(SFT_Font *font, uint_fast32_t offset, uint_fast16_t numPts, uint8_t *flags, Point *points)
-{
-	long accum, value, bit;
-	uint_fast16_t i;
-
-	accum = 0L;
-	for (i = 0; i < numPts; ++i) {
-		if (flags[i] & X_CHANGE_IS_SMALL) {
-			if (!is_safe_offset(font, offset, 1))
-				return -1;
-			value = (long) getu8(font, offset++);
-			bit = !!(flags[i] & X_CHANGE_IS_POSITIVE);
-			accum -= (value ^ -bit) + bit;
-		} else if (!(flags[i] & X_CHANGE_IS_ZERO)) {
-			if (!is_safe_offset(font, offset, 2))
-				return -1;
-			accum += geti16(font, offset);
-			offset += 2;
-		}
-		points[i].x = (double) accum;
-	}
-
-	accum = 0L;
-	for (i = 0; i < numPts; ++i) {
-		if (flags[i] & Y_CHANGE_IS_SMALL) {
-			if (!is_safe_offset(font, offset, 1))
-				return -1;
-			value = (long) getu8(font, offset++);
-			bit = !!(flags[i] & Y_CHANGE_IS_POSITIVE);
-			accum -= (value ^ -bit) + bit;
-		} else if (!(flags[i] & Y_CHANGE_IS_ZERO)) {
-			if (!is_safe_offset(font, offset, 2))
-				return -1;
-			accum += geti16(font, offset);
-			offset += 2;
-		}
-		points[i].y = (double) accum;
-	}
-
-	return 0;
-}
-
-static int
-decode_contour(uint8_t *flags, uint_fast16_t basePoint, uint_fast16_t count, Outline *outl)
-{
-	uint_fast16_t i;
-	uint_least16_t looseEnd, beg, ctrl, center, cur;
-	unsigned int gotCtrl;
-
-	/* Skip contours with less than two points, since the following algorithm can't handle them and
-	 * they should appear invisible either way (because they don't have any area). */
-	if (count < 2) return 0;
-
-	assert(basePoint <= UINT16_MAX - count);
-
-	if (flags[0] & POINT_IS_ON_CURVE) {
-		looseEnd = (uint_least16_t) basePoint++;
-		++flags;
-		--count;
-	} else if (flags[count - 1] & POINT_IS_ON_CURVE) {
-		looseEnd = (uint_least16_t) (basePoint + --count);
-	} else {
-		if (outl->numPoints >= outl->capPoints && grow_points(outl) < 0)
-			return -1;
-
-		looseEnd = outl->numPoints;
-		outl->points[outl->numPoints++] = midpoint(
-			outl->points[basePoint],
-			outl->points[basePoint + count - 1]);
-	}
-	beg = looseEnd;
-	gotCtrl = 0;
-	for (i = 0; i < count; ++i) {
-		/* cur can't overflow because we ensure that basePoint + count < 0xFFFF before calling decode_contour(). */
-		cur = (uint_least16_t) (basePoint + i);
-		/* NOTE clang-analyzer will often flag this and another piece of code because it thinks that flags and
-		 * outl->points + basePoint don't always get properly initialized -- even when you explicitly loop over both
-		 * and set every element to zero (but not when you use memset). This is a known clang-analyzer bug:
-		 * http://clang-developers.42468.n3.nabble.com/StaticAnalyzer-False-positive-with-loop-handling-td4053875.html */
-		if (flags[i] & POINT_IS_ON_CURVE) {
-			if (gotCtrl) {
-				if (outl->numCurves >= outl->capCurves && grow_curves(outl) < 0)
-					return -1;
-				outl->curves[outl->numCurves++] = (Curve) { beg, cur, ctrl };
-			} else {
-				if (outl->numLines >= outl->capLines && grow_lines(outl) < 0)
-					return -1;
-				outl->lines[outl->numLines++] = (Line) { beg, cur };
-			}
-			beg = cur;
-			gotCtrl = 0;
-		} else {
-			if (gotCtrl) {
-				center = outl->numPoints;
-				if (outl->numPoints >= outl->capPoints && grow_points(outl) < 0)
-					return -1;
-				outl->points[center] = midpoint(outl->points[ctrl], outl->points[cur]);
-				++outl->numPoints;
-
-				if (outl->numCurves >= outl->capCurves && grow_curves(outl) < 0)
-					return -1;
-				outl->curves[outl->numCurves++] = (Curve) { beg, center, ctrl };
-
-				beg = center;
-			}
-			ctrl = cur;
-			gotCtrl = 1;
-		}
-	}
-	if (gotCtrl) {
-		if (outl->numCurves >= outl->capCurves && grow_curves(outl) < 0)
-			return -1;
-		outl->curves[outl->numCurves++] = (Curve) { beg, looseEnd, ctrl };
-	} else {
-		if (outl->numLines >= outl->capLines && grow_lines(outl) < 0)
-			return -1;
-		outl->lines[outl->numLines++] = (Line) { beg, looseEnd };
-	}
-
-	return 0;
-}
-
-static int
-simple_outline(SFT_Font *font, uint_fast32_t offset, unsigned int numContours, Outline *outl)
-{
-	uint_fast16_t *endPts = NULL;
-	uint8_t *flags = NULL;
-	uint_fast16_t numPts;
-	unsigned int i;
-
-	assert(numContours > 0);
-
-	uint_fast16_t basePoint = outl->numPoints;
-
-	if (!is_safe_offset(font, offset, numContours * 2 + 2))
-		goto failure;
-	numPts = getu16(font, offset + (numContours - 1) * 2);
-	if (numPts >= UINT16_MAX)
-		goto failure;
-	numPts++;
-	if (outl->numPoints > UINT16_MAX - numPts)
-		goto failure;
-
-	while (outl->capPoints < basePoint + numPts) {
-		if (grow_points(outl) < 0)
-			goto failure;
-	}
-	memset(outl->points + basePoint, 0, numPts * sizeof(*outl->points));
-	
-	STACK_ALLOC(endPts, uint_fast16_t, 16, numContours);
-	if (endPts == NULL)
-		goto failure;
-	STACK_ALLOC(flags, uint8_t, 128, numPts);
-	if (flags == NULL)
-		goto failure;
-
-	for (i = 0; i < numContours; ++i) {
-		endPts[i] = getu16(font, offset);
-		offset += 2;
-	}
-	/* Ensure that endPts are never falling.
-	 * Falling endPts have no sensible interpretation and most likely only occur in malicious input.
-	 * Therefore, we bail, should we ever encounter such input. */
-	for (i = 0; i < numContours - 1; ++i) {
-		if (endPts[i + 1] < endPts[i] + 1)
-			goto failure;
-	}
-	offset += 2U + getu16(font, offset);
-
-	if (simple_flags(font, &offset, numPts, flags) < 0)
-		goto failure;
-	if (simple_points(font, offset, numPts, flags, outl->points + basePoint) < 0)
-		goto failure;
-	outl->numPoints = (uint_least16_t) (outl->numPoints + numPts);
-
-	uint_fast16_t beg = 0;
-	for (i = 0; i < numContours; ++i) {
-		uint_fast16_t count = endPts[i] - beg + 1;
-		if (decode_contour(flags + beg, basePoint + beg, count, outl) < 0)
-			goto failure;
-		beg = endPts[i] + 1;
-	}
-
-	STACK_FREE(endPts);
-	STACK_FREE(flags);
-	return 0;
-failure:
-	STACK_FREE(endPts);
-	STACK_FREE(flags);
-	return -1;
-}
-
-static int
-compound_outline(SFT_Font *font, uint_fast32_t offset, int recDepth, Outline *outl)
-{
-	double local[6];
-	uint_fast32_t outline;
-	unsigned int flags, glyph, basePoint;
-	/* Guard against infinite recursion (compound glyphs that have themselves as component). */
-	if (recDepth >= 4)
-		return -1;
-	do {
-		memset(local, 0, sizeof local);
-		if (!is_safe_offset(font, offset, 4))
-			return -1;
-		flags = getu16(font, offset);
-		glyph = getu16(font, offset + 2);
-		offset += 4;
-		/* We don't implement point matching, and neither does stb_truetype for that matter. */
-		if (!(flags & ACTUAL_XY_OFFSETS))
-			return -1;
-		/* Read additional X and Y offsets (in FUnits) of this component. */
-		if (flags & OFFSETS_ARE_LARGE) {
-			if (!is_safe_offset(font, offset, 4))
-				return -1;
-			local[4] = geti16(font, offset);
-			local[5] = geti16(font, offset + 2);
-			offset += 4;
-		} else {
-			if (!is_safe_offset(font, offset, 2))
-				return -1;
-			local[4] = geti8(font, offset);
-			local[5] = geti8(font, offset + 1);
-			offset += 2;
-		}
-		if (flags & GOT_A_SINGLE_SCALE) {
-			if (!is_safe_offset(font, offset, 2))
-				return -1;
-			local[0] = geti16(font, offset) / 16384.0;
-			local[3] = local[0];
-			offset += 2;
-		} else if (flags & GOT_AN_X_AND_Y_SCALE) {
-			if (!is_safe_offset(font, offset, 4))
-				return -1;
-			local[0] = geti16(font, offset + 0) / 16384.0;
-			local[3] = geti16(font, offset + 2) / 16384.0;
-			offset += 4;
-		} else if (flags & GOT_A_SCALE_MATRIX) {
-			if (!is_safe_offset(font, offset, 8))
-				return -1;
-			local[0] = geti16(font, offset + 0) / 16384.0;
-			local[1] = geti16(font, offset + 2) / 16384.0;
-			local[2] = geti16(font, offset + 4) / 16384.0;
-			local[3] = geti16(font, offset + 6) / 16384.0;
-			offset += 8;
-		} else {
-			local[0] = 1.0;
-			local[3] = 1.0;
-		}
-		/* At this point, Apple's spec more or less tells you to scale the matrix by its own L1 norm.
-		 * But stb_truetype scales by the L2 norm. And FreeType2 doesn't scale at all.
-		 * Furthermore, Microsoft's spec doesn't even mention anything like this.
-		 * It's almost as if nobody ever uses this feature anyway. */
-		if (outline_offset(font, glyph, &outline) < 0)
-			return -1;
-		if (outline) {
-			basePoint = outl->numPoints;
-			if (decode_outline(font, outline, recDepth + 1, outl) < 0)
-				return -1;
-			transform_points(outl->numPoints - basePoint, outl->points + basePoint, local);
-		}
-	} while (flags & THERE_ARE_MORE_COMPONENTS);
-
-	return 0;
-}
-
-static int
-decode_outline(SFT_Font *font, uint_fast32_t offset, int recDepth, Outline *outl)
-{
-	int numContours;
-	if (!is_safe_offset(font, offset, 10))
-		return -1;
-	numContours = geti16(font, offset);
-	if (numContours > 0) {
-		/* Glyph has a 'simple' outline consisting of a number of contours. */
-		return simple_outline(font, offset + 10, (unsigned int) numContours, outl);
-	} else if (numContours < 0) {
-		/* Glyph has a compound outline combined from mutiple other outlines. */
-		return compound_outline(font, offset + 10, recDepth, outl);
-	} else {
-		return 0;
-	}
-}
-
-/* A heuristic to tell whether a given curve can be approximated closely enough by a line. */
-static int
-is_flat(Outline *outl, Curve curve)
-{
-	const double maxArea2 = 2.0;
-	Point a = outl->points[curve.beg];
-	Point b = outl->points[curve.ctrl];
-	Point c = outl->points[curve.end];
-	Point g = { b.x-a.x, b.y-a.y };
-	Point h = { c.x-a.x, c.y-a.y };
-	double area2 = fabs(g.x*h.y-h.x*g.y);
-	return area2 <= maxArea2;
-}
-
-static int
-tesselate_curve(Curve curve, Outline *outl)
-{
-	/* From my tests I can conclude that this stack barely reaches a top height
-	 * of 4 elements even for the largest font sizes I'm willing to support. And
-	 * as space requirements should only grow logarithmically, I think 10 is
-	 * more than enough. */
-#define STACK_SIZE 10
-	Curve stack[STACK_SIZE];
-	unsigned int top = 0;
-	for (;;) {
-		if (is_flat(outl, curve) || top >= STACK_SIZE) {
-			if (outl->numLines >= outl->capLines && grow_lines(outl) < 0)
-				return -1;
-			outl->lines[outl->numLines++] = (Line) { curve.beg, curve.end };
-			if (top == 0) break;
-			curve = stack[--top];
-		} else {
-			uint_least16_t ctrl0 = outl->numPoints;
-			if (outl->numPoints >= outl->capPoints && grow_points(outl) < 0)
-				return -1;
-			outl->points[ctrl0] = midpoint(outl->points[curve.beg], outl->points[curve.ctrl]);
-			++outl->numPoints;
-
-			uint_least16_t ctrl1 = outl->numPoints;
-			if (outl->numPoints >= outl->capPoints && grow_points(outl) < 0)
-				return -1;
-			outl->points[ctrl1] = midpoint(outl->points[curve.ctrl], outl->points[curve.end]);
-			++outl->numPoints;
-
-			uint_least16_t pivot = outl->numPoints;
-			if (outl->numPoints >= outl->capPoints && grow_points(outl) < 0)
-				return -1;
-			outl->points[pivot] = midpoint(outl->points[ctrl0], outl->points[ctrl1]);
-			++outl->numPoints;
-
-			stack[top++] = (Curve) { curve.beg, pivot, ctrl0 };
-			curve = (Curve) { pivot, curve.end, ctrl1 };
-		}
-	}
-	return 0;
-#undef STACK_SIZE
-}
-
-static int
-tesselate_curves(Outline *outl)
-{
-	unsigned int i;
-	for (i = 0; i < outl->numCurves; ++i) {
-		if (tesselate_curve(outl->curves[i], outl) < 0)
-			return -1;
-	}
-	return 0;
-}
-
-/* Draws a line into the buffer. Uses a custom 2D raycasting algorithm to do so. */
-static void
-draw_line(Raster buf, Point origin, Point goal)
-{
-	Point delta;
-	Point nextCrossing;
-	Point crossingIncr;
-	double halfDeltaX;
-	double prevDistance = 0.0, nextDistance;
-	double xAverage, yDifference;
-	struct { int x, y; } pixel;
-	struct { int x, y; } dir;
-	int step, numSteps = 0;
-	Cell *restrict cptr, cell;
-
-	delta.x = goal.x - origin.x;
-	delta.y = goal.y - origin.y;
-	dir.x = SIGN(delta.x);
-	dir.y = SIGN(delta.y);
-
-	if (!dir.y) {
-		return;
-	}
-	
-	crossingIncr.x = dir.x ? fabs(1.0 / delta.x) : 1.0;
-	crossingIncr.y = fabs(1.0 / delta.y);
-
-	if (!dir.x) {
-		pixel.x = fast_floor(origin.x);
-		nextCrossing.x = 100.0;
-	} else {
-		if (dir.x > 0) {
-			pixel.x = fast_floor(origin.x);
-			nextCrossing.x = (origin.x - pixel.x) * crossingIncr.x;
-			nextCrossing.x = crossingIncr.x - nextCrossing.x;
-			numSteps += fast_ceil(goal.x) - fast_floor(origin.x) - 1;
-		} else {
-			pixel.x = fast_ceil(origin.x) - 1;
-			nextCrossing.x = (origin.x - pixel.x) * crossingIncr.x;
-			numSteps += fast_ceil(origin.x) - fast_floor(goal.x) - 1;
-		}
-	}
-
-	if (dir.y > 0) {
-		pixel.y = fast_floor(origin.y);
-		nextCrossing.y = (origin.y - pixel.y) * crossingIncr.y;
-		nextCrossing.y = crossingIncr.y - nextCrossing.y;
-		numSteps += fast_ceil(goal.y) - fast_floor(origin.y) - 1;
-	} else {
-		pixel.y = fast_ceil(origin.y) - 1;
-		nextCrossing.y = (origin.y - pixel.y) * crossingIncr.y;
-		numSteps += fast_ceil(origin.y) - fast_floor(goal.y) - 1;
-	}
-
-	nextDistance = MIN(nextCrossing.x, nextCrossing.y);
-	halfDeltaX = 0.5 * delta.x;
-
-	for (step = 0; step < numSteps; ++step) {
-		xAverage = origin.x + (prevDistance + nextDistance) * halfDeltaX;
-		yDifference = (nextDistance - prevDistance) * delta.y;
-		cptr = &buf.cells[pixel.y * buf.width + pixel.x];
-		cell = *cptr;
-		cell.cover += yDifference;
-		xAverage -= (double) pixel.x;
-		cell.area += (1.0 - xAverage) * yDifference;
-		*cptr = cell;
-		prevDistance = nextDistance;
-		int alongX = nextCrossing.x < nextCrossing.y;
-		pixel.x += alongX ? dir.x : 0;
-		pixel.y += alongX ? 0 : dir.y;
-		nextCrossing.x += alongX ? crossingIncr.x : 0.0;
-		nextCrossing.y += alongX ? 0.0 : crossingIncr.y;
-		nextDistance = MIN(nextCrossing.x, nextCrossing.y);
-	}
-
-	xAverage = origin.x + (prevDistance + 1.0) * halfDeltaX;
-	yDifference = (1.0 - prevDistance) * delta.y;
-	cptr = &buf.cells[pixel.y * buf.width + pixel.x];
-	cell = *cptr;
-	cell.cover += yDifference;
-	xAverage -= (double) pixel.x;
-	cell.area += (1.0 - xAverage) * yDifference;
-	*cptr = cell;
-}
-
-static void
-draw_lines(Outline *outl, Raster buf)
-{
-	unsigned int i;
-	for (i = 0; i < outl->numLines; ++i) {
-		Line  line   = outl->lines[i];
-		Point origin = outl->points[line.beg];
-		Point goal   = outl->points[line.end];
-		draw_line(buf, origin, goal);
-	}
-}
-
-/* Integrate the values in the buffer to arrive at the final grayscale image. */
-static void
-post_process(Raster buf, uint8_t *image)
-{
-	Cell cell;
-	double accum = 0.0, value;
-	unsigned int i, num;
-	num = (unsigned int) buf.width * (unsigned int) buf.height;
-	for (i = 0; i < num; ++i) {
-		cell     = buf.cells[i];
-		value    = fabs(accum + cell.area);
-		value    = MIN(value, 1.0);
-		value    = value * 255.0 + 0.5;
-		image[i] = (uint8_t) value;
-		accum   += cell.cover;
-	}
-}
-
-static int
-render_outline(Outline *outl, double transform[6], SFT_Image image)
-{
-	Cell *cells = NULL;
-	Raster buf;
-	unsigned int numPixels;
-	
-	numPixels = (unsigned int) image.width * (unsigned int) image.height;
-
-	STACK_ALLOC(cells, Cell, 128 * 128, numPixels);
-	if (!cells) {
-		return -1;
-	}
-	memset(cells, 0, numPixels * sizeof *cells);
-	buf.cells  = cells;
-	buf.width  = image.width;
-	buf.height = image.height;
-
-	transform_points(outl->numPoints, outl->points, transform);
-
-	clip_points(outl->numPoints, outl->points, image.width, image.height);
-
-	if (tesselate_curves(outl) < 0) {
-		STACK_FREE(cells);
-		return -1;
-	}
-
-	draw_lines(outl, buf);
-
-	post_process(buf, image.pixels);
-
-	STACK_FREE(cells);
-	return 0;
-}
-

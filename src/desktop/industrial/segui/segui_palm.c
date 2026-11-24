@@ -30,6 +30,7 @@
 #include "../../../apps/terminal/shell_core.h"
 #if (defined(PICO_REAL_HW) && !defined(PICOCALC_APP_QUAKE)) || defined(SEGUI_HOST_XMB)
 #include "../../../media/xmb/xmb_pico.h"
+#include "../../../media/matrix/matrix.h"
 #define SEGUI_HAVE_XMB 1
 #endif
 
@@ -216,6 +217,15 @@ static void term_menu_clear(void)
     term_append_line("btron-pico# ");
 }
 
+#if defined(SEGUI_HAVE_XMB)
+static int term_launch_matrix(int mode)
+{
+    matrix_segui_set_mode(mode);
+    segui_palm_switch(PALM_APP_MATRIX);
+    return 1;
+}
+#endif
+
 static void term_run_cmd(const char *cmd)
 {
     BtronShellHooks hooks;
@@ -224,6 +234,11 @@ static void term_run_cmd(const char *cmd)
     hooks.get_sram_used  = s_hw.get_sram_used;
     hooks.get_sram_total = s_hw.get_sram_total;
     hooks.fallback_exec  = (void (*)(const char *, BtronShellOutFn, void *))s_hw.shell_exec;
+#if defined(SEGUI_HAVE_XMB)
+    hooks.launch_matrix  = term_launch_matrix;
+#else
+    hooks.launch_matrix  = NULL;
+#endif
     (void)btron_shell_core_exec(cmd, term_out_cb, NULL, &hooks);
 }
 
@@ -809,6 +824,7 @@ static SEGUI_PALM_APP_ID xmb_go_palm(int go)
     case XMB_GO_BROWSER:  return PALM_APP_BROWSER;
     case XMB_GO_CABINET:  return PALM_APP_CABINET;
     case XMB_GO_GEARS:    return PALM_APP_GLGEARS;
+    case XMB_GO_MATRIX:   return PALM_APP_MATRIX;
     case XMB_GO_CHAT:     return PALM_APP_CHAT;
     case XMB_GO_PREFS:    return PALM_APP_PREFS;
     default:              return PALM_APP_LAUNCHER;
@@ -837,6 +853,27 @@ static BOOL key_xmb(int key)
         return TRUE;
     }
     return FALSE;
+}
+
+static void draw_matrix_canvas(SEGUI_APP *app, GDEV *dev, const RECT *bounds, void *ctx)
+{
+    (void)app; (void)ctx;
+    if (!bounds) return;
+    matrix_segui_paint_rect((void *)dev, (int)bounds->left, (int)bounds->top,
+                            (int)bounds->right, (int)bounds->bottom);
+}
+
+static void build_matrix(SEGUI_APP *app, const SEGUI_PROFILE *prof)
+{
+    int tab;
+    segui_app_init(app, "行列 (Matrix)", prof);
+    tab = segui_add_tab(app, "Rain", FALSE);
+    segui_add_canvas(app, tab, draw_matrix_canvas, NULL);
+}
+
+static BOOL key_matrix(int key)
+{
+    return matrix_segui_key(key) ? TRUE : FALSE;
 }
 #endif
 
@@ -1371,6 +1408,7 @@ static const PALM_DESC s_apps[PALM_APP_COUNT] = {
     { "Preferences", "Prefs",   build_prefs,    NULL,         s_menu_prefs,    3 }
 #if defined(SEGUI_HAVE_XMB)
     ,{ "XMB",        "XMB",     build_xmb,      key_xmb,      s_menu_default,  2 }
+    ,{ "Matrix",     "Matrix",  build_matrix,   key_matrix,   s_menu_default,  2 }
 #endif
 #if defined(SEGUI_HOST_XMB) && !defined(PICO_REAL_HW)
     ,{ "Quake",      "Start",   build_quake_preview, NULL,    s_menu_default,  2 }
@@ -1425,7 +1463,7 @@ BOOL segui_palm_is_animated(void)
     if (s_active_id == PALM_APP_GLGEARS && !s_gear_paused) return TRUE;
 #endif
 #if defined(SEGUI_HAVE_XMB)
-    if (s_active_id == PALM_APP_XMB) return TRUE;
+    if (s_active_id == PALM_APP_XMB || s_active_id == PALM_APP_MATRIX) return TRUE;
 #endif
     return FALSE;
 }
@@ -1627,7 +1665,7 @@ int segui_palm_gl_fullscreen(void)
     if (!s_gl_full) return 0;
     if (s_active_id == PALM_APP_GLGEARS) return 1;
 #if defined(SEGUI_HAVE_XMB)
-    if (s_active_id == PALM_APP_XMB) return 1;
+    if (s_active_id == PALM_APP_XMB || s_active_id == PALM_APP_MATRIX) return 1;
 #endif
 #endif
     return 0;
@@ -1658,6 +1696,8 @@ void segui_palm_paint(GDEV *dev)
 #if defined(SEGUI_HAVE_XMB)
         else if (s_active_id == PALM_APP_XMB)
             draw_xmb_canvas(0, dev, &full, 0);
+        else if (s_active_id == PALM_APP_MATRIX)
+            draw_matrix_canvas(0, dev, &full, 0);
 #endif
         return;
     }
@@ -1743,6 +1783,7 @@ BOOL segui_palm_handle_key(int key, GDEV *dev)
         (s_active_id == PALM_APP_GLGEARS
 #if defined(SEGUI_HAVE_XMB)
          || s_active_id == PALM_APP_XMB
+         || s_active_id == PALM_APP_MATRIX
 #endif
         )) {
         s_gl_full = s_gl_full ? 0 : 1;
@@ -1808,6 +1849,10 @@ BOOL segui_palm_tick(uint32_t now_ms)
 #if defined(SEGUI_HAVE_XMB)
     if (s_active_id == PALM_APP_XMB) {
         xmb_pico_tick();
+        return TRUE;
+    }
+    if (s_active_id == PALM_APP_MATRIX) {
+        matrix_segui_tick();
         return TRUE;
     }
 #endif

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Matrix – 表計算 | B-System Specification</title>
-  <meta name="description" content="表計算（Matrix）は、B-Systemの仕様に準拠したC99実装アプリケーション。実身・仮身セルリンクおよび動的数式評価を備えた多次元スプレッドシート。">
+  <title>Matrix – デジタルレイン &amp; TrueType フォント SDK デモ | B-System Specification</title>
+  <meta name="description" content="Matrix は Rezmason/matrix の C99 ネイティブ移植であり、クリーンルーム Q16.16 固定小数点 libschrift TrueType ラスタライザによる B-System メディア / フォント SDK デモ。">
   <link rel="stylesheet" href="../index.css">
   <link rel="stylesheet" href="../settings/settings.css">
   <link rel="stylesheet" href="apps.css">
@@ -20,7 +20,7 @@
 <li><a href="index.html" class="active">Applications</a></li>
 <li><a href="../devices/index.html">Devices</a></li>
 <li><a href="../doc/index.html">Books</a></li>
-<li><a href=\"https://depot.btron.pro/\">Downloads</a></li>
+<li><a href="https://depot.btron.pro/">Downloads</a></li>
 </ul>
     </div>
   </nav>
@@ -34,115 +34,180 @@
   </nav>
 
   <div class="setting-hero">
-    <div class="setting-hero-icon"><img src="../assets/svg/1F4CA.svg" alt="📊" width="64" height="64"></div>
-    <h1>表計算 (Matrix)</h1>
-    <div class="setting-hero-badge">表計算 · BTRON3 3.20 準拠 · C99 実装</div>
-    <div class="subtitle">Matrix アプリケーションの機能仕様および内部構造<br><span style="font-size:0.9em; opacity:0.85;">"Functional and architectural specification of the Matrix application component."</span></div>
+    <div class="setting-hero-icon"><img src="../assets/svg/1F5A5.svg" alt="Matrix" width="64" height="64"></div>
+    <h1>行列雨 (Matrix Screensaver &amp; Font SDK)</h1>
+    <div class="setting-hero-badge">Media / Font SDK Demo · C99 · NASA JPL Power-of-10 · Zero-FPU Q16.16</div>
+    <div class="subtitle">Rezmason/matrix の B-System ネイティブ移植および TrueType フォント・ラスタライザ SDK デモ<br><span style="font-size:0.9em; opacity:0.85;">"Native C99 Digital Rain screensaver and clean-room Q16.16 libschrift TrueType font rasterizer demo."</span></div>
   </div>
 
   <div class="setting-content">
     <a href="../index.html#apps-section" class="back-link">← アプリケーション一覧 (Applications Index)</a>
 
     <div class="tagline-card">
-      <strong>表計算（Matrix）</strong> — 表計算（Matrix）は、B-Systemの仕様に準拠したC99実装アプリケーション。実身・仮身セルリンクおよび動的数式評価を備えた多次元スプレッドシート。<br>
+      <strong>Matrix Digital Rain (Font SDK Demo)</strong> — <a href="https://github.com/Rezmason/matrix">Rezmason/matrix</a>（Jeremy Sachs, MIT License）の 6 モードを B-System ネイティブ C99 へ直接移植。クリーンルーム B-RT / NASA JPL MISRA C 実装の <a href="https://github.com/tomolt/libschrift">libschrift</a> TrueType ラスタライザ（<code>src/desktop/font/schrift.c</code>）により、<code>Matrix-Code.ttf</code> および <code>Matrix-Resurrected.ttf</code> を事前ラスタライズし、低 CPU 負荷・高フレームレートで描画します。<br>
       <span style="display:block; margin-top:0.45rem; font-size:0.88rem; color:#6b4f7e;">
-        "Official technical specification for the Matrix application within the B-System operating environment."
+        "Direct C99 port of Rezmason/matrix powered by B-System's zero-heap, non-FPU Q16.16 libschrift TrueType rasterizer and raw GDEV integer BitBlitting."
       </span>
     </div>
 
     <div class="section">
-      <h2>概要 (Overview)</h2>
+      <h2>スクリーンショット (Automated Screenshots)</h2>
       <p>
-        表計算（Matrix）は、B-Systemの仕様に準拠したC99実装アプリケーション。実身・仮身セルリンクおよび動的数式評価を備えた多次元スプレッドシート。<br>
-        <span style="font-size:0.9em; opacity:0.85;">"Official technical specification for the Matrix application within the B-System operating environment."</span>
+        実機同一の C99 <code>libschrift</code> + <code>matrix_atlas</code> + <code>matrix_sim</code> + <code>matrix_render</code> パイプライン（<code>make capture-matrix</code>）によって自動生成された出力例。<br>
+        <span style="font-size:0.9em; opacity:0.85;">"Generated automatically via <code>make capture-matrix</code> using the live Q16.16 libschrift TrueType rasterizer and integer BitBlit engine."</span>
       </p>
-    </div>
-
-    <div class="section">
-      <h2>1. メニュー構造と操作体系 (Menu Architecture &amp; Operations)</h2>
-      <p>
-        Matrix が提供する標準メニューバー構造および操作体系の仕様。<br>
-        <span style="font-size:0.9em; opacity:0.85;">"Standard menu bar hierarchy and interactive command bindings."</span>
-      </p>
-      <table class="market-table">
-        <thead>
-          <tr>
-            <th>メニュー項目</th>
-            <th>機能説明 (Functional Description)</th>
-            <th>技術仕様・C99実装 (C99 Architecture)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><b>ファイル (File)</b></td>
-            <td>新規作成、開く、保存、閉じる</td>
-            <td><code>src/apps/matrix.c</code></td>
-          </tr>
-          <tr>
-            <td><b>編集 (Edit)</b></td>
-            <td>元に戻す、切り取り、コピー、貼り付け</td>
-            <td>クリップボード連携</td>
-          </tr>
-          <tr>
-            <td><b>操作 (Action)</b></td>
-            <td>メイン機能実行、パラメータ設定</td>
-            <td>内部状態ディスパッチ</td>
-          </tr>
-          <tr>
-            <td><b>ヘルプ (Help)</b></td>
-            <td>バージョン情報（Nano About Box 420×170px）</td>
-            <td><code>app_menu_create_about_dialog</code></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="section">
-      <h2>2. 機能仕様とアーキテクチャ (Functional &amp; Architecture Specifications)</h2>
-      <p>
-        Matrix アプリケーションの内部構造、データモデル、およびシステムコール仕様。<br>
-        <span style="font-size:0.9em; opacity:0.85;">"Internal architectural components, memory models, and system call bindings."</span>
-      </p>
-      <table class="market-table">
-        <thead>
-          <tr>
-            <th>コンポーネント・機能名</th>
-            <th>動作概要と機能仕様 (Functional Specification)</th>
-            <th>技術仕様・C99構造体 (C99 Implementation)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><b>アーキテクチャ</b></td>
-            <td>BTRON3 Specification 3.20に完全準拠したC99クリーンルーム実装。</td>
-            <td><code>src/apps/matrix.c</code></td>
-          </tr>
-          <tr>
-            <td><b>メニューシステム</b></td>
-            <td>3DベベルおよびModern Flat Cardメニューバーに完全対応。</td>
-            <td><code>APP_MENU_BAR</code></td>
-          </tr>
-          <tr>
-            <td><b>メモリ管理</b></td>
-            <td>不変ドキュメントコンテキスト分離とリソースの自動解放。</td>
-            <td><code>user_data</code> コンテキスト</td>
-          </tr>
-          <tr>
-            <td><b>イベント処理</b></td>
-            <td>マウス座標、キーボードショートカット、ウィンドウリサイズイベントの処理。</td>
-            <td><code>event_handler</code></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="section">
-      <h2>関連コンポーネント (Related Components)</h2>
-      <div class="related-apps">
-        <a href="Workbench.html">🗄️ ワークベンチ</a>
-        <a href="Cabinet.html">📁 キャビネット</a>
-        <a href="Editor.html">✍️ 文書編集</a>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:1rem; margin-top:1rem;">
+        <figure style="margin:0; background:#0b0f0c; border:1px solid #2b3a30; border-radius:6px; overflow:hidden;">
+          <img src="../img/screens/Matrix_Classic.png" alt="Matrix Classic Mode" style="width:100%; display:block;">
+          <figcaption style="padding:0.6rem 0.8rem; color:#c8facc; font-size:0.85rem;">
+            <strong>MATRIX_MODE_CLASSIC</strong> — <code>Matrix-Code.ttf</code> (57 glyphs), 1999/2003 opening titles emerald green + pre-baked 3×3 bloom.
+          </figcaption>
+        </figure>
+        <figure style="margin:0; background:#0b0f0c; border:1px solid #2b3a30; border-radius:6px; overflow:hidden;">
+          <img src="../img/screens/Matrix_Trinity.png" alt="Matrix Trinity Mode" style="width:100%; display:block;">
+          <figcaption style="padding:0.6rem 0.8rem; color:#c8facc; font-size:0.85rem;">
+            <strong>MATRIX_MODE_TRINITY</strong> — <code>Matrix-Resurrected.ttf</code> (138 glyphs), 3-plane volumetric parallax + warm amber metallic glints.
+          </figcaption>
+        </figure>
+        <figure style="margin:0; background:#0b0f0c; border:1px solid #2b3a30; border-radius:6px; overflow:hidden;">
+          <img src="../img/screens/Matrix_Pride.png" alt="Matrix Pride Mode" style="width:100%; display:block;">
+          <figcaption style="padding:0.6rem 0.8rem; color:#c8facc; font-size:0.85rem;">
+            <strong>MATRIX_MODE_PRIDE</strong> — <code>Matrix-Code.ttf</code> mapped via 6-stripe Pride flag row-LUT (zero extra inner-loop cost).
+          </figcaption>
+        </figure>
       </div>
+    </div>
+
+    <div class="section">
+      <h2>1. 対応モード一覧 (Supported Rezmason/matrix Modes)</h2>
+      <p>
+        全 6 モードを単一のデータ駆動テーブル（<code>src/media/matrix/matrix_modes.h</code>）で管理し、実行中に <code>1</code>〜<code>6</code> キーまたはシェル引数で即時切替が可能です。
+      </p>
+      <table class="market-table">
+        <thead>
+          <tr>
+            <th>キー / ID</th>
+            <th>モード (Mode)</th>
+            <th>フォント (TTF)</th>
+            <th>視覚・数理仕様 (Visual &amp; Mathematical Spec)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>1</code> / <code>trinity</code></td>
+            <td><b>Trinity</b></td>
+            <td><code>Matrix-Resurrected.ttf</code></td>
+            <td>3 層ボリュメトリック視差（遠・中・近）、脱彩エメラルド＋黄金メタリックグリント</td>
+          </tr>
+          <tr>
+            <td><code>2</code> / <code>classic</code></td>
+            <td><b>Classic</b> (Default)</td>
+            <td><code>Matrix-Code.ttf</code></td>
+            <td>1999/2003 オープニング準拠のエメラルド緑〜白熱カーソル、事前計算 3×3 ブルーム</td>
+          </tr>
+          <tr>
+            <td><code>3</code> / <code>resurrections</code></td>
+            <td><b>Resurrections</b></td>
+            <td><code>Matrix-Resurrected.ttf</code></td>
+            <td>2021 年版 138 グリフ集合（<code>U+E900..U+E989</code>）、シアン寄りの高輝度ハイライト</td>
+          </tr>
+          <tr>
+            <td><code>4</code> / <code>operator</code></td>
+            <td><b>Operator</b></td>
+            <td><code>Matrix-Code.ttf</code></td>
+            <td>ネブカドネザル号コンソール調の平坦高密度グリッド＋チェビシェフ矩形波リップル</td>
+          </tr>
+          <tr>
+            <td><code>5</code> / <code>megacity</code></td>
+            <td><b>Megacity</b></td>
+            <td><code>Matrix-Code.ttf</code></td>
+            <td>『レボリューションズ』風の大型グリフ（40 列基準）と重厚な落下速度</td>
+          </tr>
+          <tr>
+            <td><code>6</code> / <code>pride</code></td>
+            <td><b>Pride</b></td>
+            <td><code>Matrix-Code.ttf</code></td>
+            <td>6 色プライドフラッグ（赤・橙・黄・緑・青・紫）の行 LUT カラーマッピング</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>2. 描画アーキテクチャ選定: Raw BitBlit vs. OpenGL (B-GL)</h2>
+      <p>
+        B-System の B-GL（<code>gl_dispatch.h</code>）は固定機能 OpenGL ES 1.1 でありプログラマブル・フラグメントシェーダを持たず、POSIX / QEMU / UEFI / PC-98 等では CPU ソフトウェアラスタライザ（TinyGL / VirGL）で動作します。そのため、ネイティブ <code>wnd.c</code> + <code>GDEV</code> への直接整数 BitBlit を採用しました。
+      </p>
+      <table class="market-table">
+        <thead>
+          <tr>
+            <th>設計要素</th>
+            <th>実装方式 (Implementation)</th>
+            <th>実測性能・メモリ効果</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>TTF ラスタライズ</b></td>
+            <td>クリーンルーム Q16.16 <code>libschrift</code>（<code>src/desktop/font/schrift.c</code>）</td>
+            <td>起動時／リサイズ時のみ実行、動的ヒープ確保ゼロ（NASA JPL Rule 3）</td>
+          </tr>
+          <tr>
+            <td><b>差分セル・カリング</b></td>
+            <td>32-bit 状態キー（<code>glyph|bright|cursor|glint</code>）比較による未変化セルのスキップ</td>
+            <td>640×480 Classic で <b>約 67 µs/frame</b>（理論 14,900+ FPS、60 FPS 時 CPU &lt; 0.5%）</td>
+          </tr>
+          <tr>
+            <td><b>非 FPU 最適化 (PicoCalc)</b></td>
+            <td><code>sft_render_q16()</code> + 4-bit パックアトラス + RGB565 行バンド転送（<code>dp_pico_blit_rgb565</code>）</td>
+            <td>RP2040 (Cortex-M0+) でソフト浮動小数点ゼロ・内側ループ除算ゼロ、SRAM &lt; 22 KiB、TTF は Flash <code>.rodata</code>（28 KB）</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>3. 起動方法・操作キー (Shell, XMB &amp; Controls)</h2>
+      <table class="market-table">
+        <thead>
+          <tr>
+            <th>環境 / 操作</th>
+            <th>コマンド / キー</th>
+            <th>動作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><b>共通シェル (Desktop CLU / PicoCalc)</b></td>
+            <td><code>matrix [trinity|classic|resurrections|operator|megacity|pride]</code></td>
+            <td>指定モードで Matrix ウィンドウ／SegUI キャンバスを起動</td>
+          </tr>
+          <tr>
+            <td><b>PicoCalc XMB</b></td>
+            <td>Applications → <code>行列 (Matrix)</code></td>
+            <td>非 Quake PicoCalc イメージ（XMB + GLGears 同梱）から直接起動</td>
+          </tr>
+          <tr>
+            <td><b>キーボード操作</b></td>
+            <td><code>1</code>–<code>6</code> / <code>Tab</code> / <code>f</code> / <code>Space</code> / <code>+</code><code>-</code> / <code>b</code> / <code>i</code> / <code>Esc</code></td>
+            <td>モード切替、フルスクリーン切替（<code>f</code>）、一時停止、フォント拡大縮小、ブルーム／FPS 表示切替</td>
+          </tr>
+          <tr>
+            <td><b>マウス / Enter</b></td>
+            <td>クリック / <code>Enter</code></td>
+            <td>Operator モードでチェビシェフ矩形波リップルを発生</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section">
+      <h2>4. ソース構成とクレジット (Source Layout &amp; Credits)</h2>
+      <ul>
+        <li><code>include/btron/schrift.h</code> &amp; <code>src/desktop/font/schrift.c</code> — Clean-room B-RT Q16.16 NASA JPL MISRA C port of <a href="https://github.com/tomolt/libschrift">tomolt/libschrift</a> (© 2019–2022 Thomas Oltmann and contributors, ISC License).</li>
+        <li><code>assets/ttf/Matrix-Code.ttf</code> &amp; <code>assets/ttf/Matrix-Resurrected.ttf</code> — TrueType fonts from <a href="https://github.com/Rezmason/matrix">Rezmason/matrix</a> (Jeremy Sachs, MIT License), also embedded as <code>.rodata</code> in <code>src/media/matrix/matrix_ttf_embed.inc</code> for non-FS MCU targets.</li>
+        <li><code>src/media/matrix/</code> — <code>matrix.h</code>, <code>matrix_internal.h</code>, <code>matrix_modes.h</code>, <code>matrix_atlas.c</code>, <code>matrix_sim.c</code>, <code>matrix_render.c</code>, <code>matrix_app.c</code>, <code>matrix_segui.c</code>.</li>
+      </ul>
     </div>
   </div>
 
@@ -173,7 +238,6 @@
         <ul>
             <li><a href="Cabinet.html">Cabinet</a></li>
             <li><a href="Editor.html">Editor</a></li>
-            <li><a href="Matrix.html" class="active">Matrix</a></li>
             <li><a href="Clarity.html">Clarity</a></li>
             <li><a href="Browser.html">Browser</a></li>
             <li><a href="Notebook.html">Notebook</a></li>
@@ -191,7 +255,8 @@
             <li><a href="MicroScript.html">MicroScript</a></li>
             <li><a href="XMB.html">XMB</a></li>
             <li><a href="SDK.html">SDK</a></li>
-             <li><a href="Quake.html">Quake</a></li>
+            <li><a href="Matrix.html" class="active">Matrix</a></li>
+            <li><a href="Quake.html">Quake</a></li>
         </ul>
       </div>
       <div class="app-footer-col">
