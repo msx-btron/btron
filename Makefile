@@ -730,6 +730,10 @@ ARM64_APPS_SRCS = \
     src/desktop/graphics/v3d/backend_v3d.c       \
     src/desktop/graphics/virgl/backend_virgl.c     \
     src/media/sdk/glgears.c         \
+    src/media/matrix/matrix_atlas.c \
+    src/media/matrix/matrix_sim.c   \
+    src/media/matrix/matrix_render.c \
+    src/media/matrix/matrix_app.c   \
     src/media/xmb/xmb.c             \
     src/media/xmb/xmb_wave.c        \
     src/media/sdk/lilcu64_demo.c \
