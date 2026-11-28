@@ -1,0 +1,7 @@
+\ B-Sound Forth Base Primitive 15 — ECHO (Per-Voice Stereo Ping-Pong Delay)
+\ y_L[n] = x_L[n] + g * y_R[n - D_L],  y_R[n] = x_R[n] + g * y_L[n - D_R]
+\ Used in Track 5 (Electro Glide in Blue: 666 / 478 / 239 ms per-voice echo)
+14 CONSTANT MODE-ECHO
+: PRIM-ECHO ( y delay_ms feedback wet_mix voice -- )
+  DUP >R VECHO!
+  MODE-ECHO R> VOICE-SET ;

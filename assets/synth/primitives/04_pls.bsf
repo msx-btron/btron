@@ -1,0 +1,5 @@
+\ B-Sound Forth Base Primitive 04 — PLS (Band-Limited Pulse / Square)
+\ w(phi) = 0.78 * tanh(3.4 * sin(phi))
+3 CONSTANT MODE-PLS
+: PRIM-PLS ( y voice -- )
+  SWAP MODE-PLS ROT VOICE-SET ;

@@ -163,6 +163,7 @@ __attribute__((weak)) WND *open_vobj_manager_window_rect(H x, H y, H w, H h)
 __attribute__((weak)) WND *open_t_editor_window(void) { return NULL; }
 __attribute__((weak)) WND *open_gterm_window(void) { return NULL; }
 __attribute__((weak)) WND *open_audio_player_window(void) { return NULL; }
+__attribute__((weak)) WND *open_synth_window(void) { return NULL; }
 __attribute__((weak)) WND *launch_beos_chat(void) { return NULL; }
 __attribute__((weak)) WND *open_control_panel_window(void) { return NULL; }
 __attribute__((weak)) WND *open_drivesetup_window(void) { return NULL; }
@@ -260,6 +261,7 @@ static const CluApp s_clu_apps[] = {
     { "editor",     "Multi-Line Text & TAD Editor",             open_t_editor_window },
     { "term",       "B-System Terminal Console",                open_gterm_window },
     { "player",     "Audio Player / Cassette Deck",             open_audio_player_window },
+    { "synth",      "BSF Synth Visualizer (HAL 9000)",          open_synth_window },
     { "chat",       "Interactive Dialogue / Blabber Chat",      launch_beos_chat },
     { "settings",   "Control Panel & System Settings",          open_control_panel_window },
     { "volumes",    "Disk & Volume Partition Setup (DriveSetup)",open_drivesetup_window },

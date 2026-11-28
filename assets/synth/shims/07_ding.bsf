@@ -1,0 +1,6 @@
+\ B-Sound Shim 07 — shimDing (ch04-shims.tex Def. 5)
+\ Book defaults: f0=1760 Hz, d=0.70 s, pure sine chime
+1760.0 CONSTANT DING-F0
+0.70   CONSTANT DING-DUR
+: SHIM-DING ( y voice -- )
+  PRIM-SINE ;

@@ -1,0 +1,30 @@
+\ @ID 10
+\ @TITLE VIOLET DRIFT
+\ @SUBTITLE 10.22.46 · COSINE-CLAMPED AMBIENT CHORDS
+\ @CATEGORY MATH-SYNTH
+\ @PARTS 3
+\ @PART 1 2-Voice Drift
+\ @PART 2 4-Voice Drift
+\ @PART 3 Full 6-Voice Ambient Pad
+\ @SPEED 1.4
+\ @REVERB 0.28
+\ @FORMULA c_k = cos(pi * clamp(x/2 + {3,1,-1,-3}[k], 0, 1))
+
+VARIABLE VD-C1  VARIABLE VD-C2  VARIABLE VD-C3  VARIABLE VD-C4
+
+: TRACK-EVAL ( x part -- )
+  SWAP 2.0 /
+  DUP 3.0 + CLAMP01 PI * COS VD-C1 !
+  DUP 1.0 + CLAMP01 PI * COS VD-C2 !
+  DUP 1.0 - CLAMP01 PI * COS VD-C3 !
+      3.0 - CLAMP01 PI * COS VD-C4 !
+
+  -31.0  7.0 VD-C1 @ * +  VD-C2 @ +  6.0 VD-C3 @ * -  7.0 VD-C4 @ * +  24.0 / 0 PRIM-SINE
+  -5.0   2.0 VD-C1 @ * -  VD-C2 @ +  2.0 VD-C4 @ * -                   24.0 / 1 PRIM-TRI
+  DUP 0 = IF DROP 2 VOICES-N! EXIT THEN
+   4.0   3.0 VD-C1 @ * -  2.0 VD-C2 @ * +  2.0 VD-C3 @ * -  VD-C4 @ +  24.0 / 2 PRIM-SINE
+  14.0   2.0 VD-C1 @ * -  VD-C2 @ +  VD-C3 @ +  2.0 VD-C4 @ * -        24.0 / 3 PRIM-TRI
+  DUP 1 = IF DROP 4 VOICES-N! EXIT THEN
+  DROP 6 VOICES-N!
+  29.0   VD-C1 @ -  VD-C2 @ +  2.0 VD-C3 @ * -  5.0 VD-C4 @ * -        24.0 / 4 PRIM-SINE
+  39.0   VD-C1 @ +  VD-C2 @ -  4.0 VD-C3 @ * -  3.0 VD-C4 @ * -        24.0 / 5 0.28 PRIM-RVB ;

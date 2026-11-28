@@ -1,0 +1,6 @@
+\ B-Sound Shim 13 — shimPedalBass (ch04-shims.tex Def. 11)
+\ Book defaults: f0=55 Hz, d=2.2 s, triangle sub with 2% tension sag
+55.0 CONSTANT PEDAL-F0
+2.2  CONSTANT PEDAL-DUR
+: SHIM-PEDAL-BASS ( y voice -- )
+  PRIM-TRI ;

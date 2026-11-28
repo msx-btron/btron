@@ -311,6 +311,10 @@ COMMON_SRCS = src/desktop/graphics/dp_core.c   \
               src/apps/browser/pdf_reader.c     \
               src/apps/review/review.c         \
               src/media/cassette/audio_player.c  \
+              src/rt/common/scalar/fix16.c       \
+              src/languages/bsf/bsf_vm.c         \
+              src/languages/bsf/bsf_dsp.c        \
+              src/media/synth/synth_app.c        \
               src/apps/volumes/b_drivesetup.c  \
               src/apps/volumes/b_installer.c   \
               src/media/orchestra/orchestra.c     \
@@ -635,6 +639,10 @@ COMMON_NO_SDL_SRCS = \
     src/apps/terminal/gterm.c       \
     src/apps/editor/t_editor.c    \
     src/media/cassette/audio_player.c \
+    src/rt/common/scalar/fix16.c      \
+    src/languages/bsf/bsf_vm.c        \
+    src/languages/bsf/bsf_dsp.c       \
+    src/media/synth/synth_app.c       \
     src/apps/volumes/b_installer.c  \
     src/apps/volumes/b_drivesetup.c  \
     src/apps/clarity/clarity.c      \
@@ -4179,6 +4187,10 @@ CAPTURE_SCREENS_SRCS = tools/capture_screens.c \
                        src/media/paint/paint.c \
                        src/apps/terminal/gterm.c \
                        src/media/cassette/audio_player.c \
+    src/rt/common/scalar/fix16.c      \
+    src/languages/bsf/bsf_vm.c        \
+    src/languages/bsf/bsf_dsp.c       \
+    src/media/synth/synth_app.c       \
                        src/media/orchestra/orchestra.c \
                        src/media/orchestra/orchestra_stage.c \
                        src/media/orchestra/orchestra_arrange.c \

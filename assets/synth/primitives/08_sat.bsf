@@ -1,0 +1,7 @@
+\ B-Sound Forth Base Primitive 08 — SAT (WaveShaper Saturation, Eq. 14)
+\ C_k(x) = x*(pi+k)/(pi+k*|x|), default k = 25
+7 CONSTANT MODE-SAT
+: PRIM-SAT ( y k voice -- )
+  >R R@ VOICE-SAT!
+  MODE-SAT R@ VOICE-MODE!
+  R> VOICE-FREQ! ;

@@ -1,0 +1,7 @@
+\ B-Sound Forth Base Primitive 06 — AM (Tremolo / Cuica Rasp, Eq. 19)
+\ w(phi) = saw4(phi) * (0.55 + depth * sin(2*pi*f_m*t))
+5 CONSTANT MODE-AM
+: PRIM-AM ( y rate_hz depth voice -- )
+  >R R@ VOICE-AM!
+  MODE-AM R@ VOICE-MODE!
+  R> VOICE-FREQ! ;

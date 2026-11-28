@@ -1,0 +1,12 @@
+\ B-Sound Shim 01 — shimPulseSquash (ch04-shims.tex Def. 1A)
+\ Book defaults: C4=261.63 Hz singing triad, 0.97f -> f scoop in 0.10 s
+261.63 CONSTANT SQUASH-F0
+0.10   CONSTANT SQUASH-SCOOP-T
+: SHIM-PULSE-SQUASH ( t_local rho voice -- )
+  >R
+  SQUASH-F0 * HZ>Y
+  SWAP DUP 0.0 >= SWAP SQUASH-SCOOP-T < AND IF
+    \ 3% upward scoop (approx -0.044 oct -> 0)
+    -0.044 +
+  THEN
+  R> PRIM-SINE ;

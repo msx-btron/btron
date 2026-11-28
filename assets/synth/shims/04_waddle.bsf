@@ -1,0 +1,14 @@
+\ B-Sound Shim 04 — shimWaddle (ch04-shims.tex Def. 2 / GM 32)
+\ Book defaults: f0=430 Hz (bass 146.83 Hz), d=0.08 s, drop f0 -> 0.82*f0, LP 180 Hz
+430.0 CONSTANT WADDLE-F0
+0.08  CONSTANT WADDLE-DUR
+180.0 CONSTANT WADDLE-LP
+: SHIM-WADDLE-Y ( t_local pitch_hz dur -- y )
+  SWAP >R >R
+  DUP 0.0 >= OVER R@ < AND IF
+    R> / -0.2863 * R> HZ>Y +
+  ELSE
+    DROP R> R> 2DROP QUIET
+  THEN ;
+: SHIM-WADDLE ( t_local pitch_hz dur voice -- )
+  >R SHIM-WADDLE-Y WADDLE-LP 1.5 R> PRIM-LPF ;

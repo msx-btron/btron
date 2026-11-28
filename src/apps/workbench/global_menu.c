@@ -46,6 +46,7 @@ __attribute__((weak, weak_import)) WND* open_t_editor_window(void);
 __attribute__((weak, weak_import)) WND* open_gterm_window(void);
 __attribute__((weak, weak_import)) WND* open_audio_player_window(void);
 __attribute__((weak, weak_import)) WND* open_orchestra_window(void);
+__attribute__((weak, weak_import)) WND* open_synth_window(void);
 __attribute__((weak, weak_import)) WND* open_about_window(void);
 __attribute__((weak, weak_import)) WND* open_display_settings_window(void);
 __attribute__((weak, weak_import)) WND* open_clarity_window(void);
@@ -81,6 +82,7 @@ extern WND* open_t_editor_window(void);
 extern WND* open_gterm_window(void);
 extern WND* open_audio_player_window(void);
 extern WND* open_orchestra_window(void);
+extern WND* open_synth_window(void);
 extern WND* open_about_window(void);
 extern WND* open_display_settings_window(void);
 extern WND* open_clarity_window(void);
@@ -171,12 +173,13 @@ static GMenuHeader g_headers[GMENU_HEADER_COUNT] = {
     {
         .title = "アプリ(A)",
         .rect = { 216, 2, 320, 23 },
-        .item_count = 26,
+        .item_count = 27,
         .items = {
             /* General B-System apps */
             { "Editor (文書編集...)",                "Ctrl+E", GMENU_CMD_APP_TEDITOR,    FALSE, FALSE, TRUE },
             { "Terminal (gterm 端末...)",             "Ctrl+T", GMENU_CMD_APP_TERMINAL,   FALSE, FALSE, TRUE },
             { "音響機器 (Cassette Deck...)",          "",       GMENU_CMD_APP_AUDIO,      FALSE, FALSE, TRUE },
+            { "合成器 (BSF Synth Visualizer...)",     "",       GMENU_CMD_APP_SYNTH,      FALSE, FALSE, TRUE },
             { "管弦楽 (Orchestra DAW...)",            "",       GMENU_CMD_APP_ORCHESTRA,  FALSE, FALSE, TRUE },
             { "Mail & Chat (対話通信...)",            "",       GMENU_CMD_APP_CHAT,       FALSE, FALSE, TRUE },
             { "DriveSetup (ディスク管理...)",         "",       GMENU_CMD_APP_DRIVESETUP, FALSE, FALSE, TRUE },
@@ -534,6 +537,9 @@ static void global_menu_execute_cmd(int cmd) {
             break;
         case GMENU_CMD_APP_ORCHESTRA:
             if (open_orchestra_window) open_orchestra_window();
+            break;
+        case GMENU_CMD_APP_SYNTH:
+            if (open_synth_window) open_synth_window();
             break;
         case GMENU_CMD_APP_CHAT:
             if (open_chat_main_window) open_chat_main_window(NULL);

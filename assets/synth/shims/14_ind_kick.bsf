@@ -1,0 +1,16 @@
+\ B-Sound Shim 14 — shimIndustrialKick (ch04-shims.tex Def. 12)
+\ Book defaults: d=0.22 s, sine 160 -> 42 Hz + tri click -> LP 1800 -> WaveShaper C_25
+160.0 CONSTANT INDKICK-F0
+42.0  CONSTANT INDKICK-F1
+0.22  CONSTANT INDKICK-DUR
+25.0  CONSTANT INDKICK-SAT-K
+: SHIM-IND-KICK-Y ( t_local dur -- y )
+  >R
+  DUP 0.0 >= OVER R@ < AND IF
+    \ log2(160/261.6256) = -0.7094, log2(42/160) = -1.9296
+    R> / -1.9296 * -0.7094 +
+  ELSE
+    DROP R> DROP QUIET
+  THEN ;
+: SHIM-IND-KICK ( t_local dur voice -- )
+  >R SHIM-IND-KICK-Y INDKICK-SAT-K R> PRIM-SAT ;

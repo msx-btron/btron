@@ -1,0 +1,7 @@
+\ B-Sound Shim 09 — shimSnare (ch04-shims.tex Def. 7)
+\ Book defaults: Tri shell 175 Hz -> 0.65*fb (0.12 s) + BP wire 2400 Hz (Q=2.0)
+175.0  CONSTANT SNARE-SHELL-F0
+2400.0 CONSTANT SNARE-WIRE-BP
+2.0    CONSTANT SNARE-Q
+: SHIM-SNARE ( y voice -- )
+  >R SNARE-WIRE-BP SNARE-Q R> PRIM-BPF ;

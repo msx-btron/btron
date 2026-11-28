@@ -1,12 +1,13 @@
 /*
- * B-System (BTRON 3.20) Cassette Audio Deck: audio_player.c
- * Classic Precision Hi-Fi Stereo Cassette Deck.
+ * B-System (BTRON 3.20) — src/media/cassette/audio_player.c
+ * Pro B-System DJ/VJ Event Console & Hierarchical BSF Track Deck.
  *
- * Precision Industrial Design with SONY_* color palette,
- * Digital Audio LED/VFD Screen, Cassette Tape Type Selectors (Type I - IV),
- * Dolby B-C NR & HX Pro badges, Dual-Channel Segmented Peak VU Meters,
- * and animated dual rotating tape spools with variable tape pack thickness.
- * Conforms to TRON HMI Standard and ./b-system/ specifications.
+ * Clean pro-audio instrument layout: real-time Stereo Peak/RMS/LIM metering,
+ * WCET & transport telemetry, real transport controls, synced menu bar with
+ * Synth Visualizer (File / Primitives / Shims / Transport / Options), and
+ * Clarity-style hierarchical DJ/VJ TOC (26 BSF tracks with expandable Parts,
+ * Orchestra/Legacy deck, 16 Shims, and 15 Primitives).
+ * Pure C99, NASA/JPL Power of Ten.
  */
 
 #include <btron/apps.h>
@@ -14,617 +15,232 @@
 #include <btron/dp.h>
 #include <btron/app_menu.h>
 #include <btron/troncode.h>
+#include <btron/bsf.h>
+#include <btron/t_editor.h>
 #include <media/orchestra.h>
+#include <media/synth.h>
 #include "../sdk/lilcu64_synth.h"
-
 #include <btron/libc_shim.h>
+#include <math.h>
+#include <string.h>
+#include <stdio.h>
 
-#define CASSETTE_WND_W  660
-#define CASSETTE_WND_H  540
-#define CASSETTE_MENU_H 21
+#define DECK_WND_W      680
+#define DECK_WND_H      580
+#define DECK_MENU_H     21
+#define DECK_TOP_H      82
+#define DECK_TRANS_H    38
+#define DECK_FOOT_H     32
 #define CASSETTE_PL_N   6
+#define TOC_ROW_H       18
+#define TOC_SB_W        12
+#define TOC_MAX_ROWS    320
 
-/* SONY Precision Industrial Color Palette */
-#define SONY_COL_CANVAS       0xFF16191E  /* Deep Titanium Slate */
-#define SONY_COL_HEADER       0xFF1E222A  /* Brushed Graphite Header */
-#define SONY_COL_PANEL        0xFF1A1D24  /* Sub-Panel / Bay Background */
-#define SONY_COL_INSET        0xFF111317  /* Inset Monitor / Bay Black */
-#define SONY_COL_BORDER_HI    0xFF3B4454  /* Bevel Highlight Border */
-#define SONY_COL_BORDER_LO    0xFF0D0F12  /* Bevel Shadow Border */
-#define SONY_COL_BORDER_MID   0xFF2A313D  /* Framing Hairline */
-#define SONY_COL_GOLD         0xFFF59E0B  /* SONY Amber / Accent Gold */
-#define SONY_COL_CYAN         0xFF38BDF8  /* Diagnostic High-Tech Cyan */
-#define SONY_COL_GREEN        0xFF22C55E  /* LED Active Green */
-#define SONY_COL_RED          0xFFEF4444  /* Peak / Rec Red */
-#define SONY_COL_TEXT_WHITE   0xFFF8FAFC  /* Platinum White Text */
-#define SONY_COL_TEXT_SILVER  0xFFCBD5E1  /* High-Readability Silver */
-#define SONY_COL_TEXT_DIM     0xFF94A3B8  /* Technical Metric Gray */
-#define SONY_COL_BTN_BG       0xFF282F3B  /* Tactile Button Face */
-#define SONY_COL_TAPE_SHELL   0xFF232730  /* Cassette Polymer Shell */
-#define SONY_COL_TAPE_BROWN   0xFF42220C  /* Magnetic Tape Oxide Brown */
+/* Pro Audio Console Color Palette (Harmonized with Music.html / HAL-9000) */
+#define PRO_COL_BG       0xFF0B0E14u
+#define PRO_COL_PANEL    0xFF12161Fu
+#define PRO_COL_INSET    0xFF080A0Fu
+#define PRO_COL_BORDER   0xFF283040u
+#define PRO_COL_BTN      0xFF1B212Du
+#define PRO_COL_BTN_ACT  0xFF243044u
+#define PRO_COL_AMBER    0xFFE8A454u
+#define PRO_COL_CYAN     0xFF7FD4CCu
+#define PRO_COL_GREEN    0xFF22C55Eu
+#define PRO_COL_RED      0xFFD93829u
+#define PRO_COL_PAPER    0xFFE6E1D6u
+#define PRO_COL_SILVER   0xFFCBD5E1u
+#define PRO_COL_DIM      0xFF6B7280u
 
-/* Cassette Tape Types */
 typedef enum {
-    TAPE_TYPE_I_NORM = 0,   /* Normal Bias (Fe2O3) 120µs EQ */
-    TAPE_TYPE_II_CRO2,      /* High Bias (CrO2) 70µs EQ */
-    TAPE_TYPE_III_FECR,     /* Ferrichrome (FeCr) 70µs EQ */
-    TAPE_TYPE_IV_METAL      /* Metal Bias (Metal Powder) 70µs EQ */
-} CASSETTE_TAPE_TYPE;
-
-/* Dolby Noise Reduction Modes */
-typedef enum {
-    DOLBY_OFF = 0,
-    DOLBY_B,
-    DOLBY_C
-} DOLBY_MODE;
-
-/* Audio Deck Transport State */
-typedef enum {
-    TAPE_STOP = 0,
-    TAPE_PLAY,
-    TAPE_REV_PLAY,
-    TAPE_FF,
-    TAPE_REW,
-    TAPE_PAUSE,
-    TAPE_REC
-} TAPE_STATE;
+    DECK_STOP = 0,
+    DECK_PLAY,
+    DECK_PAUSE
+} DeckState;
 
 typedef struct {
-    TAPE_STATE         state;
-    CASSETTE_TAPE_TYPE tape_type;
-    DOLBY_MODE         dolby_mode;
-    BOOL               hx_pro;
-    BOOL               mpx_filter;
-    BOOL               power_on;
-    BOOL               tape_loaded;
-    int                source_idx;     /* 0: TAPE, 1: LINE, 2: CD, 3: TUNER */
-    int                track_num;
-    int                seconds_elapsed;
-    int                vu_left;        /* 0 .. 100 */
-    int                vu_right;       /* 0 .. 100 */
-    int                vu_peak_l;
-    int                vu_peak_r;
-    int                reel_angle;     /* 0 .. 359 degrees */
-    int                bias_fine;      /* -20% .. +20% */
-    int                rec_level;      /* 0 .. 10 */
-    int                pl_sel;         /* 0 .. CASSETTE_PL_N-1 */
-    int                pl_on;          /* -1, or the row that is sounding */
-    int                pl_repeat;
-    int                pl_shuffle;
-} CassetteDeck;
+    DeckState state;
+    int       seconds_elapsed;
+    int       vu_left;       /* 0..100 */
+    int       vu_right;      /* 0..100 */
+    int       vu_peak_l;
+    int       vu_peak_r;
+    float     rms_l;
+    float     rms_r;
+    bool      limiter_hit;
+    int       pl_sel;        /* 0..CASSETTE_PL_N-1 for legacy */
+    int       pl_on;         /* -1 or legacy row sounding */
+    int       pl_repeat;
+    int       pl_shuffle;
+} ProDeck;
 
-static CassetteDeck g_deck = { .pl_on = -1 };
-static WND *g_audio_wnd = NULL;
+static ProDeck      g_deck = { .pl_on = -1 };
+static WND         *g_audio_wnd = NULL;
 static APP_MENU_BAR s_menu;
-static int s_menu_ok;
-static int s_owner;                 /* 0 none, 1 demo score, 2 orchestra */
-static int s_seen = -1;
-static int s_run;
-static uint32_t s_rng = 1u;
+static int          s_menu_ok = 0;
+static int          s_owner = 0;      /* 0 none, 1 demo score, 2 orchestra, 3 BSF synth */
+static int          s_seen = -1;
+static int          s_run = 0;
+static uint32_t     s_rng = 1u;
 
-static const char *k_sources[] = { "TAPE", "LINE", "CD", "TUNER" };
-static const char *k_tape_names[] = { "TYPE I (NORM)", "TYPE II (CrO2)", "TYPE III (FeCr)", "TYPE IV (METAL)" };
-
-/* Tactile beveled box helper */
-static void draw_beveled_box(GDEV *dev, const RECT *r, COLOR fill_col, COLOR hi, COLOR lo) {
-    if (!dev || !r) return;
-    fill_rec(dev, r, fill_col);
-    drw_lin(dev, r->left, r->top, r->right - 1, r->top);
-    drw_lin(dev, r->left, r->top, r->left, r->bottom - 1);
-    drw_lin(dev, r->left + 1, r->bottom - 1, r->right, r->bottom - 1);
-    drw_lin(dev, r->right - 1, r->top + 1, r->right - 1, r->bottom);
-    (void)hi;
-    (void)lo;
-}
-
-/* Subelement Calculation Structures */
-typedef struct {
-    RECT bay_box;
-    RECT window_box;
-    H    spool_left_x;
-    H    spool_left_y;
-    H    spool_right_x;
-    H    spool_right_y;
-} CassetteBayLayout;
+/* ── Clarity-Style Hierarchical DJ/VJ TOC ────────────────────────── */
+typedef enum {
+    TOC_HEADER = 0,
+    TOC_BSF_TRACK,
+    TOC_BSF_PART,
+    TOC_LEGACY,
+    TOC_SHIM,
+    TOC_PRIM
+} TocRowKind;
 
 typedef struct {
-    RECT screen_box;
-    RECT counter_box;
-    RECT vu_box_l;
-    RECT vu_box_r;
-    RECT tape_type_boxes[4];
-    RECT dolby_box;
-    RECT hx_box;
-} LedScreenLayout;
+    TocRowKind kind;
+    int        a;
+    int        b;
+    char       label[80];
+    char       tag[16];
+} TocRow;
 
-typedef struct {
-    RECT bar_box;
-    RECT btn_rew;
-    RECT btn_rev;
-    RECT btn_play;
-    RECT btn_ff;
-    RECT btn_stop;
-    RECT btn_pause;
-    RECT btn_rec;
-} TransportLayout;
+static TocRow s_toc[TOC_MAX_ROWS];
+static int    s_toc_count = 0;
+static int    s_toc_scroll = 0;
+static int    s_toc_sel = 1;
+static int    s_toc_hover = -1;
+static bool   s_toc_expanded[BSF_MAX_TRACKS];
+static bool   s_toc_sb_drag = false;
+static H      s_toc_sb_start_y = 0;
+static int    s_toc_sb_orig_scroll = 0;
+static int    s_last_click_idx = -1;
+static uint64_t s_last_click_us = 0;
 
-typedef struct {
-    CassetteBayLayout bay;
-    LedScreenLayout   screen;
-    TransportLayout   transport;
-    RECT              footer_box;
-    RECT              pl_box;
-    RECT              pl_row[CASSETTE_PL_N];
-} CassetteDeckLayout;
+/* Menu Command IDs (Synced with Synth Visualizer) */
+enum {
+    C_NONE = 0,
+    C_SYNTH_VIS = 1,
+    C_EDIT_BSF = 2,
+    C_RELOAD_BSF = 3,
+    C_OPEN_ORCH = 4,
+    C_LOAD_SMF = 5,
+    C_CLOSE = 6,
+    C_PLAY_TOGGLE = 10,
+    C_STOP = 11,
+    C_PREV_TRACK = 12,
+    C_NEXT_TRACK = 13,
+    C_PREV_PART = 14,
+    C_NEXT_PART = 15,
+    C_AUTO_ADV = 16,
+    C_MUTE = 17,
+    C_REPEAT = 20,
+    C_SHUFFLE = 21,
+    C_ABOUT = 22,
+    C_PRIM_BASE = 100, /* 100..114 */
+    C_SHIM_BASE = 200  /* 200..215 */
+};
 
-static const char *k_pl_title[CASSETTE_PL_N] = {
-    "Carol of the Bells",
-    "Green Caterpillar",
-    "House of the Rising Sun",
-    "TRON Init",
+static const char *k_leg_title[CASSETTE_PL_N] = {
+    "Carol of the Bells (Built-in)",
+    "Green Caterpillar (Built-in)",
+    "House of the Rising Sun (Built-in)",
+    "TRON Init (Built-in)",
     "orchestra.orch",
     "orchestra.mid"
 };
-
-static const char *k_pl_mark[CASSETTE_PL_N] = {
+static const char *k_leg_tag[CASSETTE_PL_N] = {
     "0:26", "0:28", "0:27", "0:26", "ORCH", "SMF"
 };
 
-/* Pre-calculate all subelements before establishing bounding boxes */
-static void calculate_cassette_layout(CassetteDeckLayout *layout, H w, H h) {
-    if (!layout) return;
+static void toc_push(TocRowKind kind, int a, int b, const char *label, const char *tag) {
+    if (s_toc_count >= TOC_MAX_ROWS) return;
+    TocRow *r = &s_toc[s_toc_count++];
+    r->kind = kind;
+    r->a = a;
+    r->b = b;
+    strncpy(r->label, label ? label : "", sizeof(r->label) - 1);
+    r->label[sizeof(r->label) - 1] = '\0';
+    strncpy(r->tag, tag ? tag : "", sizeof(r->tag) - 1);
+    r->tag[sizeof(r->tag) - 1] = '\0';
+}
 
-    /* 1. Cassette Bay (Left half) */
-    H bay_w = 264;
-    H bay_h = 175;
-    layout->bay.bay_box.left = 16;
-    layout->bay.bay_box.top = 58 + CASSETTE_MENU_H;
-    layout->bay.bay_box.right = layout->bay.bay_box.left + bay_w;
-    layout->bay.bay_box.bottom = layout->bay.bay_box.top + bay_h;
-
-    layout->bay.window_box.left = layout->bay.bay_box.left + 16;
-    layout->bay.window_box.top = layout->bay.bay_box.top + 28;
-    layout->bay.window_box.right = layout->bay.bay_box.right - 16;
-    layout->bay.window_box.bottom = layout->bay.bay_box.bottom - 18;
-
-    layout->bay.spool_left_x = layout->bay.window_box.left + 54;
-    layout->bay.spool_left_y = layout->bay.window_box.top + 64;
-    layout->bay.spool_right_x = layout->bay.window_box.right - 54;
-    layout->bay.spool_right_y = layout->bay.window_box.top + 64;
-
-    /* 2. Digital LED/VFD Screen (Right half) */
-    layout->screen.screen_box.left = layout->bay.bay_box.right + 12;
-    layout->screen.screen_box.top = 58 + CASSETTE_MENU_H;
-    layout->screen.screen_box.right = w - 16;
-    layout->screen.screen_box.bottom = layout->screen.screen_box.top + bay_h;
-
-    layout->screen.counter_box.left = layout->screen.screen_box.left + 12;
-    layout->screen.counter_box.top = layout->screen.screen_box.top + 10;
-    layout->screen.counter_box.right = layout->screen.counter_box.left + 100;
-    layout->screen.counter_box.bottom = layout->screen.counter_box.top + 28;
-
-    /* Tape Type Selector Buttons (4 badges) */
-    H type_btn_w = 74;
-    H type_btn_h = 18;
-    H type_start_x = layout->screen.screen_box.left + 12;
-    H type_y = layout->screen.screen_box.top + 46;
-    for (int i = 0; i < 4; i++) {
-        layout->screen.tape_type_boxes[i].left = type_start_x + i * (type_btn_w + 6);
-        layout->screen.tape_type_boxes[i].top = type_y;
-        layout->screen.tape_type_boxes[i].right = layout->screen.tape_type_boxes[i].left + type_btn_w;
-        layout->screen.tape_type_boxes[i].bottom = type_y + type_btn_h;
-    }
-
-    /* Dolby & HX Pro Badges */
-    layout->screen.dolby_box.left = layout->screen.screen_box.left + 12;
-    layout->screen.dolby_box.top = type_y + 24;
-    layout->screen.dolby_box.right = layout->screen.dolby_box.left + 140;
-    layout->screen.dolby_box.bottom = layout->screen.dolby_box.top + 18;
-
-    layout->screen.hx_box.left = layout->screen.dolby_box.right + 10;
-    layout->screen.hx_box.top = layout->screen.dolby_box.top;
-    layout->screen.hx_box.right = layout->screen.hx_box.left + 144;
-    layout->screen.hx_box.bottom = layout->screen.dolby_box.bottom;
-
-    /* VU Meter Boxes */
-    layout->screen.vu_box_l.left = layout->screen.screen_box.left + 46;
-    layout->screen.vu_box_l.top = layout->screen.hx_box.bottom + 22;
-    layout->screen.vu_box_l.right = layout->screen.screen_box.right - 14;
-    layout->screen.vu_box_l.bottom = layout->screen.vu_box_l.top + 14;
-
-    layout->screen.vu_box_r.left = layout->screen.vu_box_l.left;
-    layout->screen.vu_box_r.top = layout->screen.vu_box_l.bottom + 10;
-    layout->screen.vu_box_r.right = layout->screen.vu_box_l.right;
-    layout->screen.vu_box_r.bottom = layout->screen.vu_box_r.top + 14;
-
-    /* 3. Transport Bar */
-    layout->transport.bar_box.left = 16;
-    layout->transport.bar_box.top = layout->bay.bay_box.bottom + 12;
-    layout->transport.bar_box.right = w - 16;
-    layout->transport.bar_box.bottom = layout->transport.bar_box.top + 48;
-
-    H btn_w = 78;
-    H btn_h = 32;
-    H btn_y = layout->transport.bar_box.top + 8;
-    H bx = layout->transport.bar_box.left + 10;
-    H b_gap = 10;
-
-    layout->transport.btn_rew.left = bx; layout->transport.btn_rew.top = btn_y;
-    layout->transport.btn_rew.right = bx + btn_w; layout->transport.btn_rew.bottom = btn_y + btn_h;
-    bx += btn_w + b_gap;
-
-    layout->transport.btn_rev.left = bx; layout->transport.btn_rev.top = btn_y;
-    layout->transport.btn_rev.right = bx + btn_w; layout->transport.btn_rev.bottom = btn_y + btn_h;
-    bx += btn_w + b_gap;
-
-    layout->transport.btn_play.left = bx; layout->transport.btn_play.top = btn_y;
-    layout->transport.btn_play.right = bx + btn_w; layout->transport.btn_play.bottom = btn_y + btn_h;
-    bx += btn_w + b_gap;
-
-    layout->transport.btn_ff.left = bx; layout->transport.btn_ff.top = btn_y;
-    layout->transport.btn_ff.right = bx + btn_w; layout->transport.btn_ff.bottom = btn_y + btn_h;
-    bx += btn_w + b_gap;
-
-    layout->transport.btn_stop.left = bx; layout->transport.btn_stop.top = btn_y;
-    layout->transport.btn_stop.right = bx + btn_w; layout->transport.btn_stop.bottom = btn_y + btn_h;
-    bx += btn_w + b_gap;
-
-    layout->transport.btn_pause.left = bx; layout->transport.btn_pause.top = btn_y;
-    layout->transport.btn_pause.right = bx + btn_w; layout->transport.btn_pause.bottom = btn_y + btn_h;
-    bx += btn_w + b_gap;
-
-    layout->transport.btn_rec.left = bx; layout->transport.btn_rec.top = btn_y;
-    layout->transport.btn_rec.right = bx + btn_w; layout->transport.btn_rec.bottom = btn_y + btn_h;
-
-    /* 4. Footer Box */
-    layout->footer_box.left = 0;
-    layout->footer_box.top = h - 36;
-    layout->footer_box.right = w;
-    layout->footer_box.bottom = h;
-
-    /* 5. Playlist between the transport and the footer */
-    layout->pl_box.left = 16;
-    layout->pl_box.top = layout->transport.bar_box.bottom + 8;
-    layout->pl_box.right = w - 16;
-    layout->pl_box.bottom = layout->footer_box.top - 4;
-    {
-        H y = layout->pl_box.top + 18;
-        H rh = 20;
-        int i;
-        for (i = 0; i < CASSETTE_PL_N; i++) {
-            layout->pl_row[i].left = layout->pl_box.left + 4;
-            layout->pl_row[i].top = y;
-            layout->pl_row[i].right = layout->pl_box.right - 4;
-            layout->pl_row[i].bottom = y + rh - 2;
-            y = (H)(y + rh);
+static void toc_append_bsf_cat(BsfCategory cat, const char *hdr_title) {
+    int n = bsf_get_track_count();
+    toc_push(TOC_HEADER, (int)cat, 0, hdr_title, "BSF");
+    for (int i = 0; i < n; i++) {
+        const BsfTrackInfo *tr = bsf_get_track_info(i);
+        if (!tr || tr->category != cat) continue;
+        char lbl[80], tag[16];
+        snprintf(lbl, sizeof(lbl), "%s %02d. %s",
+                 s_toc_expanded[i] ? "v" : ">", tr->id, tr->title);
+        snprintf(tag, sizeof(tag), "%dP", tr->part_count);
+        toc_push(TOC_BSF_TRACK, i, 0, lbl, tag);
+        if (s_toc_expanded[i]) {
+            for (int p = 0; p < tr->part_count; p++) {
+                char plbl[80];
+                snprintf(plbl, sizeof(plbl), "   P%02d: %s", p + 1, tr->part_names[p]);
+                toc_push(TOC_BSF_PART, i, p, plbl, "PART");
+            }
         }
     }
 }
 
-/* Draw a segmented digital LED VU Meter Bar */
-static void draw_segmented_vu_bar(GDEV *dev, const RECT *r, int value, int peak_val) {
-    if (!dev || !r) return;
+static void cassette_toc_rebuild(void) {
+    s_toc_count = 0;
+    (void)bsf_init(BSF_SAMPLE_RATE);
+    toc_append_bsf_cat(BSF_CAT_COMPOSITION, "COMPOSITIONS (/SYS/synth/compositions)");
+    toc_append_bsf_cat(BSF_CAT_MATH_SYNTH,  "SAMPLES: MATH-SYNTH (01-16)");
+    toc_append_bsf_cat(BSF_CAT_BSOUND_DSP,  "SAMPLES: B-SOUND DSP (17-20)");
 
-    fill_rec(dev, r, SONY_COL_INSET);
-    drw_rec(dev, r);
-
-    int num_segments = 16;
-    H total_w = r->right - r->left - 4;
-    H seg_w = (total_w / num_segments) - 2;
-    if (seg_w < 4) seg_w = 4;
-    H seg_h = r->bottom - r->top - 4;
-
-    int active_segs = (value * num_segments) / 100;
-    int peak_seg = (peak_val * num_segments) / 100;
-
-    for (int i = 0; i < num_segments; i++) {
-        H sx = r->left + 2 + i * (seg_w + 2);
-        H sy = r->top + 2;
-        RECT sr = { sx, sy, sx + seg_w, sy + seg_h };
-
-        COLOR col_on;
-        if (i < 8)       col_on = SONY_COL_GREEN;   /* -30 to -5 dB */
-        else if (i < 11) col_on = SONY_COL_CYAN;    /* -5 to 0 dB */
-        else if (i < 13) col_on = SONY_COL_GOLD;    /* 0 to +3 dB */
-        else             col_on = SONY_COL_RED;     /* +4 to +8 dB */
-
-        if (i < active_segs) {
-            fill_rec(dev, &sr, col_on);
-        } else if (i == peak_seg && peak_seg > 0) {
-            fill_rec(dev, &sr, SONY_COL_RED); /* Peak Hold indicator */
-        } else {
-            fill_rec(dev, &sr, 0xFF181C22);   /* Unlit segment */
-        }
-    }
-}
-
-/* Draw a stylized circular cassette spool hub with teeth */
-static void draw_tape_spool(GDEV *dev, H cx, H cy, H pack_radius) {
-    /* 1. Outer Tape Pack (Wound magnetic tape) */
-    RECT pack_r = { cx - pack_radius, cy - pack_radius, cx + pack_radius, cy + pack_radius };
-    fill_rec(dev, &pack_r, SONY_COL_TAPE_BROWN);
-    /* Chamfer corners for round spool effect */
-    drw_lin(dev, pack_r.left, pack_r.top, pack_r.left + 3, pack_r.top);
-    drw_lin(dev, pack_r.right - 4, pack_r.top, pack_r.right - 1, pack_r.top);
-    drw_lin(dev, pack_r.left, pack_r.bottom - 1, pack_r.left + 3, pack_r.bottom - 1);
-    drw_lin(dev, pack_r.right - 4, pack_r.bottom - 1, pack_r.right - 1, pack_r.bottom - 1);
-
-    /* 2. Plastic Spool Hub */
-    H hub_r = 14;
-    RECT hub_rct = { cx - hub_r, cy - hub_r, cx + hub_r, cy + hub_r };
-    fill_rec(dev, &hub_rct, SONY_COL_TEXT_WHITE);
-    drw_rec(dev, &hub_rct);
-
-    /* 3. Center Spindle Hole */
-    H hole_r = 5;
-    RECT hole_rct = { cx - hole_r, cy - hole_r, cx + hole_r, cy + hole_r };
-    fill_rec(dev, &hole_rct, SONY_COL_INSET);
-
-    /* 4. Rotating Spindle Teeth (Cross spokes) */
-    drw_lin(dev, cx - 11, cy, cx + 11, cy);
-    drw_lin(dev, cx, cy - 11, cx, cy + 11);
-    drw_lin(dev, cx - 8, cy - 8, cx + 8, cy + 8);
-    drw_lin(dev, cx - 8, cy + 8, cx + 8, cy - 8);
-}
-
-/* Render Cassette Bay with Realistic Animated Tape Spools */
-static void draw_cassette_bay(GDEV *dev, const CassetteBayLayout *bay) {
-    if (!dev || !bay) return;
-
-    /* Outer Bay Inset */
-    draw_beveled_box(dev, &bay->bay_box, SONY_COL_PANEL, SONY_COL_BORDER_HI, SONY_COL_BORDER_LO);
-
-    /* Bay Label */
-    drw_tc_string(dev, bay->bay_box.left + 10, bay->bay_box.top + 8,
-                  "CASSETTE MECHANISM WELL", SONY_COL_GOLD, SONY_COL_PANEL);
-
-    /* Viewing Window Frame */
-    draw_beveled_box(dev, &bay->window_box, SONY_COL_INSET, SONY_COL_BORDER_LO, SONY_COL_BORDER_HI);
-
-    if (!g_deck.tape_loaded) {
-        drw_tc_string(dev, bay->window_box.left + 35, bay->window_box.top + 50,
-                      "[ NO CASSETTE LOADED ]", SONY_COL_TEXT_DIM, SONY_COL_INSET);
-        return;
+    toc_push(TOC_HEADER, 99, 0, "ORCHESTRA / LEGACY DECK", "DECK");
+    for (int i = 0; i < CASSETTE_PL_N; i++) {
+        toc_push(TOC_LEGACY, i, 0, k_leg_title[i], k_leg_tag[i]);
     }
 
-    /* Cassette Shell Boundary */
-    RECT shell_r = { bay->window_box.left + 6, bay->window_box.top + 6,
-                     bay->window_box.right - 6, bay->window_box.bottom - 6 };
-    draw_beveled_box(dev, &shell_r, SONY_COL_TAPE_SHELL, SONY_COL_BORDER_MID, SONY_COL_BORDER_LO);
-
-    /* Cassette Label Strip */
-    RECT label_r = { shell_r.left + 10, shell_r.top + 6, shell_r.right - 10, shell_r.top + 24 };
-    fill_rec(dev, &label_r, SONY_COL_HEADER);
-    drw_rec(dev, &label_r);
-
-    const char *tape_brand = "SONY HF-ES 90";
-    if (g_deck.pl_sel >= 0 && g_deck.pl_sel < CASSETTE_PL_N)
-        tape_brand = k_pl_title[g_deck.pl_sel];
-
-    drw_tc_string(dev, label_r.left + 10, label_r.top + 4, tape_brand, SONY_COL_GOLD, SONY_COL_HEADER);
-
-    /* Tape Pack Thickness (Dynamically moves as tape plays) */
-    int prog = g_deck.seconds_elapsed % 3600;
-    H pack_l_r = 28 - (prog / 150);
-    if (pack_l_r < 16) pack_l_r = 16;
-    H pack_r_r = 16 + (prog / 150);
-    if (pack_r_r > 28) pack_r_r = 28;
-
-    /* Draw Left & Right Spools */
-    draw_tape_spool(dev, bay->spool_left_x, bay->spool_left_y, pack_l_r);
-    draw_tape_spool(dev, bay->spool_right_x, bay->spool_right_y, pack_r_r);
-
-    /* Center Head Well & 3-Head Indicator */
-    RECT head_well = { (bay->spool_left_x + bay->spool_right_x) / 2 - 24, shell_r.bottom - 22,
-                       (bay->spool_left_x + bay->spool_right_x) / 2 + 24, shell_r.bottom - 4 };
-    fill_rec(dev, &head_well, SONY_COL_INSET);
-    drw_rec(dev, &head_well);
-    drw_tc_string(dev, head_well.left + 5, head_well.top + 2, "3-HEAD", SONY_COL_CYAN, SONY_COL_INSET);
-}
-
-/* Render Audio Digital LED Screen */
-static void draw_digital_led_screen(GDEV *dev, const LedScreenLayout *scr) {
-    if (!dev || !scr) return;
-
-    /* Inset Monitor Enclosure */
-    draw_beveled_box(dev, &scr->screen_box, SONY_COL_INSET, SONY_COL_BORDER_LO, SONY_COL_BORDER_HI);
-    drw_rec(dev, &scr->screen_box);
-
-    /* 1. Digital Tape Counter */
-    draw_beveled_box(dev, &scr->counter_box, 0xFF0A0C0E, SONY_COL_BORDER_LO, SONY_COL_BORDER_MID);
-    char cnt_buf[32];
-    int m = g_deck.seconds_elapsed / 60;
-    int s = g_deck.seconds_elapsed % 60;
-    snprintf(cnt_buf, sizeof(cnt_buf), "%02d : %02d", m, s);
-    drw_tc_string(dev, scr->counter_box.left + 12, scr->counter_box.top + 6, cnt_buf, SONY_COL_CYAN, 0xFF0A0C0E);
-
-    /* Mode Status Badge */
-    RECT mode_box = { scr->counter_box.right + 8, scr->counter_box.top, scr->counter_box.right + 72, scr->counter_box.bottom };
-    COLOR mode_col = SONY_COL_TEXT_DIM;
-    const char *mode_str = "STOP";
-    if (g_deck.state == TAPE_PLAY) { mode_col = SONY_COL_GREEN; mode_str = "PLAY >"; }
-    else if (g_deck.state == TAPE_REC) { mode_col = SONY_COL_RED; mode_str = "REC (o)"; }
-    else if (g_deck.state == TAPE_PAUSE) { mode_col = SONY_COL_GOLD; mode_str = "PAUSE ||"; }
-    else if (g_deck.state == TAPE_FF) { mode_col = SONY_COL_CYAN; mode_str = "FF >>"; }
-    else if (g_deck.state == TAPE_REW) { mode_col = SONY_COL_CYAN; mode_str = "REW <<"; }
-
-    draw_beveled_box(dev, &mode_box, SONY_COL_HEADER, SONY_COL_BORDER_MID, SONY_COL_BORDER_LO);
-    drw_tc_string(dev, mode_box.left + 8, mode_box.top + 6, mode_str, mode_col, SONY_COL_HEADER);
-
-    /* Input Source Readout */
-    drw_tc_string(dev, mode_box.right + 12, mode_box.top + 6, "INPUT:", SONY_COL_TEXT_DIM, SONY_COL_INSET);
-    drw_tc_string(dev, mode_box.right + 60, mode_box.top + 6, k_sources[g_deck.source_idx], SONY_COL_GOLD, SONY_COL_INSET);
-
-    /* 2. Cassette Type Selector Badges */
-    for (int i = 0; i < 4; i++) {
-        const RECT *tb = &scr->tape_type_boxes[i];
-        BOOL active = (g_deck.tape_type == (CASSETTE_TAPE_TYPE)i);
-        COLOR bg = active ? SONY_COL_HEADER : 0xFF0E1115;
-        COLOR border = active ? SONY_COL_GOLD : SONY_COL_BORDER_MID;
-        COLOR text_col = active ? SONY_COL_GOLD : SONY_COL_TEXT_DIM;
-
-        draw_beveled_box(dev, tb, bg, border, SONY_COL_BORDER_LO);
-
-        /* Indicator LED square */
-        RECT led_r = { tb->left + 4, tb->top + 5, tb->left + 9, tb->top + 11 };
-        fill_rec(dev, &led_r, active ? SONY_COL_GOLD : 0xFF1E242C);
-
-        const char *short_type[] = { "I:NORM", "II:CrO2", "III:FeCr", "IV:METAL" };
-        drw_tc_string(dev, tb->left + 12, tb->top + 3, short_type[i], text_col, bg);
+    toc_push(TOC_HEADER, 100, 0, "DSP SHIMS (/SYS/synth/shims) [Edit]", "SHIM");
+    int ns = bsf_get_shim_count();
+    for (int i = 0; i < ns; i++) {
+        const BsfLibItem *si = bsf_get_shim_info(i);
+        if (!si) continue;
+        char lbl[80];
+        snprintf(lbl, sizeof(lbl), "  %02d. %s (%s)", si->id, si->name, si->word);
+        toc_push(TOC_SHIM, i, 0, lbl, si->marker);
     }
 
-    /* 3. Dolby Noise Reduction & HX Pro System */
-    draw_beveled_box(dev, &scr->dolby_box, SONY_COL_HEADER, SONY_COL_BORDER_MID, SONY_COL_BORDER_LO);
-
-    /* Dolby Double-D Symbol and Text */
-    COLOR dolby_col = (g_deck.dolby_mode != DOLBY_OFF) ? SONY_COL_CYAN : SONY_COL_TEXT_DIM;
-    char dolby_str[32];
-    if (g_deck.dolby_mode == DOLBY_B) snprintf(dolby_str, sizeof(dolby_str), "[DD] DOLBY B NR");
-    else if (g_deck.dolby_mode == DOLBY_C) snprintf(dolby_str, sizeof(dolby_str), "[DD] DOLBY C NR");
-    else snprintf(dolby_str, sizeof(dolby_str), "[DD] DOLBY NR: OFF");
-    drw_tc_string(dev, scr->dolby_box.left + 8, scr->dolby_box.top + 3, dolby_str, dolby_col, SONY_COL_HEADER);
-
-    /* HX Pro Headroom Extension Badge */
-    draw_beveled_box(dev, &scr->hx_box, SONY_COL_HEADER, SONY_COL_BORDER_MID, SONY_COL_BORDER_LO);
-    drw_tc_string(dev, scr->hx_box.left + 8, scr->hx_box.top + 3,
-                  g_deck.hx_pro ? "HX PRO: ACTIVE" : "HX PRO: BYPASS",
-                  g_deck.hx_pro ? SONY_COL_GREEN : SONY_COL_TEXT_DIM, SONY_COL_HEADER);
-
-    /* 4. Stereo Digital VU / Peak Meters */
-    drw_tc_string(dev, scr->screen_box.left + 12, scr->vu_box_l.top, "CH-L", SONY_COL_TEXT_WHITE, SONY_COL_INSET);
-    draw_segmented_vu_bar(dev, &scr->vu_box_l, g_deck.vu_left, g_deck.vu_peak_l);
-
-    drw_tc_string(dev, scr->screen_box.left + 12, scr->vu_box_r.top, "CH-R", SONY_COL_TEXT_WHITE, SONY_COL_INSET);
-    draw_segmented_vu_bar(dev, &scr->vu_box_r, g_deck.vu_right, g_deck.vu_peak_r);
-
-    /* Graduated dB Scale Line */
-    drw_tc_string(dev, scr->vu_box_l.left, scr->vu_box_r.bottom + 4,
-                  "-30 -20 -10  -5  -3   0  +2  +4  +6 +8 dB", SONY_COL_TEXT_DIM, SONY_COL_INSET);
-}
-
-/* Render Cassette Transport Controls */
-static void draw_transport_bar(GDEV *dev, const TransportLayout *tr) {
-    if (!dev || !tr) return;
-
-    draw_beveled_box(dev, &tr->bar_box, SONY_COL_PANEL, SONY_COL_BORDER_HI, SONY_COL_BORDER_LO);
-
-    const struct {
-        const RECT *box;
-        const char *label;
-        BOOL        active;
-        COLOR       active_col;
-    } btns[] = {
-        { &tr->btn_rew,   "<< REW",   (g_deck.state == TAPE_REW),   SONY_COL_CYAN },
-        { &tr->btn_rev,   "< REV",    (g_deck.state == TAPE_REV_PLAY), SONY_COL_GREEN },
-        { &tr->btn_play,  "PLAY >",   (g_deck.state == TAPE_PLAY),  SONY_COL_GREEN },
-        { &tr->btn_ff,    "FF >>",    (g_deck.state == TAPE_FF),    SONY_COL_CYAN },
-        { &tr->btn_stop,  "STOP",     (g_deck.state == TAPE_STOP),  SONY_COL_TEXT_WHITE },
-        { &tr->btn_pause, "PAUSE",    (g_deck.state == TAPE_PAUSE), SONY_COL_GOLD },
-        { &tr->btn_rec,   "(o) REC",  (g_deck.state == TAPE_REC),   SONY_COL_RED }
-    };
-
-    for (int i = 0; i < 7; i++) {
-        const RECT *b = btns[i].box;
-        BOOL is_act = btns[i].active;
-        COLOR bg = is_act ? SONY_COL_HEADER : SONY_COL_BTN_BG;
-        COLOR border = is_act ? btns[i].active_col : SONY_COL_BORDER_HI;
-        COLOR text_col = is_act ? btns[i].active_col : SONY_COL_TEXT_WHITE;
-
-        draw_beveled_box(dev, b, bg, border, SONY_COL_BORDER_LO);
-
-        /* Indicator pip */
-        if (is_act) {
-            RECT pip = { b->left + 4, b->top + 4, b->left + 8, b->top + 8 };
-            fill_rec(dev, &pip, btns[i].active_col);
-        }
-
-        drw_tc_string(dev, b->left + 12, b->top + 8, btns[i].label, text_col, bg);
+    toc_push(TOC_HEADER, 101, 0, "PRIMITIVES (/SYS/synth/primitives) [Edit]", "PRIM");
+    int np = bsf_get_prim_count();
+    for (int i = 0; i < np; i++) {
+        const BsfLibItem *pi = bsf_get_prim_info(i);
+        if (!pi) continue;
+        char lbl[80];
+        snprintf(lbl, sizeof(lbl), "  %02d. %s (%s)", pi->id, pi->name, pi->word);
+        toc_push(TOC_PRIM, i, 0, lbl, pi->marker);
     }
+    if (s_toc_sel >= s_toc_count) s_toc_sel = (s_toc_count > 1) ? 1 : 0;
 }
 
-enum {
-    C_ALBUM = 1,
-    C_OPEN = 5,
-    C_SMF = 6,
-    C_CLOSE = 7,
-    C_REPEAT = 11,
-    C_SHUFFLE = 12,
-    C_ABOUT = 21
-};
-
-static void cassette_menu_right(void)
-{
-    if (!s_menu_ok) return;
-    if (g_deck.pl_sel < 0 || g_deck.pl_sel >= CASSETTE_PL_N) {
-        app_menu_set_right_text(&s_menu, "");
-        return;
-    }
-    app_menu_set_right_text(&s_menu, k_pl_title[g_deck.pl_sel]);
-}
-
-static void cassette_opt_text(void)
-{
-    if (!s_menu_ok || s_menu.header_count < 2) return;
-    snprintf(s_menu.headers[1].items[0].label, 64, "%s",
-             g_deck.pl_repeat ? "リピート: オン (Repeat: On)"
-                              : "リピート: オフ (Repeat: Off)");
-    snprintf(s_menu.headers[1].items[1].label, 64, "%s",
-             g_deck.pl_shuffle ? "シャッフル: オン (Shuffle: On)"
-                               : "シャッフル: オフ (Shuffle: Off)");
-}
-
-static void cassette_menu_build(void)
-{
-    int h;
-    if (s_menu_ok) return;
-    app_menu_init(&s_menu, APP_MENU_STYLE_CLASSIC_3D);
-    h = app_menu_add_header(&s_menu, "ファイル(F)", 104);
-    (void)app_menu_add_item(&s_menu, h, "鐘のキャロル (Carol of the Bells)", "", C_ALBUM + 0, TRUE);
-    (void)app_menu_add_item(&s_menu, h, "今田勝 (Green Caterpillar)", "", C_ALBUM + 1, TRUE);
-    (void)app_menu_add_item(&s_menu, h, "朝日のあたる家 (House of the Rising Sun)", "", C_ALBUM + 2, TRUE);
-    (void)app_menu_add_item(&s_menu, h, "TRON Init", "", C_ALBUM + 3, TRUE);
-    (void)app_menu_add_separator(&s_menu, h);
-    (void)app_menu_add_item(&s_menu, h, "開く (Open)", "", C_OPEN, TRUE);
-    (void)app_menu_add_item(&s_menu, h, "SMFを読み込む (Load SMF)", "", C_SMF, TRUE);
-    (void)app_menu_add_item(&s_menu, h, "閉じる (Close)", "", C_CLOSE, TRUE);
-    h = app_menu_add_header(&s_menu, "オプション(O)", 128);
-    (void)app_menu_add_item(&s_menu, h, "リピート: オフ (Repeat: Off)", "", C_REPEAT, TRUE);
-    (void)app_menu_add_item(&s_menu, h, "シャッフル: オフ (Shuffle: Off)", "", C_SHUFFLE, TRUE);
-    h = app_menu_add_header(&s_menu, "ヘルプ(H)", 88);
-    (void)app_menu_add_item(&s_menu, h, "カセットについて (About)", "", C_ABOUT, TRUE);
-    s_menu_ok = 1;
-    cassette_opt_text();
-    cassette_menu_right();
-}
-
-static void cassette_halt(void)
-{
+/* ── Audio Engine Transport Control ──────────────────────────────── */
+static void cassette_halt(void) {
     if (s_owner == 1) lilcu64_synth_stop_track();
-    else if (s_owner == 2) {
-        (void)orch_cmd_stop();
-        (void)orch_cmd_stop();
-    }
+    else if (s_owner == 2) { (void)orch_cmd_stop(); (void)orch_cmd_stop(); }
+    else if (s_owner == 3) bsf_stop();
     g_deck.pl_on = -1;
-    g_deck.state = TAPE_STOP;
-    g_deck.vu_left = 0;
-    g_deck.vu_right = 0;
-    g_deck.vu_peak_l = 0;
-    g_deck.vu_peak_r = 0;
+    g_deck.state = DECK_STOP;
+    g_deck.vu_left = g_deck.vu_right = 0;
+    g_deck.vu_peak_l = g_deck.vu_peak_r = 0;
+    g_deck.rms_l = g_deck.rms_r = 0.0f;
+    g_deck.limiter_hit = false;
     s_seen = -1;
 }
 
-static void cassette_release(void)
-{
+static void cassette_release(void) {
     cassette_halt();
     if (s_owner == 1) lilcu64_synth_close();
     else if (s_owner == 2) orch_shutdown_desk();
+    else if (s_owner == 3) bsf_close();
     s_owner = 0;
 }
 
-static void cassette_play_demo(int track)
-{
+static void cassette_play_demo(int track) {
+    if (s_owner == 3) bsf_stop();
     if (s_owner != 1) {
-        orch_shutdown_desk();
+        if (s_owner == 2) orch_shutdown_desk();
         lilcu64_synth_close();
         (void)lilcu64_synth_init(LILCU64_AUDIO_RATE);
         s_owner = 1;
@@ -632,13 +248,13 @@ static void cassette_play_demo(int track)
     lilcu64_synth_stop_track();
     lilcu64_synth_play_track(track);
     g_deck.pl_on = track - 1;
-    g_deck.state = TAPE_PLAY;
+    g_deck.state = DECK_PLAY;
 }
 
-static void cassette_play_file(int row)
-{
+static void cassette_play_file(int row) {
     OrchView *v;
     int ok;
+    if (s_owner == 3) bsf_stop();
     if (s_owner == 1) {
         lilcu64_synth_stop_track();
         lilcu64_synth_close();
@@ -654,453 +270,816 @@ static void cassette_play_file(int row)
     ok = (row == 4) ? orch_cmd_open() : orch_cmd_smf_load();
     if (!ok || !orch_cmd_play()) {
         g_deck.pl_on = -1;
-        g_deck.state = TAPE_STOP;
+        g_deck.state = DECK_STOP;
         return;
     }
     g_deck.pl_on = row;
-    g_deck.state = TAPE_PLAY;
+    g_deck.state = DECK_PLAY;
 }
 
-static void cassette_begin(int row, int manual)
-{
+static void cassette_begin_legacy(int row, int manual) {
     if (row < 0 || row >= CASSETTE_PL_N) return;
     if (manual) s_run = 0;
     g_deck.pl_sel = row;
-    g_deck.tape_loaded = TRUE;
     g_deck.seconds_elapsed = 0;
-    g_deck.vu_left = 0;
-    g_deck.vu_right = 0;
-    g_deck.vu_peak_l = 0;
-    g_deck.vu_peak_r = 0;
+    g_deck.vu_left = g_deck.vu_right = 0;
+    g_deck.vu_peak_l = g_deck.vu_peak_r = 0;
     s_seen = -1;
     if (row < 4) cassette_play_demo(row + 1);
     else cassette_play_file(row);
-    cassette_menu_right();
 }
 
-static int cassette_step(int dir)
-{
-    int n;
-    if (g_deck.pl_shuffle) {
-        s_rng = s_rng * 1664525u + 1013904223u;
-        if (s_rng == 0u) s_rng = 1u;
-        n = (int)(s_rng % (uint32_t)CASSETTE_PL_N);
-        if (n == g_deck.pl_sel)
-            n = (n + (dir < 0 ? CASSETTE_PL_N - 1 : 1)) % CASSETTE_PL_N;
-        return n;
+static void cassette_play_bsf(int track_idx, int part_idx) {
+    if (s_owner == 1) { lilcu64_synth_stop_track(); lilcu64_synth_close(); }
+    else if (s_owner == 2) { orch_shutdown_desk(); }
+    s_owner = 3;
+    (void)bsf_init(BSF_SAMPLE_RATE);
+    if (bsf_select_track(track_idx, part_idx) == 0) {
+        bsf_play();
+        g_deck.state = DECK_PLAY;
+        g_deck.seconds_elapsed = 0;
+        g_deck.pl_on = -1;
+        g_deck.vu_peak_l = g_deck.vu_peak_r = 0;
+        if (open_synth_window) {
+            (void)open_synth_window();
+        }
+        synth_notify_track_changed();
     }
-    n = g_deck.pl_sel + dir;
-    if (n < 0 || n >= CASSETTE_PL_N) {
-        if (!g_deck.pl_repeat) return -1;
-        if (n < 0) return CASSETTE_PL_N - 1;
-        return 0;
-    }
-    return n;
 }
 
-static void cassette_advance(void)
-{
-    int n;
-    s_run += 1;
-    if (!g_deck.pl_repeat && s_run >= CASSETTE_PL_N) {
-        cassette_halt();
+void cassette_notify_bsf_state(void) {
+    const BsfTelemetry *t = bsf_get_telemetry();
+    if (!t) return;
+    if (t->playing) {
+        if (s_owner == 1) lilcu64_synth_stop_track();
+        else if (s_owner == 2) { (void)orch_cmd_stop(); (void)orch_cmd_stop(); }
+        s_owner = 3;
+        g_deck.state = DECK_PLAY;
+    } else if (s_owner == 3) {
+        g_deck.state = DECK_PAUSE;
+    }
+    if (g_audio_wnd) inval_wnd(g_audio_wnd);
+}
+
+static void cassette_edit_selected_bsf(void) {
+    const char *path = NULL;
+    if (s_toc_sel >= 0 && s_toc_sel < s_toc_count) {
+        const TocRow *r = &s_toc[s_toc_sel];
+        if (r->kind == TOC_BSF_TRACK || r->kind == TOC_BSF_PART) {
+            const BsfTrackInfo *tr = bsf_get_track_info(r->a);
+            if (tr) path = tr->filepath;
+        } else if (r->kind == TOC_SHIM) {
+            const BsfLibItem *si = bsf_get_shim_info(r->a);
+            if (si) path = si->filepath;
+        } else if (r->kind == TOC_PRIM) {
+            const BsfLibItem *pi = bsf_get_prim_info(r->a);
+            if (pi) path = pi->filepath;
+        }
+    }
+    if (!path) {
+        const BsfTelemetry *t = bsf_get_telemetry();
+        const BsfTrackInfo *tr = t ? bsf_get_track_info(t->track_idx) : NULL;
+        if (tr) path = tr->filepath;
+    }
+    if (path) (void)open_t_editor_window_with_file(path);
+}
+
+static void cassette_step_track(int dir) {
+    int n = bsf_get_track_count();
+    if (s_owner == 3 || s_owner == 0) {
+        if (n <= 0) return;
+        const BsfTelemetry *t = bsf_get_telemetry();
+        int cur = t ? t->track_idx : 0;
+        int nxt;
+        if (g_deck.pl_shuffle) {
+            s_rng = s_rng * 1664525u + 1013904223u;
+            nxt = (int)(s_rng % (uint32_t)n);
+        } else {
+            nxt = (cur + dir + n) % n;
+        }
+        cassette_play_bsf(nxt, 0);
+    } else {
+        int nxt = (g_deck.pl_sel + dir + CASSETTE_PL_N) % CASSETTE_PL_N;
+        cassette_begin_legacy(nxt, 1);
+    }
+}
+
+static void cassette_toggle_play_pause(void) {
+    if (s_owner == 3) {
+        bsf_toggle_play();
+        g_deck.state = bsf_is_playing() ? DECK_PLAY : DECK_PAUSE;
+        synth_notify_track_changed();
         return;
     }
-    n = cassette_step(1);
-    if (n < 0) cassette_halt();
-    else cassette_begin(n, 0);
-}
-
-static void cassette_skip(int dir)
-{
-    int n = cassette_step(dir);
-    if (n < 0) {
-        if (dir < 0) cassette_begin(0, 1);
-        else cassette_halt();
-        return;
-    }
-    cassette_begin(n, 1);
-}
-
-static void cassette_pause(void)
-{
-    OrchView *v;
-    if (g_deck.pl_on < 0) return;
     if (s_owner == 1) {
         lilcu64_synth_toggle_mute();
-        g_deck.state = lilcu64_synth_is_muted() ? TAPE_PAUSE : TAPE_PLAY;
+        g_deck.state = lilcu64_synth_is_muted() ? DECK_PAUSE : DECK_PLAY;
         return;
     }
-    if (s_owner != 2) return;
-    v = gst_view();
-    if (!v) return;
-    if (v->state == ORCH_GST_PLAYING) {
-        (void)gst_rt_set_state(ORCH_GST_PAUSED);
-        g_deck.state = TAPE_PAUSE;
-    } else if (gst_rt_set_state(ORCH_GST_PLAYING)) {
-        g_deck.state = TAPE_PLAY;
-    }
-}
-
-static void cassette_cmd(int cmd)
-{
-    if (cmd >= C_ALBUM && cmd < C_ALBUM + 4) {
-        cassette_begin(cmd - C_ALBUM, 1);
+    if (s_owner == 2) {
+        OrchView *v = gst_view();
+        if (!v) return;
+        if (v->state == ORCH_GST_PLAYING) {
+            (void)gst_rt_set_state(ORCH_GST_PAUSED);
+            g_deck.state = DECK_PAUSE;
+        } else if (gst_rt_set_state(ORCH_GST_PLAYING)) {
+            g_deck.state = DECK_PLAY;
+        }
         return;
     }
-    if (cmd == C_OPEN) cassette_begin(4, 1);
-    else if (cmd == C_SMF) cassette_begin(5, 1);
-    else if (cmd == C_CLOSE) {
-        cassette_release();
-        if (g_audio_wnd) cls_wnd(g_audio_wnd);
-    } else if (cmd == C_REPEAT) {
-        g_deck.pl_repeat = g_deck.pl_repeat ? 0 : 1;
-        cassette_opt_text();
-    } else if (cmd == C_SHUFFLE) {
-        g_deck.pl_shuffle = g_deck.pl_shuffle ? 0 : 1;
-        cassette_opt_text();
-    } else if (cmd == C_ABOUT) {
-        (void)open_cassette_about_window();
+    /* Nothing active yet: play selected TOC row or first BSF track */
+    if (s_toc_sel >= 0 && s_toc_sel < s_toc_count) {
+        const TocRow *r = &s_toc[s_toc_sel];
+        if (r->kind == TOC_BSF_TRACK) { cassette_play_bsf(r->a, 0); return; }
+        if (r->kind == TOC_BSF_PART)  { cassette_play_bsf(r->a, r->b); return; }
+        if (r->kind == TOC_LEGACY)    { cassette_begin_legacy(r->a, 1); return; }
+    }
+    if (bsf_get_track_count() > 0) cassette_play_bsf(0, 0);
+}
+
+/* ── Synced Menu Bar (Identical Primitives/Shims/Transport to Synth) ─ */
+static void cassette_opt_text(void) {
+    if (!s_menu_ok || s_menu.header_count < 5) return;
+    snprintf(s_menu.headers[4].items[0].label, 64, "Repeat: %s", g_deck.pl_repeat ? "On" : "Off");
+    snprintf(s_menu.headers[4].items[1].label, 64, "Shuffle: %s", g_deck.pl_shuffle ? "On" : "Off");
+}
+
+static void cassette_menu_build(void) {
+    if (s_menu_ok) return;
+    app_menu_init(&s_menu, APP_MENU_STYLE_CLASSIC_3D);
+
+    int h = app_menu_add_header(&s_menu, "File(F)", 68);
+    (void)app_menu_add_item(&s_menu, h, "Synth Visualizer (V)", "V", C_SYNTH_VIS, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Edit Selected .bsf (E)", "E", C_EDIT_BSF, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Reload & Rerun .bsf (R)", "R", C_RELOAD_BSF, TRUE);
+    (void)app_menu_add_separator(&s_menu, h);
+    (void)app_menu_add_item(&s_menu, h, "Open orchestra.orch", "", C_OPEN_ORCH, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Load orchestra.mid (SMF)", "", C_LOAD_SMF, TRUE);
+    (void)app_menu_add_separator(&s_menu, h);
+    (void)app_menu_add_item(&s_menu, h, "Close", "", C_CLOSE, TRUE);
+
+    h = app_menu_add_header(&s_menu, "Primitives(P)", 106);
+    int np = bsf_get_prim_count();
+    for (int i = 0; i < np && i < 15; i++) {
+        const BsfLibItem *pi = bsf_get_prim_info(i);
+        if (!pi) continue;
+        char lbl[64];
+        snprintf(lbl, sizeof(lbl), "%02d %s (%s)", pi->id, pi->marker, pi->name);
+        (void)app_menu_add_item(&s_menu, h, lbl, "", C_PRIM_BASE + i, TRUE);
+    }
+
+    h = app_menu_add_header(&s_menu, "Shims(S)", 78);
+    int ns = bsf_get_shim_count();
+    for (int i = 0; i < ns && i < 16; i++) {
+        const BsfLibItem *si = bsf_get_shim_info(i);
+        if (!si) continue;
+        char lbl[64];
+        snprintf(lbl, sizeof(lbl), "%02d %s", si->id, si->name);
+        (void)app_menu_add_item(&s_menu, h, lbl, "", C_SHIM_BASE + i, TRUE);
+    }
+
+    h = app_menu_add_header(&s_menu, "Transport(T)", 98);
+    (void)app_menu_add_item(&s_menu, h, "Play / Pause", "Space", C_PLAY_TOGGLE, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Stop", "", C_STOP, TRUE);
+    (void)app_menu_add_separator(&s_menu, h);
+    (void)app_menu_add_item(&s_menu, h, "Prev Track", "Left", C_PREV_TRACK, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Next Track", "Right", C_NEXT_TRACK, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Prev Part", "[", C_PREV_PART, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Next Part", "]", C_NEXT_PART, TRUE);
+    (void)app_menu_add_separator(&s_menu, h);
+    (void)app_menu_add_item(&s_menu, h, "Auto-Advance", "A", C_AUTO_ADV, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Mute", "M", C_MUTE, TRUE);
+
+    h = app_menu_add_header(&s_menu, "Options(O)", 90);
+    (void)app_menu_add_item(&s_menu, h, "Repeat: Off", "", C_REPEAT, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Shuffle: Off", "", C_SHUFFLE, TRUE);
+    (void)app_menu_add_separator(&s_menu, h);
+    (void)app_menu_add_item(&s_menu, h, "About Audio Console...", "", C_ABOUT, TRUE);
+
+    s_menu_ok = 1;
+    cassette_opt_text();
+}
+
+static void cassette_cmd(int cmd) {
+    if (cmd >= C_PRIM_BASE && cmd < C_PRIM_BASE + BSF_MAX_PRIMS) {
+        const BsfLibItem *pi = bsf_get_prim_info(cmd - C_PRIM_BASE);
+        if (pi) (void)open_t_editor_window_with_file(pi->filepath);
+        return;
+    }
+    if (cmd >= C_SHIM_BASE && cmd < C_SHIM_BASE + BSF_MAX_SHIMS) {
+        const BsfLibItem *si = bsf_get_shim_info(cmd - C_SHIM_BASE);
+        if (si) (void)open_t_editor_window_with_file(si->filepath);
+        return;
+    }
+    const BsfTelemetry *bt = bsf_get_telemetry();
+    switch (cmd) {
+        case C_SYNTH_VIS:
+            if (open_synth_window) (void)open_synth_window();
+            break;
+        case C_EDIT_BSF:
+            cassette_edit_selected_bsf();
+            break;
+        case C_RELOAD_BSF:
+            (void)bsf_reload();
+            cassette_toc_rebuild();
+            synth_notify_track_changed();
+            break;
+        case C_OPEN_ORCH:
+            cassette_begin_legacy(4, 1);
+            break;
+        case C_LOAD_SMF:
+            cassette_begin_legacy(5, 1);
+            break;
+        case C_CLOSE:
+            cassette_release();
+            if (g_audio_wnd) cls_wnd(g_audio_wnd);
+            return;
+        case C_PLAY_TOGGLE:
+            cassette_toggle_play_pause();
+            break;
+        case C_STOP:
+            cassette_halt();
+            synth_notify_track_changed();
+            break;
+        case C_PREV_TRACK:
+            cassette_step_track(-1);
+            break;
+        case C_NEXT_TRACK:
+            cassette_step_track(1);
+            break;
+        case C_PREV_PART:
+            if (bt && bt->part_count > 0) {
+                (void)bsf_set_part((bt->part_idx - 1 + bt->part_count) % bt->part_count);
+                synth_notify_track_changed();
+            }
+            break;
+        case C_NEXT_PART:
+            if (bt && bt->part_count > 0) {
+                (void)bsf_set_part((bt->part_idx + 1) % bt->part_count);
+                synth_notify_track_changed();
+            }
+            break;
+        case C_AUTO_ADV:
+            bsf_toggle_auto_advance();
+            synth_notify_track_changed();
+            break;
+        case C_MUTE:
+            if (s_owner == 3) bsf_toggle_mute();
+            else if (s_owner == 1) lilcu64_synth_toggle_mute();
+            synth_notify_track_changed();
+            break;
+        case C_REPEAT:
+            g_deck.pl_repeat = !g_deck.pl_repeat;
+            cassette_opt_text();
+            break;
+        case C_SHUFFLE:
+            g_deck.pl_shuffle = !g_deck.pl_shuffle;
+            cassette_opt_text();
+            break;
+        case C_ABOUT:
+            (void)open_cassette_about_window();
+            break;
+        default:
+            break;
+    }
+    if (g_audio_wnd) inval_wnd(g_audio_wnd);
+}
+
+/* ── Pro Layout & Rendering ──────────────────────────────────────── */
+typedef struct {
+    RECT top_box;
+    RECT vu_l;
+    RECT vu_r;
+    RECT trans_box;
+    RECT btn[8];
+    RECT toc_box;
+    RECT foot_box;
+    RECT fbtn[4];
+} ProLayout;
+
+static void calc_pro_layout(ProLayout *ly, H w, H h) {
+    ly->top_box = (RECT){ 10, (H)(DECK_MENU_H + 6), (H)(w - 10), (H)(DECK_MENU_H + 6 + DECK_TOP_H) };
+    H meter_w = (w >= 540) ? 210 : ((w >= 420) ? 156 : 108);
+    H mx = (H)(ly->top_box.right - meter_w - 10);
+    if (mx < ly->top_box.left + 120) mx = (H)(ly->top_box.left + 120);
+    ly->vu_l = (RECT){ mx, (H)(ly->top_box.top + 26), (H)(ly->top_box.right - 10), (H)(ly->top_box.top + 40) };
+    ly->vu_r = (RECT){ mx, (H)(ly->top_box.top + 46), (H)(ly->top_box.right - 10), (H)(ly->top_box.top + 60) };
+
+    ly->trans_box = (RECT){ 10, (H)(ly->top_box.bottom + 6), (H)(w - 10), (H)(ly->top_box.bottom + 6 + DECK_TRANS_H) };
+    H tw = (H)(ly->trans_box.right - ly->trans_box.left - 16);
+    H bw = (H)((tw - 7 * 6) / 8);
+    if (bw < 36) bw = 36;
+    H bx = (H)(ly->trans_box.left + 8);
+    H by = (H)(ly->trans_box.top + 6);
+    for (int i = 0; i < 8; i++) {
+        ly->btn[i] = (RECT){ bx, by, (H)(bx + bw), (H)(by + 26) };
+        bx = (H)(bx + bw + 6);
+    }
+
+    ly->foot_box = (RECT){ 0, (H)(h - DECK_FOOT_H), w, h };
+    ly->toc_box = (RECT){ 10, (H)(ly->trans_box.bottom + 6), (H)(w - 10), (H)(ly->foot_box.top - 6) };
+
+    H fy = (H)(ly->foot_box.top + 5);
+    H rx = (H)(w - 10);
+    ly->fbtn[3] = (RECT){ (H)(rx - 64), fy, rx, (H)(fy + 22) }; rx = (H)(rx - 70); /* Close */
+    ly->fbtn[2] = (RECT){ (H)(rx - 80), fy, rx, (H)(fy + 22) }; rx = (H)(rx - 86); /* Reload */
+    ly->fbtn[1] = (RECT){ (H)(rx - 80), fy, rx, (H)(fy + 22) }; rx = (H)(rx - 86); /* Edit .bsf */
+    ly->fbtn[0] = (RECT){ (H)(rx - 90), fy, rx, (H)(fy + 22) };                    /* Visualizer */
+}
+
+static void deck_draw_clipped(GDEV *dev, H x, H y, H max_right, const char *s, COLOR fg, COLOR bg) {
+    if (!s || !s[0] || max_right <= x + 8) return;
+    int avail = (int)(max_right - x);
+    int len = (int)strlen(s);
+    if (tc_calc_string_width(s, len) <= avail) {
+        drw_tc_string(dev, x, y, s, fg, bg);
+        return;
+    }
+    char buf[160];
+    int n = (len < (int)sizeof(buf) - 4) ? len : (int)sizeof(buf) - 4;
+    while (n > 0) {
+        memcpy(buf, s, (size_t)n);
+        buf[n] = '.'; buf[n + 1] = '.'; buf[n + 2] = '.'; buf[n + 3] = '\0';
+        if (tc_calc_string_width(buf, n + 3) <= avail) break;
+        n--;
+    }
+    if (n > 0) drw_tc_string(dev, x, y, buf, fg, bg);
+}
+
+static void draw_vu_meter(GDEV *dev, const RECT *r, int val, int peak) {
+    fill_rec(dev, r, PRO_COL_INSET);
+    set_col(dev, PRO_COL_BORDER, PRO_COL_INSET);
+    drw_rec(dev, r);
+    int segs = 16;
+    int tw = (int)(r->right - r->left) - 4;
+    int sw = (tw / segs) - 2;
+    if (sw < 3) sw = 3;
+    int act = (val * segs) / 100;
+    int pk  = (peak * segs) / 100;
+    for (int i = 0; i < segs; i++) {
+        H sx = (H)(r->left + 2 + i * (sw + 2));
+        RECT sr = { sx, (H)(r->top + 2), (H)(sx + sw), (H)(r->bottom - 2) };
+        COLOR col = (i < 9) ? PRO_COL_GREEN : ((i < 12) ? PRO_COL_CYAN : ((i < 14) ? PRO_COL_AMBER : PRO_COL_RED));
+        if (i < act) fill_rec(dev, &sr, col);
+        else if (i == pk && pk > 0) fill_rec(dev, &sr, PRO_COL_RED);
+        else fill_rec(dev, &sr, 0xFF151922u);
     }
 }
 
-static void draw_playlist(GDEV *dev, const CassetteDeckLayout *layout)
-{
-    const RECT *box;
-    int i;
-    if (!dev || !layout) return;
-    box = &layout->pl_box;
-    if (box->bottom <= box->top + 16) return;
-    fill_rec(dev, box, SONY_COL_INSET);
-    drw_rec(dev, box);
-    drw_tc_string(dev, box->left + 8, box->top + 2, "PLAYLIST", SONY_COL_GOLD, SONY_COL_INSET);
-    for (i = 0; i < CASSETTE_PL_N; i++) {
-        const RECT *r = &layout->pl_row[i];
-        char line[80];
-        int tw;
-        int on = (g_deck.pl_on == i);
-        int sel = (g_deck.pl_sel == i);
-        COLOR fg;
-        COLOR bg;
-        if (r->bottom > box->bottom || r->top < box->top) continue;
-        bg = sel ? 0xFF14281Cu : SONY_COL_INSET;
-        fg = on ? SONY_COL_GREEN : (sel ? SONY_COL_TEXT_WHITE : SONY_COL_GREEN);
-        fill_rec(dev, r, bg);
-        snprintf(line, sizeof(line), "%s%d. %s", on ? "> " : "  ", i + 1, k_pl_title[i]);
-        drw_tc_string(dev, r->left + 4, r->top + 1, line, fg, bg);
-        tw = tc_calc_string_width(k_pl_mark[i], (int)strlen(k_pl_mark[i]));
-        if (tw < 0) tw = 0;
-        if (r->right - tw - 6 > r->left + 8)
-            drw_tc_string(dev, r->right - tw - 6, r->top + 1, k_pl_mark[i], SONY_COL_CYAN, bg);
-    }
+static void draw_pro_btn(GDEV *dev, const RECT *r, const char *lbl, bool active, COLOR accent) {
+    COLOR bg = active ? PRO_COL_BTN_ACT : PRO_COL_BTN;
+    COLOR fg = active ? accent : PRO_COL_PAPER;
+    fill_rec(dev, r, bg);
+    set_col(dev, active ? accent : PRO_COL_BORDER, bg);
+    drw_rec(dev, r);
+    int tw = tc_calc_string_width(lbl, (int)strlen(lbl));
+    H tx = (H)(r->left + ((r->right - r->left - tw) / 2));
+    if (tx < r->left + 3) tx = (H)(r->left + 3);
+    drw_tc_string(dev, tx, (H)(r->top + 5), lbl, fg, bg);
 }
 
-/* Master Paint Handler for SONY Cassette Deck */
 static void audio_deck_paint(WND *wnd, GDEV *dev) {
-    if (!wnd || !dev || dev->width < 10 || dev->height < 10) return;
+    if (!wnd || !dev || dev->width < 80 || dev->height < 160) return;
+    if (s_toc_count == 0) cassette_toc_rebuild();
 
-    CassetteDeckLayout layout;
-    calculate_cassette_layout(&layout, dev->width, dev->height);
+    ProLayout ly;
+    calc_pro_layout(&ly, dev->width, dev->height);
 
-    /* 1. Main SONY Titanium Canvas */
     RECT bg_r = { 0, 0, dev->width, dev->height };
-    fill_rec(dev, &bg_r, SONY_COL_CANVAS);
-    drw_rec(dev, &bg_r);
+    fill_rec(dev, &bg_r, PRO_COL_BG);
 
-    /* 2. Brushed Graphite Header Bar, under the menu */
-    RECT hdr_r = { 0, CASSETTE_MENU_H, dev->width, CASSETTE_MENU_H + 48 };
-    fill_rec(dev, &hdr_r, SONY_COL_HEADER);
-    drw_lin(dev, 0, CASSETTE_MENU_H + 48, dev->width, CASSETTE_MENU_H + 48);
+    const BsfTelemetry *bt = bsf_get_telemetry();
+    const BsfTrackInfo *tr = bt ? bsf_get_track_info(bt->track_idx) : NULL;
 
-    /* SONY Brand & High-End Deck Badges */
-    drw_tc_string(dev, 14, CASSETTE_MENU_H + 8, "NISSAN", SONY_COL_TEXT_WHITE, SONY_COL_HEADER);
-    drw_tc_string(dev, 80, CASSETTE_MENU_H + 8, "STEREO CASSETTE DECK (ステレオカセットデッキ)",
-                  SONY_COL_GOLD, SONY_COL_HEADER);
-    drw_tc_string(dev, 14, CASSETTE_MENU_H + 24, "PRECISION AUDIO LAB: 3-HEAD / DUAL CAPSTAN DIRECT DRIVE SILENT MECHANISM",
-                  SONY_COL_TEXT_SILVER, SONY_COL_HEADER);
+    /* 1. Top Pro Telemetry & Metering Console */
+    fill_rec(dev, &ly.top_box, PRO_COL_PANEL);
+    set_col(dev, PRO_COL_BORDER, PRO_COL_PANEL);
+    drw_rec(dev, &ly.top_box);
 
-    /* Status LEDs */
-    drw_tc_string(dev, 14, CASSETTE_MENU_H + 36, "* POWER: ON", SONY_COL_GREEN, SONY_COL_HEADER);
-    drw_tc_string(dev, 140, CASSETTE_MENU_H + 36, "* BIAS: AUTO CAL", SONY_COL_CYAN, SONY_COL_HEADER);
-    drw_tc_string(dev, 290, CASSETTE_MENU_H + 36, g_deck.tape_loaded ? "* TAPE: LOADED" : "* TAPE: EJECTED",
-                  g_deck.tape_loaded ? SONY_COL_GOLD : SONY_COL_RED, SONY_COL_HEADER);
+    /* Status LED + Title */
+    RECT led = { (H)(ly.top_box.left + 10), (H)(ly.top_box.top + 10),
+                 (H)(ly.top_box.left + 20), (H)(ly.top_box.top + 20) };
+    fill_ovl(dev, &led, (g_deck.state == DECK_PLAY) ? PRO_COL_GREEN : PRO_COL_DIM);
 
-    /* 3. Cassette Mechanism Bay & Digital LED Screen */
-    draw_cassette_bay(dev, &layout.bay);
-    draw_digital_led_screen(dev, &layout.screen);
+    char title_line[96], part_line[96], eng_line[96];
+    if (s_owner == 3 && tr && bt) {
+        snprintf(title_line, sizeof(title_line), "%02d/%02d  %s", tr->id, bsf_get_track_count(), tr->title);
+        snprintf(part_line, sizeof(part_line), "PART %d/%d · %s", bt->part_idx + 1, tr->part_count,
+                 tr->part_names[bt->part_idx]);
+        snprintf(eng_line, sizeof(eng_line), "BSF Q16.16 · 44.1kHz S16 · X=%+.2f · WCET %u us · %02d:%02d",
+                 fix16_to_float(bt->x_pos), (unsigned)bt->wcet_us,
+                 g_deck.seconds_elapsed / 60, g_deck.seconds_elapsed % 60);
+    } else if ((s_owner == 1 || s_owner == 2) && g_deck.pl_on >= 0 && g_deck.pl_on < CASSETTE_PL_N) {
+        snprintf(title_line, sizeof(title_line), "DECK  %s", k_leg_title[g_deck.pl_on]);
+        snprintf(part_line, sizeof(part_line), "%s", s_owner == 2 ? "ORCHESTRA ENGINE" : "LILCU64 SCORE");
+        snprintf(eng_line, sizeof(eng_line), "44.1kHz S16 · %02d:%02d",
+                 g_deck.seconds_elapsed / 60, g_deck.seconds_elapsed % 60);
+    } else {
+        snprintf(title_line, sizeof(title_line), "B-SYSTEM PRO AUDIO CONSOLE");
+        snprintf(part_line, sizeof(part_line), "Select a BSF Composition, Sample, or Part below");
+        snprintf(eng_line, sizeof(eng_line), "BSF Q16.16 · 15 Primitives · 16 Shims · 26 Tracks · 44.1kHz");
+    }
+    H left_max = (H)(ly.vu_l.left - 24);
+    deck_draw_clipped(dev, (H)(ly.top_box.left + 28), (H)(ly.top_box.top + 8), left_max, title_line, PRO_COL_PAPER, PRO_COL_PANEL);
+    deck_draw_clipped(dev, (H)(ly.top_box.left + 28), (H)(ly.top_box.top + 28), left_max, part_line, PRO_COL_CYAN, PRO_COL_PANEL);
+    deck_draw_clipped(dev, (H)(ly.top_box.left + 12), (H)(ly.top_box.top + 56), left_max, eng_line, PRO_COL_AMBER, PRO_COL_PANEL);
 
-    /* 4. Transport Bar */
-    draw_transport_bar(dev, &layout.transport);
+    /* Right: Pro Stereo Peak/RMS/LIM Meters */
+    deck_draw_clipped(dev, ly.vu_l.left, (H)(ly.top_box.top + 8), (H)(ly.top_box.right - 8), "OUTPUT L/R (dBFS)", PRO_COL_DIM, PRO_COL_PANEL);
+    drw_tc_string(dev, (H)(ly.vu_l.left - 16), (H)(ly.vu_l.top + 1), "L", PRO_COL_CYAN, PRO_COL_PANEL);
+    drw_tc_string(dev, (H)(ly.vu_r.left - 16), (H)(ly.vu_r.top + 1), "R", PRO_COL_AMBER, PRO_COL_PANEL);
+    draw_vu_meter(dev, &ly.vu_l, g_deck.vu_left, g_deck.vu_peak_l);
+    draw_vu_meter(dev, &ly.vu_r, g_deck.vu_right, g_deck.vu_peak_r);
+    char mline[64];
+    snprintf(mline, sizeof(mline), "PK %2d%%  RMS %2d%%  %s",
+             (g_deck.vu_left > g_deck.vu_right ? g_deck.vu_left : g_deck.vu_right),
+             (int)(fmaxf(g_deck.rms_l, g_deck.rms_r) * 100.0f),
+             g_deck.limiter_hit ? "[LIM]" : "LIM");
+    deck_draw_clipped(dev, ly.vu_l.left, (H)(ly.vu_r.bottom + 4), (H)(ly.top_box.right - 8), mline,
+                      g_deck.limiter_hit ? PRO_COL_RED : PRO_COL_SILVER, PRO_COL_PANEL);
 
-    /* 5. Playlist, primitive numbered list */
-    draw_playlist(dev, &layout);
+    /* 2. Pro Transport Strip */
+    fill_rec(dev, &ly.trans_box, PRO_COL_PANEL);
+    set_col(dev, PRO_COL_BORDER, PRO_COL_PANEL);
+    drw_rec(dev, &ly.trans_box);
+    bool is_play = (g_deck.state == DECK_PLAY);
+    bool is_auto = bt ? bt->auto_advance : false;
+    bool is_mute = (s_owner == 3 && bt) ? bt->muted : (s_owner == 1 ? lilcu64_synth_is_muted() : false);
+    draw_pro_btn(dev, &ly.btn[0], "|< PREV", false, PRO_COL_CYAN);
+    draw_pro_btn(dev, &ly.btn[1], "<< PART", false, PRO_COL_CYAN);
+    draw_pro_btn(dev, &ly.btn[2], is_play ? "PAUSE" : "PLAY >", is_play, PRO_COL_GREEN);
+    draw_pro_btn(dev, &ly.btn[3], "STOP", g_deck.state == DECK_STOP, PRO_COL_PAPER);
+    draw_pro_btn(dev, &ly.btn[4], "PART >>", false, PRO_COL_CYAN);
+    draw_pro_btn(dev, &ly.btn[5], "NEXT >|", false, PRO_COL_CYAN);
+    draw_pro_btn(dev, &ly.btn[6], "AUTO", is_auto, PRO_COL_AMBER);
+    draw_pro_btn(dev, &ly.btn[7], "MUTE", is_mute, PRO_COL_RED);
 
-    /* 6. High-Tech Telemetry Footer Bar */
-    fill_rec(dev, &layout.footer_box, SONY_COL_HEADER);
-    drw_lin(dev, 0, layout.footer_box.top, dev->width, layout.footer_box.top);
+    /* 3. Hierarchical DJ/VJ TOC Panel */
+    const RECT *box = &ly.toc_box;
+    fill_rec(dev, box, PRO_COL_INSET);
+    set_col(dev, PRO_COL_BORDER, PRO_COL_INSET);
+    drw_rec(dev, box);
 
-    /* Footer Action Buttons */
-    H btn_h = 22;
-    H btn_y = layout.footer_box.top + 7;
+    RECT thdr = { (H)(box->left + 1), (H)(box->top + 1), (H)(box->right - 1), (H)(box->top + 18) };
+    fill_rec(dev, &thdr, PRO_COL_PANEL);
+    deck_draw_clipped(dev, (H)(box->left + 8), (H)(box->top + 2), (H)(box->right - 8),
+                      "DJ/VJ EVENT TOC  (Click > expand · Double-Click or Enter to Play/Edit)",
+                      PRO_COL_AMBER, PRO_COL_PANEL);
 
-    RECT btn_close = { dev->width - 90, btn_y, dev->width - 10, btn_y + btn_h };
-    draw_beveled_box(dev, &btn_close, SONY_COL_BTN_BG, SONY_COL_BORDER_HI, SONY_COL_BORDER_LO);
-    drw_tc_string(dev, btn_close.left + 16, btn_y + 3, "Close", SONY_COL_TEXT_WHITE, SONY_COL_BTN_BG);
+    H list_top = (H)(box->top + 19);
+    H list_bot = (H)(box->bottom - 2);
+    H view_h = (H)(list_bot - list_top);
+    H content_r = (H)(box->right - TOC_SB_W - 2);
+    int total_h = s_toc_count * TOC_ROW_H;
+    int max_sc = (total_h > view_h) ? (total_h - view_h) : 0;
+    if (s_toc_scroll < 0) s_toc_scroll = 0;
+    if (s_toc_scroll > max_sc) s_toc_scroll = max_sc;
 
-    RECT btn_reset = { btn_close.left - 105, btn_y, btn_close.left - 10, btn_y + btn_h };
-    draw_beveled_box(dev, &btn_reset, SONY_COL_BTN_BG, SONY_COL_BORDER_HI, SONY_COL_BORDER_LO);
-    drw_tc_string(dev, btn_reset.left + 8, btn_y + 3, "Reset 00:00", SONY_COL_CYAN, SONY_COL_BTN_BG);
+    for (int i = 0; i < s_toc_count; i++) {
+        int ry = list_top + i * TOC_ROW_H - s_toc_scroll;
+        if (ry + TOC_ROW_H <= list_top || ry >= list_bot) continue;
+        const TocRow *r = &s_toc[i];
+        RECT rr = { (H)(box->left + 2), (H)(ry < list_top ? list_top : ry),
+                    content_r, (H)(ry + TOC_ROW_H - 1 > list_bot ? list_bot : ry + TOC_ROW_H - 1) };
 
-    RECT btn_eject = { btn_reset.left - 95, btn_y, btn_reset.left - 10, btn_y + btn_h };
-    draw_beveled_box(dev, &btn_eject, SONY_COL_BTN_BG, SONY_COL_BORDER_HI, SONY_COL_BORDER_LO);
-    drw_tc_string(dev, btn_eject.left + 14, btn_y + 3, "Eject [^]", SONY_COL_GOLD, SONY_COL_BTN_BG);
+        bool is_sel = (i == s_toc_sel);
+        bool is_hov = (i == s_toc_hover && !is_sel);
+        bool is_on = false;
+        if (s_owner == 3 && bt && bt->playing) {
+            if (r->kind == TOC_BSF_TRACK && r->a == bt->track_idx) is_on = true;
+            if (r->kind == TOC_BSF_PART && r->a == bt->track_idx && r->b == bt->part_idx) is_on = true;
+        } else if (r->kind == TOC_LEGACY && g_deck.pl_on == r->a) {
+            is_on = true;
+        }
 
-    RECT btn_about = { btn_eject.left - 85, btn_y, btn_eject.left - 10, btn_y + btn_h };
-    draw_beveled_box(dev, &btn_about, SONY_COL_BTN_BG, SONY_COL_BORDER_HI, SONY_COL_BORDER_LO);
-    drw_tc_string(dev, btn_about.left + 10, btn_y + 3, "About...", SONY_COL_TEXT_SILVER, SONY_COL_BTN_BG);
+        COLOR bg = PRO_COL_INSET;
+        COLOR fg = PRO_COL_SILVER;
+        if (r->kind == TOC_HEADER) { bg = 0xFF161C28u; fg = PRO_COL_AMBER; }
+        else if (is_on)            { bg = 0xFF102A1Cu; fg = PRO_COL_GREEN; }
+        else if (is_sel)           { bg = 0xFF1E293Bu; fg = PRO_COL_PAPER; }
+        else if (is_hov)           { bg = 0xFF141B26u; fg = PRO_COL_PAPER; }
+        else if (r->kind == TOC_BSF_PART) { fg = PRO_COL_CYAN; }
+        else if (r->kind == TOC_SHIM || r->kind == TOC_PRIM) { fg = PRO_COL_DIM; }
 
-    /* Telemetry text (strictly clipped before buttons) */
-    char telem[96];
-    snprintf(telem, sizeof(telem), "SONY ES | %s | %s",
-             k_tape_names[g_deck.tape_type],
-             (g_deck.dolby_mode == DOLBY_OFF) ? "NO NR" : (g_deck.dolby_mode == DOLBY_B ? "DOLBY-B" : "DOLBY-C"));
-    drw_tc_string(dev, 14, layout.footer_box.top + 10, telem, SONY_COL_TEXT_DIM, SONY_COL_HEADER);
+        fill_rec(dev, &rr, bg);
+        if (ry >= list_top && ry + 14 <= list_bot) {
+            drw_tc_string(dev, (H)(rr.left + 6), (H)(ry + 2), r->label, fg, bg);
+            int tw = tc_calc_string_width(r->tag, (int)strlen(r->tag));
+            if (tw < 0) tw = 0;
+            if (rr.right - tw - 6 > rr.left + 12) {
+                drw_tc_string(dev, (H)(rr.right - tw - 6), (H)(ry + 2), r->tag,
+                              (r->kind == TOC_HEADER) ? PRO_COL_AMBER : PRO_COL_CYAN, bg);
+            }
+        }
+    }
 
-    /* Menu last, so the dropdown is the top layer of this window. */
+    /* Clarity-Style 12px Mini Vertical Scrollbar */
+    H sb_x = (H)(box->right - TOC_SB_W - 1);
+    RECT sb_r = { sb_x, list_top, (H)(box->right - 1), list_bot };
+    fill_rec(dev, &sb_r, 0xFF11151Eu);
+    RECT up_r = { sb_x, list_top, (H)(box->right - 1), (H)(list_top + 12) };
+    RECT dn_r = { sb_x, (H)(list_bot - 12), (H)(box->right - 1), list_bot };
+    fill_rec(dev, &up_r, PRO_COL_BTN);
+    fill_rec(dev, &dn_r, PRO_COL_BTN);
+    drw_tc_string(dev, (H)(sb_x + 2), (H)(list_top - 1), "^", PRO_COL_SILVER, PRO_COL_BTN);
+    drw_tc_string(dev, (H)(sb_x + 2), (H)(list_bot - 13), "v", PRO_COL_SILVER, PRO_COL_BTN);
+
+    int track_h = (int)(list_bot - list_top) - 24;
+    if (track_h > 12) {
+        int thumb_h = (max_sc > 0) ? ((track_h * view_h) / (view_h + max_sc)) : track_h;
+        if (thumb_h < 14) thumb_h = 14;
+        if (thumb_h > track_h) thumb_h = track_h;
+        int thumb_y = list_top + 12 + ((max_sc > 0) ? ((s_toc_scroll * (track_h - thumb_h)) / max_sc) : 0);
+        RECT th_r = { (H)(sb_x + 1), (H)thumb_y, (H)(box->right - 2), (H)(thumb_y + thumb_h) };
+        fill_rec(dev, &th_r, s_toc_sb_drag ? PRO_COL_AMBER : 0xFF475569u);
+    }
+
+    /* 4. Pro Footer Bar */
+    fill_rec(dev, &ly.foot_box, PRO_COL_PANEL);
+    set_col(dev, PRO_COL_BORDER, PRO_COL_PANEL);
+    drw_lin(dev, 0, ly.foot_box.top, dev->width, ly.foot_box.top);
+
+    const char *status_msg = (bt && bt->last_error[0]) ? bt->last_error : "B-Audio Ready · Space:Play  V:Visualizer  E:Edit  R:Reload";
+    drw_tc_string(dev, 12, (H)(ly.foot_box.top + 8), status_msg,
+                  (bt && bt->last_error[0]) ? PRO_COL_RED : PRO_COL_DIM, PRO_COL_PANEL);
+
+    draw_pro_btn(dev, &ly.fbtn[0], "Visualizer", false, PRO_COL_CYAN);
+    draw_pro_btn(dev, &ly.fbtn[1], "Edit .bsf", false, PRO_COL_AMBER);
+    draw_pro_btn(dev, &ly.fbtn[2], "Reload", false, PRO_COL_PAPER);
+    draw_pro_btn(dev, &ly.fbtn[3], "Close", false, PRO_COL_SILVER);
+
     if (s_menu_ok) {
         app_menu_paint_bar(&s_menu, dev);
         app_menu_paint_dropdown(&s_menu, dev);
     }
 }
 
-static BOOL cassette_menu_is_open(WND *wnd)
-{
+static BOOL cassette_menu_is_open(WND *wnd) {
     (void)wnd;
     return (s_menu_ok && s_menu.active_menu >= 0) ? TRUE : FALSE;
 }
 
-/* Event Handler for Cassette Deck Window */
-static void audio_deck_event_handler(WND *wnd, const EVT *evt) {
-    H rel_x;
-    H rel_y;
-    H client_w;
-    H client_h;
-    int cmd = 0;
-    int sub = 0;
-    if (!wnd || !evt) return;
+static bool hit_rect(H x, H y, const RECT *r) {
+    return x >= r->left && x <= r->right && y >= r->top && y <= r->bottom;
+}
 
-    rel_x = (H)(evt->pos.x - wnd->client.left);
-    rel_y = (H)(evt->pos.y - wnd->client.top);
+static void audio_deck_event_handler(WND *wnd, const EVT *evt) {
+    if (!wnd || !evt) return;
+    H rel_x = (H)(evt->pos.x - wnd->client.left);
+    H rel_y = (H)(evt->pos.y - wnd->client.top);
+    H cw = (H)(wnd->client.right - wnd->client.left);
+    H ch = (H)(wnd->client.bottom - wnd->client.top);
+    int cmd = 0, sub = 0;
+
+    if (evt->type == EV_BUT_UP) {
+        if (s_toc_sb_drag) { s_toc_sb_drag = false; inval_wnd(wnd); }
+        return;
+    }
 
     if (evt->type == EV_MOUSE_MOVE) {
-        if (s_menu_ok && app_menu_handle_mouse_move(&s_menu, rel_x, rel_y))
-            inval_wnd(wnd);
-        return;
-    }
-    if (evt->type == EV_KEY_DOWN) {
-        if (s_menu_ok && app_menu_handle_key(&s_menu, evt->key,
-                                            (uint16_t)(uintptr_t)evt->data, &cmd)) {
-            if (cmd > 0) cassette_cmd(cmd);
-            if (cmd != C_CLOSE && g_audio_wnd) inval_wnd(wnd);
-        }
-        return;
-    }
-    if (evt->type != EV_BUT_DOWN) return;
-
-    client_w = (H)(wnd->client.right - wnd->client.left);
-    client_h = (H)(wnd->client.bottom - wnd->client.top);
-    if (client_w < 10 || client_h < 10) return;
-
-    if (s_menu_ok && (rel_y < CASSETTE_MENU_H || s_menu.active_menu >= 0)) {
-        if (app_menu_handle_mouse_down(&s_menu, rel_x, rel_y, &cmd, &sub)) {
-            if (cmd > 0) cassette_cmd(cmd);
-            if (cmd != C_CLOSE && g_audio_wnd) inval_wnd(wnd);
-            return;
-        }
-    }
-
-    {
-        CassetteDeckLayout layout;
-        int row;
-        calculate_cassette_layout(&layout, client_w, client_h);
-
-        row = -1;
-        if (rel_x >= layout.pl_box.left && rel_x <= layout.pl_box.right &&
-            rel_y >= layout.pl_box.top && rel_y <= layout.pl_box.bottom) {
-            int i;
-            for (i = 0; i < CASSETTE_PL_N; i++) {
-                const RECT *r = &layout.pl_row[i];
-                if (rel_x >= r->left && rel_x <= r->right &&
-                    rel_y >= r->top && rel_y <= r->bottom) {
-                    row = i;
-                    break;
+        if (s_toc_sb_drag) {
+            ProLayout ly;
+            calc_pro_layout(&ly, cw, ch);
+            int view_h = (int)(ly.toc_box.bottom - ly.toc_box.top - 21);
+            int total_h = s_toc_count * TOC_ROW_H;
+            int max_sc = (total_h > view_h) ? (total_h - view_h) : 0;
+            int track_h = view_h - 24;
+            if (max_sc > 0 && track_h > 14) {
+                int thumb_h = (track_h * view_h) / (view_h + max_sc);
+                if (thumb_h < 14) thumb_h = 14;
+                int avail = track_h - thumb_h;
+                if (avail > 0) {
+                    s_toc_scroll = s_toc_sb_orig_scroll + ((int)(evt->pos.y - s_toc_sb_start_y) * max_sc) / avail;
+                    if (s_toc_scroll < 0) s_toc_scroll = 0;
+                    if (s_toc_scroll > max_sc) s_toc_scroll = max_sc;
+                    inval_wnd(wnd);
                 }
             }
+            return;
         }
-        if (row >= 0) {
-            if (row == g_deck.pl_sel) cassette_begin(row, 1);
-            else g_deck.pl_sel = row;
-            cassette_menu_right();
+        if (s_menu_ok && app_menu_handle_mouse_move(&s_menu, rel_x, rel_y)) {
+            inval_wnd(wnd);
+        }
+        return;
+    }
+
+    if (evt->type == EV_KEY_DOWN) {
+        if (evt->button == EV_KEY_FROM_WHEEL) {
+            s_toc_scroll += (evt->key == BTRON_KEY_DOWN) ? (TOC_ROW_H * 3) : -(TOC_ROW_H * 3);
+            if (s_toc_scroll < 0) s_toc_scroll = 0;
             inval_wnd(wnd);
             return;
         }
-
-        /* 1. Transport Button Clicks */
-        if (rel_y >= layout.transport.btn_rew.top && rel_y <= layout.transport.btn_rew.bottom) {
-            if (rel_x >= layout.transport.btn_rew.left && rel_x <= layout.transport.btn_rew.right) {
-                cassette_skip(-1);
-            } else if (rel_x >= layout.transport.btn_rev.left && rel_x <= layout.transport.btn_rev.right) {
-                g_deck.state = TAPE_REV_PLAY;
-            } else if (rel_x >= layout.transport.btn_play.left && rel_x <= layout.transport.btn_play.right) {
-                cassette_begin(g_deck.pl_sel, 1);
-            } else if (rel_x >= layout.transport.btn_ff.left && rel_x <= layout.transport.btn_ff.right) {
-                cassette_skip(1);
-            } else if (rel_x >= layout.transport.btn_stop.left && rel_x <= layout.transport.btn_stop.right) {
-                cassette_halt();
-            } else if (rel_x >= layout.transport.btn_pause.left && rel_x <= layout.transport.btn_pause.right) {
-                if (g_deck.pl_on >= 0) cassette_pause();
-                else g_deck.state = (g_deck.state == TAPE_PAUSE) ? TAPE_PLAY : TAPE_PAUSE;
-            } else if (rel_x >= layout.transport.btn_rec.left && rel_x <= layout.transport.btn_rec.right) {
-                g_deck.state = TAPE_REC;
-            }
+        UW k = evt->key;
+        if (k == BTRON_KEY_SPACE || k == ' ') { cassette_cmd(C_PLAY_TOGGLE); return; }
+        if (k == BTRON_KEY_LEFT)  { cassette_cmd(C_PREV_TRACK); return; }
+        if (k == BTRON_KEY_RIGHT) { cassette_cmd(C_NEXT_TRACK); return; }
+        if (k == '[')             { cassette_cmd(C_PREV_PART); return; }
+        if (k == ']')             { cassette_cmd(C_NEXT_PART); return; }
+        if (k == 'v' || k == 'V') { cassette_cmd(C_SYNTH_VIS); return; }
+        if (k == 'e' || k == 'E') { cassette_cmd(C_EDIT_BSF); return; }
+        if (k == 'r' || k == 'R') { cassette_cmd(C_RELOAD_BSF); return; }
+        if (k == 'a' || k == 'A') { cassette_cmd(C_AUTO_ADV); return; }
+        if (k == 'm' || k == 'M') { cassette_cmd(C_MUTE); return; }
+        if (k == BTRON_KEY_UP || k == BTRON_KEY_DOWN) {
+            int nxt = s_toc_sel + ((k == BTRON_KEY_DOWN) ? 1 : -1);
+            if (nxt >= 0 && nxt < s_toc_count) s_toc_sel = nxt;
             inval_wnd(wnd);
             return;
         }
-
-        /* 2. Tape Type Selector Clicks */
-        for (int i = 0; i < 4; i++) {
-            const RECT *tb = &layout.screen.tape_type_boxes[i];
-            if (rel_x >= tb->left && rel_x <= tb->right &&
-                rel_y >= tb->top && rel_y <= tb->bottom) {
-                g_deck.tape_type = (CASSETTE_TAPE_TYPE)i;
+        if (k == BTRON_KEY_RETURN || k == '\r' || k == '\n') {
+            if (s_toc_sel >= 0 && s_toc_sel < s_toc_count) {
+                const TocRow *r = &s_toc[s_toc_sel];
+                if (r->kind == TOC_BSF_TRACK) cassette_play_bsf(r->a, 0);
+                else if (r->kind == TOC_BSF_PART) cassette_play_bsf(r->a, r->b);
+                else if (r->kind == TOC_LEGACY) cassette_begin_legacy(r->a, 1);
+                else if (r->kind == TOC_SHIM || r->kind == TOC_PRIM) cassette_edit_selected_bsf();
                 inval_wnd(wnd);
-                return;
             }
+            return;
         }
+        if (s_menu_ok && app_menu_handle_key(&s_menu, k, (uint16_t)(uintptr_t)evt->data, &cmd)) {
+            if (cmd > 0) cassette_cmd(cmd);
+        }
+        return;
+    }
 
-        /* 3. Dolby & HX Pro Clicks */
-        if (rel_x >= layout.screen.dolby_box.left && rel_x <= layout.screen.dolby_box.right &&
-            rel_y >= layout.screen.dolby_box.top && rel_y <= layout.screen.dolby_box.bottom) {
-            g_deck.dolby_mode = (DOLBY_MODE)((g_deck.dolby_mode + 1) % 3);
+    if (evt->type != EV_BUT_DOWN) return;
+
+    if (s_menu_ok && (rel_y < DECK_MENU_H || s_menu.active_menu >= 0)) {
+        if (app_menu_handle_mouse_down(&s_menu, rel_x, rel_y, &cmd, &sub)) {
+            if (cmd > 0) cassette_cmd(cmd);
+            else if (g_audio_wnd) inval_wnd(wnd);
+            return;
+        }
+    }
+
+    ProLayout ly;
+    calc_pro_layout(&ly, cw, ch);
+
+    /* Transport Buttons */
+    static const int k_tcmds[8] = {
+        C_PREV_TRACK, C_PREV_PART, C_PLAY_TOGGLE, C_STOP,
+        C_NEXT_PART, C_NEXT_TRACK, C_AUTO_ADV, C_MUTE
+    };
+    for (int i = 0; i < 8; i++) {
+        if (hit_rect(rel_x, rel_y, &ly.btn[i])) {
+            cassette_cmd(k_tcmds[i]);
+            return;
+        }
+    }
+
+    /* Footer Buttons */
+    static const int k_fcmds[4] = { C_SYNTH_VIS, C_EDIT_BSF, C_RELOAD_BSF, C_CLOSE };
+    for (int i = 0; i < 4; i++) {
+        if (hit_rect(rel_x, rel_y, &ly.fbtn[i])) {
+            cassette_cmd(k_fcmds[i]);
+            return;
+        }
+    }
+
+    /* Hierarchical DJ/VJ TOC & Scrollbar */
+    if (rel_x >= ly.toc_box.left && rel_x <= ly.toc_box.right &&
+        rel_y >= ly.toc_box.top + 19 && rel_y <= ly.toc_box.bottom) {
+        H sb_x = (H)(ly.toc_box.right - TOC_SB_W - 1);
+        H list_top = (H)(ly.toc_box.top + 19);
+        H list_bot = (H)(ly.toc_box.bottom - 2);
+        if (rel_x >= sb_x) {
+            if (rel_y < list_top + 12) {
+                s_toc_scroll -= TOC_ROW_H * 2;
+                if (s_toc_scroll < 0) s_toc_scroll = 0;
+            } else if (rel_y > list_bot - 12) {
+                s_toc_scroll += TOC_ROW_H * 2;
+            } else {
+                s_toc_sb_drag = true;
+                s_toc_sb_start_y = evt->pos.y;
+                s_toc_sb_orig_scroll = s_toc_scroll;
+            }
             inval_wnd(wnd);
             return;
         }
-        if (rel_x >= layout.screen.hx_box.left && rel_x <= layout.screen.hx_box.right &&
-            rel_y >= layout.screen.hx_box.top && rel_y <= layout.screen.hx_box.bottom) {
-            g_deck.hx_pro = !g_deck.hx_pro;
+        int idx = (int)((rel_y - list_top + s_toc_scroll) / TOC_ROW_H);
+        if (idx >= 0 && idx < s_toc_count) {
+            uint64_t now_us = btron_render_perf_us();
+            bool is_dbl = (idx == s_last_click_idx) && (now_us >= s_last_click_us) &&
+                          ((now_us - s_last_click_us) <= 450000ull);
+            s_last_click_idx = idx;
+            s_last_click_us = now_us;
+            s_toc_sel = idx;
+            const TocRow *r = &s_toc[idx];
+            if (r->kind == TOC_BSF_TRACK && rel_x < ly.toc_box.left + 22) {
+                /* Single-click on > / v chevron toggles expand/collapse */
+                s_toc_expanded[r->a] = !s_toc_expanded[r->a];
+                s_last_click_idx = -1;
+                cassette_toc_rebuild();
+            } else if (is_dbl) {
+                /* Double-click activates playback (Synth) or source editor (Shims/Primitives) */
+                s_last_click_idx = -1;
+                if (r->kind == TOC_BSF_TRACK) {
+                    cassette_play_bsf(r->a, 0);
+                } else if (r->kind == TOC_BSF_PART) {
+                    cassette_play_bsf(r->a, r->b);
+                } else if (r->kind == TOC_LEGACY) {
+                    cassette_begin_legacy(r->a, 1);
+                } else if (r->kind == TOC_SHIM) {
+                    const BsfLibItem *si = bsf_get_shim_info(r->a);
+                    if (si) (void)open_t_editor_window_with_file(si->filepath);
+                } else if (r->kind == TOC_PRIM) {
+                    const BsfLibItem *pi = bsf_get_prim_info(r->a);
+                    if (pi) (void)open_t_editor_window_with_file(pi->filepath);
+                }
+            }
             inval_wnd(wnd);
-            return;
-        }
-
-        /* 4. Footer Buttons */
-        H btn_y = layout.footer_box.top + 7;
-        H btn_h = 22;
-        if (rel_y >= btn_y - 2 && rel_y <= btn_y + btn_h + 2) {
-            if (rel_x >= client_w - 90 && rel_x <= client_w - 10) {
-                cassette_release();
-                cls_wnd(wnd);
-                return;
-            }
-            if (rel_x >= client_w - 195 && rel_x <= client_w - 100) {
-                if (g_deck.pl_on >= 0) cassette_begin(g_deck.pl_sel, 1);
-                else g_deck.seconds_elapsed = 0;
-                inval_wnd(wnd);
-                return;
-            }
-            if (rel_x >= client_w - 290 && rel_x <= client_w - 205) {
-                g_deck.tape_loaded = !g_deck.tape_loaded;
-                if (!g_deck.tape_loaded) cassette_halt();
-                inval_wnd(wnd);
-                return;
-            }
-            if (rel_x >= client_w - 375 && rel_x <= client_w - 300) {
-                open_cassette_about_window();
-                return;
-            }
         }
     }
 }
 
 static void destroy_audio_player(WND *wnd) {
     (void)wnd;
-    cassette_release();
+    /* Only halt legacy/orchestra playback on Cassette close; keep BSF Synth playing if active */
+    if (s_owner == 1 || s_owner == 2) {
+        cassette_release();
+    }
     g_audio_wnd = NULL;
 }
 
-/* Open SONY Cassette Deck Window */
-WND* open_audio_player_window(void) {
+WND *open_audio_player_window(void) {
     if (g_audio_wnd) {
         top_wnd(g_audio_wnd);
         return g_audio_wnd;
     }
-
-    /* Initialize Cassette Deck State */
-    memset(&g_deck, 0, sizeof(CassetteDeck));
-    g_deck.power_on = TRUE;
-    g_deck.tape_loaded = TRUE;
-    g_deck.state = TAPE_STOP;
-    g_deck.tape_type = TAPE_TYPE_IV_METAL; /* SONY Metal Master */
-    g_deck.dolby_mode = DOLBY_C;
-    g_deck.hx_pro = TRUE;
-    g_deck.mpx_filter = TRUE;
-    g_deck.track_num = 1;
-    g_deck.seconds_elapsed = 0;
-    g_deck.source_idx = 0; /* TAPE */
-    g_deck.vu_left = 0;
-    g_deck.vu_right = 0;
-    g_deck.vu_peak_l = 0;
-    g_deck.vu_peak_r = 0;
-    g_deck.rec_level = 7;
-    g_deck.pl_sel = 0;
+    bool bsf_active = bsf_is_playing();
+    memset(&g_deck, 0, sizeof(g_deck));
     g_deck.pl_on = -1;
+    if (bsf_active || s_owner == 3) {
+        s_owner = 3;
+        g_deck.state = bsf_active ? DECK_PLAY : DECK_PAUSE;
+    } else {
+        g_deck.state = DECK_STOP;
+    }
 
-    H win_w = CASSETTE_WND_W;
-    H win_h = CASSETTE_WND_H;
-    H win_x = (1280 - win_w) / 2;
-    H win_y = (800 - win_h) / 2;
-
-    g_audio_wnd = opn_wnd("ステレオカセットデッキ (Cassette Deck)",
-                          win_x, win_y, win_w, win_h,
-                          WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER);
+    H win_x = 40;
+    H win_y = 60;
+    g_audio_wnd = opn_wnd("B-System Audio Console (DJ/VJ Deck)",
+                          win_x, win_y, DECK_WND_W, DECK_WND_H,
+                          WND_ATTR_TITLE | WND_ATTR_CLOSE | WND_ATTR_BORDER | WND_ATTR_RESIZE);
     if (!g_audio_wnd) return NULL;
 
+    cassette_toc_rebuild();
     cassette_menu_build();
-    cassette_opt_text();
-    cassette_menu_right();
     g_audio_wnd->paint = audio_deck_paint;
     g_audio_wnd->event_handler = audio_deck_event_handler;
     g_audio_wnd->destroy = destroy_audio_player;
     g_audio_wnd->menu_open = cassette_menu_is_open;
-
     return g_audio_wnd;
 }
 
-void cassette_service(void)
-{
-    int sec;
-    OrchView *v;
-    /* Desk Play does not go through the cassette rows. The transport still
-       has to be pumped every UI pass, or N stays put and the device stays dry. */
-    v = gst_view();
-    if (v && v->state == ORCH_GST_PLAYING)
+void cassette_service(void) {
+    int sec = 0;
+    OrchView *v = gst_view();
+    if (v && v->state == ORCH_GST_PLAYING) {
         orchestra_audio_service(btron_render_perf_us());
+    }
+
+    if (bsf_is_playing()) {
+        static uint64_t s_last_ui_sample = 0;
+        (void)bsf_audio_pump();
+        const BsfTelemetry *bt = bsf_get_telemetry();
+        if (bt && (bt->sample_counter < s_last_ui_sample ||
+                   bt->sample_counter - s_last_ui_sample >= 1470u)) {
+            s_last_ui_sample = bt->sample_counter;
+            synth_ui_tick();
+            if (s_owner == 3) {
+                g_deck.vu_left  = (int)(bt->peak_l * 100.0f);
+                g_deck.vu_right = (int)(bt->peak_r * 100.0f);
+                if (g_deck.vu_left  > g_deck.vu_peak_l) g_deck.vu_peak_l = g_deck.vu_left;
+                if (g_deck.vu_right > g_deck.vu_peak_r) g_deck.vu_peak_r = g_deck.vu_right;
+                g_deck.rms_l = bt->rms_l;
+                g_deck.rms_r = bt->rms_r;
+                g_deck.limiter_hit = bt->limiter_hit;
+                g_deck.seconds_elapsed = (int)(bt->sample_counter / BSF_SAMPLE_RATE);
+                if (g_audio_wnd) inval_wnd(g_audio_wnd);
+            }
+        }
+        if (s_owner == 3) return;
+    }
+
     if (g_deck.pl_on < 0 || g_deck.pl_on >= CASSETTE_PL_N) return;
-    if (g_deck.state != TAPE_PLAY) return;
+    if (g_deck.state != DECK_PLAY) return;
+
     if (s_owner == 1 && g_deck.pl_on < 4) {
         (void)lilcu64_synth_pump_virtio(0);
         sec = (int)lilcu64_synth_get_track_time();
         if (sec < 0) sec = 0;
         if (s_seen > 1 && sec < s_seen) {
-            cassette_advance();
+            cassette_step_track(1);
             if (g_audio_wnd) inval_wnd(g_audio_wnd);
             return;
         }
         s_seen = sec;
     } else if (s_owner == 2 && g_deck.pl_on >= 4) {
-        sec = 0;
         v = gst_view();
-        if (v && v->sample_rate != 0u)
-            sec = (int)(v->npos / v->sample_rate);
+        if (v && v->sample_rate != 0u) sec = (int)(v->npos / v->sample_rate);
         if (v) {
             g_deck.vu_left = (int)v->meter_l;
             g_deck.vu_right = (int)v->meter_r;
@@ -1116,11 +1095,9 @@ void cassette_service(void)
     }
 }
 
-/* About Window Creator for Cassette Deck */
-WND* open_cassette_about_window(void) {
-    return app_menu_create_about_dialog("Cassette", "カセットデッキ",
-        "3-Head Dual Capstan Stereo Cassette Deck",
-        "Brought to B-System by 5HT",
-        240, 160);
+WND *open_cassette_about_window(void) {
+    return app_menu_create_about_dialog("Audio Console", "音響機器 (DJ/VJ Deck)",
+        "Pro B-System Audio Console & BSF Event TOC",
+        "44.1 kHz S16 · Synced with HAL-9000 BSF Synth",
+        280, 160);
 }
-

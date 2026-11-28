@@ -1,0 +1,6 @@
+\ B-Sound Shim 11 — shimGuitar (ch04-shims.tex Def. 9)
+\ Book defaults: Hollowbody triangle + LP sweep 2800 -> 1400 Hz, 15 ms attack
+2800.0 CONSTANT GUITAR-LP-HI
+1400.0 CONSTANT GUITAR-LP-LO
+: SHIM-GUITAR ( y voice -- )
+  PRIM-TRI ;

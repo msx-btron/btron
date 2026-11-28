@@ -1,0 +1,7 @@
+\ B-Sound Shim 10 — shimHiHat (ch04-shims.tex Def. 8)
+\ Book defaults: HP 7500 Hz noise + metallic ping 8400 Hz (closed 0.055 s) / 6200 Hz (open 0.28 s)
+7500.0 CONSTANT HIHAT-HP
+8400.0 CONSTANT HIHAT-PING-CLOSED
+6200.0 CONSTANT HIHAT-PING-OPEN
+: SHIM-HIHAT ( y voice -- )
+  >R HIHAT-HP 1.4 R> PRIM-HPF ;

@@ -1,0 +1,5 @@
+\ B-Sound Forth Base Primitive 03 — SAW (Band-Limited 4-Harmonic Saw)
+\ w(phi) = 0.62 * sum_{k=1..4} ((-1)^(k-1)/k) * sin(k*phi)
+2 CONSTANT MODE-SAW
+: PRIM-SAW ( y voice -- )
+  SWAP MODE-SAW ROT VOICE-SET ;

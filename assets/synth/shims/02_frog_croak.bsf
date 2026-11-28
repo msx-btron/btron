@@ -1,0 +1,28 @@
+\ B-Sound Shim 02 — shimFrogCroak (ch04-shims.tex Def. 1A-Alt)
+\ Book defaults: f_b=125 Hz, d=0.19 s, 32.26 Hz AM rasp (dt=0.031 s), Q=3.8
+125.0  CONSTANT FROG-F0
+0.19   CONSTANT FROG-DUR
+32.26  CONSTANT FROG-AM-HZ
+: SHIM-FROG-Y ( t_local base_f dur -- y )
+  >R >R
+  DUP 0.0 < OVER R> R@ >R DROP >R DROP
+  R> R> 2DROP QUIET ;
+\ Clean analytical cuica/frog pitch curve matching synth-engine.js shimFrogY
+: SHIM-FROG-CROAK ( t_local base_f dur voice -- )
+  >R >R >R
+  DUP 0.0 >= OVER R> SWAP >R SWAP OVER < AND IF
+    \ Check 32 Hz rasp duty cycle: frac(t / 0.031) <= 0.74
+    DUP 0.031 / FRAC 0.74 > IF
+      DROP R> R> 2DROP QUIET R> VOICE-OFF EXIT
+    THEN
+    \ p = t / dur
+    R@ / DUP 0.75 < IF
+      0.75 / 0.35 * 0.88 +
+    ELSE
+      0.75 - 0.25 / -0.30 * 1.25 +
+    THEN
+    R> DROP R> * HZ>Y
+    FROG-AM-HZ 0.45 R> PRIM-AM
+  ELSE
+    DROP R> R> 2DROP QUIET R> VOICE-OFF
+  THEN ;

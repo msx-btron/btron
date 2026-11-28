@@ -163,7 +163,7 @@ int virtio_sound_open(uint32_t sample_rate, uint8_t channels) {
     wanted.freq = (int)sample_rate;
     wanted.format = AUDIO_S16LSB;
     wanted.channels = channels;
-    wanted.samples = 1024;
+    wanted.samples = 256; /* 5.8 ms hardware period @ 44.1 kHz for low-latency B-Audio */
 
     g_sound_device = SDL_OpenAudioDevice(NULL, 0, &wanted, &obtained, 0);
     if (g_sound_device == 0) {
@@ -225,5 +225,13 @@ uint32_t virtio_sound_get_queued_bytes(void) {
     return SDL_GetQueuedAudioSize(g_sound_device);
 #else
     return 0;
+#endif
+}
+
+void virtio_sound_flush(void) {
+#if !defined(BTRON_UEFI_TARGET)
+    if (g_sound_device != 0) {
+        SDL_ClearQueuedAudio(g_sound_device);
+    }
 #endif
 }

@@ -1,0 +1,27 @@
+\ @ID 15
+\ @TITLE NEON PLUCK
+\ @SUBTITLE 10.28.59 · PLUCK & VIBRATO ARP
+\ @CATEGORY MATH-SYNTH
+\ @PARTS 2
+\ @PART 1 Dual Pluck Envelope
+\ @PART 2 Kick + Pluck + Vibrato Arp
+\ @SPEED 2.0
+\ @FORMULA y = (1 + 3*(floor(8x) mod 4) + 5*(floor(2x) mod 2))/12 + 0.22*sin(36x)
+
+: TRACK-EVAL ( x part -- )
+  1 VOICES-N!
+  0 = IF
+    DUP 1.0 MOD DUP 0.45 < IF
+      -8.0 * EXP 1.8 * -1.4 SWAP -
+    ELSE
+      DROP DUP 0.45 - 1.0 MOD -10.0 * EXP 1.6 * 0.6 +
+    THEN
+    SWAP 8.0 MOD 6.0 / FLOOR 0.4 * +
+    0 PRIM-TRI EXIT
+  THEN
+  DUP FRAC DUP 0.2 < IF -18.0 * EXP 1.5 * 1.65 - 0 PRIM-SINE DROP EXIT ELSE DROP THEN
+  DUP 4.0 MOD 2.5 < IF 4.0 * FRAC -10.0 * EXP 0.55 * 1.35 - 0 PRIM-TRI EXIT THEN
+  DUP 8.0 * FLOOR >INT 4 IMOD 3 I*
+  OVER 2.0 * FLOOR >INT 2 IMOD 5 I* + 1 + F16 12.0 /
+  SWAP 36.0 * SIN 0.22 * +
+  0 SHIM-PULSE-BELL ;

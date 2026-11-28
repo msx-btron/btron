@@ -1,0 +1,7 @@
+\ B-Sound Forth Base Primitive 12 — LFO (Vibrato / Ribbon Drift, Eq. 17)
+\ phi_mod(t) = phi(t) + d * sin(2*pi*f_LFO*t)
+11 CONSTANT MODE-LFO
+: PRIM-LFO ( y rate_hz depth_oct voice -- )
+  >R R@ VOICE-LFO!
+  MODE-LFO R@ VOICE-MODE!
+  R> VOICE-FREQ! ;

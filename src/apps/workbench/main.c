@@ -248,6 +248,11 @@ static int posix_comp_detect(void *x) {
     int d = 0;
     H mx = 0, my = 0;
     uint32_t now = posix_comp_now(x);
+
+    /* Always service B-Audio (Cassette, Orchestra, BSF Synth) on the 1 ms input
+     * loop so audio never starves when the desktop is visually idle. */
+    cassette_service();
+
     get_baremetal_mouse_pos(&mx, &my);
     if (wnd_mgr_flush_resize()) d = 1;
     if (s_resizing && s_resize_wnd) {

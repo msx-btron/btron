@@ -1,0 +1,36 @@
+\ @ID 01
+\ @TITLE HARMONIC FAN
+\ @SUBTITLE 10.09.28 · F(Y) = 261.63 * 2^Y HZ
+\ @CATEGORY MATH-SYNTH
+\ @PARTS 4
+\ @PART 1 H(1)..H(2)
+\ @PART 2 H(1)..H(4)
+\ @PART 3 H(1)..H(7)
+\ @PART 4 H(1)..H(10)
+\ @SPEED 1.6
+\ @FORMULA H(n) = s*log2(n) - 2 if x < 7.6, s = F(clamp((x+7)/6,0,1)) - F(clamp((x-3.5)/4,0,1))
+
+VARIABLE HF-S
+VARIABLE HF-N
+
+: PART>N ( p -- n )
+  CASE
+    0 OF 2 ENDOF
+    1 OF 4 ENDOF
+    2 OF 7 ENDOF
+    3 OF 10 ENDOF 2 SWAP ENDCASE ;
+
+: TRACK-EVAL ( x part -- )
+  PART>N DUP HF-N ! VOICES-N!
+  DUP 7.6 >= IF
+    DROP
+    HF-N @ 0 DO QUIET I PRIM-SINE LOOP
+    EXIT
+  THEN
+  DUP 7.0 + 6.0 / CLAMP01 SMOOTHSTEP
+  SWAP 3.5 - 4.0 / CLAMP01 SMOOTHSTEP -
+  HF-S !
+  HF-N @ 0 DO
+    HF-S @ I 1 + F16 LOG2 * 2.0 -
+    I PRIM-SINE
+  LOOP ;

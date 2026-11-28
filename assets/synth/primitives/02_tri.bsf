@@ -1,0 +1,5 @@
+\ B-Sound Forth Base Primitive 02 — TRI (Triangle Oscillator)
+\ w(phi) = (2/pi) * arcsin(sin(phi))
+1 CONSTANT MODE-TRI
+: PRIM-TRI ( y voice -- )
+  SWAP MODE-TRI ROT VOICE-SET ;

@@ -1,0 +1,5 @@
+\ B-Sound Forth Base Primitive 01 — SINE (Pure & Sub-Weighted Sine)
+\ w(phi) = sin(phi)  [sub f < 95 Hz: 0.90*sin(phi) + 0.10*sin(2*phi)]
+0 CONSTANT MODE-SINE
+: PRIM-SINE ( y voice -- )
+  SWAP MODE-SINE ROT VOICE-SET ;

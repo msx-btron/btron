@@ -1,0 +1,8 @@
+\ B-Sound Shim 15 — shimIndustrialBass (ch04-shims.tex Def. 14)
+\ Book defaults: Saw f0 + Sq 1.005*f0 -> Moog LP 2600 -> 420 Hz (Q=4.5) -> C_20
+2600.0 CONSTANT INDBASS-LP-HI
+420.0  CONSTANT INDBASS-LP-LO
+4.5    CONSTANT INDBASS-Q
+20.0   CONSTANT INDBASS-SAT-K
+: SHIM-IND-BASS ( y voice -- )
+  >R INDBASS-SAT-K R> PRIM-SAT ;

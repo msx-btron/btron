@@ -1,0 +1,5 @@
+\ B-Sound Forth Base Primitive 07 — NSE (Deterministic xorshift32 Noise)
+\ w[n] = H_f(xi[n]), xi[n] = xorshift32() in [-1, 1]
+6 CONSTANT MODE-NSE
+: PRIM-NSE ( y voice -- )
+  SWAP MODE-NSE ROT VOICE-SET ;

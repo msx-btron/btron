@@ -1,0 +1,5 @@
+\ B-Sound Shim 06 — shimDance (ch04-shims.tex Def. 4)
+\ Book defaults: 5-step D-major sine cascade (D5=587.33 .. F#6=1479.98 Hz)
+587.33 CONSTANT DANCE-F0
+: SHIM-DANCE ( y voice -- )
+  PRIM-SINE ;

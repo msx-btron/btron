@@ -1,0 +1,7 @@
+\ B-Sound Forth Base Primitive 05 — FM (2-Op FM Synthesis, Eq. 12)
+\ w(phi) = sin(phi + I * sin(r * phi))  [default r=2.76, I=1.8]
+4 CONSTANT MODE-FM
+: PRIM-FM ( y ratio index voice -- )
+  >R R@ VOICE-FM!
+  MODE-FM R@ VOICE-MODE!
+  R> VOICE-FREQ! ;

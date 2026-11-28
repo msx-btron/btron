@@ -1,0 +1,5 @@
+\ B-Sound Shim 05 — shimFloat (ch04-shims.tex Def. 3)
+\ Book defaults: f0=523.25 Hz, 4 staggered sines (0/60/120/180 ms), 0.985f -> f
+523.25 CONSTANT FLOAT-F0
+: SHIM-FLOAT ( y voice -- )
+  PRIM-SINE ;

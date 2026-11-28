@@ -1,0 +1,6 @@
+\ B-Sound Forth Base Primitive 14 — RVB (4-Comb Schroeder Hall Reverb, Eq. 15)
+\ y[n] = sum_{c=1..4} b_c[n-D_c], g = 0.78
+13 CONSTANT MODE-RVB
+: PRIM-RVB ( y wet_mix voice -- )
+  >R REVERB!
+  MODE-RVB R> VOICE-SET ;

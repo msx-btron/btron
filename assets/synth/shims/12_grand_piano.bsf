@@ -1,0 +1,4 @@
+\ B-Sound Shim 12 — shimGrandPiano (ch04-shims.tex Def. 10)
+\ Book defaults: 3 inharmonic partials {1.0, 2.002, 3.006}, 8 ms wooden-hammer attack
+: SHIM-GRAND-PIANO ( y voice -- )
+  PRIM-PNO ;

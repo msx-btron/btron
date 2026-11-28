@@ -1,0 +1,7 @@
+\ B-Sound Forth Base Primitive 09 — LPF (Resonant Low-Pass, Eq. 13)
+\ H_LP(z): resonant low-pass filter with cutoff_hz and Q
+8 CONSTANT MODE-LPF
+: PRIM-LPF ( y cutoff_hz q voice -- )
+  >R >R >R 1 R> R> R@ VOICE-FILTER!
+  MODE-LPF R@ VOICE-MODE!
+  R> VOICE-FREQ! ;

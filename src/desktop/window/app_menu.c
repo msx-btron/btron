@@ -63,13 +63,17 @@ int app_menu_add_header(APP_MENU_BAR *bar, const char *title, H width) {
     memset(hdr, 0, sizeof(APP_MENU_HEADER));
     strncpy(hdr->title, title ? title : "", sizeof(hdr->title) - 1);
 
+    H measured = (H)(tc_calc_string_width(hdr->title, (int)strlen(hdr->title)) + 16);
+    if (measured < 40) measured = 40;
+    H eff_w = (width > measured) ? width : measured;
+
     H left = 4;
     if (idx > 0) {
         left = bar->headers[idx - 1].rect.right + 6;
     }
     hdr->rect.left = left;
     hdr->rect.top = 0;
-    hdr->rect.right = left + width;
+    hdr->rect.right = (H)(left + eff_w);
     hdr->rect.bottom = APP_MENU_BAR_HEIGHT;
     return idx;
 }

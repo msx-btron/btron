@@ -1,0 +1,14 @@
+\ B-Sound Shim 08 — shimKick (ch04-shims.tex Def. 6)
+\ Book defaults: f0=65 Hz, d=0.16 s, exp sweep 2.2*f0 -> 0.75*f0
+65.0  CONSTANT KICK-F0
+0.16  CONSTANT KICK-DUR
+: SHIM-KICK-Y ( t_local pitch_hz dur -- y )
+  SWAP >R >R
+  DUP 0.0 >= OVER R@ < AND IF
+    \ log2(0.75 / 2.2) = -1.5525 oct, log2(2.2) = +1.1375 oct
+    R> / -1.5525 * 1.1375 + R> HZ>Y +
+  ELSE
+    DROP R> R> 2DROP QUIET
+  THEN ;
+: SHIM-KICK ( t_local pitch_hz dur voice -- )
+  >R SHIM-KICK-Y R> PRIM-SINE ;

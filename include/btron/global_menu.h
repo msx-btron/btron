@@ -66,6 +66,7 @@ enum {
     GMENU_CMD_APP_MARS       = 223,
     GMENU_CMD_APP_INSTALLER  = 224,
     GMENU_CMD_APP_MATRIX     = 225,
+    GMENU_CMD_APP_SYNTH      = 226,
 
     /* ── アプリ(A) — 超漢字 Cho-Kanji suite ── */
     GMENU_CMD_APP_CK_CABINET     = 210,

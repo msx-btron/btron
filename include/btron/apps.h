@@ -33,6 +33,8 @@ __WEAK_APP WND* open_tad_browser_about_window(void);
 __WEAK_APP WND* open_gterm_about_window(void);
 __WEAK_APP WND* open_orchestra_window(void);
 __WEAK_APP WND* open_orchestra_about_window(void);
+__WEAK_APP WND* open_synth_window(void);
+__WEAK_APP WND* open_synth_about_window(void);
 __WEAK_APP WND* open_audio_player_window(void);
 __WEAK_APP WND* open_kagee_window(void);
 __WEAK_APP WND* open_cassette_about_window(void);

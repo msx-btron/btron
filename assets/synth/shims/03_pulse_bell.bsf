@@ -1,0 +1,6 @@
+\ B-Sound Shim 03 — shimPulseBell (ch04-shims.tex Def. 1B / GM 98)
+\ Book defaults: 2-Op FM bell r = 2.76, I = 1.8, tau = 1.8 s
+2.76 CONSTANT BELL-FM-R
+1.80 CONSTANT BELL-FM-I
+: SHIM-PULSE-BELL ( y voice -- )
+  >R BELL-FM-R BELL-FM-I R> PRIM-FM ;

@@ -1,0 +1,7 @@
+\ B-Sound Forth Base Primitive 10 — HPF (High-Pass Edge, Eq. 13)
+\ H_HP(z): high-pass edge filter for hi-hats & glitch zaps
+9 CONSTANT MODE-HPF
+: PRIM-HPF ( y cutoff_hz q voice -- )
+  >R >R >R 2 R> R> R@ VOICE-FILTER!
+  MODE-HPF R@ VOICE-MODE!
+  R> VOICE-FREQ! ;

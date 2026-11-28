@@ -1,0 +1,8 @@
+\ B-Sound Shim 16 — shimCyberLead (ch04-shims.tex Def. 17)
+\ Book defaults: Saw f0 + Sq 1.004*f0 -> LP 3800 -> 1600 Hz (Q=4.0) -> C_25
+3800.0 CONSTANT CYBER-LP-HI
+1600.0 CONSTANT CYBER-LP-LO
+4.0    CONSTANT CYBER-Q
+25.0   CONSTANT CYBER-SAT-K
+: SHIM-CYBER-LEAD ( y voice -- )
+  >R CYBER-SAT-K R> PRIM-SAT ;

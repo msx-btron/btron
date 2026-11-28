@@ -128,3 +128,67 @@ FILE "cbios_sub.rom"        BIN  third_party/openMSX/Contrib/cbios/cbios_sub.rom
 
 DIR "tbios" -
 FILE "tfw_main_msx2.rom"    BIN  assets/msx/tbios/tfw_main_msx2.rom  tbios
+
+# B-Sound Forth (BSF) 4-Folder Synth Library (/SYS/synth/)
+DIR "synth" -
+DIR "primitives" synth
+DIR "shims" synth
+DIR "samples" synth
+DIR "compositions" synth
+FILE "01_sine.bsf" TXT assets/synth/primitives/01_sine.bsf primitives
+FILE "02_tri.bsf" TXT assets/synth/primitives/02_tri.bsf primitives
+FILE "03_saw.bsf" TXT assets/synth/primitives/03_saw.bsf primitives
+FILE "04_pls.bsf" TXT assets/synth/primitives/04_pls.bsf primitives
+FILE "05_fm.bsf" TXT assets/synth/primitives/05_fm.bsf primitives
+FILE "06_am.bsf" TXT assets/synth/primitives/06_am.bsf primitives
+FILE "07_nse.bsf" TXT assets/synth/primitives/07_nse.bsf primitives
+FILE "08_sat.bsf" TXT assets/synth/primitives/08_sat.bsf primitives
+FILE "09_lpf.bsf" TXT assets/synth/primitives/09_lpf.bsf primitives
+FILE "10_hpf.bsf" TXT assets/synth/primitives/10_hpf.bsf primitives
+FILE "11_bpf.bsf" TXT assets/synth/primitives/11_bpf.bsf primitives
+FILE "12_lfo.bsf" TXT assets/synth/primitives/12_lfo.bsf primitives
+FILE "13_pno.bsf" TXT assets/synth/primitives/13_pno.bsf primitives
+FILE "14_rvb.bsf" TXT assets/synth/primitives/14_rvb.bsf primitives
+FILE "15_echo.bsf" TXT assets/synth/primitives/15_echo.bsf primitives
+FILE "01_pulse_squash.bsf" TXT assets/synth/shims/01_pulse_squash.bsf shims
+FILE "02_frog_croak.bsf" TXT assets/synth/shims/02_frog_croak.bsf shims
+FILE "03_pulse_bell.bsf" TXT assets/synth/shims/03_pulse_bell.bsf shims
+FILE "04_waddle.bsf" TXT assets/synth/shims/04_waddle.bsf shims
+FILE "05_float.bsf" TXT assets/synth/shims/05_float.bsf shims
+FILE "06_dance.bsf" TXT assets/synth/shims/06_dance.bsf shims
+FILE "07_ding.bsf" TXT assets/synth/shims/07_ding.bsf shims
+FILE "08_kick.bsf" TXT assets/synth/shims/08_kick.bsf shims
+FILE "09_snare.bsf" TXT assets/synth/shims/09_snare.bsf shims
+FILE "10_hihat.bsf" TXT assets/synth/shims/10_hihat.bsf shims
+FILE "11_guitar.bsf" TXT assets/synth/shims/11_guitar.bsf shims
+FILE "12_grand_piano.bsf" TXT assets/synth/shims/12_grand_piano.bsf shims
+FILE "13_pedal_bass.bsf" TXT assets/synth/shims/13_pedal_bass.bsf shims
+FILE "14_ind_kick.bsf" TXT assets/synth/shims/14_ind_kick.bsf shims
+FILE "15_ind_bass.bsf" TXT assets/synth/shims/15_ind_bass.bsf shims
+FILE "16_cyber_lead.bsf" TXT assets/synth/shims/16_cyber_lead.bsf shims
+FILE "01_harmonic_fan.bsf" TXT assets/synth/samples/01_harmonic_fan.bsf samples
+FILE "02_burgundy_groove.bsf" TXT assets/synth/samples/02_burgundy_groove.bsf samples
+FILE "03_motor_chord.bsf" TXT assets/synth/samples/03_motor_chord.bsf samples
+FILE "04_sub_swell.bsf" TXT assets/synth/samples/04_sub_swell.bsf samples
+FILE "05_lime_breakbeat.bsf" TXT assets/synth/samples/05_lime_breakbeat.bsf samples
+FILE "06_cobalt_euclid.bsf" TXT assets/synth/samples/06_cobalt_euclid.bsf samples
+FILE "07_crimson_acid.bsf" TXT assets/synth/samples/07_crimson_acid.bsf samples
+FILE "08_mint_swing.bsf" TXT assets/synth/samples/08_mint_swing.bsf samples
+FILE "09_emerald_acid.bsf" TXT assets/synth/samples/09_emerald_acid.bsf samples
+FILE "10_violet_drift.bsf" TXT assets/synth/samples/10_violet_drift.bsf samples
+FILE "11_bronze_pulse.bsf" TXT assets/synth/samples/11_bronze_pulse.bsf samples
+FILE "12_obsidian_canon.bsf" TXT assets/synth/samples/12_obsidian_canon.bsf samples
+FILE "13_sage_funk.bsf" TXT assets/synth/samples/13_sage_funk.bsf samples
+FILE "14_sapphire_arp.bsf" TXT assets/synth/samples/14_sapphire_arp.bsf samples
+FILE "15_neon_pluck.bsf" TXT assets/synth/samples/15_neon_pluck.bsf samples
+FILE "16_analytical_etudes.bsf" TXT assets/synth/samples/16_analytical_etudes.bsf samples
+FILE "17_bsound_kinematic.bsf" TXT assets/synth/samples/17_bsound_kinematic.bsf samples
+FILE "18_bsound_percussion.bsf" TXT assets/synth/samples/18_bsound_percussion.bsf samples
+FILE "19_bsound_orchestra.bsf" TXT assets/synth/samples/19_bsound_orchestra.bsf samples
+FILE "20_bsound_industrial.bsf" TXT assets/synth/samples/20_bsound_industrial.bsf samples
+FILE "21_carol_of_bells.bsf" TXT assets/synth/compositions/21_carol_of_bells.bsf compositions
+FILE "22_green_caterpillar.bsf" TXT assets/synth/compositions/22_green_caterpillar.bsf compositions
+FILE "23_house_of_rising_sun.bsf" TXT assets/synth/compositions/23_house_of_rising_sun.bsf compositions
+FILE "24_tron_init.bsf" TXT assets/synth/compositions/24_tron_init.bsf compositions
+FILE "25_electro_glide.bsf" TXT assets/synth/compositions/25_electro_glide.bsf compositions
+FILE "26_carla_bley_440.bsf" TXT assets/synth/compositions/26_carla_bley_440.bsf compositions
