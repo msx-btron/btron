@@ -64,7 +64,7 @@ static uint32_t       s_comb_idx[4];
 static float          s_comb_lp[4];
 static float          s_reverb_mix = 0.0f;
 
-/* Per-voice stereo ping-pong echo primitive (4 independent delay buses, up to 800 ms @ 44.1 kHz) */
+/* Per-voice stereo / ping-pong echo primitive (4 independent damped delay buses, up to 800 ms @ 44.1 kHz) */
 #define BSF_ECHO_VOICES 4
 #define BSF_ECHO_MAX    36864
 static float          s_vecho_l[BSF_ECHO_VOICES][BSF_ECHO_MAX];
@@ -72,9 +72,17 @@ static float          s_vecho_r[BSF_ECHO_VOICES][BSF_ECHO_MAX];
 static uint32_t       s_vecho_idx[BSF_ECHO_VOICES];
 static uint32_t       s_vecho_del_l[BSF_ECHO_VOICES];
 static uint32_t       s_vecho_del_r[BSF_ECHO_VOICES];
+static float          s_vecho_lp_l[BSF_ECHO_VOICES];
+static float          s_vecho_lp_r[BSF_ECHO_VOICES];
+static float          s_vecho_damp[BSF_ECHO_VOICES];
+static bool           s_vecho_pp[BSF_ECHO_VOICES];
 static float          s_vecho_fb[BSF_ECHO_VOICES];
 static float          s_vecho_wet[BSF_ECHO_VOICES];
 static float          s_vecho_sec[BSF_ECHO_VOICES];
+
+/* Master 1-pole analog warmth filter state (matches synth-engine.js lpL/lpR) */
+static float          s_warm_lp_l = 0.0f;
+static float          s_warm_lp_r = 0.0f;
 
 /* Low-latency pump buffer (256 frames = 5.8 ms @ 44.1 kHz) */
 #define BSF_PUMP_FRAMES        256u
@@ -203,12 +211,15 @@ void bsf_dsp_voice_echo(int idx, fix16_t delay_ms, fix16_t feedback, fix16_t mix
     if (idx >= BSF_ECHO_VOICES) return;
     uint32_t dl = (uint32_t)(dms * 0.001f * (float)s_rate);
     if (dl >= BSF_ECHO_MAX) dl = BSF_ECHO_MAX - 1u;
-    /* Stereo Haas spread (~16 ms) like synth-engine.js */
-    uint32_t spread = (uint32_t)(0.016f * (float)s_rate);
+    /* Exact Haas stereo spread & tape damping matching synth-engine.js Track 5 */
+    float spread_s = (dms < 300.0f) ? 0.014f : ((dms < 550.0f) ? 0.022f : 0.016f);
+    uint32_t spread = (uint32_t)(spread_s * (float)s_rate);
     uint32_t dr = (dl + spread < BSF_ECHO_MAX) ? (dl + spread) : (BSF_ECHO_MAX - 1u);
     if (dr < 64u) dr = 64u;
     s_vecho_del_l[idx] = dl;
     s_vecho_del_r[idx] = dr;
+    s_vecho_damp[idx]  = (dms >= 550.0f) ? 0.40f : 0.28f;
+    s_vecho_pp[idx]    = (dms < 300.0f); /* 239ms ping-pong; 478/666ms parallel stereo */
     s_vecho_fb[idx]    = fb;
     s_vecho_wet[idx]   = m;
     s_vecho_sec[idx]   = dms * 0.001f;
@@ -356,7 +367,7 @@ static void reset_voices(void) {
     for (int i = 0; i < BSF_MAX_VOICES; i++) {
         s_voices[i].y_pitch = FIX16_QUIET;
         s_voices[i].prev_y = FIX16_QUIET;
-        s_voices[i].amp = 0.22f;
+        s_voices[i].amp = 0.65f;
         s_voices[i].pan = (i % 2 == 0) ? -0.18f : 0.18f;
         s_voices[i].fm_ratio = 2.76f;
         s_voices[i].fm_index = 1.8f;
@@ -370,6 +381,7 @@ static void reset_voices(void) {
         s_telem.voice_y[i] = FIX16_QUIET;
         s_telem.voice_mode[i] = BSF_MODE_SINE;
         s_telem.voice_active[i] = false;
+        s_telem.voice_echo_active[i] = false;
     }
     memset(s_comb_buf, 0, sizeof(s_comb_buf));
     memset(s_comb_idx, 0, sizeof(s_comb_idx));
@@ -377,13 +389,19 @@ static void reset_voices(void) {
     memset(s_vecho_l, 0, sizeof(s_vecho_l));
     memset(s_vecho_r, 0, sizeof(s_vecho_r));
     memset(s_vecho_idx, 0, sizeof(s_vecho_idx));
+    memset(s_vecho_lp_l, 0, sizeof(s_vecho_lp_l));
+    memset(s_vecho_lp_r, 0, sizeof(s_vecho_lp_r));
     memset(s_vecho_wet, 0, sizeof(s_vecho_wet));
     memset(s_vecho_sec, 0, sizeof(s_vecho_sec));
     memset(s_vecho_fb, 0, sizeof(s_vecho_fb));
+    memset(s_vecho_pp, 0, sizeof(s_vecho_pp));
     for (int e = 0; e < BSF_ECHO_VOICES; e++) {
         s_vecho_del_l[e] = 17640u;
         s_vecho_del_r[e] = 18346u;
+        s_vecho_damp[e]  = 0.36f;
     }
+    s_warm_lp_l = 0.0f;
+    s_warm_lp_r = 0.0f;
 }
 
 /* ── Header Metadata Parser for .bsf Tracks ──────────────────────── */
@@ -824,6 +842,7 @@ void bsf_render_frames(int16_t *out_pcm, size_t frames) {
         s_telem.rms_l  *= 0.85f;
         s_telem.rms_r  *= 0.85f;
         s_telem.limiter_hit = false;
+        memset(s_telem.voice_echo_active, 0, sizeof(s_telem.voice_echo_active));
         return;
     }
 
@@ -835,6 +854,7 @@ void bsf_render_frames(int16_t *out_pcm, size_t frames) {
 
     float pk_l = 0.0f, pk_r = 0.0f;
     float sq_l = 0.0f, sq_r = 0.0f;
+    float vecho_pk[BSF_ECHO_VOICES] = { 0.0f, 0.0f, 0.0f, 0.0f };
     bool lim_hit = false;
 
     size_t done = 0;
@@ -858,65 +878,82 @@ void bsf_render_frames(int16_t *out_pcm, size_t frames) {
             }
         }
 
-        /* 2. Render q stereo samples */
+        /* 2. Render q stereo samples (1:1 gain staging & echo/reverb bus with synth-engine.js) */
+        int nv_norm = (s_telem.voice_count > 1) ? s_telem.voice_count : 1;
+        float voice_norm = 1.0f / sqrtf((float)nv_norm);
+        const float lp_alpha = 0.58f; /* ~7.2 kHz analog warmth LP @ 44.1 kHz */
+
         for (size_t i = 0; i < q; i++) {
             float dry_l = 0.0f, dry_r = 0.0f;
             float echo_sum_l = 0.0f, echo_sum_r = 0.0f;
-            int active_n = 0;
             for (int v = 0; v < BSF_MAX_VOICES; v++) {
                 float vl = 0.0f, vr = 0.0f;
                 if (s_voices[v].active || s_voices[v].gate) {
-                    float s = synth_voice_sample(&s_voices[v], inv_sr);
+                    float s = synth_voice_sample(&s_voices[v], inv_sr) * voice_norm;
                     float pl = 0.5f * (1.0f - s_voices[v].pan);
                     float pr = 0.5f * (1.0f + s_voices[v].pan);
                     vl = s * pl;
                     vr = s * pr;
                     dry_l += vl;
                     dry_r += vr;
-                    active_n++;
                 }
-                /* Per-voice stereo ping-pong echo (runs even while dry gate is off so trails ring out) */
+                /* Per-voice tape-damped stereo / ping-pong echo (1:1 with synth-engine.js L2882-2903) */
                 if (v < BSF_ECHO_VOICES && s_vecho_wet[v] > 0.005f) {
                     uint32_t wi = s_vecho_idx[v];
                     uint32_t rl_idx = (wi + BSF_ECHO_MAX - s_vecho_del_l[v]) % BSF_ECHO_MAX;
                     uint32_t rr_idx = (wi + BSF_ECHO_MAX - s_vecho_del_r[v]) % BSF_ECHO_MAX;
-                    float el = s_vecho_l[v][rl_idx];
-                    float er = s_vecho_r[v][rr_idx];
-                    s_vecho_l[v][wi] = vl + s_vecho_fb[v] * er;
-                    s_vecho_r[v][wi] = vr + s_vecho_fb[v] * el;
+                    float rd_l = s_vecho_l[v][rl_idx];
+                    float rd_r = s_vecho_r[v][rr_idx];
+                    float dmp = s_vecho_damp[v];
+                    s_vecho_lp_l[v] += (rd_l - s_vecho_lp_l[v]) * dmp;
+                    s_vecho_lp_r[v] += (rd_r - s_vecho_lp_r[v]) * dmp;
+                    if (s_vecho_pp[v]) {
+                        s_vecho_l[v][wi] = vl + s_vecho_lp_r[v] * s_vecho_fb[v];
+                        s_vecho_r[v][wi] = vr + s_vecho_lp_l[v] * s_vecho_fb[v];
+                    } else {
+                        s_vecho_l[v][wi] = vl + s_vecho_lp_l[v] * s_vecho_fb[v];
+                        s_vecho_r[v][wi] = vr + s_vecho_lp_r[v] * s_vecho_fb[v];
+                    }
                     s_vecho_idx[v] = (wi + 1u) % BSF_ECHO_MAX;
-                    echo_sum_l += s_vecho_wet[v] * el;
-                    echo_sum_r += s_vecho_wet[v] * er;
+                    float el_out = s_vecho_lp_l[v] * s_vecho_wet[v];
+                    float er_out = s_vecho_lp_r[v] * s_vecho_wet[v];
+                    echo_sum_l += el_out;
+                    echo_sum_r += er_out;
+                    float ep = fabsf(el_out) + fabsf(er_out);
+                    if (ep > vecho_pk[v]) vecho_pk[v] = ep;
                 }
             }
-            if (active_n > 4) {
-                float norm = 2.0f / sqrtf((float)active_n);
-                dry_l *= norm;
-                dry_r *= norm;
-            }
 
-            /* 4-Comb Schroeder Hall Reverb (g = 0.78) */
-            float out_l = dry_l + echo_sum_l;
-            float out_r = dry_r + echo_sum_r;
+            /* 1-pole analog warmth filter on dry + echo bus */
+            float bus_l = dry_l + echo_sum_l;
+            float bus_r = dry_r + echo_sum_r;
+            s_warm_lp_l += (bus_l - s_warm_lp_l) * lp_alpha;
+            s_warm_lp_r += (bus_r - s_warm_lp_r) * lp_alpha;
+            float mix_l = s_warm_lp_l;
+            float mix_r = s_warm_lp_r;
+
+            /* 4-Comb Schroeder Hall Reverb fed by dry + echo (g = 0.78, damp = 0.28, synth-engine.js L2926-2941) */
             if (s_reverb_mix > 0.005f) {
-                float mono = 0.5f * (dry_l + dry_r);
+                float mono = 0.5f * (mix_l + mix_r);
                 float rl = 0.0f, rr = 0.0f;
                 for (int c = 0; c < 4; c++) {
                     uint32_t ci = s_comb_idx[c];
                     float del = s_comb_buf[c][ci];
-                    s_comb_lp[c] = 0.72f * del + 0.28f * s_comb_lp[c];
+                    s_comb_lp[c] += (del - s_comb_lp[c]) * 0.28f;
                     s_comb_buf[c][ci] = mono + 0.78f * s_comb_lp[c];
                     s_comb_idx[c] = (ci + 1u) % k_comb_del[c];
                     if (c & 1) rr += del; else rl += del;
                 }
-                out_l += s_reverb_mix * 0.45f * rl;
-                out_r += s_reverb_mix * 0.45f * rr;
+                mix_l += rl * 0.5f * s_reverb_mix;
+                mix_r += rr * 0.5f * s_reverb_mix;
             }
 
-            /* Master soft clamp & limiter telemetry (|x| > 0.85) */
-            if (fabsf(out_l) > 0.85f || fabsf(out_r) > 0.85f) lim_hit = true;
-            out_l = master_soft_clamp(out_l);
-            out_r = master_soft_clamp(out_r);
+            /* Master soft-limiter bus (1:1 with synth-engine.js L2942-2945: tanh(1.15 * mix) * 0.42) */
+            float pre_l = mix_l * 1.15f;
+            float pre_r = mix_r * 1.15f;
+            if (fabsf(pre_l) > 0.85f || fabsf(pre_r) > 0.85f) lim_hit = true;
+            float out_l = tanhf(pre_l) * 0.42f;
+            float out_r = tanhf(pre_r) * 0.42f;
 
             float al = fabsf(out_l), ar = fabsf(out_r);
             if (al > pk_l) pk_l = al;
@@ -941,6 +978,9 @@ void bsf_render_frames(int16_t *out_pcm, size_t frames) {
     s_telem.rms_l  = sqrtf(sq_l * inv_f);
     s_telem.rms_r  = sqrtf(sq_r * inv_f);
     s_telem.limiter_hit = lim_hit;
+    for (int e = 0; e < BSF_ECHO_VOICES; e++) {
+        s_telem.voice_echo_active[e] = (s_vecho_wet[e] > 0.005f && vecho_pk[e] > 0.003f);
+    }
     s_telem.balance = (pk_l + pk_r > 0.001f) ? ((pk_r - pk_l) / (pk_l + pk_r)) : 0.0f;
 }
 

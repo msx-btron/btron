@@ -100,6 +100,7 @@ typedef struct {
     fix16_t  voice_y[BSF_MAX_VOICES];     /* Current pitch per voice (FIX16_QUIET if silent) */
     uint8_t  voice_mode[BSF_MAX_VOICES];  /* Active BsfDspMode per voice */
     bool     voice_active[BSF_MAX_VOICES];
+    bool     voice_echo_active[BSF_MAX_VOICES]; /* True when per-voice echo tail is audibly sounding */
     float    peak_l;                      /* [0..1] */
     float    peak_r;                      /* [0..1] */
     float    rms_l;                       /* [0..1] */

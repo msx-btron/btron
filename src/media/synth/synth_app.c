@@ -678,13 +678,21 @@ static void synth_paint(WND *wnd, GDEV *dev) {
                 int e_w = 14 + tc_calc_string_width(elbl, (int)strlen(elbl));
                 if (cx + e_w > max_cx) break;
 
-                bool e_on = false;
-                int estep = (int)((spd * s_plot_echo_sec[v] / 16.0f) * (float)(SYNTH_PLOT_COLS - 1) + 0.5f);
-                if (estep < 1) estep = 1;
-                for (int k = 1; k <= 4; k++) {
-                    int sc = hc - k * estep;
-                    if (sc < 0) break;
-                    if (s_plot_y[sc][v] != FIX16_QUIET) { e_on = true; break; }
+                bool e_on = t->voice_echo_active[v];
+                if (!e_on) {
+                    int estep = (int)((spd * s_plot_echo_sec[v] / 16.0f) * (float)(SYNTH_PLOT_COLS - 1) + 0.5f);
+                    if (estep < 1) estep = 1;
+                    for (int k = 1; k <= 4 && !e_on; k++) {
+                        int sc = hc - k * estep;
+                        if (sc < 0) sc += SYNTH_PLOT_COLS;
+                        for (int off = -1; off <= 1; off++) {
+                            int idx_c = sc + off;
+                            if (idx_c >= 0 && idx_c < SYNTH_PLOT_COLS && s_plot_y[idx_c][v] != FIX16_QUIET) {
+                                e_on = true;
+                                break;
+                            }
+                        }
+                    }
                 }
                 COLOR ecol = e_on ? k_vcols[v] : blend_hal_col(k_vcols[v], HAL_COL_PANEL, 0.40f);
                 COLOR etxt = e_on ? k_vcols[v] : HAL_COL_DIM;
