@@ -314,6 +314,7 @@ COMMON_SRCS = src/desktop/graphics/dp_core.c   \
               src/rt/common/scalar/fix16.c       \
               src/languages/bsf/bsf_vm.c         \
               src/languages/bsf/bsf_dsp.c        \
+              src/media/sdk/audio_nexus.c        \
               src/media/synth/synth_app.c        \
               src/apps/volumes/b_drivesetup.c  \
               src/apps/volumes/b_installer.c   \
@@ -642,6 +643,7 @@ COMMON_NO_SDL_SRCS = \
     src/rt/common/scalar/fix16.c      \
     src/languages/bsf/bsf_vm.c        \
     src/languages/bsf/bsf_dsp.c       \
+    src/media/sdk/audio_nexus.c       \
     src/media/synth/synth_app.c       \
     src/apps/volumes/b_installer.c  \
     src/apps/volumes/b_drivesetup.c  \
@@ -4190,6 +4192,7 @@ CAPTURE_SCREENS_SRCS = tools/capture_screens.c \
     src/rt/common/scalar/fix16.c      \
     src/languages/bsf/bsf_vm.c        \
     src/languages/bsf/bsf_dsp.c       \
+    src/media/sdk/audio_nexus.c       \
     src/media/synth/synth_app.c       \
                        src/media/orchestra/orchestra.c \
                        src/media/orchestra/orchestra_stage.c \

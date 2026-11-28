@@ -5,6 +5,8 @@
  */
 
 #include <media/synth.h>
+#include <media/gst_rt.h>
+#include <media/audio_nexus.h>
 #include <btron/bsf.h>
 #include <btron/apps.h>
 #include <btron/t_editor.h>
@@ -72,10 +74,55 @@ static bool          s_plot_dirty = true;
 static int           s_plot_track = -1;
 static int           s_plot_part  = -1;
 
-/* C99 LilCu64 visualization source (0 = BSF Forth, 1..4 = C99 LilCu64 hardcoded score) */
-static int           s_lc_track = 0;
+/* C99 LilCu64 & Orchestra/SMF visualization sources */
+static int           s_lc_track = 0;   /* 0 = BSF Forth, 1..4 = C99 LilCu64 */
+static bool          s_orch_mode = false;
+static char          s_orch_label[48] = "ORCHESTRA / SMF";
 static int           s_lc_pages = 8;   /* Scalable page window count (4, 8, or 16 for 320x320 MCU) */
 static int           s_lc_last_cap = -1;
+static uint32_t      s_orch_last_ev = 0;
+
+static uint8_t orch_kind_to_mode(uint8_t kind) {
+    switch (kind) {
+        case ORCH_KIND_PIANO:   return BSF_MODE_PNO;
+        case ORCH_KIND_WADDLE:
+        case ORCH_KIND_PEDAL:   return BSF_MODE_LPF;
+        case ORCH_KIND_SNARE:   return BSF_MODE_NSE;
+        case ORCH_KIND_HAT:
+        case ORCH_KIND_ZAP:     return BSF_MODE_HPF;
+        case ORCH_KIND_BASS:
+        case ORCH_KIND_INDKICK: return BSF_MODE_SAT;
+        case ORCH_KIND_SWARM:   return BSF_MODE_LFO;
+        case ORCH_KIND_BELL:    return BSF_MODE_FM;
+        default:                return BSF_MODE_SINE;
+    }
+}
+
+static uint32_t orch_total_ticks(const OrchView *ov) {
+    if (!ov) return 0u;
+    uint32_t max_t = ov->loop_tick;
+    if (max_t == 0u) {
+        uint32_t n = ov->event_count;
+        if (n > ORCH_MAX_EVENTS) n = ORCH_MAX_EVENTS;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t e = ov->ev[i].start_tick + (ov->ev[i].dur_tick ? ov->ev[i].dur_tick : (uint32_t)(ORCH_PPQ / 4));
+            if (e > max_t) max_t = e;
+        }
+    }
+    if (max_t < (uint32_t)(ORCH_PPQ * 4)) max_t = (uint32_t)(ORCH_PPQ * 4);
+    return max_t;
+}
+
+static uint32_t orch_cur_tick_heard(const OrchView *ov) {
+    AudioNexusTelem nt;
+    if (audio_nexus_is_async() && audio_nexus_read_telem(&nt) && nt.active_engine == AUDIO_NEXUS_ENGINE_ORCH) {
+        return nt.orch_tick_heard;
+    }
+    if (!ov || ov->sample_rate == 0u) return 0u;
+    uint64_t q_samp = ((uint64_t)ov->queued_ms * (uint64_t)ov->sample_rate) / 1000ull;
+    uint64_t hpos = (ov->npos > q_samp) ? (ov->npos - q_samp) : 0ull;
+    return gst_tick_of_sample(hpos, ov->sample_rate, ov->tempo, ov->den);
+}
 
 static const char *const k_lc_titles[4] = {
     "CAROL OF THE BELLS (C99)",
@@ -219,7 +266,87 @@ static void synth_rebuild_plot_lilcu64(int track, int page) {
     s_plot_dirty  = false;
 }
 
+static void synth_rebuild_plot_orch(int page) {
+    for (int c = 0; c < SYNTH_PLOT_COLS; c++) {
+        for (int v = 0; v < BSF_MAX_VOICES; v++) s_plot_y[c][v] = FIX16_QUIET;
+    }
+    for (int v = 0; v < BSF_MAX_VOICES; v++) {
+        s_plot_modes[v]    = BSF_MODE_SINE;
+        s_plot_echo_sec[v] = 0.0f;
+        s_plot_echo_fb[v]  = 0.0f;
+        s_plot_echo_wet[v] = 0.0f;
+    }
+    s_plot_voices = 0;
+
+    OrchView *ov = gst_view();
+    if (!ov) { s_plot_dirty = false; return; }
+    uint32_t total = orch_total_ticks(ov);
+    int pages = (s_lc_pages >= 2) ? s_lc_pages : 8;
+    if (page < 0) page = 0;
+    if (page >= pages) page = pages - 1;
+    double win_len = (double)total / (double)pages;
+    if (win_len < 1.0) win_len = 1.0;
+    double t0 = (double)page * win_len;
+    double t1 = t0 + win_len;
+
+    int lane_trk[BSF_MAX_VOICES];
+    int n_lanes = 0;
+    uint32_t ev_n = ov->event_count;
+    if (ev_n > ORCH_MAX_EVENTS) ev_n = ORCH_MAX_EVENTS;
+    for (uint32_t i = 0; i < ev_n; i++) {
+        const OrchEvent *e = &ov->ev[i];
+        int trk = (int)e->track;
+        int lane = -1;
+        for (int l = 0; l < n_lanes; l++) {
+            if (lane_trk[l] == trk) { lane = l; break; }
+        }
+        if (lane < 0) {
+            if (n_lanes >= BSF_MAX_VOICES) continue;
+            lane = n_lanes++;
+            lane_trk[lane] = trk;
+            uint8_t kind = (trk >= 0 && trk < ov->track_count && trk < ORCH_MAX_TRACKS)
+                           ? ov->trk[trk].kind : ORCH_KIND_PHRASE;
+            s_plot_modes[lane] = orch_kind_to_mode(kind);
+        }
+        double et = (double)e->start_tick;
+        double ed = (double)(e->dur_tick > 30u ? e->dur_tick : 60u);
+        double e_end = et + ed;
+        if (e_end < t0 || et > t1) continue;
+
+        float yf = ((float)e->key - 60.0f) / 12.0f;
+        if (yf < -3.0f) yf = -3.0f;
+        if (yf >  3.0f) yf =  3.0f;
+        fix16_t y16 = fix16_from_float(yf);
+        int c0 = (int)(((et - t0) / win_len) * (double)(SYNTH_PLOT_COLS - 1));
+        int c1 = (int)(((e_end - t0) / win_len) * (double)(SYNTH_PLOT_COLS - 1));
+        if (c0 < 0) c0 = 0;
+        if (c1 >= SYNTH_PLOT_COLS) c1 = SYNTH_PLOT_COLS - 1;
+        for (int c = c0; c <= c1; c++) {
+            s_plot_y[c][lane] = y16;
+        }
+    }
+    s_plot_voices  = n_lanes;
+    s_plot_track   = -2; /* Orchestra sentinel */
+    s_plot_part    = page;
+    s_orch_last_ev = ev_n;
+    s_plot_dirty   = false;
+}
+
 static void synth_rebuild_plot(void) {
+    if (s_orch_mode) {
+        OrchView *ov = gst_view();
+        uint32_t total = orch_total_ticks(ov);
+        int pages = (s_lc_pages >= 2) ? s_lc_pages : 8;
+        int page = 0;
+        if (total > 0u) {
+            uint32_t tk = orch_cur_tick_heard(ov) % total;
+            page = (int)(((double)tk / (double)total) * (double)pages);
+            if (page < 0) page = 0;
+            if (page >= pages) page = pages - 1;
+        }
+        synth_rebuild_plot_orch(page);
+        return;
+    }
     if (s_lc_track > 0) {
         double len = lc_score_length(s_lc_track);
         int pages = (s_lc_pages >= 2) ? s_lc_pages : 8;
@@ -261,13 +388,30 @@ static void synth_rebuild_plot(void) {
 }
 
 void synth_notify_track_changed(void) {
-    s_lc_track = 0;
+    s_lc_track  = 0;
+    s_orch_mode = false;
     s_plot_dirty = true;
     if (s_synth_wnd) inval_wnd(s_synth_wnd);
 }
 
 void synth_set_lilcu64_track(int track_num) {
+    s_orch_mode = false;
     s_lc_track = (track_num >= 1 && track_num <= 4) ? track_num : 0;
+    s_plot_track = -1;
+    s_plot_part  = -1;
+    s_plot_dirty = true;
+    if (s_synth_wnd) inval_wnd(s_synth_wnd);
+}
+
+void synth_set_orch_mode(const char *label) {
+    s_lc_track  = 0;
+    s_orch_mode = true;
+    if (label && label[0]) {
+        strncpy(s_orch_label, label, sizeof(s_orch_label) - 1);
+        s_orch_label[sizeof(s_orch_label) - 1] = '\0';
+    } else {
+        strncpy(s_orch_label, "ORCHESTRA / SMF", sizeof(s_orch_label) - 1);
+    }
     s_plot_track = -1;
     s_plot_part  = -1;
     s_plot_dirty = true;
@@ -277,13 +421,44 @@ void synth_set_lilcu64_track(int track_num) {
 void synth_ui_tick(void) {
     if (!s_synth_wnd) return;
     int lc_active = lilcu64_synth_get_active_track();
-    if (lc_active >= 1 && lc_active <= 4 && !bsf_is_playing()) {
-        if (s_lc_track != lc_active) {
-            s_lc_track = lc_active;
-            s_plot_track = -1;
-            s_plot_part  = -1;
+    OrchView *ov = gst_view();
+    bool orch_playing = (ov && ov->state == ORCH_GST_PLAYING);
+
+    if (!bsf_is_playing()) {
+        if (lc_active >= 1 && lc_active <= 4) {
+            if (s_orch_mode || s_lc_track != lc_active) {
+                s_orch_mode = false;
+                s_lc_track = lc_active;
+                s_plot_track = -1;
+                s_plot_part  = -1;
+                s_plot_dirty = true;
+            }
+        } else if (orch_playing) {
+            if (!s_orch_mode) {
+                s_orch_mode = true;
+                s_lc_track = 0;
+                s_plot_track = -1;
+                s_plot_part  = -1;
+                s_plot_dirty = true;
+            }
+        }
+    }
+    if (s_orch_mode) {
+        if (!orch_playing) return;
+        uint32_t total = orch_total_ticks(ov);
+        int pages = (s_lc_pages >= 2) ? s_lc_pages : 8;
+        int page = 0;
+        if (total > 0u) {
+            uint32_t tk = orch_cur_tick_heard(ov) % total;
+            page = (int)(((double)tk / (double)total) * (double)pages);
+            if (page < 0) page = 0;
+            if (page >= pages) page = pages - 1;
+        }
+        if (s_plot_track != -2 || s_plot_part != page || s_orch_last_ev != ov->event_count) {
             s_plot_dirty = true;
         }
+        inval_wnd(s_synth_wnd);
+        return;
     }
     if (s_lc_track > 0) {
         if (lc_active != s_lc_track) {
@@ -442,7 +617,7 @@ static void synth_exec_cmd(int cmd) {
             }
             break;
         case SCMD_PREV_PART:
-            if (s_lc_track > 0) {
+            if (s_orch_mode || s_lc_track > 0) {
                 /* Zoom out window scale (16 -> 8 -> 4 pages) */
                 s_lc_pages = (s_lc_pages >= 16) ? 8 : 4;
                 s_plot_dirty = true;
@@ -454,7 +629,7 @@ static void synth_exec_cmd(int cmd) {
             }
             break;
         case SCMD_NEXT_PART:
-            if (s_lc_track > 0) {
+            if (s_orch_mode || s_lc_track > 0) {
                 /* Zoom in window scale (4 -> 8 -> 16 pages, MCU 320x320 scale) */
                 s_lc_pages = (s_lc_pages <= 4) ? 8 : 16;
                 s_plot_dirty = true;
@@ -564,18 +739,32 @@ static void draw_dashed_seg(GDEV *dev, H x0, H y0, H x1, H y1, int *phase) {
 
 static void synth_paint(WND *wnd, GDEV *dev) {
     if (!wnd || !dev || dev->width < 80 || dev->height < 120) return;
-    bool lc_mode = (s_lc_track >= 1 && s_lc_track <= 4);
+    bool lc_mode   = (!s_orch_mode && s_lc_track >= 1 && s_lc_track <= 4);
+    bool orch_mode = s_orch_mode;
+    bool win_mode  = (lc_mode || orch_mode);
     const BsfTelemetry *t = bsf_get_telemetry();
-    const BsfTrackInfo *tr = (!lc_mode && t) ? bsf_get_track_info(t->track_idx) : NULL;
+    const BsfTrackInfo *tr = (!win_mode && t) ? bsf_get_track_info(t->track_idx) : NULL;
+    OrchView *ov = orch_mode ? gst_view() : NULL;
     bool compact = (dev->width <= 360 || dev->height <= 360);
 
     double lc_len = lc_mode ? lc_score_length(s_lc_track) : 0.0;
     double lc_t   = lc_mode ? (double)lilcu64_synth_get_track_time() : 0.0;
+    uint32_t orch_total = orch_mode ? orch_total_ticks(ov) : 0u;
+    uint32_t orch_tk    = (orch_mode && orch_total > 0u) ? (orch_cur_tick_heard(ov) % orch_total) : 0u;
     int lc_pages  = (s_lc_pages >= 2) ? s_lc_pages : 8;
     if (compact && lc_pages < 12) lc_pages = 12; /* Auto-zoom for 320x320 PicoCalc MCU */
     int lc_page   = 0;
     float lc_xn   = 0.0f;
-    if (lc_mode && lc_len > 0.0) {
+    if (orch_mode && orch_total > 0u) {
+        double win_len = (double)orch_total / (double)lc_pages;
+        lc_page = (int)((double)orch_tk / win_len);
+        if (lc_page < 0) lc_page = 0;
+        if (lc_page >= lc_pages) lc_page = lc_pages - 1;
+        lc_xn = (float)(((double)orch_tk - (double)lc_page * win_len) / win_len);
+        if (lc_xn < 0.0f) lc_xn = 0.0f;
+        if (lc_xn > 1.0f) lc_xn = 1.0f;
+        if (s_plot_track != -2 || s_plot_part != lc_page) s_plot_dirty = true;
+    } else if (lc_mode && lc_len > 0.0) {
         double win_len = lc_len / (double)lc_pages;
         lc_page = (int)(lc_t / win_len);
         if (lc_page < 0) lc_page = 0;
@@ -584,7 +773,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         if (lc_xn < 0.0f) lc_xn = 0.0f;
         if (lc_xn > 1.0f) lc_xn = 1.0f;
         if (s_plot_track != s_lc_track || s_plot_part != lc_page) s_plot_dirty = true;
-    } else if (!lc_mode && t && (t->track_idx != s_plot_track || t->part_idx != s_plot_part)) {
+    } else if (!win_mode && t && (t->track_idx != s_plot_track || t->part_idx != s_plot_part)) {
         s_plot_dirty = true;
     }
 
@@ -592,10 +781,16 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         synth_rebuild_plot();
     }
 
-    bool is_playing = lc_mode ? (lilcu64_synth_get_active_track() == s_lc_track) : (t && t->playing);
+    bool is_playing = orch_mode ? (ov && ov->state == ORCH_GST_PLAYING)
+                    : lc_mode   ? (lilcu64_synth_get_active_track() == s_lc_track)
+                    : (t && t->playing);
     float pk_l = 0.0f, pk_r = 0.0f, rms_l = 0.0f, rms_r = 0.0f;
     bool lim_hit = false;
-    if (lc_mode) {
+    if (orch_mode && ov) {
+        pk_l = (float)ov->meter_l * 0.01f;
+        pk_r = (float)ov->meter_r * 0.01f;
+        lim_hit = (ov->master_lim != 0u);
+    } else if (lc_mode) {
         lilcu64_synth_get_meters(&pk_l, &pk_r, &rms_l, &rms_r, &lim_hit);
     } else if (t) {
         pk_l = t->peak_l; pk_r = t->peak_r; rms_l = t->rms_l; rms_r = t->rms_r; lim_hit = t->limiter_hit;
@@ -624,7 +819,9 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         fill_ovl(dev, &eye_in, HAL_COL_RED_HI);
     }
     drw_tc_string(dev, 30, (H)(top_y + 6), "HAL 9000", HAL_COL_PAPER, HAL_COL_PANEL);
-    drw_tc_string(dev, 30, (H)(top_y + 20), lc_mode ? "C99 SCORE" : "BSF SYNTH", HAL_COL_AMBER, HAL_COL_PANEL);
+    drw_tc_string(dev, 30, (H)(top_y + 20),
+                  orch_mode ? "ORCH / SMF" : (lc_mode ? "C99 SCORE" : "BSF SYNTH"),
+                  HAL_COL_AMBER, HAL_COL_PANEL);
 
     /* Quick Action Pills (compute first so title truncates cleanly before pills) */
     RECT r_play, r_deck, r_edit, r_run;
@@ -634,7 +831,14 @@ static void synth_paint(WND *wnd, GDEV *dev) {
     {
         H title_max = (H)(r_play.left - 10);
         char head[96], sub[96];
-        if (lc_mode) {
+        if (orch_mode && ov) {
+            snprintf(head, sizeof(head), "%s  (%u TRK · %u BPM)",
+                     s_orch_label, (unsigned)ov->track_count, (unsigned)ov->tempo);
+            snprintf(sub, sizeof(sub), "WINDOW %d/%d · %u EVENTS · ISOLATED AUDIO CORE",
+                     lc_page + 1, lc_pages, (unsigned)ov->event_count);
+            synth_draw_clipped(dev, 130, (H)(top_y + 5), title_max, head, HAL_COL_PAPER, HAL_COL_PANEL);
+            synth_draw_clipped(dev, 130, (H)(top_y + 20), title_max, sub, HAL_COL_CYAN, HAL_COL_PANEL);
+        } else if (lc_mode) {
             double win_s = (lc_len > 0.0) ? (lc_len / (double)lc_pages) : 0.0;
             snprintf(head, sizeof(head), "C99 %02d/04  %s", s_lc_track, k_lc_titles[s_lc_track - 1]);
             snprintf(sub, sizeof(sub), "WINDOW %d/%d (%.1fs) · LILCU64 HARDCODED SCORE",
@@ -702,7 +906,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         /* Compute current playhead column index for active vs ghost preview & echo trails */
         int head_col = SYNTH_PLOT_COLS - 1;
         float cur_xn = 0.0f;
-        if (lc_mode) {
+        if (win_mode) {
             cur_xn = lc_xn;
             head_col = (int)(cur_xn * (float)(SYNTH_PLOT_COLS - 1));
         } else if (t) {
@@ -788,7 +992,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         /* Live Red Playhead Cursor, Active Voice Dots & Separate Hollow ECHO Rings */
         bool echo_live[BSF_MAX_VOICES];
         memset(echo_live, 0, sizeof(echo_live));
-        if (lc_mode || t) {
+        if (win_mode || t) {
             H cur_x = (H)(plot_l + (int)(cur_xn * (float)plot_w));
             set_col(dev, HAL_COL_RED, HAL_COL_BG);
             drw_lin(dev, cur_x, plot_t, cur_x, plot_b);
@@ -798,7 +1002,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
             fill_rec(dev, &prog_r, HAL_COL_RED);
 
             for (int v = 0; v < nv; v++) {
-                fix16_t y = lc_mode ? s_plot_y[head_col][v] : t->voice_y[v];
+                fix16_t y = win_mode ? s_plot_y[head_col][v] : t->voice_y[v];
                 if (y != FIX16_QUIET) {
                     H py = y_to_py(y, plot_t, plot_h);
                     RECT dot = { (H)(cur_x - 3), (H)(py - 3), (H)(cur_x + 3), (H)(py + 3) };
@@ -840,26 +1044,28 @@ static void synth_paint(WND *wnd, GDEV *dev) {
     set_col(dev, HAL_COL_LINE, HAL_COL_PANEL);
     drw_rec(dev, &bot_r);
 
-    if (lc_mode || t) {
+    if (win_mode || t) {
         H pad_l = (H)(bot_r.left + 12);
         H pad_r = (H)(bot_r.right - 12);
 
         /* Row 1: Part/Window + Fixed-Column Telemetry Placeholders (zero horizontal jitter) */
         char r1_l[48];
-        if (lc_mode) {
+        if (orch_mode) {
+            snprintf(r1_l, sizeof(r1_l), "WIN  %2d/%-2d [ORCH]", lc_page + 1, lc_pages);
+        } else if (lc_mode) {
             snprintf(r1_l, sizeof(r1_l), "WIN  %2d/%-2d [C99]", lc_page + 1, lc_pages);
         } else {
             snprintf(r1_l, sizeof(r1_l), "PART %2d/%-2d %s",
                      t->part_idx + 1, t->part_count, t->auto_advance ? "[AUTO]" : "[LOOP]");
         }
 
-        int hc_bot = (int)((lc_mode ? lc_xn : ((fix16_to_float(t->x_pos) + 8.0f) / 16.0f)) * (float)(SYNTH_PLOT_COLS - 1));
+        int hc_bot = (int)((win_mode ? lc_xn : ((fix16_to_float(t->x_pos) + 8.0f) / 16.0f)) * (float)(SYNTH_PLOT_COLS - 1));
         if (hc_bot < 0) hc_bot = 0;
         if (hc_bot >= SYNTH_PLOT_COLS) hc_bot = SYNTH_PLOT_COLS - 1;
 
         float hz0 = 261.63f;
         for (int v = 0; v < BSF_MAX_VOICES; v++) {
-            fix16_t vy = lc_mode ? s_plot_y[hc_bot][v] : t->voice_y[v];
+            fix16_t vy = win_mode ? s_plot_y[hc_bot][v] : t->voice_y[v];
             if (vy != FIX16_QUIET) {
                 hz0 = fix16_to_float(fix16_y_to_hz(vy));
                 break;
@@ -873,7 +1079,12 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         synth_draw_clipped(dev, pad_l, r1_y, (H)(col_x - 12), r1_l, HAL_COL_AMBER, HAL_COL_PANEL);
         if (col_x > pad_l + 90) {
             char s_x[24], s_hz[24], s_wcet[24];
-            if (lc_mode) {
+            if (orch_mode && ov) {
+                unsigned sec = (ov->sample_rate > 0u) ? (unsigned)(ov->npos / ov->sample_rate) : 0u;
+                snprintf(s_x,    sizeof(s_x),    "T=%02u:%02u ", sec / 60u, sec % 60u);
+                snprintf(s_hz,   sizeof(s_hz),   "%6.1f HZ",     hz0);
+                snprintf(s_wcet, sizeof(s_wcet), "WCET %3u us",  (unsigned)ov->wcet_us);
+            } else if (lc_mode) {
                 snprintf(s_x,    sizeof(s_x),    "T=%5.2fs",   (float)lc_t);
                 snprintf(s_hz,   sizeof(s_hz),   "%6.1f HZ",   hz0);
                 snprintf(s_wcet, sizeof(s_wcet), "EV %4d   ",  lc_cap_count());
@@ -919,7 +1130,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
             int m_w = 14 + tc_calc_string_width(mname, (int)strlen(mname));
             if (cx + m_w > max_cx) break;
 
-            bool dry_on = lc_mode ? (s_plot_y[hc][v] != FIX16_QUIET) : (t && t->voice_active[v]);
+            bool dry_on = win_mode ? (s_plot_y[hc][v] != FIX16_QUIET) : (t && t->voice_active[v]);
             COLOR scol = dry_on ? k_vcols[v] : blend_hal_col(k_vcols[v], HAL_COL_PANEL, 0.45f);
             COLOR tcol = dry_on ? k_vcols[v] : HAL_COL_DIM;
 
@@ -931,7 +1142,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
             cx = (H)(cx + m_w + 12);
 
             /* Separate dotted ECHO xxms badge when this voice has custom echo delay */
-            if (!lc_mode && s_plot_echo_wet[v] > 0.005f && s_plot_echo_sec[v] > 0.005f) {
+            if (!win_mode && s_plot_echo_wet[v] > 0.005f && s_plot_echo_sec[v] > 0.005f) {
                 char elbl[20];
                 snprintf(elbl, sizeof(elbl), "ECHO %dms", (int)(s_plot_echo_sec[v] * 1000.0f + 0.5f));
                 int e_w = 14 + tc_calc_string_width(elbl, (int)strlen(elbl));
@@ -965,7 +1176,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
                 cx = (H)(cx + e_w + 12);
             }
         }
-        if (!lc_mode && tr && tr->reverb_mix > 0.005f && !has_rvb_voice) {
+        if (!win_mode && tr && tr->reverb_mix > 0.005f && !has_rvb_voice) {
             char rlbl[16];
             snprintf(rlbl, sizeof(rlbl), "RVB %d%%", (int)(tr->reverb_mix * 100.0f + 0.5f));
             int r_w = 14 + tc_calc_string_width(rlbl, (int)strlen(rlbl));
@@ -999,9 +1210,15 @@ static void synth_paint(WND *wnd, GDEV *dev) {
                           lim_hit ? HAL_COL_RED_HI : HAL_COL_PAPER, HAL_COL_PANEL);
         }
 
-        /* Row 3: Formula or C99 Info */
+        /* Row 3: Formula or C99/ORCH Info */
         H r3_y = (H)(bot_r.top + 48);
-        if (lc_mode) {
+        if (orch_mode && ov) {
+            char o_info[128];
+            snprintf(o_info, sizeof(o_info),
+                     "Orchestra / SMF Isolated Audio Core · %u tracks · %u events · Up/Down: Window Zoom (%d pages)",
+                     (unsigned)ov->track_count, (unsigned)ov->event_count, lc_pages);
+            synth_draw_clipped(dev, pad_l, r3_y, pad_r, o_info, HAL_COL_PAPER, HAL_COL_PANEL);
+        } else if (lc_mode) {
             char lc_info[128];
             snprintf(lc_info, sizeof(lc_info),
                      "LilCu64 C99 WebAudio Engine · %.2fs loop · %d captured events · Up/Down: Window Zoom (%d pages)",
@@ -1151,8 +1368,15 @@ WND *open_synth_window(void) {
     s_synth_wnd->menu_open = synth_menu_is_open;
     if (!bsf_is_playing()) {
         int lc_active = lilcu64_synth_get_active_track();
+        OrchView *ov = gst_view();
         if (lc_active >= 1 && lc_active <= 4) {
+            s_orch_mode = false;
             s_lc_track = lc_active;
+            s_plot_track = -1;
+            s_plot_part  = -1;
+        } else if (ov && ov->state == ORCH_GST_PLAYING) {
+            s_orch_mode = true;
+            s_lc_track = 0;
             s_plot_track = -1;
             s_plot_part  = -1;
         }

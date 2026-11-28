@@ -37,6 +37,9 @@ static int s_reap_fail;
 static void sev(void) { __asm__ volatile("sev" ::: "memory"); }
 static void wfe(void) { __asm__ volatile("wfe" ::: "memory"); }
 
+/* Optional InterCore Nexus audio DSP hook on Core 1 (weak no-op when audio_nexus is unlinked) */
+__attribute__((weak)) void audio_nexus_pico_poll(void) {}
+
 static void fifo_drain(void)
 {
     int n;
@@ -65,6 +68,7 @@ void pico_core1_body(void)
          * gears and XMB path. */
         picogl_core1_job();
         picogl_span_drain();
+        audio_nexus_pico_poll();
         if (!picogl_core1_busy() &&
             picogl_span_finished() == picogl_span_posted())
             wfe();

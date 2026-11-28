@@ -27,6 +27,8 @@ __attribute__((weak)) void     virtio_sound_close(void) {}
 __attribute__((weak)) bool     virtio_sound_is_ready(void) { return false; }
 __attribute__((weak)) uint32_t virtio_sound_get_queued_bytes(void) { return 0; }
 __attribute__((weak)) void     virtio_sound_flush(void) {}
+__attribute__((weak)) void     audio_nexus_vm_lock(void) {}
+__attribute__((weak)) void     audio_nexus_vm_unlock(void) {}
 
 /* Internal VM bridge (bsf_vm.c) */
 extern void bsf_vm_reset_all(void);
@@ -635,16 +637,19 @@ int bsf_select_track(int track_idx, int part_idx) {
         return -1;
     }
 
+    audio_nexus_vm_lock();
     /* Refresh metadata in case the file was edited in t_editor */
     parse_track_metadata(s_file_buf, tr->filepath, &s_tracks[track_idx], tr->id);
 
     bsf_vm_restore_watermark();
     s_telem.last_error[0] = '\0';
     if (bsf_compile_source(s_file_buf, tr->title) != 0) {
+        audio_nexus_vm_unlock();
         return -1;
     }
     if (bsf_vm_resolve_track_entry() != 0) {
         bsf_dsp_set_error("BSF track missing TRACK-EVAL word");
+        audio_nexus_vm_unlock();
         return -1;
     }
 
@@ -656,6 +661,7 @@ int bsf_select_track(int track_idx, int part_idx) {
     s_telem.part_count = s_tracks[track_idx].part_count;
     s_telem.x_pos = fix16_from_int(-8);
     s_telem.voice_count = 0;
+    audio_nexus_vm_unlock();
     return 0;
 }
 
@@ -713,6 +719,7 @@ int bsf_eval_preview(fix16_t x_pos, int part_idx,
                      fix16_t *out_y, uint8_t *out_modes, int max_voices) {
     if (!out_y || max_voices <= 0) return 0;
     int lim = (max_voices < BSF_MAX_VOICES) ? max_voices : BSF_MAX_VOICES;
+    audio_nexus_vm_lock();
     for (int i = 0; i < lim; i++) {
         s_prev_y[i] = FIX16_QUIET;
         s_prev_modes[i] = BSF_MODE_SINE;
@@ -731,6 +738,7 @@ int bsf_eval_preview(fix16_t x_pos, int part_idx,
         out_y[i] = s_prev_y[i];
         if (out_modes) out_modes[i] = s_prev_modes[i];
     }
+    audio_nexus_vm_unlock();
     return cnt;
 }
 
@@ -985,9 +993,11 @@ void bsf_render_frames(int16_t *out_pcm, size_t frames) {
         uint64_t t0 = bsf_now_us();
 
         /* 1. Evaluate BSF track word at current (x, part) */
+        audio_nexus_vm_lock();
         s_y_out_cursor = 0;
         s_preview_mode = false;
         (void)bsf_vm_run_track_eval(s_telem.x_pos, s_telem.part_idx);
+        audio_nexus_vm_unlock();
 
         /* Advance x cursor */
         s_telem.x_pos += dx_q;

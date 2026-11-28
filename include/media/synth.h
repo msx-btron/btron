@@ -17,6 +17,7 @@ WND *open_synth_window(void);
 WND *open_synth_about_window(void);
 void synth_notify_track_changed(void);
 void synth_set_lilcu64_track(int track_num);
+void synth_set_orch_mode(const char *label);
 void synth_ui_tick(void);
 
 #ifdef __cplusplus

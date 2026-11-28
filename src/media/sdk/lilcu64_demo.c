@@ -1623,9 +1623,10 @@ static void demo_paint(WND *wnd, GDEV *dev) {
 
 /* ── Window Event Callback ────────────────────────────────────────── */
 
-/* Weak hooks for clean handoff with BSF Synth Visualizer (no hard link dependency) */
+/* Weak hooks for clean handoff with BSF Synth Visualizer & InterCore Nexus Audio */
 __attribute__((weak)) void bsf_pause(void) {}
 __attribute__((weak)) void synth_set_lilcu64_track(int track_num) { (void)track_num; }
+__attribute__((weak)) bool audio_nexus_is_async(void) { return false; }
 
 static void demo_event(WND *wnd, const EVT *evt) {
     if (!wnd || !evt) return;
@@ -1782,7 +1783,9 @@ static void demo_destroy(WND *wnd) {
 static void demo_task_fn(VW exinf) {
     (void)exinf;
     while (s_demo_wnd) {
-        lilcu64_synth_pump_virtio(0);
+        if (!audio_nexus_is_async()) {
+            lilcu64_synth_pump_virtio(0);
+        }
         inval_wnd(s_demo_wnd);
         dly_tsk(wnd_frame_ms(s_demo_wnd));
     }

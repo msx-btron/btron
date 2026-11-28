@@ -18,6 +18,7 @@
 #include <btron/bsf.h>
 #include <btron/t_editor.h>
 #include <media/orchestra.h>
+#include <media/audio_nexus.h>
 #include <media/synth.h>
 #include "../sdk/lilcu64_synth.h"
 #include <btron/libc_shim.h>
@@ -280,6 +281,11 @@ static void cassette_play_file(int row) {
     }
     g_deck.pl_on = row;
     g_deck.state = DECK_PLAY;
+    if (open_synth_window) {
+        (void)open_synth_window();
+        if (g_audio_wnd) top_wnd(g_audio_wnd);
+    }
+    synth_set_orch_mode((row == 4) ? "ORCHESTRA (.orch)" : "MIDI / SMF (.mid)");
 }
 
 static void cassette_begin_legacy(int row, int manual) {
@@ -1118,29 +1124,50 @@ WND *open_audio_player_window(void) {
 }
 
 void cassette_service(void) {
+    static bool s_nexus_tried = false;
+    if (!s_nexus_tried) {
+        s_nexus_tried = true;
+        (void)audio_nexus_init(BSF_SAMPLE_RATE);
+        (void)audio_nexus_start_task();
+    }
+    bool async_audio = audio_nexus_is_async();
+
     int sec = 0;
     OrchView *v = gst_view();
     if (v && v->state == ORCH_GST_PLAYING) {
-        orchestra_audio_service(btron_render_perf_us());
+        static uint64_t s_orch_ui_us = 0;
+        if (!async_audio) {
+            orchestra_audio_service(btron_render_perf_us());
+        }
+        uint64_t now_us = btron_render_perf_us();
+        if (now_us < s_orch_ui_us || now_us - s_orch_ui_us >= 16000ull) {
+            s_orch_ui_us = now_us;
+            synth_ui_tick();
+            if (s_owner == 2 && g_audio_wnd) inval_wnd(g_audio_wnd);
+        }
     }
 
     if (bsf_is_playing()) {
         static uint64_t s_last_ui_sample = 0;
-        (void)bsf_audio_pump();
+        if (!async_audio) (void)bsf_audio_pump();
         const BsfTelemetry *bt = bsf_get_telemetry();
-        if (bt && (bt->sample_counter < s_last_ui_sample ||
-                   bt->sample_counter - s_last_ui_sample >= 1470u)) {
-            s_last_ui_sample = bt->sample_counter;
+        AudioNexusTelem nt;
+        bool has_nt = async_audio && audio_nexus_read_telem(&nt);
+        uint64_t sc = has_nt ? nt.sample_counter : (bt ? bt->sample_counter : 0ull);
+        if (bt && (sc < s_last_ui_sample || sc - s_last_ui_sample >= 735u)) {
+            s_last_ui_sample = sc;
             synth_ui_tick();
             if (s_owner == 3) {
-                g_deck.vu_left  = (int)(bt->peak_l * 100.0f);
-                g_deck.vu_right = (int)(bt->peak_r * 100.0f);
+                float pl = has_nt ? nt.peak_l : bt->peak_l;
+                float pr = has_nt ? nt.peak_r : bt->peak_r;
+                g_deck.vu_left  = (int)(pl * 100.0f);
+                g_deck.vu_right = (int)(pr * 100.0f);
                 if (g_deck.vu_left  > g_deck.vu_peak_l) g_deck.vu_peak_l = g_deck.vu_left;
                 if (g_deck.vu_right > g_deck.vu_peak_r) g_deck.vu_peak_r = g_deck.vu_right;
-                g_deck.rms_l = bt->rms_l;
-                g_deck.rms_r = bt->rms_r;
-                g_deck.limiter_hit = bt->limiter_hit;
-                g_deck.seconds_elapsed = (int)(bt->sample_counter / BSF_SAMPLE_RATE);
+                g_deck.rms_l = has_nt ? nt.rms_l : bt->rms_l;
+                g_deck.rms_r = has_nt ? nt.rms_r : bt->rms_r;
+                g_deck.limiter_hit = has_nt ? (nt.limiter_hit != 0u) : bt->limiter_hit;
+                g_deck.seconds_elapsed = (int)(sc / BSF_SAMPLE_RATE);
                 if (g_audio_wnd) inval_wnd(g_audio_wnd);
             }
         }
@@ -1150,7 +1177,7 @@ void cassette_service(void) {
     /* Standalone LilCu64 Demo audio pump + 60 Hz Synth Visualizer sync (even when Cassette is stopped) */
     if (lilcu64_synth_get_active_track() > 0 && !(s_owner == 1 && g_deck.state == DECK_PLAY)) {
         static uint64_t s_lc_demo_ui_us = 0;
-        (void)lilcu64_synth_pump_virtio(0);
+        if (!async_audio) (void)lilcu64_synth_pump_virtio(0);
         uint64_t now_us = btron_render_perf_us();
         if (now_us < s_lc_demo_ui_us || now_us - s_lc_demo_ui_us >= 16000ull) {
             s_lc_demo_ui_us = now_us;
@@ -1163,7 +1190,7 @@ void cassette_service(void) {
 
     if (s_owner == 1 && g_deck.pl_on < 4) {
         static uint64_t s_lc_ui_us = 0;
-        (void)lilcu64_synth_pump_virtio(0);
+        if (!async_audio) (void)lilcu64_synth_pump_virtio(0);
         uint64_t now_us = btron_render_perf_us();
         if (now_us < s_lc_ui_us || now_us - s_lc_ui_us >= 16000ull) {
             s_lc_ui_us = now_us;
