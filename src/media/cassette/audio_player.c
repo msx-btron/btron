@@ -249,6 +249,11 @@ static void cassette_play_demo(int track) {
     lilcu64_synth_play_track(track);
     g_deck.pl_on = track - 1;
     g_deck.state = DECK_PLAY;
+    if (open_synth_window) {
+        (void)open_synth_window();
+        if (g_audio_wnd) top_wnd(g_audio_wnd);
+    }
+    synth_set_lilcu64_track(track);
 }
 
 static void cassette_play_file(int row) {
@@ -1142,11 +1147,39 @@ void cassette_service(void) {
         if (s_owner == 3) return;
     }
 
+    /* Standalone LilCu64 Demo audio pump + 60 Hz Synth Visualizer sync (even when Cassette is stopped) */
+    if (lilcu64_synth_get_active_track() > 0 && !(s_owner == 1 && g_deck.state == DECK_PLAY)) {
+        static uint64_t s_lc_demo_ui_us = 0;
+        (void)lilcu64_synth_pump_virtio(0);
+        uint64_t now_us = btron_render_perf_us();
+        if (now_us < s_lc_demo_ui_us || now_us - s_lc_demo_ui_us >= 16000ull) {
+            s_lc_demo_ui_us = now_us;
+            synth_ui_tick();
+        }
+    }
+
     if (g_deck.pl_on < 0 || g_deck.pl_on >= CASSETTE_PL_N) return;
     if (g_deck.state != DECK_PLAY) return;
 
     if (s_owner == 1 && g_deck.pl_on < 4) {
+        static uint64_t s_lc_ui_us = 0;
         (void)lilcu64_synth_pump_virtio(0);
+        uint64_t now_us = btron_render_perf_us();
+        if (now_us < s_lc_ui_us || now_us - s_lc_ui_us >= 16000ull) {
+            s_lc_ui_us = now_us;
+            float pk_l = 0.0f, pk_r = 0.0f, rms_l = 0.0f, rms_r = 0.0f;
+            bool lim = false;
+            lilcu64_synth_get_meters(&pk_l, &pk_r, &rms_l, &rms_r, &lim);
+            g_deck.vu_left  = (int)(pk_l * 100.0f);
+            g_deck.vu_right = (int)(pk_r * 100.0f);
+            if (g_deck.vu_left  > g_deck.vu_peak_l) g_deck.vu_peak_l = g_deck.vu_left;
+            if (g_deck.vu_right > g_deck.vu_peak_r) g_deck.vu_peak_r = g_deck.vu_right;
+            g_deck.rms_l = rms_l;
+            g_deck.rms_r = rms_r;
+            g_deck.limiter_hit = lim;
+            synth_ui_tick();
+            if (g_audio_wnd) inval_wnd(g_audio_wnd);
+        }
         sec = (int)lilcu64_synth_get_track_time();
         if (sec < 0) sec = 0;
         if (s_seen > 1 && sec < s_seen) {

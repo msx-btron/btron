@@ -14,6 +14,8 @@
 #include <btron/troncode.h>
 #include <btron/event.h>
 #include <btron/libc_shim.h>
+#include "lilcu64_synth.h"
+#include "lilcu64_score.h"
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -23,7 +25,11 @@
 #define SYNTH_MENU_H    21
 #define SYNTH_TOP_H     38
 #define SYNTH_BOT_H     88
+#if defined(PICO_REAL_HW)
+#define SYNTH_PLOT_COLS 160
+#else
 #define SYNTH_PLOT_COLS 320
+#endif
 
 /* HAL-9000 / Music.html Exact Vector CRT Palette */
 #define HAL_COL_BG      0xFF050609u
@@ -66,6 +72,43 @@ static bool          s_plot_dirty = true;
 static int           s_plot_track = -1;
 static int           s_plot_part  = -1;
 
+/* C99 LilCu64 visualization source (0 = BSF Forth, 1..4 = C99 LilCu64 hardcoded score) */
+static int           s_lc_track = 0;
+static int           s_lc_pages = 8;   /* Scalable page window count (4, 8, or 16 for 320x320 MCU) */
+static int           s_lc_last_cap = -1;
+
+static const char *const k_lc_titles[4] = {
+    "CAROL OF THE BELLS (C99)",
+    "GREEN CATERPILLAR (C99)",
+    "HOUSE OF THE RISING SUN (C99)",
+    "TRON INIT (C99)"
+};
+
+static uint8_t lc_shim_to_mode(int shim) {
+    switch (shim) {
+        case LC_SHIM_PIANO:     return BSF_MODE_PNO;
+        case LC_SHIM_FROG:      return BSF_MODE_AM;
+        case LC_SHIM_ADD_BELL:
+        case LC_SHIM_DING:      return BSF_MODE_FM;
+        case LC_SHIM_WADDLE:
+        case LC_SHIM_PEDAL:
+        case LC_SHIM_CELLO:     return BSF_MODE_LPF;
+        case LC_SHIM_IND_BASS:
+        case LC_SHIM_IND_KICK:
+        case LC_SHIM_CYBER:     return BSF_MODE_SAT;
+        case LC_SHIM_SNARE:
+        case LC_SHIM_IND_SNARE: return BSF_MODE_NSE;
+        case LC_SHIM_HAT:
+        case LC_SHIM_ZAP:       return BSF_MODE_HPF;
+        case LC_SHIM_SWARM:
+        case LC_SHIM_VIOLIN:
+        case LC_SHIM_SAX:       return BSF_MODE_LFO;
+        case LC_SHIM_GUITAR:    return BSF_MODE_TRI;
+        case LC_CAP_SWOOSH:     return BSF_MODE_RVB;
+        default:                return BSF_MODE_SINE;
+    }
+}
+
 /* Pre-evaluated analytical curves y[col][voice] + per-voice mode & echo parameters */
 static fix16_t       s_plot_y[SYNTH_PLOT_COLS][BSF_MAX_VOICES];
 static uint8_t       s_plot_modes[BSF_MAX_VOICES];
@@ -94,7 +137,102 @@ enum {
     SCMD_SHIM_BASE = 200  /* 200..215 */
 };
 
+static void synth_rebuild_plot_lilcu64(int track, int page) {
+    for (int c = 0; c < SYNTH_PLOT_COLS; c++) {
+        for (int v = 0; v < BSF_MAX_VOICES; v++) s_plot_y[c][v] = FIX16_QUIET;
+    }
+    for (int v = 0; v < BSF_MAX_VOICES; v++) {
+        s_plot_modes[v]    = BSF_MODE_SINE;
+        s_plot_echo_sec[v] = 0.0f;
+        s_plot_echo_fb[v]  = 0.0f;
+        s_plot_echo_wet[v] = 0.0f;
+    }
+    s_plot_voices = 0;
+
+    double len = lc_score_length(track);
+    if (len <= 0.0) { s_plot_dirty = false; return; }
+    if (lilcu64_synth_get_cap_track() != track || lc_cap_count() == 0) {
+        /* Capture populates on the next audio block; stay dirty until ready */
+        s_plot_track = -1;
+        s_plot_part = -1;
+        s_plot_dirty = true;
+        return;
+    }
+
+    int pages = (s_lc_pages >= 2) ? s_lc_pages : 8;
+    if (page < 0) page = 0;
+    if (page >= pages) page = pages - 1;
+    double win_len = len / (double)pages;
+    double t0 = (double)page * win_len;
+    double t1 = t0 + win_len;
+
+    int lane_shim[BSF_MAX_VOICES];
+    int n_lanes = 0;
+    int cap_n = lc_cap_count();
+    for (int i = 0; i < cap_n; i++) {
+        int shim = 0, art = 0;
+        double et = 0.0;
+        float hz = 0.0f, vol = 0.0f, dur = 0.0f;
+        if (!lc_cap_at(i, &shim, &art, &et, &hz, &vol, &dur)) continue;
+        (void)vol;
+        /* Find or allocate visual lane by shim ID */
+        int lane = -1;
+        for (int l = 0; l < n_lanes; l++) {
+            if (lane_shim[l] == shim) { lane = l; break; }
+        }
+        if (lane < 0) {
+            if (n_lanes >= BSF_MAX_VOICES) continue;
+            lane = n_lanes++;
+            lane_shim[lane] = shim;
+            s_plot_modes[lane] = lc_shim_to_mode(shim);
+        }
+        double e_end = et + (double)(dur > 0.04f ? dur : 0.04f);
+        if (e_end < t0 || et > t1) continue;
+
+        float yf;
+        if (shim == LC_SHIM_SNARE || shim == LC_SHIM_IND_SNARE) {
+            yf = 2.25f;
+        } else if (shim == LC_SHIM_HAT || shim == LC_SHIM_ZAP) {
+            yf = 2.75f;
+        } else if (art == LC_CAP_MARK && hz <= 20.0f) {
+            yf = -2.20f;
+        } else if (hz > 16.0f) {
+            yf = log2f(hz / 261.6256f);
+            if (yf < -3.0f) yf = -3.0f;
+            if (yf >  3.0f) yf =  3.0f;
+        } else {
+            continue;
+        }
+        fix16_t y16 = fix16_from_float(yf);
+        int c0 = (int)(((et - t0) / win_len) * (double)(SYNTH_PLOT_COLS - 1));
+        int c1 = (int)(((e_end - t0) / win_len) * (double)(SYNTH_PLOT_COLS - 1));
+        if (c0 < 0) c0 = 0;
+        if (c1 >= SYNTH_PLOT_COLS) c1 = SYNTH_PLOT_COLS - 1;
+        for (int c = c0; c <= c1; c++) {
+            s_plot_y[c][lane] = y16;
+        }
+    }
+    s_plot_voices = n_lanes;
+    s_plot_track  = track;
+    s_plot_part   = page;
+    s_lc_last_cap = cap_n;
+    s_plot_dirty  = false;
+}
+
 static void synth_rebuild_plot(void) {
+    if (s_lc_track > 0) {
+        double len = lc_score_length(s_lc_track);
+        int pages = (s_lc_pages >= 2) ? s_lc_pages : 8;
+        int page = 0;
+        if (len > 0.0) {
+            double t = (double)lilcu64_synth_get_track_time();
+            page = (int)((t / len) * (double)pages);
+            if (page < 0) page = 0;
+            if (page >= pages) page = pages - 1;
+        }
+        synth_rebuild_plot_lilcu64(s_lc_track, page);
+        return;
+    }
     const BsfTelemetry *t = bsf_get_telemetry();
     if (!t) return;
     s_plot_voices = 0;
@@ -123,12 +261,50 @@ static void synth_rebuild_plot(void) {
 }
 
 void synth_notify_track_changed(void) {
+    s_lc_track = 0;
+    s_plot_dirty = true;
+    if (s_synth_wnd) inval_wnd(s_synth_wnd);
+}
+
+void synth_set_lilcu64_track(int track_num) {
+    s_lc_track = (track_num >= 1 && track_num <= 4) ? track_num : 0;
+    s_plot_track = -1;
+    s_plot_part  = -1;
     s_plot_dirty = true;
     if (s_synth_wnd) inval_wnd(s_synth_wnd);
 }
 
 void synth_ui_tick(void) {
     if (!s_synth_wnd) return;
+    int lc_active = lilcu64_synth_get_active_track();
+    if (lc_active >= 1 && lc_active <= 4 && !bsf_is_playing()) {
+        if (s_lc_track != lc_active) {
+            s_lc_track = lc_active;
+            s_plot_track = -1;
+            s_plot_part  = -1;
+            s_plot_dirty = true;
+        }
+    }
+    if (s_lc_track > 0) {
+        if (lc_active != s_lc_track) {
+            return;
+        }
+        double len = lc_score_length(s_lc_track);
+        int pages = (s_lc_pages >= 2) ? s_lc_pages : 8;
+        int page = 0;
+        if (len > 0.0) {
+            double t = (double)lilcu64_synth_get_track_time();
+            page = (int)((t / len) * (double)pages);
+            if (page < 0) page = 0;
+            if (page >= pages) page = pages - 1;
+        }
+        if (s_plot_track != s_lc_track || s_plot_part != page ||
+            s_lc_last_cap != lc_cap_count()) {
+            s_plot_dirty = true;
+        }
+        inval_wnd(s_synth_wnd);
+        return;
+    }
     const BsfTelemetry *t = bsf_get_telemetry();
     if (t && (t->track_idx != s_plot_track || t->part_idx != s_plot_part)) {
         s_plot_dirty = true;
@@ -226,15 +402,26 @@ static void synth_exec_cmd(int cmd) {
             if (s_synth_wnd) cls_wnd(s_synth_wnd);
             return;
         case SCMD_PLAY_TOGGLE:
-            bsf_toggle_play();
+            if (s_lc_track > 0) {
+                if (lilcu64_synth_get_active_track() == s_lc_track) lilcu64_synth_stop_track();
+                else lilcu64_synth_play_track(s_lc_track);
+            } else {
+                bsf_toggle_play();
+            }
             cassette_notify_bsf_state();
             break;
         case SCMD_STOP:
-            bsf_stop();
+            if (s_lc_track > 0) lilcu64_synth_stop_track();
+            else bsf_stop();
             cassette_notify_bsf_state();
             break;
         case SCMD_PREV_TRACK:
-            if (t && ntracks > 0) {
+            if (s_lc_track > 0) {
+                int nt = (s_lc_track > 1) ? (s_lc_track - 1) : 4;
+                s_lc_track = nt;
+                lilcu64_synth_play_track(nt);
+                s_plot_dirty = true;
+            } else if (t && ntracks > 0) {
                 int nt = (t->track_idx - 1 + ntracks) % ntracks;
                 (void)bsf_select_track(nt, 0);
                 s_plot_dirty = true;
@@ -242,7 +429,12 @@ static void synth_exec_cmd(int cmd) {
             }
             break;
         case SCMD_NEXT_TRACK:
-            if (t && ntracks > 0) {
+            if (s_lc_track > 0) {
+                int nt = (s_lc_track < 4) ? (s_lc_track + 1) : 1;
+                s_lc_track = nt;
+                lilcu64_synth_play_track(nt);
+                s_plot_dirty = true;
+            } else if (t && ntracks > 0) {
                 int nt = (t->track_idx + 1) % ntracks;
                 (void)bsf_select_track(nt, 0);
                 s_plot_dirty = true;
@@ -250,7 +442,11 @@ static void synth_exec_cmd(int cmd) {
             }
             break;
         case SCMD_PREV_PART:
-            if (t && t->part_count > 0) {
+            if (s_lc_track > 0) {
+                /* Zoom out window scale (16 -> 8 -> 4 pages) */
+                s_lc_pages = (s_lc_pages >= 16) ? 8 : 4;
+                s_plot_dirty = true;
+            } else if (t && t->part_count > 0) {
                 int np = (t->part_idx - 1 + t->part_count) % t->part_count;
                 (void)bsf_set_part(np);
                 s_plot_dirty = true;
@@ -258,7 +454,11 @@ static void synth_exec_cmd(int cmd) {
             }
             break;
         case SCMD_NEXT_PART:
-            if (t && t->part_count > 0) {
+            if (s_lc_track > 0) {
+                /* Zoom in window scale (4 -> 8 -> 16 pages, MCU 320x320 scale) */
+                s_lc_pages = (s_lc_pages <= 4) ? 8 : 16;
+                s_plot_dirty = true;
+            } else if (t && t->part_count > 0) {
                 int np = (t->part_idx + 1) % t->part_count;
                 (void)bsf_set_part(np);
                 s_plot_dirty = true;
@@ -269,7 +469,8 @@ static void synth_exec_cmd(int cmd) {
             bsf_toggle_auto_advance();
             break;
         case SCMD_MUTE:
-            bsf_toggle_mute();
+            if (s_lc_track > 0) lilcu64_synth_toggle_mute();
+            else bsf_toggle_mute();
             break;
         case SCMD_ABOUT:
             (void)open_synth_about_window();
@@ -363,12 +564,43 @@ static void draw_dashed_seg(GDEV *dev, H x0, H y0, H x1, H y1, int *phase) {
 
 static void synth_paint(WND *wnd, GDEV *dev) {
     if (!wnd || !dev || dev->width < 80 || dev->height < 120) return;
+    bool lc_mode = (s_lc_track >= 1 && s_lc_track <= 4);
     const BsfTelemetry *t = bsf_get_telemetry();
-    const BsfTrackInfo *tr = t ? bsf_get_track_info(t->track_idx) : NULL;
+    const BsfTrackInfo *tr = (!lc_mode && t) ? bsf_get_track_info(t->track_idx) : NULL;
+    bool compact = (dev->width <= 360 || dev->height <= 360);
 
-    if (s_plot_dirty || (t && (t->track_idx != s_plot_track || t->part_idx != s_plot_part))) {
+    double lc_len = lc_mode ? lc_score_length(s_lc_track) : 0.0;
+    double lc_t   = lc_mode ? (double)lilcu64_synth_get_track_time() : 0.0;
+    int lc_pages  = (s_lc_pages >= 2) ? s_lc_pages : 8;
+    if (compact && lc_pages < 12) lc_pages = 12; /* Auto-zoom for 320x320 PicoCalc MCU */
+    int lc_page   = 0;
+    float lc_xn   = 0.0f;
+    if (lc_mode && lc_len > 0.0) {
+        double win_len = lc_len / (double)lc_pages;
+        lc_page = (int)(lc_t / win_len);
+        if (lc_page < 0) lc_page = 0;
+        if (lc_page >= lc_pages) lc_page = lc_pages - 1;
+        lc_xn = (float)((lc_t - (double)lc_page * win_len) / win_len);
+        if (lc_xn < 0.0f) lc_xn = 0.0f;
+        if (lc_xn > 1.0f) lc_xn = 1.0f;
+        if (s_plot_track != s_lc_track || s_plot_part != lc_page) s_plot_dirty = true;
+    } else if (!lc_mode && t && (t->track_idx != s_plot_track || t->part_idx != s_plot_part)) {
+        s_plot_dirty = true;
+    }
+
+    if (s_plot_dirty) {
         synth_rebuild_plot();
     }
+
+    bool is_playing = lc_mode ? (lilcu64_synth_get_active_track() == s_lc_track) : (t && t->playing);
+    float pk_l = 0.0f, pk_r = 0.0f, rms_l = 0.0f, rms_r = 0.0f;
+    bool lim_hit = false;
+    if (lc_mode) {
+        lilcu64_synth_get_meters(&pk_l, &pk_r, &rms_l, &rms_r, &lim_hit);
+    } else if (t) {
+        pk_l = t->peak_l; pk_r = t->peak_r; rms_l = t->rms_l; rms_r = t->rms_r; lim_hit = t->limiter_hit;
+    }
+    (void)rms_l; (void)rms_r;
 
     H w = dev->width;
     H h = dev->height;
@@ -386,33 +618,41 @@ static void synth_paint(WND *wnd, GDEV *dev) {
 
     /* HAL 9000 Eye */
     RECT eye_r = { 12, (H)(top_y + 12), 24, (H)(top_y + 24) };
-    fill_ovl(dev, &eye_r, (t && t->playing) ? HAL_COL_RED : 0xFF5A1610u);
-    if (t && t->playing) {
+    fill_ovl(dev, &eye_r, is_playing ? HAL_COL_RED : 0xFF5A1610u);
+    if (is_playing) {
         RECT eye_in = { 16, (H)(top_y + 15), 20, (H)(top_y + 19) };
         fill_ovl(dev, &eye_in, HAL_COL_RED_HI);
     }
     drw_tc_string(dev, 30, (H)(top_y + 6), "HAL 9000", HAL_COL_PAPER, HAL_COL_PANEL);
-    drw_tc_string(dev, 30, (H)(top_y + 20), "BSF SYNTH", HAL_COL_AMBER, HAL_COL_PANEL);
+    drw_tc_string(dev, 30, (H)(top_y + 20), lc_mode ? "C99 SCORE" : "BSF SYNTH", HAL_COL_AMBER, HAL_COL_PANEL);
 
     /* Quick Action Pills (compute first so title truncates cleanly before pills) */
     RECT r_play, r_deck, r_edit, r_run;
     get_top_pills(w, &r_play, &r_deck, &r_edit, &r_run);
 
-    /* Track Title & Part Meta */
-    if (tr && t) {
+    /* Track Title & Part/Window Meta */
+    {
         H title_max = (H)(r_play.left - 10);
-        char head[96];
-        snprintf(head, sizeof(head), "%02d/%02d  %s", tr->id, bsf_get_track_count(), tr->title);
-        synth_draw_clipped(dev, 130, (H)(top_y + 5), title_max, head, HAL_COL_PAPER, HAL_COL_PANEL);
-        char sub[96];
-        snprintf(sub, sizeof(sub), "PART %d/%d · %s", t->part_idx + 1, tr->part_count,
-                 tr->part_names[t->part_idx]);
-        synth_draw_clipped(dev, 130, (H)(top_y + 20), title_max, sub, HAL_COL_CYAN, HAL_COL_PANEL);
+        char head[96], sub[96];
+        if (lc_mode) {
+            double win_s = (lc_len > 0.0) ? (lc_len / (double)lc_pages) : 0.0;
+            snprintf(head, sizeof(head), "C99 %02d/04  %s", s_lc_track, k_lc_titles[s_lc_track - 1]);
+            snprintf(sub, sizeof(sub), "WINDOW %d/%d (%.1fs) · LILCU64 HARDCODED SCORE",
+                     lc_page + 1, lc_pages, win_s);
+            synth_draw_clipped(dev, 130, (H)(top_y + 5), title_max, head, HAL_COL_PAPER, HAL_COL_PANEL);
+            synth_draw_clipped(dev, 130, (H)(top_y + 20), title_max, sub, HAL_COL_CYAN, HAL_COL_PANEL);
+        } else if (tr && t) {
+            snprintf(head, sizeof(head), "%02d/%02d  %s", tr->id, bsf_get_track_count(), tr->title);
+            snprintf(sub, sizeof(sub), "PART %d/%d · %s", t->part_idx + 1, tr->part_count,
+                     tr->part_names[t->part_idx]);
+            synth_draw_clipped(dev, 130, (H)(top_y + 5), title_max, head, HAL_COL_PAPER, HAL_COL_PANEL);
+            synth_draw_clipped(dev, 130, (H)(top_y + 20), title_max, sub, HAL_COL_CYAN, HAL_COL_PANEL);
+        }
     }
 
-    draw_pill(dev, &r_play, (t && t->playing) ? "AUDIO ON" : "PLAY",
-              (t && t->playing) ? HAL_COL_RED_HI : HAL_COL_AMBER,
-              (t && t->playing) ? HAL_COL_RED : HAL_COL_LINE);
+    draw_pill(dev, &r_play, is_playing ? "AUDIO ON" : "PLAY",
+              is_playing ? HAL_COL_RED_HI : HAL_COL_AMBER,
+              is_playing ? HAL_COL_RED : HAL_COL_LINE);
     draw_pill(dev, &r_deck, "DECK", HAL_COL_CYAN, 0xFF234A48u);
     draw_pill(dev, &r_edit, "EDIT", HAL_COL_AMBER, HAL_COL_LINE);
     draw_pill(dev, &r_run,  "RUN",  HAL_COL_PAPER, HAL_COL_LINE);
@@ -461,12 +701,16 @@ static void synth_paint(WND *wnd, GDEV *dev) {
 
         /* Compute current playhead column index for active vs ghost preview & echo trails */
         int head_col = SYNTH_PLOT_COLS - 1;
-        if (t) {
+        float cur_xn = 0.0f;
+        if (lc_mode) {
+            cur_xn = lc_xn;
+            head_col = (int)(cur_xn * (float)(SYNTH_PLOT_COLS - 1));
+        } else if (t) {
             float xf = fix16_to_float(t->x_pos);
-            float xn = (xf + 8.0f) / 16.0f;
-            if (xn < 0.0f) xn = 0.0f;
-            if (xn > 1.0f) xn = 1.0f;
-            head_col = (int)(xn * (float)(SYNTH_PLOT_COLS - 1));
+            cur_xn = (xf + 8.0f) / 16.0f;
+            if (cur_xn < 0.0f) cur_xn = 0.0f;
+            if (cur_xn > 1.0f) cur_xn = 1.0f;
+            head_col = (int)(cur_xn * (float)(SYNTH_PLOT_COLS - 1));
         }
         float speed_f = tr ? fix16_to_float(tr->speed) : 2.0f;
 
@@ -544,12 +788,8 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         /* Live Red Playhead Cursor, Active Voice Dots & Separate Hollow ECHO Rings */
         bool echo_live[BSF_MAX_VOICES];
         memset(echo_live, 0, sizeof(echo_live));
-        if (t) {
-            float xf = fix16_to_float(t->x_pos);
-            float xn = (xf + 8.0f) / 16.0f;
-            if (xn < 0.0f) xn = 0.0f;
-            if (xn > 1.0f) xn = 1.0f;
-            H cur_x = (H)(plot_l + (int)(xn * (float)plot_w));
+        if (lc_mode || t) {
+            H cur_x = (H)(plot_l + (int)(cur_xn * (float)plot_w));
             set_col(dev, HAL_COL_RED, HAL_COL_BG);
             drw_lin(dev, cur_x, plot_t, cur_x, plot_b);
 
@@ -558,7 +798,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
             fill_rec(dev, &prog_r, HAL_COL_RED);
 
             for (int v = 0; v < nv; v++) {
-                fix16_t y = t->voice_y[v];
+                fix16_t y = lc_mode ? s_plot_y[head_col][v] : t->voice_y[v];
                 if (y != FIX16_QUIET) {
                     H py = y_to_py(y, plot_t, plot_h);
                     RECT dot = { (H)(cur_x - 3), (H)(py - 3), (H)(cur_x + 3), (H)(py + 3) };
@@ -600,19 +840,28 @@ static void synth_paint(WND *wnd, GDEV *dev) {
     set_col(dev, HAL_COL_LINE, HAL_COL_PANEL);
     drw_rec(dev, &bot_r);
 
-    if (t) {
+    if (lc_mode || t) {
         H pad_l = (H)(bot_r.left + 12);
         H pad_r = (H)(bot_r.right - 12);
 
-        /* Row 1: Part + Fixed-Column Telemetry Placeholders (X, HZ, WCET — zero horizontal jitter) */
+        /* Row 1: Part/Window + Fixed-Column Telemetry Placeholders (zero horizontal jitter) */
         char r1_l[48];
-        snprintf(r1_l, sizeof(r1_l), "PART %2d/%-2d %s",
-                 t->part_idx + 1, t->part_count, t->auto_advance ? "[AUTO]" : "[LOOP]");
+        if (lc_mode) {
+            snprintf(r1_l, sizeof(r1_l), "WIN  %2d/%-2d [C99]", lc_page + 1, lc_pages);
+        } else {
+            snprintf(r1_l, sizeof(r1_l), "PART %2d/%-2d %s",
+                     t->part_idx + 1, t->part_count, t->auto_advance ? "[AUTO]" : "[LOOP]");
+        }
+
+        int hc_bot = (int)((lc_mode ? lc_xn : ((fix16_to_float(t->x_pos) + 8.0f) / 16.0f)) * (float)(SYNTH_PLOT_COLS - 1));
+        if (hc_bot < 0) hc_bot = 0;
+        if (hc_bot >= SYNTH_PLOT_COLS) hc_bot = SYNTH_PLOT_COLS - 1;
 
         float hz0 = 261.63f;
         for (int v = 0; v < BSF_MAX_VOICES; v++) {
-            if (t->voice_y[v] != FIX16_QUIET) {
-                hz0 = fix16_to_float(fix16_y_to_hz(t->voice_y[v]));
+            fix16_t vy = lc_mode ? s_plot_y[hc_bot][v] : t->voice_y[v];
+            if (vy != FIX16_QUIET) {
+                hz0 = fix16_to_float(fix16_y_to_hz(vy));
                 break;
             }
         }
@@ -624,9 +873,15 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         synth_draw_clipped(dev, pad_l, r1_y, (H)(col_x - 12), r1_l, HAL_COL_AMBER, HAL_COL_PANEL);
         if (col_x > pad_l + 90) {
             char s_x[24], s_hz[24], s_wcet[24];
-            snprintf(s_x,    sizeof(s_x),    "X=%+6.2f",  fix16_to_float(t->x_pos));
-            snprintf(s_hz,   sizeof(s_hz),   "%6.1f HZ",  hz0);
-            snprintf(s_wcet, sizeof(s_wcet), "WCET %3u us", (unsigned)t->wcet_us);
+            if (lc_mode) {
+                snprintf(s_x,    sizeof(s_x),    "T=%5.2fs",   (float)lc_t);
+                snprintf(s_hz,   sizeof(s_hz),   "%6.1f HZ",   hz0);
+                snprintf(s_wcet, sizeof(s_wcet), "EV %4d   ",  lc_cap_count());
+            } else {
+                snprintf(s_x,    sizeof(s_x),    "X=%+6.2f",   fix16_to_float(t->x_pos));
+                snprintf(s_hz,   sizeof(s_hz),   "%6.1f HZ",   hz0);
+                snprintf(s_wcet, sizeof(s_wcet), "WCET %3u us", (unsigned)t->wcet_us);
+            }
             drw_tc_string(dev, col_x,    r1_y, s_x,    HAL_COL_CYAN, HAL_COL_PANEL);
             drw_tc_string(dev, (H)(col_hz - 12), r1_y, "·", HAL_COL_DIM, HAL_COL_PANEL);
             drw_tc_string(dev, col_hz,   r1_y, s_hz,   HAL_COL_CYAN, HAL_COL_PANEL);
@@ -636,11 +891,11 @@ static void synth_paint(WND *wnd, GDEV *dev) {
 
         /* Row 2: Active DSP Voice Badges (Solid Dry + Dotted ECHO xxms) + Stereo Peak/LIM Meter */
         H r2_y = (H)(bot_r.top + 26);
-        H bar_w = 56;
+        H bar_w = compact ? 36 : 56;
         char mtxt[48];
         snprintf(mtxt, sizeof(mtxt), "PK %2d%% %s",
-                 (int)(fmaxf(t->peak_l, t->peak_r) * 100.0f),
-                 t->limiter_hit ? "[LIM]" : "LIM");
+                 (int)(fmaxf(pk_l, pk_r) * 100.0f),
+                 lim_hit ? "[LIM]" : "LIM");
         int mtxt_w = tc_calc_string_width(mtxt, (int)strlen(mtxt));
         H mtxt_x = (H)(pad_r - mtxt_w);
         H bar_x  = (H)(mtxt_x - bar_w - 10);
@@ -650,27 +905,21 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         drw_tc_string(dev, cx, r2_y, "DSP:", HAL_COL_CYAN, HAL_COL_PANEL);
         cx = (H)(cx + tc_calc_string_width("DSP:", 4) + 10);
 
-        int show_v = (s_plot_voices > 0) ? s_plot_voices : t->voice_count;
+        int show_v = (s_plot_voices > 0) ? s_plot_voices : (t ? t->voice_count : 0);
         if (show_v > BSF_MAX_VOICES) show_v = BSF_MAX_VOICES;
         float spd = tr ? fix16_to_float(tr->speed) : 2.0f;
-        int hc = SYNTH_PLOT_COLS - 1;
-        {
-            float xn = (fix16_to_float(t->x_pos) + 8.0f) / 16.0f;
-            if (xn < 0.0f) xn = 0.0f;
-            if (xn > 1.0f) xn = 1.0f;
-            hc = (int)(xn * (float)(SYNTH_PLOT_COLS - 1));
-        }
+        int hc = hc_bot;
 
         bool has_rvb_voice = false;
         for (int v = 0; v < show_v; v++) {
-            uint8_t vm = (s_plot_voices > 0) ? s_plot_modes[v] : t->voice_mode[v];
+            uint8_t vm = (s_plot_voices > 0) ? s_plot_modes[v] : (t ? t->voice_mode[v] : BSF_MODE_SINE);
             if (vm == BSF_MODE_RVB) has_rvb_voice = true;
             /* Dry voice badge: solid line swatch + mode label (BSF_MODE_ECHO dry source is PNO) */
             const char *mname = (vm == BSF_MODE_ECHO) ? "PNO" : bsf_mode_name(vm);
             int m_w = 14 + tc_calc_string_width(mname, (int)strlen(mname));
             if (cx + m_w > max_cx) break;
 
-            bool dry_on = t->voice_active[v];
+            bool dry_on = lc_mode ? (s_plot_y[hc][v] != FIX16_QUIET) : (t && t->voice_active[v]);
             COLOR scol = dry_on ? k_vcols[v] : blend_hal_col(k_vcols[v], HAL_COL_PANEL, 0.45f);
             COLOR tcol = dry_on ? k_vcols[v] : HAL_COL_DIM;
 
@@ -682,7 +931,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
             cx = (H)(cx + m_w + 12);
 
             /* Separate dotted ECHO xxms badge when this voice has custom echo delay */
-            if (s_plot_echo_wet[v] > 0.005f && s_plot_echo_sec[v] > 0.005f) {
+            if (!lc_mode && s_plot_echo_wet[v] > 0.005f && s_plot_echo_sec[v] > 0.005f) {
                 char elbl[20];
                 snprintf(elbl, sizeof(elbl), "ECHO %dms", (int)(s_plot_echo_sec[v] * 1000.0f + 0.5f));
                 int e_w = 14 + tc_calc_string_width(elbl, (int)strlen(elbl));
@@ -716,7 +965,7 @@ static void synth_paint(WND *wnd, GDEV *dev) {
                 cx = (H)(cx + e_w + 12);
             }
         }
-        if (tr && tr->reverb_mix > 0.005f && !has_rvb_voice) {
+        if (!lc_mode && tr && tr->reverb_mix > 0.005f && !has_rvb_voice) {
             char rlbl[16];
             snprintf(rlbl, sizeof(rlbl), "RVB %d%%", (int)(tr->reverb_mix * 100.0f + 0.5f));
             int r_w = 14 + tc_calc_string_width(rlbl, (int)strlen(rlbl));
@@ -736,30 +985,40 @@ static void synth_paint(WND *wnd, GDEV *dev) {
             RECT br_bg = { bar_x, (H)(r2_y + 8), (H)(bar_x + bar_w), (H)(r2_y + 12) };
             fill_rec(dev, &bl_bg, 0xFF1A1F28u);
             fill_rec(dev, &br_bg, 0xFF1A1F28u);
-            int wl = (int)(t->peak_l * (float)bar_w); if (wl > bar_w) wl = bar_w;
-            int wr = (int)(t->peak_r * (float)bar_w); if (wr > bar_w) wr = bar_w;
+            int wl = (int)(pk_l * (float)bar_w); if (wl > bar_w) wl = bar_w;
+            int wr = (int)(pk_r * (float)bar_w); if (wr > bar_w) wr = bar_w;
             if (wl > 0) {
                 RECT fl = { bar_x, bl_bg.top, (H)(bar_x + wl), bl_bg.bottom };
-                fill_rec(dev, &fl, (t->peak_l > 0.85f) ? HAL_COL_RED : HAL_COL_CYAN);
+                fill_rec(dev, &fl, (pk_l > 0.85f) ? HAL_COL_RED : HAL_COL_CYAN);
             }
             if (wr > 0) {
                 RECT fr = { bar_x, br_bg.top, (H)(bar_x + wr), br_bg.bottom };
-                fill_rec(dev, &fr, (t->peak_r > 0.85f) ? HAL_COL_RED : HAL_COL_AMBER);
+                fill_rec(dev, &fr, (pk_r > 0.85f) ? HAL_COL_RED : HAL_COL_AMBER);
             }
             drw_tc_string(dev, mtxt_x, r2_y, mtxt,
-                          t->limiter_hit ? HAL_COL_RED_HI : HAL_COL_PAPER, HAL_COL_PANEL);
+                          lim_hit ? HAL_COL_RED_HI : HAL_COL_PAPER, HAL_COL_PANEL);
         }
 
-        /* Row 3: Formula or BSF Compile Error */
+        /* Row 3: Formula or C99 Info */
         H r3_y = (H)(bot_r.top + 48);
-        if (t->last_error[0] != '\0') {
+        if (lc_mode) {
+            char lc_info[128];
+            snprintf(lc_info, sizeof(lc_info),
+                     "LilCu64 C99 WebAudio Engine · %.2fs loop · %d captured events · Up/Down: Window Zoom (%d pages)",
+                     lc_len, lc_cap_count(), lc_pages);
+            synth_draw_clipped(dev, pad_l, r3_y, pad_r, lc_info, HAL_COL_PAPER, HAL_COL_PANEL);
+        } else if (t && t->last_error[0] != '\0') {
             synth_draw_clipped(dev, pad_l, r3_y, pad_r, t->last_error, HAL_COL_RED_HI, HAL_COL_PANEL);
         } else if (tr && tr->formula[0] != '\0') {
             synth_draw_clipped(dev, pad_l, r3_y, pad_r, tr->formula, HAL_COL_PAPER, HAL_COL_PANEL);
         }
-        synth_draw_clipped(dev, pad_l, (H)(bot_r.top + 66), pad_r,
-                           "Space:Play  Left/Right:Track  Up/Down:Part  Drag:Scrub X  E:Edit .bsf  R:Reload  C:Console",
-                           HAL_COL_DIM, HAL_COL_PANEL);
+        if (!compact) {
+            synth_draw_clipped(dev, pad_l, (H)(bot_r.top + 66), pad_r,
+                               lc_mode
+                               ? "Space:Play  Left/Right:Track  Up/Down:Window Scale (4/8/16)  C:Console"
+                               : "Space:Play  Left/Right:Track  Up/Down:Part  Drag:Scrub X  E:Edit .bsf  R:Reload  C:Console",
+                               HAL_COL_DIM, HAL_COL_PANEL);
+        }
     }
 
     /* 5. Menu Bar & Dropdown on Top */
@@ -890,6 +1149,14 @@ WND *open_synth_window(void) {
     s_synth_wnd->event_handler = synth_event_handler;
     s_synth_wnd->destroy = synth_destroy;
     s_synth_wnd->menu_open = synth_menu_is_open;
+    if (!bsf_is_playing()) {
+        int lc_active = lilcu64_synth_get_active_track();
+        if (lc_active >= 1 && lc_active <= 4) {
+            s_lc_track = lc_active;
+            s_plot_track = -1;
+            s_plot_part  = -1;
+        }
+    }
     s_plot_dirty = true;
     return s_synth_wnd;
 }

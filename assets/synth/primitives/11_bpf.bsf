@@ -1,5 +1,5 @@
-\ B-Sound Forth Base Primitive 11 — BPF (Formant Band-Pass, Eq. 13)
-\ H_BP(z): formant band-pass resonator
+\ B-Sound Forth Base Primitive 11 — BPF (Resonant 2-Pole TPT SVF Band-Pass)
+\ H_BP(z): unity-peak Cytomic/Zavalishin TPT SVF honoring cutoff_hz and Q
 10 CONSTANT MODE-BPF
 : PRIM-BPF ( y cutoff_hz q voice -- )
   >R >R >R 3 R> R> R@ VOICE-FILTER!

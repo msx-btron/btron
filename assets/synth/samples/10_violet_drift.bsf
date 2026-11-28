@@ -27,4 +27,4 @@ VARIABLE VD-C1  VARIABLE VD-C2  VARIABLE VD-C3  VARIABLE VD-C4
   DUP 1 = IF DROP 4 VOICES-N! EXIT THEN
   DROP 6 VOICES-N!
   29.0   VD-C1 @ -  VD-C2 @ +  2.0 VD-C3 @ * -  5.0 VD-C4 @ * -        24.0 / 4 PRIM-SINE
-  39.0   VD-C1 @ +  VD-C2 @ -  4.0 VD-C3 @ * -  3.0 VD-C4 @ * -        24.0 / 5 0.28 PRIM-RVB ;
+  39.0   VD-C1 @ +  VD-C2 @ -  4.0 VD-C3 @ * -  3.0 VD-C4 @ * -        24.0 / 0.28 5 PRIM-RVB ;

@@ -1540,9 +1540,6 @@ static void demo_paint(WND *wnd, GDEV *dev) {
 
     update_kinematics(s_dt);
 
-    /* Pump VirtIO sound PCM buffer */
-    lilcu64_synth_pump_virtio(735); /* ~16.6ms of audio at 44.1kHz */
-
     /* 1. Render opaque full-window background plate (celestial sapphire #131c36)
      * This plates the entire client rectangle in GS VRAM / hardware rasteriser,
      * ensuring plate_covers is set and preventing background flicker between pages. */
@@ -1626,6 +1623,10 @@ static void demo_paint(WND *wnd, GDEV *dev) {
 
 /* ── Window Event Callback ────────────────────────────────────────── */
 
+/* Weak hooks for clean handoff with BSF Synth Visualizer (no hard link dependency) */
+__attribute__((weak)) void bsf_pause(void) {}
+__attribute__((weak)) void synth_set_lilcu64_track(int track_num) { (void)track_num; }
+
 static void demo_event(WND *wnd, const EVT *evt) {
     if (!wnd || !evt) return;
 
@@ -1641,13 +1642,21 @@ static void demo_event(WND *wnd, const EVT *evt) {
         } else if (evt->key == 'd' || evt->key == 'D') {
             set_animation(ANIM_DANCE);
         } else if (evt->key == '1' || evt->key == 's' || evt->key == 'S') {
+            bsf_pause();
             lilcu64_synth_play_track(1);
+            synth_set_lilcu64_track(1);
         } else if (evt->key == '2' || evt->key == 'c' || evt->key == 'C') {
+            bsf_pause();
             lilcu64_synth_play_track(2);
+            synth_set_lilcu64_track(2);
         } else if (evt->key == '3' || evt->key == 'h' || evt->key == 'H' || evt->key == 'r' || evt->key == 'R') {
+            bsf_pause();
             lilcu64_synth_play_track(3);
+            synth_set_lilcu64_track(3);
         } else if (evt->key == '4' || evt->key == 'n' || evt->key == 'N' || evt->key == 't' || evt->key == 'T') {
+            bsf_pause();
             lilcu64_synth_play_track(4);
+            synth_set_lilcu64_track(4);
         } else if (evt->key == 'm' || evt->key == 'M') {
             lilcu64_synth_toggle_mute();
         } else if (evt->key == 0x1C || evt->key == '<' || evt->key == ',') { /* Prev density mode */
@@ -1816,8 +1825,10 @@ WND* open_lilcu64_demo_window_rect(int x, int y, int w, int h) {
     }
 
     /* Initialize procedural synthesizer & start Track 1 */
+    bsf_pause();
     lilcu64_synth_init(LILCU64_AUDIO_RATE);
     lilcu64_synth_play_track(1);
+    synth_set_lilcu64_track(1);
 
     /* OpenGL initial state: DoubleSide rendering matching Three.js */
     glEnable(GL_DEPTH_TEST);

@@ -31,7 +31,7 @@ extern "C" {
 #define BSF_VARS_MAX         512
 #define BSF_MAX_STEPS        32768    /* Hard JPL P10 execution bound per quantum */
 
-/* 14 Pro DSP Primitive Modes (1:1 with Music.html legend) */
+/* 15 Pro DSP Primitive Modes (1:1 with Music.html legend & ch03-waveforms-dsp) */
 typedef enum {
     BSF_MODE_SINE = 0,
     BSF_MODE_TRI  = 1,
@@ -80,13 +80,19 @@ typedef struct {
     float    lfo_depth;       /* Vibrato depth in octaves (default 0.022) */
     float    am_rate;         /* AM rasp rate Hz (default 32.26) */
     float    am_depth;        /* AM depth [0..1] */
-    float    filt_cutoff;     /* Biquad/1-pole cutoff Hz */
-    float    filt_q;          /* Filter Q */
-    float    lp_state;        /* 1-pole LP state */
-    float    hp_state;        /* 1-pole HP state */
-    float    bp_s1;           /* SVF bandpass state 1 */
-    float    bp_s2;           /* SVF bandpass state 2 */
+    float    filt_cutoff;     /* TPT SVF cutoff Hz */
+    float    filt_q;          /* TPT SVF quality factor Q */
+    float    svf_k;           /* Precomputed 1/Q damping */
+    float    svf_a1;          /* Precomputed TPT SVF a1 = 1 / (1 + g*(g + k)) */
+    float    svf_a2;          /* Precomputed TPT SVF a2 = g * a1 */
+    float    svf_a3;          /* Precomputed TPT SVF a3 = g * a2 */
+    float    lp_state;        /* 1-pole LP state (NSE low-band) */
+    float    hp_state;        /* 1-pole HP state (NSE high-band) */
+    float    bp_s1;           /* TPT SVF integrator 1 (ic1eq) */
+    float    bp_s2;           /* TPT SVF integrator 2 (ic2eq) */
     float    pno_age;         /* Piano pluck decay age in seconds */
+    float    pno_br;          /* Recursive felt-hammer brightness e^(-8.5*s) */
+    float    pno_dc;          /* Recursive string body decay e^(-2.5*s) */
     fix16_t  prev_y;          /* Previous pitch for retrigger detection */
 } BsfVoice;
 

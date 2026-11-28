@@ -32,6 +32,7 @@ __attribute__((weak)) int  virtio_sound_write(const int16_t *samples, size_t fra
 __attribute__((weak)) void     virtio_sound_close(void) {}
 __attribute__((weak)) bool     virtio_sound_is_ready(void) { return false; }
 __attribute__((weak)) uint32_t virtio_sound_get_queued_bytes(void) { return 0; }
+__attribute__((weak)) void     virtio_sound_flush(void) {}
 
 #define MAX_VOICES 48
 #define VOICE_WAVE_SINE     0
@@ -432,6 +433,13 @@ static void update_sequencer(float dt) {
 
 /* ── Timeline (1:1 index.html) Tracks ─────────────────────────────── */
 
+static int    s_cap_track = 0;
+static float  s_meter_pk_l = 0.0f;
+static float  s_meter_pk_r = 0.0f;
+static float  s_meter_rms_l = 0.0f;
+static float  s_meter_rms_r = 0.0f;
+static bool   s_meter_lim = false;
+
 /* Runs on the audio thread at every 32-frame block: applies play/stop requests
  * from the UI thread and loops the score exactly like scheduleTrackTimeout(). */
 static void timeline_tick(void) {
@@ -443,6 +451,12 @@ static void timeline_tick(void) {
         s_tl_track = (lc_score_length(trk) > 0.0) ? trk : 0;
         if (s_tl_track) {
             s_tl_base = wa_time();
+            /* 1) Capture events for Synth Visualizer (capture mode returns before wa_osc) */
+            lc_cap_begin();
+            lc_score_schedule(s_tl_track, 0.0);
+            lc_cap_end();
+            s_cap_track = s_tl_track;
+            /* 2) Schedule live WebAudio oscillator nodes for audio playback */
             lc_score_schedule(s_tl_track, s_tl_base);
         }
         return;
@@ -471,6 +485,10 @@ static void render_block(int16_t *out_pcm, size_t frames) {
 
     float dt = (float)frames / (float)s_sample_rate;
     update_sequencer(dt);
+
+    float blk_pk_l = 0.0f, blk_pk_r = 0.0f;
+    float blk_sq_l = 0.0f, blk_sq_r = 0.0f;
+    bool  blk_lim = false;
 
     for (size_t f = 0; f < frames; f++) {
         float sample_l = 0.0f;
@@ -581,12 +599,26 @@ static void render_block(int16_t *out_pcm, size_t frames) {
          * graph goes straight to ctx.destination, which clamps at +/-1. */
         sample_l = sample_l * (30000.0f / 32767.0f) + wa_mix[f];
         sample_r = sample_r * (30000.0f / 32767.0f) + wa_mix[f];
+        if (fabsf(sample_l) > 0.85f || fabsf(sample_r) > 0.85f) blk_lim = true;
         sample_l = master_soft_clamp(sample_l);
         sample_r = master_soft_clamp(sample_r);
+
+        float al = fabsf(sample_l), ar = fabsf(sample_r);
+        if (al > blk_pk_l) blk_pk_l = al;
+        if (ar > blk_pk_r) blk_pk_r = ar;
+        blk_sq_l += sample_l * sample_l;
+        blk_sq_r += sample_r * sample_r;
 
         out_pcm[f * 2]     = (int16_t)(sample_l * 32767.0f);
         out_pcm[f * 2 + 1] = (int16_t)(sample_r * 32767.0f);
     }
+
+    float inv_n = (frames > 0) ? (1.0f / (float)frames) : 0.0f;
+    s_meter_pk_l = fmaxf(blk_pk_l, s_meter_pk_l * 0.90f);
+    s_meter_pk_r = fmaxf(blk_pk_r, s_meter_pk_r * 0.90f);
+    s_meter_rms_l = sqrtf(blk_sq_l * inv_n);
+    s_meter_rms_r = sqrtf(blk_sq_r * inv_n);
+    s_meter_lim = blk_lim;
 }
 
 void lilcu64_synth_render_frames(int16_t *out_pcm, size_t frames) {
@@ -624,9 +656,9 @@ int lilcu64_synth_pump_virtio(size_t frames) {
         }
     }
 
-    /* Target audio buffer: ~100ms = 4410 frames = 17640 bytes at 44.1kHz stereo S16.
-     * We refill whatever VirtIO sound has consumed so playback stays 100% locked to real time. */
-    const uint32_t TARGET_BYTES = 17640;
+    /* Tight low-latency B-Audio watermark: ~23.2 ms = 1024 frames = 4096 bytes @ 44.1 kHz stereo S16,
+     * matching bsf_dsp.c (BSF_TARGET_QUEUE_BYTES) for snappy A/V sync & track switches. */
+    const uint32_t TARGET_BYTES = 4096u;
     uint32_t queued = virtio_sound_get_queued_bytes();
     if (queued >= TARGET_BYTES) {
         s_pumping = 0;
@@ -638,8 +670,8 @@ int lilcu64_synth_pump_virtio(size_t frames) {
     if (frames > missing_frames) {
         missing_frames = frames;
     }
-    /* Cap single pump burst to at most 120ms (5292 frames) */
-    if (missing_frames > 5292) missing_frames = 5292;
+    /* Cap single pump burst to at most 23.2 ms (1024 frames) so UI/GL frames never stall */
+    if (missing_frames > 1024u) missing_frames = 1024u;
 
     size_t remaining = missing_frames;
     while (remaining > 0) {
@@ -717,6 +749,7 @@ void lilcu64_synth_play_track(int track_num) {
     s_next_step_time = 0.0f;
     s_track_step = 0;
     s_muted = false;
+    virtio_sound_flush();
     /* Tell audio thread to reschedule the score on next render block */
     s_track_gen++;
 }
@@ -729,6 +762,7 @@ void lilcu64_synth_stop_track(void) {
     for (int i = 0; i < MAX_VOICES; i++) {
         s_voices[i].active = false;
     }
+    virtio_sound_flush();
     /* Tell audio thread to clear WA nodes too */
     s_track_gen++;
 }
@@ -739,6 +773,7 @@ void lilcu64_synth_toggle_mute(void) {
         for (int i = 0; i < MAX_VOICES; i++) {
             s_voices[i].active = false;
         }
+        virtio_sound_flush();
     }
 }
 
@@ -750,13 +785,30 @@ int lilcu64_synth_get_active_track(void) {
     return s_active_track;
 }
 
+int lilcu64_synth_get_cap_track(void) {
+    return s_cap_track;
+}
+
+void lilcu64_synth_get_meters(float *peak_l, float *peak_r,
+                              float *rms_l, float *rms_r, bool *limiter_hit) {
+    if (peak_l) *peak_l = s_meter_pk_l;
+    if (peak_r) *peak_r = s_meter_pk_r;
+    if (rms_l)  *rms_l  = s_meter_rms_l;
+    if (rms_r)  *rms_r  = s_meter_rms_r;
+    if (limiter_hit) *limiter_hit = s_meter_lim;
+}
+
 float lilcu64_synth_get_track_time(void) {
-    /* For timeline tracks 1 & 2, return seconds elapsed within the current
-     * loop iteration so the mascot choreography aligns with the music. */
+    /* Return presentation-compensated heard time (producer clock minus queued hardware PCM)
+     * so Synth Visualizer playhead and LilCu64 3D choreography stay locked to speaker output. */
     if (s_tl_track && lc_score_length(s_tl_track) > 0.0) {
-        double t = wa_time() - s_tl_base;
+        double raw_t = wa_time() - s_tl_base;
+        double q_sec = (s_sample_rate > 0u)
+            ? ((double)virtio_sound_get_queued_bytes() / (4.0 * (double)s_sample_rate))
+            : 0.0;
+        double t = raw_t - q_sec;
         double len = lc_score_length(s_tl_track);
-        while (t < 0.0) t += len;
+        if (t < 0.0) t = 0.0;
         while (t >= len) t -= len;
         return (float)t;
     }

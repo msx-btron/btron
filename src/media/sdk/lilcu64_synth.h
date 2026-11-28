@@ -47,6 +47,9 @@ void lilcu64_synth_toggle_mute(void);
 bool lilcu64_synth_is_muted(void);
 int  lilcu64_synth_get_active_track(void);
 float lilcu64_synth_get_track_time(void);
+int  lilcu64_synth_get_cap_track(void);
+void lilcu64_synth_get_meters(float *peak_l, float *peak_r,
+                              float *rms_l, float *rms_r, bool *limiter_hit);
 
 /* ── Procedural Sound Shims (Triggered by Kinematic Events) ───────── */
 

@@ -103,6 +103,26 @@ static float          s_warm_lp_r = 0.0f;
 static float          s_active_smooth = 2.0f;
 static float          s_agc_rms = BSF_AGC_TARGET_RMS;
 static float          s_agc_gain = 1.0f;
+static float          s_pno_br_mul = 0.9998073f; /* exp(-8.5 / 44100) */
+static float          s_pno_dc_mul = 0.9999433f; /* exp(-2.5 / 44100) */
+
+/* Precompute Cytomic / Zavalishin TPT 2-pole SVF coefficients (unconditionally BIBO stable) */
+static void voice_update_svf(BsfVoice *v) {
+    float fc = v->filt_cutoff;
+    float max_fc = 0.45f * (float)s_rate;
+    if (fc < 20.0f) fc = 20.0f;
+    if (fc > max_fc) fc = max_fc;
+    float q = v->filt_q;
+    if (q < 0.5f) q = 0.5f;
+    if (q > 12.0f) q = 12.0f;
+    float g = tanf(3.14159265f * fc / (float)s_rate);
+    float k = 1.0f / q;
+    float a1 = 1.0f / (1.0f + g * (g + k));
+    v->svf_k  = k;
+    v->svf_a1 = a1;
+    v->svf_a2 = g * a1;
+    v->svf_a3 = g * v->svf_a2;
+}
 
 /* Low-latency pump buffer (256 frames = 5.8 ms @ 44.1 kHz) */
 #define BSF_PUMP_FRAMES        256u
@@ -275,6 +295,9 @@ void bsf_dsp_voice_set(int idx, fix16_t y, int mode) {
         return;
     }
     BsfVoice *v = &s_voices[idx];
+    if (v->mode != m && m != BSF_MODE_LPF && m != BSF_MODE_HPF && m != BSF_MODE_BPF) {
+        v->filt_type = 0; /* Clear stale filter insert when switching to a non-filter primitive */
+    }
     v->mode = m;
     v->y_pitch = y;
     s_telem.voice_y[idx] = y;
@@ -285,6 +308,8 @@ void bsf_dsp_voice_set(int idx, fix16_t y, int mode) {
     } else {
         if (!v->gate || fix16_abs(y - v->prev_y) > 4096) {
             v->pno_age = 0.0f;
+            v->pno_br  = 1.0f;
+            v->pno_dc  = 1.0f;
         }
         v->prev_y = y;
         v->freq_hz = fix16_y_to_hz(y);
@@ -345,9 +370,17 @@ void bsf_dsp_voice_off(int idx) {
 
 void bsf_dsp_voice_filter(int idx, int type, fix16_t cutoff_hz, fix16_t q) {
     if (s_preview_mode || idx < 0 || idx >= BSF_MAX_VOICES) return;
-    s_voices[idx].filt_type = (uint8_t)type;
-    s_voices[idx].filt_cutoff = fix16_to_float(cutoff_hz);
-    s_voices[idx].filt_q = fix16_to_float(q);
+    BsfVoice *v = &s_voices[idx];
+    float fc = fix16_to_float(cutoff_hz);
+    float fq = fix16_to_float(q);
+    uint8_t ft = (type >= 0 && type <= 3) ? (uint8_t)type : 0u;
+    bool changed = (v->filt_type != ft)
+                || (fabsf(v->filt_cutoff - fc) > 0.5f)
+                || (fabsf(v->filt_q - fq) > 0.01f);
+    v->filt_type = ft;
+    v->filt_cutoff = fc;
+    v->filt_q = fq;
+    if (changed) voice_update_svf(v);
 }
 
 void bsf_dsp_voice_fm(int idx, fix16_t ratio, fix16_t index) {
@@ -398,6 +431,9 @@ static void reset_voices(void) {
         s_voices[i].am_depth = 0.45f;
         s_voices[i].filt_cutoff = 1200.0f;
         s_voices[i].filt_q = 2.0f;
+        s_voices[i].pno_br = 1.0f;
+        s_voices[i].pno_dc = 1.0f;
+        voice_update_svf(&s_voices[i]);
         s_telem.voice_y[i] = FIX16_QUIET;
         s_telem.voice_mode[i] = BSF_MODE_SINE;
         s_telem.voice_active[i] = false;
@@ -557,6 +593,8 @@ int bsf_init(uint32_t sample_rate) {
     if (s_initialized) return 0;
     if (sample_rate == 0) sample_rate = BSF_SAMPLE_RATE;
     s_rate = sample_rate;
+    s_pno_br_mul = expf(-8.5f / (float)s_rate);
+    s_pno_dc_mul = expf(-2.5f / (float)s_rate);
     memset(&s_telem, 0, sizeof(s_telem));
     s_telem.x_pos = fix16_from_int(-8);
     s_telem.auto_advance = true;
@@ -723,51 +761,71 @@ static inline float fast_sin_u32(uint32_t ph) {
     return fix16_to_float(s);
 }
 
+static inline float fast_tri(float ph_f) {
+    /* Exact sin-phase (2/pi)*arcsin(sin(2*pi*ph_f)) for phase-coherent mixing */
+    if (ph_f < 0.25f) return 4.0f * ph_f;
+    if (ph_f < 0.75f) return 2.0f - 4.0f * ph_f;
+    return 4.0f * ph_f - 4.0f;
+}
+
+static inline float fast_saw4(uint32_t ph) {
+    /* 4-harmonic band-limited sawtooth (ch03-waveforms-dsp Def. 3.2) */
+    return 0.62f * (fast_sin_u32(ph)
+                    - 0.50f * fast_sin_u32(ph * 2u)
+                    + 0.333333f * fast_sin_u32(ph * 3u)
+                    - 0.25f * fast_sin_u32(ph * 4u));
+}
+
+static inline float svf_process(BsfVoice *v, float x, uint8_t type) {
+    /* Cytomic / Zavalishin TPT 2-pole resonant SVF (zero transcendentals, zero div) */
+    float v3 = x - v->bp_s2;
+    float v1 = v->svf_a1 * v->bp_s1 + v->svf_a2 * v3;
+    float v2 = v->bp_s2 + v->svf_a2 * v->bp_s1 + v->svf_a3 * v3;
+    v->bp_s1 = 2.0f * v1 - v->bp_s1;
+    v->bp_s2 = 2.0f * v2 - v->bp_s2;
+    if (type == 1u) return v2;                               /* Resonant LP */
+    if (type == 2u) return x - v->svf_k * v1 - v2;           /* Resonant HP */
+    return v->svf_k * v1;                                    /* Unity-peak BP */
+}
+
 static inline float synth_voice_sample(BsfVoice *v, float inv_sr) {
     float f = fix16_to_float(v->freq_hz);
     if (f < 20.0f) f = 20.0f;
     if (f > 14000.0f) f = 14000.0f;
 
-    /* LFO vibrato modulation */
+    /* LFO vibrato modulation (ch03-waveforms-dsp Eq. 17) */
     if (v->mode == BSF_MODE_LFO) {
         v->lfo_phase += (uint32_t)(v->lfo_rate * inv_sr * 4294967296.0f);
         float lfo = fast_sin_u32(v->lfo_phase);
-        f *= (1.0f + lfo * v->lfo_depth * 0.693f);
+        f *= (1.0f + lfo * v->lfo_depth * 0.693147f);
     }
 
     uint32_t inc = (uint32_t)(f * inv_sr * 4294967296.0f);
     v->phase += inc;
     float ph_f = (float)(v->phase >> 16) * (1.0f / 65536.0f); /* [0..1) */
+    float s1 = fast_sin_u32(v->phase);
     float s = 0.0f;
 
     switch (v->mode) {
-        case BSF_MODE_SINE:
-        case BSF_MODE_RVB: {
-            s = fast_sin_u32(v->phase);
-            if (f < 95.0f) {
-                s = 0.90f * s + 0.10f * fast_sin_u32(v->phase << 1);
-            }
+        case BSF_MODE_SINE: {
+            s = (f < 95.0f) ? (0.90f * s1 + 0.10f * fast_sin_u32(v->phase << 1)) : s1;
             break;
         }
         case BSF_MODE_TRI: {
-            s = (ph_f < 0.5f) ? (4.0f * ph_f - 1.0f) : (3.0f - 4.0f * ph_f);
+            s = fast_tri(ph_f);
             break;
         }
         case BSF_MODE_SAW:
         case BSF_MODE_LFO: {
-            /* 4-harmonic band-limited sawtooth (Music.html Eq.) */
-            s = 0.62f * (fast_sin_u32(v->phase)
-                         - 0.50f * fast_sin_u32(v->phase * 2u)
-                         + 0.333f * fast_sin_u32(v->phase * 3u)
-                         - 0.25f * fast_sin_u32(v->phase * 4u));
+            s = fast_saw4(v->phase);
             break;
         }
         case BSF_MODE_PLS: {
-            float sn = 3.4f * fast_sin_u32(v->phase);
-            s = 0.78f * fix16_to_float(fix16_tanh(fix16_from_float(sn)));
+            s = 0.78f * fix16_to_float(fix16_tanh(fix16_from_float(3.4f * s1)));
             break;
         }
         case BSF_MODE_FM: {
+            /* 2-Op FM synthesis (ch03-waveforms-dsp Eq. 12) */
             v->fm_phase += (uint32_t)(f * v->fm_ratio * inv_sr * 4294967296.0f);
             float mod = v->fm_index * fast_sin_u32(v->fm_phase);
             uint32_t ph_m = v->phase + (uint32_t)(int32_t)(mod * 683565276.0f);
@@ -775,71 +833,102 @@ static inline float synth_voice_sample(BsfVoice *v, float inv_sr) {
             break;
         }
         case BSF_MODE_AM: {
+            /* 4-harmonic band-limited saw with AM/tremolo (ch03-waveforms-dsp Eq. 19) */
             v->am_phase += (uint32_t)(v->am_rate * inv_sr * 4294967296.0f);
-            float saw = 0.62f * (fast_sin_u32(v->phase) - 0.5f * fast_sin_u32(v->phase * 2u));
-            float env_am = 0.55f + v->am_depth * fast_sin_u32(v->am_phase);
-            s = saw * env_am;
+            float d = v->am_depth;
+            if (d < 0.0f) d = 0.0f;
+            if (d > 1.0f) d = 1.0f;
+            float env_am = (1.0f - d) + d * fast_sin_u32(v->am_phase);
+            s = fast_saw4(v->phase) * env_am;
             break;
         }
         case BSF_MODE_NSE: {
-            /* Gentle high-pass shaped percussion brush (ear-friendly, not raw static) */
-            float raw = fast_noise();
-            v->hp_state += 0.42f * (raw - v->hp_state);
-            s = (raw - v->hp_state) * 0.28f;
+            /* Pitch-adaptive deterministic xorshift32 noise (ch03-waveforms-dsp Def. 3.5) */
+            float n = fast_noise();
+            if (f > 900.0f) {
+                /* High percussion (hats/claps): shaped HP brush + metallic FM ping */
+                v->hp_state += 0.45f * (n - v->hp_state);
+                v->fm_phase += (uint32_t)(f * 2.76f * inv_sr * 4294967296.0f);
+                float hp = n - v->hp_state;
+                s = hp * 0.45f + s1 * fast_sin_u32(v->fm_phase) * 0.18f;
+            } else {
+                /* Low/mid percussion (snares/toms): LP body noise + fundamental */
+                v->lp_state += 0.12f * (n - v->lp_state);
+                s = v->lp_state * 0.72f + s1 * 0.28f;
+            }
             break;
         }
         case BSF_MODE_SAT: {
-            float raw = 0.55f * (fast_sin_u32(v->phase) - 0.45f * fast_sin_u32(v->phase * 2u))
-                      + 0.45f * ((ph_f < 0.5f) ? 0.8f : -0.8f);
-            s = fix16_to_float(fix16_waveshaper(fix16_from_float(raw), fix16_from_float(v->sat_k)));
+            /* B-Sound WaveShaper C_k(x) normalized by C_k(1) (ch03-waveforms-dsp Eq. 14) */
+            float raw;
+            if (f < 100.0f) {
+                raw = s1 * 1.45f;
+            } else {
+                float sq = fix16_to_float(fix16_tanh(fix16_from_float(2.4f * s1)));
+                raw = (fast_saw4(v->phase) * 0.65f + sq * 0.45f) * 1.35f;
+            }
+            float k = v->sat_k;
+            if (k < 0.0f) k = 0.0f;
+            if (k > 100.0f) k = 100.0f;
+            s = (raw * (3.14159265f + k)) / (3.14159265f + k * fabsf(raw));
             break;
         }
         case BSF_MODE_LPF: {
-            float raw = 0.62f * (fast_sin_u32(v->phase) - 0.5f * fast_sin_u32(v->phase * 2u)
-                                 + 0.33f * fast_sin_u32(v->phase * 3u));
-            float alpha = (6.283185f * v->filt_cutoff * inv_sr);
-            if (alpha > 0.85f) alpha = 0.85f;
-            if (alpha < 0.01f) alpha = 0.01f;
-            v->lp_state += alpha * (raw - v->lp_state);
-            s = v->lp_state * 1.45f; /* Equal-RMS filter makeup */
+            /* Resonant 2-pole TPT SVF Low-Pass honoring filt_cutoff & filt_q */
+            float saw3 = 0.65f * (s1 - 0.50f * fast_sin_u32(v->phase * 2u)
+                                  + 0.333333f * fast_sin_u32(v->phase * 3u));
+            float raw = saw3 + 0.35f * fast_tri(ph_f);
+            s = svf_process(v, raw, 1u) * 1.30f;
             break;
         }
         case BSF_MODE_HPF: {
-            float raw = fast_noise() * 0.65f + 0.35f * fast_sin_u32(v->phase);
-            float alpha = (6.283185f * 4200.0f * inv_sr);
-            if (alpha > 0.85f) alpha = 0.85f;
-            v->hp_state += alpha * (raw - v->hp_state);
-            s = (raw - v->hp_state) * 1.35f;
+            /* Resonant 2-pole TPT SVF High-Pass honoring filt_cutoff & filt_q */
+            float raw = 0.65f * fast_saw4(v->phase) + 0.35f * fast_noise();
+            s = svf_process(v, raw, 2u) * 1.25f;
             break;
         }
         case BSF_MODE_BPF: {
-            float raw = 0.65f * ((ph_f < 0.5f) ? (4.0f * ph_f - 1.0f) : (3.0f - 4.0f * ph_f))
-                      + 0.25f * fast_noise();
-            float fc = v->filt_cutoff;
-            if (fc < 120.0f) fc = 120.0f;
-            if (fc > 5000.0f) fc = 5000.0f;
-            float g = 6.283185f * fc * inv_sr;
-            if (g > 0.65f) g = 0.65f;
-            float q_inv = 1.0f / (v->filt_q > 0.5f ? v->filt_q : 2.0f);
-            float hp = raw - v->bp_s2 - q_inv * v->bp_s1;
-            v->bp_s1 += g * hp;
-            v->bp_s2 += g * v->bp_s1;
-            s = v->bp_s1 * 1.35f;
+            /* Resonant 2-pole TPT SVF Band-Pass honoring filt_cutoff & filt_q */
+            float raw = 0.65f * fast_tri(ph_f) + 0.30f * fast_noise();
+            s = svf_process(v, raw, 3u) * 1.35f;
             break;
         }
         case BSF_MODE_PNO:
         case BSF_MODE_ECHO: {
+            /* Acoustic Piano-Drop Primitive (ch03-waveforms-dsp Def. 3.3, zero expf per sample) */
+            float br = v->pno_br;
+            float dc = v->pno_dc;
             v->pno_age += inv_sr;
-            float br = expf(-7.5f * v->pno_age);
-            float dc = 0.22f + 0.78f * expf(-2.4f * v->pno_age);
-            s = 1.30f * (0.62f * fast_sin_u32(v->phase)
-                         + 0.25f * br * fast_sin_u32(v->phase * 2u)
-                         + 0.11f * br * br * fast_sin_u32(v->phase * 3u)) * dc;
+            v->pno_br *= s_pno_br_mul;
+            v->pno_dc *= s_pno_dc_mul;
+            float body = 0.16f + 0.84f * dc;
+            float hi_roll = (f > 480.0f) ? 0.55f : 1.0f;
+            float a2 = 0.20f + 0.18f * br;
+            float a3 = 0.06f + 0.12f * br;
+            float a4 = 0.05f * br;
+            s = 1.15f * body * (0.78f * s1
+                                + hi_roll * (a2 * fast_sin_u32(v->phase * 2u)
+                                             + a3 * fast_sin_u32(v->phase * 3u)
+                                             + a4 * fast_sin_u32(v->phase * 4u)));
+            break;
+        }
+        case BSF_MODE_RVB: {
+            /* Hall reverb shimmer carrier (soft sine + airy 2.76f overtone) */
+            v->fm_phase += (uint32_t)(f * 2.76f * inv_sr * 4294967296.0f);
+            s = 0.72f * s1 + 0.14f * fast_sin_u32(v->fm_phase);
             break;
         }
         default:
-            s = fast_sin_u32(v->phase);
+            s = s1;
             break;
+    }
+
+    /* Optional post-oscillator TPT SVF insert when VOICE-FILTER! is chained onto a non-filter mode */
+    if (v->filt_type != 0u
+        && v->mode != BSF_MODE_LPF
+        && v->mode != BSF_MODE_HPF
+        && v->mode != BSF_MODE_BPF) {
+        s = svf_process(v, s, v->filt_type);
     }
 
     /* Smooth anti-click envelope */
