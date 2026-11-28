@@ -80,9 +80,29 @@ static float          s_vecho_fb[BSF_ECHO_VOICES];
 static float          s_vecho_wet[BSF_ECHO_VOICES];
 static float          s_vecho_sec[BSF_ECHO_VOICES];
 
-/* Master 1-pole analog warmth filter state (matches synth-engine.js lpL/lpR) */
+/*
+ * Gated Slow-RMS Broadcast Auto-Leveler (ch03-waveforms-dsp.tex, Def. AGC):
+ *   R_q      = sqrt( (1 / 2Q) * sum(x_L^2 + x_R^2) )
+ *   R_hat    = R_hat + alpha * (R_q - R_hat)        if R_q > GATE_RMS (frozen on rests)
+ *   g*       = clamp(TARGET_RMS / max(R_hat, FLOOR), GAIN_MIN, GAIN_MAX)
+ *   g_agc    = g_agc + alpha_gain * (g* - g_agc)
+ *   y_{L,R}  = 0.42 * tanh(1.15 * g_agc * g_track * x_{L,R})
+ * Time constants: alpha = 1 - exp(-dt_q / tau), dt_q = Q / f_s.
+ */
+#define BSF_AGC_TARGET_RMS  0.26f   /* Pre-limiter RMS target (-11.7 dBFS -> ~-19 dBFS post-tanh) */
+#define BSF_AGC_GATE_RMS    0.025f  /* Silence gate threshold (-32 dBFS): freezes gain on rests */
+#define BSF_AGC_RMS_FLOOR   0.05f   /* Denominator safety floor */
+#define BSF_AGC_GAIN_MIN    0.52f   /* -5.7 dB maximum attenuation */
+#define BSF_AGC_GAIN_MAX    1.95f   /* +5.8 dB maximum makeup boost */
+#define BSF_AGC_TAU_ATK_S   0.040f  /* 40 ms RMS attack time constant */
+#define BSF_AGC_TAU_REL_S   0.240f  /* 240 ms RMS release time constant */
+#define BSF_AGC_TAU_GAIN_S  0.050f  /* 50 ms zipper-free gain slew time constant */
+
 static float          s_warm_lp_l = 0.0f;
 static float          s_warm_lp_r = 0.0f;
+static float          s_active_smooth = 2.0f;
+static float          s_agc_rms = BSF_AGC_TARGET_RMS;
+static float          s_agc_gain = 1.0f;
 
 /* Low-latency pump buffer (256 frames = 5.8 ms @ 44.1 kHz) */
 #define BSF_PUMP_FRAMES        256u
@@ -402,6 +422,9 @@ static void reset_voices(void) {
     }
     s_warm_lp_l = 0.0f;
     s_warm_lp_r = 0.0f;
+    s_active_smooth = 2.0f;
+    s_agc_rms = BSF_AGC_TARGET_RMS;
+    s_agc_gain = 1.0f;
 }
 
 /* ── Header Metadata Parser for .bsf Tracks ──────────────────────── */
@@ -420,6 +443,7 @@ static void parse_track_metadata(const char *src, const char *path, BsfTrackInfo
     info->part_count = 1;
     info->speed = fix16_from_float(2.0f);
     info->reverb_mix = 0.0f;
+    info->gain = 1.0f;
 
     const char *p = src;
     while (p && *p) {
@@ -427,10 +451,11 @@ static void parse_track_metadata(const char *src, const char *path, BsfTrackInfo
         size_t len = eol ? (size_t)(eol - p) : strlen(p);
         if (len > 3 && p[0] == '\\' && p[1] == ' ' && p[2] == '@') {
             char line[300];
-            size_t clen = (len < sizeof(line) - 1) ? len : (sizeof(line) - 1);
+            size_t body_len = len - 3;
+            size_t clen = (body_len < sizeof(line) - 1) ? body_len : (sizeof(line) - 1);
             memcpy(line, p + 3, clen);
             line[clen] = '\0';
-            while (clen > 0 && (line[clen - 1] == '\r' || line[clen - 1] == ' ')) {
+            while (clen > 0 && (line[clen - 1] == '\r' || line[clen - 1] == '\n' || line[clen - 1] == ' ')) {
                 line[--clen] = '\0';
             }
             if (strncmp(line, "ID ", 3) == 0) {
@@ -456,6 +481,9 @@ static void parse_track_metadata(const char *src, const char *path, BsfTrackInfo
             } else if (strncmp(line, "REVERB ", 7) == 0) {
                 float rv = (float)atof(line + 7);
                 if (rv >= 0.0f && rv <= 0.65f) info->reverb_mix = rv;
+            } else if (strncmp(line, "GAIN ", 5) == 0) {
+                float gn = (float)atof(line + 5);
+                if (gn >= 0.1f && gn <= 4.0f) info->gain = gn;
             } else if (strncmp(line, "FORMULA ", 8) == 0) {
                 strncpy(info->formula, line + 8, sizeof(info->formula) - 1);
             } else if (strncmp(line, "CATEGORY ", 9) == 0) {
@@ -754,7 +782,10 @@ static inline float synth_voice_sample(BsfVoice *v, float inv_sr) {
             break;
         }
         case BSF_MODE_NSE: {
-            s = fast_noise() * 0.75f;
+            /* Gentle high-pass shaped percussion brush (ear-friendly, not raw static) */
+            float raw = fast_noise();
+            v->hp_state += 0.42f * (raw - v->hp_state);
+            s = (raw - v->hp_state) * 0.28f;
             break;
         }
         case BSF_MODE_SAT: {
@@ -770,7 +801,7 @@ static inline float synth_voice_sample(BsfVoice *v, float inv_sr) {
             if (alpha > 0.85f) alpha = 0.85f;
             if (alpha < 0.01f) alpha = 0.01f;
             v->lp_state += alpha * (raw - v->lp_state);
-            s = v->lp_state;
+            s = v->lp_state * 1.45f; /* Equal-RMS filter makeup */
             break;
         }
         case BSF_MODE_HPF: {
@@ -778,7 +809,7 @@ static inline float synth_voice_sample(BsfVoice *v, float inv_sr) {
             float alpha = (6.283185f * 4200.0f * inv_sr);
             if (alpha > 0.85f) alpha = 0.85f;
             v->hp_state += alpha * (raw - v->hp_state);
-            s = raw - v->hp_state;
+            s = (raw - v->hp_state) * 1.35f;
             break;
         }
         case BSF_MODE_BPF: {
@@ -793,7 +824,7 @@ static inline float synth_voice_sample(BsfVoice *v, float inv_sr) {
             float hp = raw - v->bp_s2 - q_inv * v->bp_s1;
             v->bp_s1 += g * hp;
             v->bp_s2 += g * v->bp_s1;
-            s = v->bp_s1;
+            s = v->bp_s1 * 1.35f;
             break;
         }
         case BSF_MODE_PNO:
@@ -801,9 +832,9 @@ static inline float synth_voice_sample(BsfVoice *v, float inv_sr) {
             v->pno_age += inv_sr;
             float br = expf(-7.5f * v->pno_age);
             float dc = 0.22f + 0.78f * expf(-2.4f * v->pno_age);
-            s = (0.62f * fast_sin_u32(v->phase)
-                 + 0.25f * br * fast_sin_u32(v->phase * 2u)
-                 + 0.11f * br * br * fast_sin_u32(v->phase * 3u)) * dc;
+            s = 1.30f * (0.62f * fast_sin_u32(v->phase)
+                         + 0.25f * br * fast_sin_u32(v->phase * 2u)
+                         + 0.11f * br * br * fast_sin_u32(v->phase * 3u)) * dc;
             break;
         }
         default:
@@ -878,10 +909,18 @@ void bsf_render_frames(int16_t *out_pcm, size_t frames) {
             }
         }
 
-        /* 2. Render q stereo samples (1:1 gain staging & echo/reverb bus with synth-engine.js) */
-        int nv_norm = (s_telem.voice_count > 1) ? s_telem.voice_count : 1;
-        float voice_norm = 1.0f / sqrtf((float)nv_norm);
+        /* 2. Render q stereo samples (equal-RMS voicing + smoothed active-voice norm + gated slow-RMS leveler) */
+        int cur_active = 0;
+        for (int v = 0; v < BSF_MAX_VOICES; v++) {
+            if (s_voices[v].gate || s_voices[v].env > 0.02f) cur_active++;
+        }
+        if (cur_active < 1) cur_active = 1;
+        s_active_smooth += 0.08f * ((float)cur_active - s_active_smooth);
+        float voice_norm = 1.0f / sqrtf(s_active_smooth > 1.0f ? s_active_smooth : 1.0f);
+        float tr_gain = (s_telem.track_idx >= 0 && s_telem.track_idx < s_track_count)
+                        ? s_tracks[s_telem.track_idx].gain : 1.0f;
         const float lp_alpha = 0.58f; /* ~7.2 kHz analog warmth LP @ 44.1 kHz */
+        float q_pre_sq = 0.0f;
 
         for (size_t i = 0; i < q; i++) {
             float dry_l = 0.0f, dry_r = 0.0f;
@@ -948,9 +987,11 @@ void bsf_render_frames(int16_t *out_pcm, size_t frames) {
                 mix_r += rr * 0.5f * s_reverb_mix;
             }
 
-            /* Master soft-limiter bus (1:1 with synth-engine.js L2942-2945: tanh(1.15 * mix) * 0.42) */
-            float pre_l = mix_l * 1.15f;
-            float pre_r = mix_r * 1.15f;
+            q_pre_sq += 0.5f * (mix_l * mix_l + mix_r * mix_r);
+
+            /* Master auto-leveled gain + optional @GAIN trim + soft-limiter bus (0.42 ceiling) */
+            float pre_l = mix_l * 1.15f * s_agc_gain * tr_gain;
+            float pre_r = mix_r * 1.15f * s_agc_gain * tr_gain;
             if (fabsf(pre_l) > 0.85f || fabsf(pre_r) > 0.85f) lim_hit = true;
             float out_l = tanhf(pre_l) * 0.42f;
             float out_r = tanhf(pre_r) * 0.42f;
@@ -964,6 +1005,25 @@ void bsf_render_frames(int16_t *out_pcm, size_t frames) {
             size_t idx = (done + i) * 2;
             out_pcm[idx]     = (int16_t)(out_l * 30000.0f);
             out_pcm[idx + 1] = (int16_t)(out_r * 30000.0f);
+        }
+
+        /* Gated slow-RMS broadcast auto-leveler (exact exponential time constants) */
+        {
+            float q_rms = sqrtf(q_pre_sq / (float)q);
+            if (q_rms > BSF_AGC_GATE_RMS) {
+                float dt_q = (float)q * inv_sr;
+                float tau = (q_rms > s_agc_rms) ? BSF_AGC_TAU_ATK_S : BSF_AGC_TAU_REL_S;
+                float a_rms = 1.0f - expf(-dt_q / tau);
+                s_agc_rms += a_rms * (q_rms - s_agc_rms);
+
+                float denom = (s_agc_rms > BSF_AGC_RMS_FLOOR) ? s_agc_rms : BSF_AGC_RMS_FLOOR;
+                float desired = BSF_AGC_TARGET_RMS / denom;
+                if (desired < BSF_AGC_GAIN_MIN) desired = BSF_AGC_GAIN_MIN;
+                if (desired > BSF_AGC_GAIN_MAX) desired = BSF_AGC_GAIN_MAX;
+
+                float a_gain = 1.0f - expf(-dt_q / BSF_AGC_TAU_GAIN_S);
+                s_agc_gain += a_gain * (desired - s_agc_gain);
+            }
         }
 
         uint64_t dt = bsf_now_us() - t0;

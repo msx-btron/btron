@@ -302,6 +302,8 @@ static void cassette_play_bsf(int track_idx, int part_idx) {
         g_deck.vu_peak_l = g_deck.vu_peak_r = 0;
         if (open_synth_window) {
             (void)open_synth_window();
+            /* Keep keyboard focus on Cassette so cursor keys stay in the TOC */
+            if (g_audio_wnd) top_wnd(g_audio_wnd);
         }
         synth_notify_track_changed();
     }
@@ -442,8 +444,8 @@ static void cassette_menu_build(void) {
     (void)app_menu_add_item(&s_menu, h, "Play / Pause", "Space", C_PLAY_TOGGLE, TRUE);
     (void)app_menu_add_item(&s_menu, h, "Stop", "", C_STOP, TRUE);
     (void)app_menu_add_separator(&s_menu, h);
-    (void)app_menu_add_item(&s_menu, h, "Prev Track", "Left", C_PREV_TRACK, TRUE);
-    (void)app_menu_add_item(&s_menu, h, "Next Track", "Right", C_NEXT_TRACK, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Prev Track", "<", C_PREV_TRACK, TRUE);
+    (void)app_menu_add_item(&s_menu, h, "Next Track", ">", C_NEXT_TRACK, TRUE);
     (void)app_menu_add_item(&s_menu, h, "Prev Part", "[", C_PREV_PART, TRUE);
     (void)app_menu_add_item(&s_menu, h, "Next Part", "]", C_NEXT_PART, TRUE);
     (void)app_menu_add_separator(&s_menu, h);
@@ -723,7 +725,7 @@ static void audio_deck_paint(WND *wnd, GDEV *dev) {
     RECT thdr = { (H)(box->left + 1), (H)(box->top + 1), (H)(box->right - 1), (H)(box->top + 18) };
     fill_rec(dev, &thdr, PRO_COL_PANEL);
     deck_draw_clipped(dev, (H)(box->left + 8), (H)(box->top + 2), (H)(box->right - 8),
-                      "DJ/VJ EVENT TOC  (Click > expand · Double-Click or Enter to Play/Edit)",
+                      "DJ/VJ EVENT TOC  (Left/Right: Tree · Double-Click/Enter: Play/Edit)",
                       PRO_COL_AMBER, PRO_COL_PANEL);
 
     H list_top = (H)(box->top + 19);
@@ -823,6 +825,34 @@ static bool hit_rect(H x, H y, const RECT *r) {
     return x >= r->left && x <= r->right && y >= r->top && y <= r->bottom;
 }
 
+static int toc_max_scroll(H cw, H ch) {
+    ProLayout ly;
+    calc_pro_layout(&ly, cw, ch);
+    int view_h = (int)(ly.toc_box.bottom - ly.toc_box.top - 21);
+    if (view_h < TOC_ROW_H) view_h = TOC_ROW_H;
+    int total_h = s_toc_count * TOC_ROW_H;
+    return (total_h > view_h) ? (total_h - view_h) : 0;
+}
+
+static void toc_ensure_visible(H cw, H ch) {
+    ProLayout ly;
+    calc_pro_layout(&ly, cw, ch);
+    int view_h = (int)(ly.toc_box.bottom - ly.toc_box.top - 21);
+    if (view_h < TOC_ROW_H) view_h = TOC_ROW_H;
+    if (s_toc_sel < 0) s_toc_sel = 0;
+    if (s_toc_sel >= s_toc_count && s_toc_count > 0) s_toc_sel = s_toc_count - 1;
+    int row_top = s_toc_sel * TOC_ROW_H;
+    int row_bot = row_top + TOC_ROW_H;
+    if (row_top < s_toc_scroll) {
+        s_toc_scroll = row_top;
+    } else if (row_bot > s_toc_scroll + view_h) {
+        s_toc_scroll = row_bot - view_h;
+    }
+    int max_sc = toc_max_scroll(cw, ch);
+    if (s_toc_scroll < 0) s_toc_scroll = 0;
+    if (s_toc_scroll > max_sc) s_toc_scroll = max_sc;
+}
+
 static void audio_deck_event_handler(WND *wnd, const EVT *evt) {
     if (!wnd || !evt) return;
     H rel_x = (H)(evt->pos.x - wnd->client.left);
@@ -865,15 +895,17 @@ static void audio_deck_event_handler(WND *wnd, const EVT *evt) {
 
     if (evt->type == EV_KEY_DOWN) {
         if (evt->button == EV_KEY_FROM_WHEEL) {
+            int max_sc = toc_max_scroll(cw, ch);
             s_toc_scroll += (evt->key == BTRON_KEY_DOWN) ? (TOC_ROW_H * 3) : -(TOC_ROW_H * 3);
             if (s_toc_scroll < 0) s_toc_scroll = 0;
+            if (s_toc_scroll > max_sc) s_toc_scroll = max_sc;
             inval_wnd(wnd);
             return;
         }
         UW k = evt->key;
         if (k == BTRON_KEY_SPACE || k == ' ') { cassette_cmd(C_PLAY_TOGGLE); return; }
-        if (k == BTRON_KEY_LEFT)  { cassette_cmd(C_PREV_TRACK); return; }
-        if (k == BTRON_KEY_RIGHT) { cassette_cmd(C_NEXT_TRACK); return; }
+        if (k == '<' || k == ',') { cassette_cmd(C_PREV_TRACK); return; }
+        if (k == '>' || k == '.') { cassette_cmd(C_NEXT_TRACK); return; }
         if (k == '[')             { cassette_cmd(C_PREV_PART); return; }
         if (k == ']')             { cassette_cmd(C_NEXT_PART); return; }
         if (k == 'v' || k == 'V') { cassette_cmd(C_SYNTH_VIS); return; }
@@ -881,10 +913,54 @@ static void audio_deck_event_handler(WND *wnd, const EVT *evt) {
         if (k == 'r' || k == 'R') { cassette_cmd(C_RELOAD_BSF); return; }
         if (k == 'a' || k == 'A') { cassette_cmd(C_AUTO_ADV); return; }
         if (k == 'm' || k == 'M') { cassette_cmd(C_MUTE); return; }
+        /* Lynx-like Right/Left tree navigation in TOC (never changes active playback) */
+        if (k == BTRON_KEY_RIGHT) {
+            if (s_toc_sel >= 0 && s_toc_sel < s_toc_count) {
+                TocRow r = s_toc[s_toc_sel];
+                if (r.kind == TOC_BSF_TRACK) {
+                    if (!s_toc_expanded[r.a]) {
+                        s_toc_expanded[r.a] = true;
+                        cassette_toc_rebuild();
+                    } else if (s_toc_sel + 1 < s_toc_count && s_toc[s_toc_sel + 1].kind == TOC_BSF_PART) {
+                        s_toc_sel++;
+                    }
+                }
+                toc_ensure_visible(cw, ch);
+                inval_wnd(wnd);
+            }
+            return;
+        }
+        if (k == BTRON_KEY_LEFT) {
+            if (s_toc_sel >= 0 && s_toc_sel < s_toc_count) {
+                TocRow r = s_toc[s_toc_sel];
+                if (r.kind == TOC_BSF_TRACK && s_toc_expanded[r.a]) {
+                    s_toc_expanded[r.a] = false;
+                    cassette_toc_rebuild();
+                } else if (r.kind == TOC_BSF_PART) {
+                    /* Jump back up to parent track row */
+                    for (int j = s_toc_sel - 1; j >= 0; j--) {
+                        if (s_toc[j].kind == TOC_BSF_TRACK && s_toc[j].a == r.a) {
+                            s_toc_sel = j;
+                            break;
+                        }
+                    }
+                }
+                toc_ensure_visible(cw, ch);
+                inval_wnd(wnd);
+            }
+            return;
+        }
         if (k == BTRON_KEY_UP || k == BTRON_KEY_DOWN) {
-            int nxt = s_toc_sel + ((k == BTRON_KEY_DOWN) ? 1 : -1);
-            if (nxt >= 0 && nxt < s_toc_count) s_toc_sel = nxt;
-            inval_wnd(wnd);
+            int dir = (k == BTRON_KEY_DOWN) ? 1 : -1;
+            int nxt = s_toc_sel + dir;
+            while (nxt >= 0 && nxt < s_toc_count && s_toc[nxt].kind == TOC_HEADER) {
+                nxt += dir;
+            }
+            if (nxt >= 0 && nxt < s_toc_count) {
+                s_toc_sel = nxt;
+                toc_ensure_visible(cw, ch);
+                inval_wnd(wnd);
+            }
             return;
         }
         if (k == BTRON_KEY_RETURN || k == '\r' || k == '\n') {
@@ -949,7 +1025,9 @@ static void audio_deck_event_handler(WND *wnd, const EVT *evt) {
                 s_toc_scroll -= TOC_ROW_H * 2;
                 if (s_toc_scroll < 0) s_toc_scroll = 0;
             } else if (rel_y > list_bot - 12) {
+                int max_sc = toc_max_scroll(cw, ch);
                 s_toc_scroll += TOC_ROW_H * 2;
+                if (s_toc_scroll > max_sc) s_toc_scroll = max_sc;
             } else {
                 s_toc_sb_drag = true;
                 s_toc_sb_start_y = evt->pos.y;

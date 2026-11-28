@@ -127,6 +127,7 @@ typedef struct {
     char        part_names[BSF_MAX_PARTS][48];
     fix16_t     speed;                    /* x units per second */
     float       reverb_mix;               /* 0.0 .. 0.6 */
+    float       gain;                     /* Normalized loudness trim (default calibrated per track) */
 } BsfTrackInfo;
 
 /* Base library file descriptor (Primitives & Shims) */
