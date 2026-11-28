@@ -604,9 +604,9 @@ static void synth_paint(WND *wnd, GDEV *dev) {
         H pad_l = (H)(bot_r.left + 12);
         H pad_r = (H)(bot_r.right - 12);
 
-        /* Row 1: Part + X/Hz/WCET */
-        char r1_l[48], r1_r[80];
-        snprintf(r1_l, sizeof(r1_l), "PART %d/%d  %s",
+        /* Row 1: Part + Fixed-Column Telemetry Placeholders (X, HZ, WCET — zero horizontal jitter) */
+        char r1_l[48];
+        snprintf(r1_l, sizeof(r1_l), "PART %2d/%-2d %s",
                  t->part_idx + 1, t->part_count, t->auto_advance ? "[AUTO]" : "[LOOP]");
 
         float hz0 = 261.63f;
@@ -616,13 +616,23 @@ static void synth_paint(WND *wnd, GDEV *dev) {
                 break;
             }
         }
-        snprintf(r1_r, sizeof(r1_r), "X=%+.2f · %.1f HZ · WCET %u us",
-                 fix16_to_float(t->x_pos), hz0, (unsigned)t->wcet_us);
-        int r1_rw = tc_calc_string_width(r1_r, (int)strlen(r1_r));
-        H r1_rx = (H)(pad_r - r1_rw);
-        if (r1_rx < pad_l + 110) r1_rx = (H)(pad_l + 110);
-        synth_draw_clipped(dev, pad_l, (H)(bot_r.top + 6), (H)(r1_rx - 10), r1_l, HAL_COL_AMBER, HAL_COL_PANEL);
-        synth_draw_clipped(dev, r1_rx, (H)(bot_r.top + 6), pad_r, r1_r, HAL_COL_CYAN, HAL_COL_PANEL);
+        H r1_y     = (H)(bot_r.top + 6);
+        H col_wcet = (H)(pad_r - 88);
+        H col_hz   = (H)(col_wcet - 96);
+        H col_x    = (H)(col_hz - 80);
+
+        synth_draw_clipped(dev, pad_l, r1_y, (H)(col_x - 12), r1_l, HAL_COL_AMBER, HAL_COL_PANEL);
+        if (col_x > pad_l + 90) {
+            char s_x[24], s_hz[24], s_wcet[24];
+            snprintf(s_x,    sizeof(s_x),    "X=%+6.2f",  fix16_to_float(t->x_pos));
+            snprintf(s_hz,   sizeof(s_hz),   "%6.1f HZ",  hz0);
+            snprintf(s_wcet, sizeof(s_wcet), "WCET %3u us", (unsigned)t->wcet_us);
+            drw_tc_string(dev, col_x,    r1_y, s_x,    HAL_COL_CYAN, HAL_COL_PANEL);
+            drw_tc_string(dev, (H)(col_hz - 12), r1_y, "·", HAL_COL_DIM, HAL_COL_PANEL);
+            drw_tc_string(dev, col_hz,   r1_y, s_hz,   HAL_COL_CYAN, HAL_COL_PANEL);
+            drw_tc_string(dev, (H)(col_wcet - 12), r1_y, "·", HAL_COL_DIM, HAL_COL_PANEL);
+            drw_tc_string(dev, col_wcet, r1_y, s_wcet, HAL_COL_CYAN, HAL_COL_PANEL);
+        }
 
         /* Row 2: Active DSP Voice Badges (Solid Dry + Dotted ECHO xxms) + Stereo Peak/LIM Meter */
         H r2_y = (H)(bot_r.top + 26);
