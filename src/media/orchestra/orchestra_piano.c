@@ -1,6 +1,6 @@
 #include "orchestra_desk.h"
 #include <media/orch_chk.h>
-#include "../sdk/lilcu64_score.h"
+#include "bsound_score.h"
 #include <math.h>
 
 static WND *s_wnd;
@@ -61,10 +61,10 @@ static void zoom_by(int dir)
 
 static int vzoom_rh(void)
 {
-    static const int rhs[4] = { 10, 10, 16, 20 };
+    static const int rhs[4] = { 10, 14, 18, 24 };
     orch_check(s_vzoom >= 0 && s_vzoom <= 3, __LINE__);
-    orch_check(rhs[1] == 10, __LINE__);
-    if (s_vzoom < 0 || s_vzoom > 3) return 10;
+    orch_check(rhs[1] == 14, __LINE__);
+    if (s_vzoom < 0 || s_vzoom > 3) return 14;
     return rhs[s_vzoom];
 }
 

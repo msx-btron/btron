@@ -123,27 +123,33 @@ static int head_w(int mode, int w)
 
 static void lane_fit(int mode, int avail, int n, int *lh, int *lanes)
 {
-    int base;
-    int cap;
+    int min_h;
+    int max_h;
     int fit;
     orch_check(lh != 0 && lanes != 0, __LINE__);
     orch_check(n >= 0 && n <= ORCH_MAX_TRACKS, __LINE__);
     if (!lh || !lanes) return;
-    base = (mode == ORCH_LAY_MIN) ? 24 : 36;
-    cap = (mode == ORCH_LAY_MIN) ? 28 : 64;
-    if (avail < 8) avail = 8;
-    fit = avail / base;
-    if (fit < 1) fit = 1;
-    if (fit > ORCH_MAX_TRACKS) fit = ORCH_MAX_TRACKS;
-    *lh = base;
-    if (n == 0) fit = 1;
-    else if (fit > n) {
-        int grown = avail / n;
-        fit = n;
-        if (grown > cap) grown = cap;
-        if (grown < base) grown = base;
-        *lh = grown;
+    min_h = (mode == ORCH_LAY_MIN) ? 16 : 20;
+    max_h = (mode == ORCH_LAY_MIN) ? 28 : 46;
+    if (avail < min_h) avail = min_h;
+    if (n <= 0) {
+        *lh = max_h;
+        *lanes = 1;
+        return;
     }
+    /* Auto-fit all tracks vertically whenever they fit above min_h (Synth Visualizer style) */
+    int auto_h = avail / n;
+    if (auto_h >= min_h) {
+        if (auto_h > max_h) auto_h = max_h;
+        *lh = auto_h;
+        *lanes = n;
+        return;
+    }
+    fit = avail / min_h;
+    if (fit < 1) fit = 1;
+    if (fit > n) fit = n;
+    if (fit > ORCH_MAX_TRACKS) fit = ORCH_MAX_TRACKS;
+    *lh = min_h;
     *lanes = fit;
 }
 

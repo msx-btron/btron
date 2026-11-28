@@ -7,9 +7,9 @@
  * Copyright 2026 Synrc Research Center. MIT License.
  */
 
-#include "lilcu64_synth.h"
-#include "lilcu64_wa.h"
-#include "lilcu64_score.h"
+#include "bsound_synth.h"
+#include "bsound_wa.h"
+#include "bsound_score.h"
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>

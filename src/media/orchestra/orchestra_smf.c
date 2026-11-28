@@ -5,8 +5,8 @@
  */
 #include <media/orchestra.h>
 #include <media/orch_chk.h>
-#include "../sdk/lilcu64_wa.h"
-#include "../sdk/lilcu64_insert.h"
+#include "bsound_wa.h"
+#include "bsound_insert.h"
 #include <stdio.h>
 #include <string.h>
 #include <btron/libc_shim.h>

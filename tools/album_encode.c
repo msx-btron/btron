@@ -8,7 +8,7 @@
  * bells onto SYS/orchestra.orch and SYS/orchestra.mid.
  */
 #include <media/orchestra.h>
-#include "lilcu64_score.h"
+#include "bsound_score.h"
 #include "lukhash_score.h"
 #include <math.h>
 #include <stdbool.h>

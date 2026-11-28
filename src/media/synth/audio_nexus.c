@@ -1,5 +1,5 @@
 /*
- * B-System (BTRON 3.20) — src/media/sdk/audio_nexus.c
+ * B-System (BTRON 3.20) — src/media/synth/audio_nexus.c
  * InterCore Nexus SPSC Lock-Free Audio Tract Implementation
  *
  * Decouples DSP synthesis (BSF & LilCu64) from UI/compositor threads via
@@ -12,15 +12,18 @@
  */
 
 #include <media/audio_nexus.h>
-#include <media/gst_rt.h>
+#include <media/orch_rt.h>
 #include <btron/bsf.h>
 #include <btron/itron.h>
-#include "lilcu64_synth.h"
+#include "bsound_synth.h"
 #include <string.h>
 
-/* Weak Orchestra/SMF & clock hooks so standalone tests link without gst_rt.c */
+/* Weak Orchestra/SMF & clock hooks so standalone tests link without orch_rt.c */
 __attribute__((weak)) OrchView *gst_view(void) { return NULL; }
-__attribute__((weak)) void orchestra_audio_service(uint32_t now_us) { (void)now_us; }
+__attribute__((weak)) void orch_rt_render_frames(int16_t *out_pcm, size_t frames) {
+    if (out_pcm && frames) memset(out_pcm, 0, frames * 2u * sizeof(int16_t));
+}
+__attribute__((weak)) int  gst_rt_set_state(int target) { (void)target; return 0; }
 __attribute__((weak)) uint32_t gst_tick_of_sample(uint64_t npos, uint32_t fs, uint32_t bpm, uint32_t den) {
     (void)npos; (void)fs; (void)bpm; (void)den; return 0u;
 }
@@ -50,6 +53,7 @@ static volatile uint32_t s_telem_seq = 0;
 static AudioNexusTelem   s_telem_buf;
 
 static uint32_t          s_sample_rate = BSF_SAMPLE_RATE;
+static uint32_t          s_hw_rate     = 0u;
 static volatile bool     s_inited      = false;
 static volatile bool     s_running     = false;
 static volatile bool     s_pull_sink   = false;
@@ -100,10 +104,37 @@ int audio_nexus_post_cmd(const AudioNexusCmd *cmd) {
     return AudioNexusCmdRing_snd(&s_cmd_ring, cmd);
 }
 
+void audio_nexus_stop_all_except(AudioNexusEngine keep) {
+    if (keep != AUDIO_NEXUS_ENGINE_BSF && bsf_is_playing()) {
+        bsf_pause();
+    }
+    if (keep != AUDIO_NEXUS_ENGINE_LILCU64 && lilcu64_synth_get_active_track() > 0) {
+        lilcu64_synth_stop_track();
+    }
+    if (keep != AUDIO_NEXUS_ENGINE_ORCH) {
+        OrchView *ov = gst_view();
+        if (ov && ov->state == ORCH_GST_PLAYING) {
+            (void)gst_rt_set_state(ORCH_GST_PAUSED);
+        }
+    }
+    {
+        AudioNexusPcmChunk drop;
+        for (int i = 0; i < (int)AUDIO_NEXUS_PCM_SLOTS; i++) {
+            if (!AudioNexusPcmRing_rcv(&s_pcm_ring, &drop)) break;
+        }
+    }
+    virtio_sound_flush();
+}
+
+void audio_nexus_ensure_started(void) {
+    if (!s_inited) (void)audio_nexus_init(BSF_SAMPLE_RATE);
+    if (!s_running) (void)audio_nexus_start_task();
+}
+
 static void nexus_exec_cmd(const AudioNexusCmd *c) {
     switch (c->type) {
         case AUDIO_NEXUS_CMD_BSF_PLAY:
-            lilcu64_synth_stop_track();
+            audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_BSF);
             bsf_play();
             break;
         case AUDIO_NEXUS_CMD_BSF_PAUSE:
@@ -116,7 +147,7 @@ static void nexus_exec_cmd(const AudioNexusCmd *c) {
             bsf_toggle_mute();
             break;
         case AUDIO_NEXUS_CMD_BSF_TRACK:
-            lilcu64_synth_stop_track();
+            audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_BSF);
             if (bsf_select_track(c->arg0, c->arg1) == 0 && c->arg2) {
                 bsf_play();
             }
@@ -131,7 +162,7 @@ static void nexus_exec_cmd(const AudioNexusCmd *c) {
             (void)bsf_reload();
             break;
         case AUDIO_NEXUS_CMD_LC_PLAY:
-            bsf_pause();
+            audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
             lilcu64_synth_play_track(c->arg0);
             break;
         case AUDIO_NEXUS_CMD_LC_STOP:
@@ -140,6 +171,18 @@ static void nexus_exec_cmd(const AudioNexusCmd *c) {
         case AUDIO_NEXUS_CMD_LC_MUTE:
             lilcu64_synth_toggle_mute();
             break;
+        case AUDIO_NEXUS_CMD_ORCH_PLAY:
+            audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_ORCH);
+            (void)gst_rt_set_state(ORCH_GST_PLAYING);
+            break;
+        case AUDIO_NEXUS_CMD_ORCH_STOP: {
+            OrchView *ov = gst_view();
+            if (ov && ov->state == ORCH_GST_PLAYING) {
+                (void)gst_rt_set_state(ORCH_GST_PAUSED);
+            }
+            virtio_sound_flush();
+            break;
+        }
         case AUDIO_NEXUS_CMD_FLUSH:
             virtio_sound_flush();
             break;
@@ -196,8 +239,8 @@ static void nexus_publish_telem(uint8_t engine, uint32_t queued_frames) {
     } else if (engine == AUDIO_NEXUS_ENGINE_ORCH) {
         OrchView *ov = gst_view();
         if (ov) {
-            uint64_t q_samp = ((uint64_t)ov->queued_ms * (uint64_t)ov->sample_rate) / 1000ull;
-            uint64_t heard_pos = (ov->npos > q_samp) ? (ov->npos - q_samp) : 0ull;
+            uint64_t heard_pos = (ov->npos > (uint64_t)queued_frames)
+                                 ? (ov->npos - (uint64_t)queued_frames) : 0ull;
             snap.playing         = (ov->state == ORCH_GST_PLAYING) ? 1u : 0u;
             snap.limiter_hit     = (ov->master_lim != 0u) ? 1u : 0u;
             snap.track_idx       = (int32_t)ov->track_count;
@@ -242,14 +285,6 @@ int audio_nexus_core_step(void) {
         engine = AUDIO_NEXUS_ENGINE_ORCH;
     }
 
-    /* Orchestra/SMF runs on this isolated audio core/task via its own closed gst_rt pipeline */
-    if (engine == AUDIO_NEXUS_ENGINE_ORCH) {
-        orchestra_audio_service(btron_render_perf_us());
-        uint32_t hw_f = virtio_sound_get_queued_bytes() / 4u;
-        nexus_publish_telem(engine, hw_f);
-        return (int)AUDIO_NEXUS_CHUNK_FRAMES;
-    }
-
     uint32_t hw_frames = s_pull_sink ? 0u : (virtio_sound_get_queued_bytes() / 4u);
     uint32_t ring_frames = AudioNexusPcmRing_len(&s_pcm_ring) * AUDIO_NEXUS_CHUNK_FRAMES;
     uint32_t total_queued = hw_frames + ring_frames;
@@ -264,8 +299,10 @@ int audio_nexus_core_step(void) {
             chunk.engine = engine;
             if (engine == AUDIO_NEXUS_ENGINE_BSF) {
                 bsf_render_frames(chunk.pcm, AUDIO_NEXUS_CHUNK_FRAMES);
-            } else {
+            } else if (engine == AUDIO_NEXUS_ENGINE_LILCU64) {
                 lilcu64_synth_render_frames(chunk.pcm, AUDIO_NEXUS_CHUNK_FRAMES);
+            } else {
+                orch_rt_render_frames(chunk.pcm, AUDIO_NEXUS_CHUNK_FRAMES);
             }
             if (AudioNexusPcmRing_snd(&s_pcm_ring, &chunk) != 0) break;
             total_queued += AUDIO_NEXUS_CHUNK_FRAMES;
@@ -275,8 +312,14 @@ int audio_nexus_core_step(void) {
 
     /* 4. Push-sink drain (POSIX SDL2 / ARM64 HDMI & USB UAC1) */
     if (!s_pull_sink && AudioNexusPcmRing_len(&s_pcm_ring) > 0u) {
-        if (!virtio_sound_is_ready()) {
-            (void)virtio_sound_open(s_sample_rate, 2);
+        uint32_t want_rate = (engine == AUDIO_NEXUS_ENGINE_ORCH && ov && ov->sample_rate)
+                             ? ov->sample_rate : s_sample_rate;
+        if (!virtio_sound_is_ready() || (s_hw_rate != 0u && s_hw_rate != want_rate)) {
+            if (virtio_sound_open(want_rate, 2) == 0) {
+                s_hw_rate = want_rate;
+            }
+        } else if (s_hw_rate == 0u) {
+            s_hw_rate = want_rate;
         }
         if (virtio_sound_is_ready()) {
             AudioNexusPcmChunk out;

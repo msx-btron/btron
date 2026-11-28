@@ -20,7 +20,7 @@
 #include <media/orchestra.h>
 #include <media/audio_nexus.h>
 #include <media/synth.h>
-#include "../sdk/lilcu64_synth.h"
+#include "bsound_synth.h"
 #include <btron/libc_shim.h>
 #include <math.h>
 #include <string.h>
@@ -239,10 +239,9 @@ static void cassette_release(void) {
 }
 
 static void cassette_play_demo(int track) {
-    if (s_owner == 3) bsf_stop();
+    audio_nexus_ensure_started();
+    audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
     if (s_owner != 1) {
-        if (s_owner == 2) orch_shutdown_desk();
-        lilcu64_synth_close();
         (void)lilcu64_synth_init(LILCU64_AUDIO_RATE);
         s_owner = 1;
     }
@@ -260,12 +259,8 @@ static void cassette_play_demo(int track) {
 static void cassette_play_file(int row) {
     OrchView *v;
     int ok;
-    if (s_owner == 3) bsf_stop();
-    if (s_owner == 1) {
-        lilcu64_synth_stop_track();
-        lilcu64_synth_close();
-        s_owner = 0;
-    }
+    audio_nexus_ensure_started();
+    audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_ORCH);
     orch_boot_desk();
     s_owner = 2;
     v = gst_view();
@@ -301,8 +296,8 @@ static void cassette_begin_legacy(int row, int manual) {
 }
 
 static void cassette_play_bsf(int track_idx, int part_idx) {
-    if (s_owner == 1) { lilcu64_synth_stop_track(); lilcu64_synth_close(); }
-    else if (s_owner == 2) { orch_shutdown_desk(); }
+    audio_nexus_ensure_started();
+    audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_BSF);
     s_owner = 3;
     (void)bsf_init(BSF_SAMPLE_RATE);
     if (bsf_select_track(track_idx, part_idx) == 0) {
@@ -1124,24 +1119,22 @@ WND *open_audio_player_window(void) {
 }
 
 void cassette_service(void) {
-    static bool s_nexus_tried = false;
-    if (!s_nexus_tried) {
-        s_nexus_tried = true;
-        (void)audio_nexus_init(BSF_SAMPLE_RATE);
-        (void)audio_nexus_start_task();
-    }
+    audio_nexus_ensure_started();
     bool async_audio = audio_nexus_is_async();
+
+    /* Single unified fallback step for targets without async TASK_AUDIO (e.g. cooperative MCU) */
+    if (!async_audio) {
+        (void)audio_nexus_core_step();
+    }
 
     int sec = 0;
     OrchView *v = gst_view();
     if (v && v->state == ORCH_GST_PLAYING) {
         static uint64_t s_orch_ui_us = 0;
-        if (!async_audio) {
-            orchestra_audio_service(btron_render_perf_us());
-        }
         uint64_t now_us = btron_render_perf_us();
         if (now_us < s_orch_ui_us || now_us - s_orch_ui_us >= 16000ull) {
             s_orch_ui_us = now_us;
+            orchestra_ui_tick();
             synth_ui_tick();
             if (s_owner == 2 && g_audio_wnd) inval_wnd(g_audio_wnd);
         }
@@ -1149,7 +1142,6 @@ void cassette_service(void) {
 
     if (bsf_is_playing()) {
         static uint64_t s_last_ui_sample = 0;
-        if (!async_audio) (void)bsf_audio_pump();
         const BsfTelemetry *bt = bsf_get_telemetry();
         AudioNexusTelem nt;
         bool has_nt = async_audio && audio_nexus_read_telem(&nt);
@@ -1174,10 +1166,9 @@ void cassette_service(void) {
         if (s_owner == 3) return;
     }
 
-    /* Standalone LilCu64 Demo audio pump + 60 Hz Synth Visualizer sync (even when Cassette is stopped) */
+    /* Standalone LilCu64 Demo 60 Hz Synth Visualizer sync (even when Cassette is stopped) */
     if (lilcu64_synth_get_active_track() > 0 && !(s_owner == 1 && g_deck.state == DECK_PLAY)) {
         static uint64_t s_lc_demo_ui_us = 0;
-        if (!async_audio) (void)lilcu64_synth_pump_virtio(0);
         uint64_t now_us = btron_render_perf_us();
         if (now_us < s_lc_demo_ui_us || now_us - s_lc_demo_ui_us >= 16000ull) {
             s_lc_demo_ui_us = now_us;
@@ -1190,7 +1181,6 @@ void cassette_service(void) {
 
     if (s_owner == 1 && g_deck.pl_on < 4) {
         static uint64_t s_lc_ui_us = 0;
-        if (!async_audio) (void)lilcu64_synth_pump_virtio(0);
         uint64_t now_us = btron_render_perf_us();
         if (now_us < s_lc_ui_us || now_us - s_lc_ui_us >= 16000ull) {
             s_lc_ui_us = now_us;

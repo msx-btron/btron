@@ -1,5 +1,5 @@
-#include "lilcu64_insert.h"
-#include "lilcu64_synth.h"
+#include "bsound_insert.h"
+#include "bsound_synth.h"
 #include <math.h>
 #include <string.h>
 

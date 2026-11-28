@@ -1,23 +1,46 @@
 #include "orchestra_desk.h"
 #include <string.h>
 #include <media/orch_chk.h>
+#include <media/audio_nexus.h>
 #include <btron/app_menu.h>
 #include <btron/event.h>
 #include <btron/troncode.h>
 #include <stdint.h>
 
+__attribute__((weak)) void audio_nexus_ensure_started(void) {}
+__attribute__((weak)) bool audio_nexus_is_async(void) { return false; }
+__attribute__((weak)) bool audio_nexus_read_telem(AudioNexusTelem *out) { (void)out; return false; }
+
 static APP_MENU_BAR s_menu;
 static int s_menu_ok;
 
-enum { OPEN_N = 6 };
+enum { OPEN_N = 5, BSF_MENU_N = 10 };
 
 static const char k_open_lbl[OPEN_N][64] = {
-    "セッション (Session)",
     "鐘のキャロル (Bells)",
     "今田勝 (Caterpillar)",
     "朝日のあたる家 (Rising)",
     "TRON Init",
     "ルクハッシュ (LukHash)"
+};
+
+/* Only Shim-based B-Sound DSP Suites (17..20) & Album Compositions (21..26) */
+static const int k_bsf_menu_idx[BSF_MENU_N] = {
+    16, 17, 18, 19,           /* 17..20 B-Sound Shim Banks */
+    20, 21, 22, 23, 24, 25    /* 21..26 Album Compositions */
+};
+
+static const char k_bsf_menu_lbl[BSF_MENU_N][64] = {
+    "17 B-Sound: Kinematic Shims (.bsf)",
+    "18 B-Sound: Percussion Shims (.bsf)",
+    "19 B-Sound: Acoustic Orchestra (.bsf)",
+    "20 B-Sound: Industrial Swarm (.bsf)",
+    "21 Carol of the Bells (.bsf)",
+    "22 Green Caterpillar (.bsf)",
+    "23 House of Rising Sun (.bsf)",
+    "24 TRON Init (.bsf)",
+    "25 Electro Glide in Blue (.bsf)",
+    "26 Carla Bley 440 (.bsf)"
 };
 
 static void orch_menu_scenes(void);
@@ -188,15 +211,23 @@ uint32_t orch_now_tick(const OrchView *v)
 {
     uint32_t fs;
     uint8_t den;
+    uint64_t q_samp, hpos;
+    AudioNexusTelem nt;
     orch_check(v != 0, __LINE__);
     if (!v) return 0;
     orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
     if (v->num > 12u) return 0;
+    if (v->state == ORCH_GST_PLAYING && audio_nexus_is_async() &&
+        audio_nexus_read_telem(&nt) && nt.active_engine == AUDIO_NEXUS_ENGINE_ORCH) {
+        return nt.orch_tick_heard;
+    }
     fs = v->sample_rate;
-    if (fs != 44100u && fs != 48000u) fs = 48000u;
+    if (fs != 44100u && fs != 48000u) fs = 44100u;
     den = v->den;
     if (den != 2u && den != 4u && den != 8u && den != 16u) den = 4u;
-    return gst_tick_of_sample(v->npos, fs, v->tempo, den);
+    q_samp = ((uint64_t)v->queued_ms * (uint64_t)fs) / 1000ull;
+    hpos = (v->state == ORCH_GST_PLAYING && v->npos > q_samp) ? (v->npos - q_samp) : v->npos;
+    return gst_tick_of_sample(hpos, fs, v->tempo, den);
 }
 
 uint32_t orch_snap_tick(const OrchView *v, uint32_t tick)
@@ -416,8 +447,10 @@ void orch_boot_desk(void)
     if (!v) return;
     st = (int)v->state;
     if (st == ORCH_GST_READY) (void)gst_rt_set_state(ORCH_GST_PAUSED);
-    if (v->track_count == 0 && v->event_count == 0 && v->state != ORCH_GST_PLAYING)
-        (void)orch_cmd_family(ORCH_FAM_ROCK);
+    audio_nexus_ensure_started();
+    if (v->track_count == 0 && v->event_count == 0 && v->state != ORCH_GST_PLAYING) {
+        if (!orch_cmd_open_at(0)) (void)orch_cmd_family(ORCH_FAM_ROCK);
+    }
 }
 
 void orch_shutdown_desk(void)
@@ -642,6 +675,7 @@ static void menu_file(void)
     (void)app_menu_add_separator(&s_menu, h);
     add_item(h, "SMFを読み込む (Load SMF)", "Ctrl+L", 104);
     add_item(h, "SMFを書き出す (Save SMF)", "Ctrl+M", 105);
+    (void)app_menu_add_submenu_item(&s_menu, h, "BSFを読み込む (Load BSF) ▶", 108, 2);
     add_item(h, "WAVを書き出す (Export WAV)", "", 106);
     (void)app_menu_add_separator(&s_menu, h);
     add_item(h, "閉じる (Close)", "Ctrl+W", 107);
@@ -774,7 +808,13 @@ void orch_menu_paint(GDEV *dev)
     app_menu_paint_bar(&s_menu, dev);
     app_menu_paint_dropdown(&s_menu, dev);
     if (s_menu.active_submenu >= 0) {
-        app_menu_paint_cascading_strings(&s_menu, dev, k_open_lbl, OPEN_N);
+        int sub_id = (s_menu.active_menu == 0 && s_menu.active_submenu < s_menu.headers[0].item_count)
+                     ? s_menu.headers[0].items[s_menu.active_submenu].submenu_id : 1;
+        if (sub_id == 2) {
+            app_menu_paint_cascading_strings(&s_menu, dev, k_bsf_menu_lbl, BSF_MENU_N);
+        } else {
+            app_menu_paint_cascading_strings(&s_menu, dev, k_open_lbl, OPEN_N);
+        }
     }
 }
 
@@ -796,8 +836,11 @@ int orch_menu_down(int x, int y)
     orch_check(x > -4000 && y > -4000, __LINE__);
     if (!s_menu_ok) return 0;
     if (!app_menu_handle_mouse_down(&s_menu, (H)x, (H)y, &cmd, &sub)) return 0;
-    if (cmd == 102 && sub >= 0) {
-        (void)orch_cmd_open_at(sub);
+    if (cmd == 102 && sub >= 0 && sub < OPEN_N) {
+        if (orch_cmd_open_at(sub)) (void)orch_cmd_play();
+        orch_inval_all();
+    } else if (cmd == 108 && sub >= 0 && sub < BSF_MENU_N) {
+        if (orch_cmd_bsf_load_at(k_bsf_menu_idx[sub])) (void)orch_cmd_play();
         orch_inval_all();
     } else if (cmd > 0) {
         run_cmd(cmd);

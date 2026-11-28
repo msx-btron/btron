@@ -1,13 +1,13 @@
 /*
- * B-System (BTRON 3.20) — src/languages/bsf/bsf_dsp.c
+ * B-System (BTRON 3.20) — src/media/synth/bsf_dsp.c
  * B-Sound Forth (BSF) 16-Voice Real-Time DSP Engine, Schroeder Reverb,
- * 4-Folder Catalogue Scanner, & VirtIO/POSIX Audio Pump
+ * 4-Folder Catalogue Scanner, & InterCore Nexus Audio Engine
  * Pure C99, zero heap allocation on audio plane, NASA/JPL Power of Ten.
  */
 
 #include <btron/bsf.h>
 #include <btron/libc_shim.h>
-#include "../../media/sdk/lilcu64_synth.h"
+#include "bsound_synth.h"
 #include <math.h>
 #include <string.h>
 #include <stdio.h>

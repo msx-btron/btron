@@ -1,7 +1,7 @@
 #ifndef APPS_ORCHESTRA_H
 #define APPS_ORCHESTRA_H
 
-#include <media/gst_rt.h>
+#include <media/orch_rt.h>
 
 #define ORCH_COL_CANVAS    0xFF12151Bu
 #define ORCH_COL_PANEL_BG  0xFF1A1E26u
@@ -80,6 +80,7 @@ void orch_cmd_latency_text(void);
 
 int  orch_cmd_smf_load(void);
 int  orch_cmd_smf_save(void);
+int  orch_cmd_bsf_load_at(int bsf_idx);
 int  orch_cmd_wav(void);
 
 int  orch_track_set_u8(int field, int value);

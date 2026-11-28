@@ -11,8 +11,8 @@
  * Copyright 2026 Synrc Research Center. MIT License.
  */
 
-#include "lilcu64_score.h"
-#include "lilcu64_wa.h"
+#include "bsound_score.h"
+#include "bsound_wa.h"
 #include <media/orch_chk.h>
 #include <stddef.h>
 #include <math.h>

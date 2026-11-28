@@ -13,7 +13,7 @@
  */
 
 #include "lilcu64_demo.h"
-#include "lilcu64_synth.h"
+#include "bsound_synth.h"
 #include "../../desktop/graphics/gles/gl_dispatch.h"
 #include "../../desktop/graphics/gles/egl_surface.h"
 #include "../../drivers/playstation2/ps2_vu0_kernel.h"
@@ -1623,10 +1623,13 @@ static void demo_paint(WND *wnd, GDEV *dev) {
 
 /* ── Window Event Callback ────────────────────────────────────────── */
 
-/* Weak hooks for clean handoff with BSF Synth Visualizer & InterCore Nexus Audio */
-__attribute__((weak)) void bsf_pause(void) {}
-__attribute__((weak)) void synth_set_lilcu64_track(int track_num) { (void)track_num; }
+/* Weak hooks for InterCore Nexus Audio & Synth Visualizer (standalone-safe) */
+#include <media/audio_nexus.h>
+__attribute__((weak)) void audio_nexus_ensure_started(void) {}
+__attribute__((weak)) void audio_nexus_stop_all_except(AudioNexusEngine keep) { (void)keep; }
 __attribute__((weak)) bool audio_nexus_is_async(void) { return false; }
+__attribute__((weak)) int  audio_nexus_core_step(void) { return 0; }
+__attribute__((weak)) void synth_set_lilcu64_track(int track_num) { (void)track_num; }
 
 static void demo_event(WND *wnd, const EVT *evt) {
     if (!wnd || !evt) return;
@@ -1643,19 +1646,23 @@ static void demo_event(WND *wnd, const EVT *evt) {
         } else if (evt->key == 'd' || evt->key == 'D') {
             set_animation(ANIM_DANCE);
         } else if (evt->key == '1' || evt->key == 's' || evt->key == 'S') {
-            bsf_pause();
+            audio_nexus_ensure_started();
+            audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
             lilcu64_synth_play_track(1);
             synth_set_lilcu64_track(1);
         } else if (evt->key == '2' || evt->key == 'c' || evt->key == 'C') {
-            bsf_pause();
+            audio_nexus_ensure_started();
+            audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
             lilcu64_synth_play_track(2);
             synth_set_lilcu64_track(2);
         } else if (evt->key == '3' || evt->key == 'h' || evt->key == 'H' || evt->key == 'r' || evt->key == 'R') {
-            bsf_pause();
+            audio_nexus_ensure_started();
+            audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
             lilcu64_synth_play_track(3);
             synth_set_lilcu64_track(3);
         } else if (evt->key == '4' || evt->key == 'n' || evt->key == 'N' || evt->key == 't' || evt->key == 'T') {
-            bsf_pause();
+            audio_nexus_ensure_started();
+            audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
             lilcu64_synth_play_track(4);
             synth_set_lilcu64_track(4);
         } else if (evt->key == 'm' || evt->key == 'M') {
@@ -1784,7 +1791,7 @@ static void demo_task_fn(VW exinf) {
     (void)exinf;
     while (s_demo_wnd) {
         if (!audio_nexus_is_async()) {
-            lilcu64_synth_pump_virtio(0);
+            (void)audio_nexus_core_step();
         }
         inval_wnd(s_demo_wnd);
         dly_tsk(wnd_frame_ms(s_demo_wnd));
@@ -1827,8 +1834,9 @@ WND* open_lilcu64_demo_window_rect(int x, int y, int w, int h) {
         return NULL;
     }
 
-    /* Initialize procedural synthesizer & start Track 1 */
-    bsf_pause();
+    /* Initialize procedural synthesizer & start Track 1 via InterCore Nexus */
+    audio_nexus_ensure_started();
+    audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
     lilcu64_synth_init(LILCU64_AUDIO_RATE);
     lilcu64_synth_play_track(1);
     synth_set_lilcu64_track(1);

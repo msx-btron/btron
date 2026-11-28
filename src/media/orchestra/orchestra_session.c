@@ -4,9 +4,10 @@
  */
 #include <media/orchestra.h>
 #include <media/orch_chk.h>
-#include "../sdk/lilcu64_wa.h"
-#include "../sdk/lilcu64_insert.h"
-#include "../sdk/lilcu64_score.h"
+#include "bsound_wa.h"
+#include "bsound_insert.h"
+#include "bsound_score.h"
+extern void synth_set_orch_mode(const char *label);
 #include <stdio.h>
 #include <string.h>
 #include <btron/libc_shim.h>
@@ -755,8 +756,7 @@ static void resolve_orch_path(void)
 }
 static const char *open_lit(int idx)
 {
-    static const char *const lit[6] = {
-        "/SYS/orchestra.orch",
+    static const char *const lit[5] = {
         "/SYS/bells.orch",
         "/SYS/caterpillar.orch",
         "/SYS/rising.orch",
@@ -764,8 +764,8 @@ static const char *open_lit(int idx)
         "/SYS/lukhash.orch"
     };
     orch_check(lit[0][0] == '/', __LINE__);
-    orch_check(lit[5][0] == '/', __LINE__);
-    if (idx < 0 || idx > 5) return 0;
+    orch_check(lit[4][0] == '/', __LINE__);
+    if (idx < 0 || idx > 4) return 0;
     return lit[idx];
 }
 static int pick_host(char *dst, const char *lit)
@@ -814,13 +814,20 @@ int orch_cmd_open_at(int idx)
     const char *lit;
     char dst[ORCH_PATH_N];
     OrchView *v = gst_view();
+    int ok;
     orch_check(v != 0, __LINE__);
     if (!v) return 0;
     orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
+    if (v->state == ORCH_GST_PLAYING) {
+        (void)orch_cmd_stop();
+        (void)orch_cmd_stop();
+    }
     lit = open_lit(idx);
     if (!lit) return refuse_session();
     if (!pick_host(dst, lit)) return refuse_session();
-    return read_orch(dst);
+    ok = read_orch(dst);
+    if (ok) synth_set_orch_mode(dst);
+    return ok;
 }
 int orch_cmd_open(void)
 {
@@ -1797,11 +1804,293 @@ int orch_event_del(int index)
     gst_seq_end();
     return 1;
 }
+/* Weak InterCore Nexus, Synth Visualizer & BSF loader hooks (standalone-safe) */
+#include <btron/bsf.h>
+#include <media/audio_nexus.h>
+__attribute__((weak)) void audio_nexus_ensure_started(void) {}
+__attribute__((weak)) void audio_nexus_stop_all_except(AudioNexusEngine keep) { (void)keep; }
+__attribute__((weak)) void synth_set_orch_mode(const char *label) { (void)label; }
+__attribute__((weak)) int  bsf_init(uint32_t sr) { (void)sr; return -1; }
+__attribute__((weak)) int  bsf_select_track(int tr, int pt) { (void)tr; (void)pt; return -1; }
+__attribute__((weak)) const BsfTrackInfo *bsf_get_track_info(int idx) { (void)idx; return NULL; }
+__attribute__((weak)) int  bsf_eval_preview(fix16_t x, int pt, fix16_t *y, uint8_t *m, int mv) {
+    (void)x; (void)pt; (void)y; (void)m; (void)mv; return 0;
+}
+__attribute__((weak)) const char *bsf_mode_name(uint8_t mode) { (void)mode; return "SINE"; }
+
+/* Map BsfDspMode strictly onto valid PROG[32] B-Sound Shim GM programs (orch_rt.c) */
+static uint8_t bsf_mode_to_orch_prog(uint8_t mode)
+{
+    switch (mode) {
+        case BSF_MODE_PNO:
+        case BSF_MODE_ECHO: return 0u;    /* LC_SHIM_PIANO */
+        case BSF_MODE_LPF:  return 38u;   /* LC_SHIM_PEDAL (warm steady sub-bass) */
+        case BSF_MODE_SAT:  return 33u;   /* LC_SHIM_IND_BASS */
+        case BSF_MODE_FM:   return 98u;   /* ORCH_KIND_BELL */
+        case BSF_MODE_NSE:  return 117u;  /* LC_SHIM_SNARE */
+        case BSF_MODE_HPF:  return 118u;  /* LC_SHIM_HAT */
+        case BSF_MODE_LFO:  return 90u;   /* LC_SHIM_SWARM */
+        case BSF_MODE_TRI:  return 26u;   /* LC_SHIM_GUITAR */
+        case BSF_MODE_SAW:  return 42u;   /* LC_SHIM_CELLO */
+        case BSF_MODE_PLS:  return 81u;   /* LC_SHIM_CYBER */
+        case BSF_MODE_AM:   return 80u;   /* LC_SHIM_SQUASH */
+        case BSF_MODE_BPF:  return 73u;   /* LC_SHIM_SAX */
+        case BSF_MODE_RVB:  return 4u;    /* LC_SHIM_FLOAT */
+        default:            return 0u;    /* LC_SHIM_PIANO */
+    }
+}
+
+int orch_cmd_bsf_load_at(int bsf_idx)
+{
+    static const uint32_t k_bsf_col[8] = {
+        ORCH_COL_CYAN, ORCH_COL_AMBER, ORCH_COL_GREEN, ORCH_COL_PURPLE,
+        ORCH_COL_ORANGE, ORCH_COL_PINK, ORCH_COL_RED, ORCH_COL_SILVER
+    };
+    OrchView *v = gst_view();
+    orch_check(v != 0, __LINE__);
+    if (!v) return 0;
+    if (v->state == ORCH_GST_PLAYING) {
+        (void)orch_cmd_stop();
+        (void)orch_cmd_stop();
+    }
+    if (v->state == ORCH_GST_NULL) {
+        if (!gst_rt_boot(48000u)) return refuse_session();
+    }
+    audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_ORCH);
+
+    if (bsf_init(BSF_SAMPLE_RATE) != 0) return refuse_session();
+    if (bsf_select_track(bsf_idx, 0) != 0) return refuse_session();
+    const BsfTrackInfo *tr = bsf_get_track_info(bsf_idx);
+    if (!tr) return refuse_session();
+
+    /* Sample all parts at 256 steps/part (64th-note grid = 60 ticks) so short
+     * staccato hits (0.16s) and 16th-note syncopations port with ~48ms precision. */
+    int nparts = tr->part_count;
+    if (nparts < 1) nparts = 1;
+    if (nparts > 12) nparts = 12;
+    const int STEPS_PER_PART = 256;
+    const uint32_t STEP_TICKS = (uint32_t)(ORCH_PPQ / 16); /* 60 ticks */
+    const uint32_t PART_TICKS = (uint32_t)STEPS_PER_PART * STEP_TICKS; /* 15360 ticks = 16 beats */
+
+    uint8_t voice_mode[BSF_MAX_VOICES];
+    int max_v = 0;
+    memset(voice_mode, 0, sizeof(voice_mode));
+
+    fix16_t py[BSF_MAX_VOICES];
+    uint8_t pm[BSF_MAX_VOICES];
+
+    gst_seq_begin();
+    memset(v->trk, 0, sizeof v->trk);
+    memset(v->scn, 0, sizeof v->scn);
+    memset(v->ev, 0, sizeof v->ev);
+    memset(v->ev_live, 0, sizeof v->ev_live);
+    v->family = ORCH_FAM_ROCK;
+    v->event_count = 0u;
+    v->selected = 0;
+    v->npos = 0ull;
+    v->num = 4u;
+    v->den = 4u;
+    v->master_vol = 124u;
+    v->master_lim = ORCH_INS_LIMITER;
+    v->active_scene = 0u;
+    v->scene_count = 16u;
+    v->confirm_family = -1;
+    v->room = 68u;
+    v->damping = 38u;
+    v->feedback = 68u;
+    {
+        int wet = (int)(32.0f + tr->reverb_mix * 90.0f + 0.5f);
+        if (wet < 24) wet = 24;
+        if (wet > 85) wet = 85;
+        v->wet = (uint8_t)wet;
+    }
+    {
+        /* Map BSF speed (x/sec, 16 x-units per part = 16 beats -> BPM = 60 * speed) */
+        int bpm = (int)(fix16_to_float(tr->speed) * 60.0f + 0.5f);
+        if (bpm < 40) bpm = 40;
+        if (bpm > 240) bpm = 240;
+        v->tempo = (uint16_t)bpm;
+    }
+    for (int sc = 0; sc < 16; sc++) {
+        v->scn[sc].tempo = v->tempo;
+        v->scn[sc].num = 4u;
+        v->scn[sc].den = 4u;
+        for (int k = 0; k < 16; k++) {
+            v->scn[sc].program[k] = 255u;
+            v->scn[sc].volume[k] = 104u;
+        }
+    }
+    snprintf(v->scn[0].name, sizeof(v->scn[0].name), "%.31s", tr->title);
+
+    /* Single-pass full-resolution extraction of pitch events & active voice DSP modes */
+    for (int p = 0; p < nparts && v->event_count < ORCH_MAX_EVENTS; p++) {
+        uint32_t base_tick = (uint32_t)p * PART_TICKS;
+        int cur_key[BSF_MAX_VOICES];
+        uint32_t cur_start[BSF_MAX_VOICES];
+        for (int k = 0; k < BSF_MAX_VOICES; k++) { cur_key[k] = -1; cur_start[k] = 0u; }
+
+        for (int s = 0; s <= STEPS_PER_PART; s++) {
+            uint32_t tk = base_tick + (uint32_t)s * STEP_TICKS;
+            int nv = 0;
+            if (s < STEPS_PER_PART) {
+                float xf = -8.0f + (16.0f * (float)s) / (float)STEPS_PER_PART;
+                nv = bsf_eval_preview(fix16_from_float(xf), p, py, pm, BSF_MAX_VOICES);
+                if (nv > max_v) max_v = nv;
+                for (int k = 0; k < nv && k < BSF_MAX_VOICES; k++) {
+                    if (voice_mode[k] == 0u && pm[k] != 0u) voice_mode[k] = pm[k];
+                }
+            }
+            for (int k = 0; k < BSF_MAX_VOICES; k++) {
+                int nk = -1;
+                if (s < STEPS_PER_PART && k < nv && py[k] != FIX16_QUIET) {
+                    float yf = fix16_to_float(py[k]);
+                    /* 60.0 + 12.0 * yf is always positive (>20); +0.5f rounds to nearest MIDI note */
+                    int midi = (int)(60.0f + 12.0f * yf + 0.5f);
+                    if (midi < 24) midi = 24;
+                    if (midi > 108) midi = 108;
+                    nk = midi;
+                }
+                if (nk != cur_key[k]) {
+                    if (cur_key[k] >= 0 && v->event_count < ORCH_MAX_EVENTS) {
+                        OrchEvent *ev = &v->ev[v->event_count++];
+                        memset(ev, 0, sizeof(*ev));
+                        ev->track = (uint8_t)k;
+                        ev->key   = (uint8_t)cur_key[k];
+                        ev->vel   = 124u;
+                        ev->start_tick = cur_start[k];
+                        ev->dur_tick   = (tk > cur_start[k]) ? (tk - cur_start[k]) : STEP_TICKS;
+                    }
+                    cur_key[k] = nk;
+                    cur_start[k] = tk;
+                }
+            }
+        }
+    }
+
+    if (max_v < 1) max_v = 1;
+    if (max_v > BSF_MAX_VOICES) max_v = BSF_MAX_VOICES;
+    v->track_count = (uint8_t)max_v;
+
+    for (int i = 0; i < max_v; i++) {
+        OrchTrack *ot = &v->trk[i];
+        uint8_t vm = voice_mode[i];
+        uint8_t prog = bsf_mode_to_orch_prog(vm);
+        memset(ot, 0, sizeof(*ot));
+        snprintf(ot->name, sizeof(ot->name), "V%d %s", i + 1, bsf_mode_name(vm));
+        ot->channel = (uint8_t)((i % 16) + 1); /* Orchestra channels are 1..16 */
+        ot->volume  = 124u;
+        ot->pan     = (uint8_t)(64 + ((i & 1) ? 18 : -18));
+        ot->send    = (uint8_t)(40 + (int)(tr->reverb_mix * 72.0f));
+        if (ot->send > 120u) ot->send = 120u;
+        ot->program = prog;
+        ot->key_lo  = 0u;
+        ot->key_hi  = 127u;
+        ot->accent  = k_bsf_col[i & 7];
+
+        /* Port BSF DSP primitives directly onto Orchestra's 2-slot insert rack */
+        if (vm == BSF_MODE_ECHO) {
+            ot->ins0 = ORCH_INS_DELAY;
+            ot->p0[0] = (int16_t)((i & 1) ? 2 : 3);   /* dotted-8th / 8th stereo ping-pong */
+            ot->p0[1] = (int16_t)((i & 1) ? 52 : 58); /* feedback % */
+            ot->p0[2] = (int16_t)((i & 1) ? 40 : 48); /* wet mix % */
+            ot->ins1 = ORCH_INS_REVERB;
+            ot->p1[0] = 88;  /* send */
+            ot->p1[1] = 72;  /* room */
+            ot->p1[2] = 38;  /* damping */
+            ot->p1[3] = 58;  /* wet */
+            ot->send  = 88u;
+        } else if (vm == BSF_MODE_RVB) {
+            ot->ins0 = ORCH_INS_CHORUS;
+            ot->p0[0] = 16;  /* 16 ms shimmer base */
+            ot->p0[1] = 5;   /* depth */
+            ot->p0[2] = 6;   /* 0.6 Hz LFO */
+            ot->p0[3] = 45;  /* mix % */
+            ot->ins1 = ORCH_INS_REVERB;
+            ot->p1[0] = 112; /* high cathedral send */
+            ot->p1[1] = 84;  /* large room */
+            ot->p1[2] = 30;  /* bright tail */
+            ot->p1[3] = 74;  /* lush wet */
+            ot->send  = 112u;
+        } else if (vm == BSF_MODE_LPF) {
+            ot->ins0 = ORCH_INS_EQ;
+            ot->p0[0] = 0;    /* LPF */
+            ot->p0[1] = 480;  /* cutoff Hz */
+            ot->p0[2] = 180;  /* Q = 1.80 */
+            ot->p0[3] = 0;
+            ot->send  = 22u;  /* tight dry bass */
+        } else if (vm == BSF_MODE_HPF) {
+            ot->ins0 = ORCH_INS_EQ;
+            ot->p0[0] = 1;    /* HPF */
+            ot->p0[1] = 2400; /* cutoff Hz */
+            ot->p0[2] = 120;  /* Q = 1.20 */
+            ot->p0[3] = 0;
+        } else if (vm == BSF_MODE_BPF) {
+            ot->ins0 = ORCH_INS_EQ;
+            ot->p0[0] = 2;    /* BPF */
+            ot->p0[1] = 1200; /* center Hz */
+            ot->p0[2] = 220;  /* Q = 2.20 */
+            ot->p0[3] = 0;
+        } else if (vm == BSF_MODE_SAT) {
+            ot->ins0 = ORCH_INS_SAT;
+            ot->p0[0] = 35;   /* warm drive */
+            ot->ins1 = ORCH_INS_EQ;
+            ot->p1[0] = 0;    /* LPF */
+            ot->p1[1] = 1600;
+            ot->p1[2] = 90;
+            ot->p1[3] = 0;
+        } else if (vm == BSF_MODE_PNO) {
+            ot->ins0 = ORCH_INS_EQ;
+            ot->p0[0] = 3;    /* warm body peak */
+            ot->p0[1] = 420;
+            ot->p0[2] = 80;
+            ot->p0[3] = 2;
+            ot->ins1 = ORCH_INS_CHORUS;
+            ot->p1[0] = 12;
+            ot->p1[1] = 2;
+            ot->p1[2] = 3;
+            ot->p1[3] = 18;
+        }
+        orch_resolve_track(ot);
+    }
+
+    /* Sort events by start_tick for deterministic chase_on & SMF Type-1 export */
+    for (uint32_t i = 1u; i < v->event_count; i++) {
+        OrchEvent key = v->ev[i];
+        uint32_t j = i;
+        while (j > 0u && v->ev[j - 1u].start_tick > key.start_tick) {
+            v->ev[j] = v->ev[j - 1u];
+            j--;
+        }
+        v->ev[j] = key;
+    }
+
+    v->loop_tick = (uint32_t)nparts * PART_TICKS;
+    v->selected = (int8_t)orch_find_lead_track(v);
+    gst_seq_end();
+
+    wa_set_reverb(1, (float)v->room / 100.0f, (float)v->damping / 100.0f,
+                  (float)v->feedback / 100.0f, (float)v->wet / 100.0f);
+    lc_insert_reset();
+    gst_rt_return_zero();
+    gst_insert_touch();
+    orch_status_ok();
+
+    char st[64];
+    snprintf(st, sizeof(st), "BSF: %.48s", tr->title);
+    orch_status_set(st);
+    synth_set_orch_mode(st);
+    return 1;
+}
+
 int orch_cmd_play(void)
 {
     OrchView *v = gst_view();
     orch_check(v != 0, __LINE__);
     orch_check(v->state <= ORCH_GST_PLAYING, __LINE__);
+    audio_nexus_ensure_started();
+    audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_ORCH);
+    if (v && v->state == ORCH_GST_NULL) (void)gst_rt_boot(48000u);
+    if (v && v->state == ORCH_GST_READY) (void)gst_rt_set_state(ORCH_GST_PAUSED);
     return gst_rt_set_state(ORCH_GST_PLAYING);
 }
 int orch_cmd_stop(void)

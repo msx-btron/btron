@@ -1,5 +1,5 @@
-#ifndef MEDIA_GST_RT_H
-#define MEDIA_GST_RT_H
+#ifndef MEDIA_ORCH_RT_H
+#define MEDIA_ORCH_RT_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -222,6 +222,7 @@ uint64_t gst_rt_running_ns(void);
 int  orchestra_dispatch_midi_event(int in_port, uint8_t status, uint8_t d1, uint8_t d2);
 void orchestra_audio_tick(void);
 void orchestra_audio_service(uint32_t now_us);
+void orch_rt_render_frames(int16_t *out_pcm, size_t frames);
 void gst_rt_panic(void);
 void gst_rt_stop_voices(void);
 int  gst_rt_export_wav(const char *path);

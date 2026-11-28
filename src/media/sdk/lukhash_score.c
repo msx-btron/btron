@@ -5,7 +5,7 @@
  * 112 BPM, 4/4, 24 measures, E minor.
  */
 #include "lukhash_score.h"
-#include "../sdk/lilcu64_score.h"
+#include "bsound_score.h"
 
 typedef struct LukNote {
     uint16_t step;

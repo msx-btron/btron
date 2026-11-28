@@ -49,6 +49,8 @@ typedef enum {
     AUDIO_NEXUS_CMD_LC_PLAY,     /* arg0=track_num (1..4) */
     AUDIO_NEXUS_CMD_LC_STOP,
     AUDIO_NEXUS_CMD_LC_MUTE,
+    AUDIO_NEXUS_CMD_ORCH_PLAY,
+    AUDIO_NEXUS_CMD_ORCH_STOP,
     AUDIO_NEXUS_CMD_FLUSH
 } AudioNexusCmdType;
 
@@ -95,8 +97,12 @@ typedef struct {
 /* Lifecycle & async task management */
 int  audio_nexus_init(uint32_t sample_rate);
 int  audio_nexus_start_task(void);
+void audio_nexus_ensure_started(void);
 void audio_nexus_stop_task(void);
 bool audio_nexus_is_async(void);
+
+/* Exclusive engine handoff: stops all engines other than `keep` and flushes HW queue */
+void audio_nexus_stop_all_except(AudioNexusEngine keep);
 
 /* Non-blocking UI -> Audio Actor command post (0 = ok, -1 = refused/full) */
 int  audio_nexus_post_cmd(const AudioNexusCmd *cmd);

@@ -5,7 +5,8 @@
  */
 
 #include <media/synth.h>
-#include <media/gst_rt.h>
+#include <media/orch_rt.h>
+#include <media/orchestra.h>
 #include <media/audio_nexus.h>
 #include <btron/bsf.h>
 #include <btron/apps.h>
@@ -16,8 +17,8 @@
 #include <btron/troncode.h>
 #include <btron/event.h>
 #include <btron/libc_shim.h>
-#include "lilcu64_synth.h"
-#include "lilcu64_score.h"
+#include "bsound_synth.h"
+#include "bsound_score.h"
 #include <math.h>
 #include <string.h>
 #include <stdio.h>
@@ -577,16 +578,27 @@ static void synth_exec_cmd(int cmd) {
             if (s_synth_wnd) cls_wnd(s_synth_wnd);
             return;
         case SCMD_PLAY_TOGGLE:
-            if (s_lc_track > 0) {
-                if (lilcu64_synth_get_active_track() == s_lc_track) lilcu64_synth_stop_track();
-                else lilcu64_synth_play_track(s_lc_track);
+            audio_nexus_ensure_started();
+            if (s_orch_mode) {
+                OrchView *ov = gst_view();
+                if (ov && ov->state == ORCH_GST_PLAYING) (void)orch_cmd_stop();
+                else (void)orch_cmd_play();
+            } else if (s_lc_track > 0) {
+                if (lilcu64_synth_get_active_track() == s_lc_track) {
+                    lilcu64_synth_stop_track();
+                } else {
+                    audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
+                    lilcu64_synth_play_track(s_lc_track);
+                }
             } else {
+                if (!bsf_is_playing()) audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_BSF);
                 bsf_toggle_play();
             }
             cassette_notify_bsf_state();
             break;
         case SCMD_STOP:
-            if (s_lc_track > 0) lilcu64_synth_stop_track();
+            if (s_orch_mode) (void)orch_cmd_stop();
+            else if (s_lc_track > 0) lilcu64_synth_stop_track();
             else bsf_stop();
             cassette_notify_bsf_state();
             break;
@@ -594,10 +606,13 @@ static void synth_exec_cmd(int cmd) {
             if (s_lc_track > 0) {
                 int nt = (s_lc_track > 1) ? (s_lc_track - 1) : 4;
                 s_lc_track = nt;
+                audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
                 lilcu64_synth_play_track(nt);
                 s_plot_dirty = true;
             } else if (t && ntracks > 0) {
                 int nt = (t->track_idx - 1 + ntracks) % ntracks;
+                s_orch_mode = false;
+                audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_BSF);
                 (void)bsf_select_track(nt, 0);
                 s_plot_dirty = true;
                 cassette_notify_bsf_state();
@@ -607,10 +622,13 @@ static void synth_exec_cmd(int cmd) {
             if (s_lc_track > 0) {
                 int nt = (s_lc_track < 4) ? (s_lc_track + 1) : 1;
                 s_lc_track = nt;
+                audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_LILCU64);
                 lilcu64_synth_play_track(nt);
                 s_plot_dirty = true;
             } else if (t && ntracks > 0) {
                 int nt = (t->track_idx + 1) % ntracks;
+                s_orch_mode = false;
+                audio_nexus_stop_all_except(AUDIO_NEXUS_ENGINE_BSF);
                 (void)bsf_select_track(nt, 0);
                 s_plot_dirty = true;
                 cassette_notify_bsf_state();
@@ -1353,6 +1371,7 @@ WND *open_synth_window(void) {
         return s_synth_wnd;
     }
     (void)bsf_init(BSF_SAMPLE_RATE);
+    audio_nexus_ensure_started();
 
     H win_x = 460;
     H win_y = 60;

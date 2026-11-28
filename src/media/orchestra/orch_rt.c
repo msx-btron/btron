@@ -1,11 +1,11 @@
 /* Closed real-time chain. No GObject, no loader, no malloc on the audio path. */
-#include <media/gst_rt.h>
+#include <media/orch_rt.h>
 #include <media/orch_chk.h>
 #include <drivers/virtio/virtio.h>
-#include "lilcu64_wa.h"
-#include "lilcu64_score.h"
-#include "lilcu64_synth.h"
-#include "lilcu64_insert.h"
+#include "bsound_wa.h"
+#include "bsound_score.h"
+#include "bsound_synth.h"
+#include "bsound_insert.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -1251,6 +1251,54 @@ void orchestra_audio_tick(void)
     (void)gst_rt_wcet_us();
     (void)gst_rt_period_us();
 }
+void orch_rt_render_frames(int16_t *out_pcm, size_t frames)
+{
+    size_t done = 0;
+    if (!out_pcm || frames == 0) return;
+    if (g.state != ORCH_GST_PLAYING || s_export || s_sticky) {
+        memset(out_pcm, 0, frames * 2u * sizeof(int16_t));
+        return;
+    }
+    while (done < frames) {
+        size_t n = frames - done;
+        if (n > (size_t)ORCH_Q) n = (size_t)ORCH_Q;
+        uint32_t prefix = g.event_count;
+        if (prefix > 4096u) prefix = 4096u;
+        latch_try();
+        slots_expire(s_slot, g.npos, 1);
+        if (s_arm) {
+            clock_block(g.npos, 1, s_slot);
+            chase_on(s_slot, g.ev_live, g.npos, (int)n, prefix, 1);
+            s_arm = 0;
+        } else {
+            clock_block(g.npos, 0, s_slot);
+        }
+        chase_on(s_slot, g.ev_live, g.npos, (int)n, prefix, 0);
+        chase_off(s_slot, g.ev_live, g.npos, (int)n, prefix);
+        ring_apply(s_slot, g.npos);
+        render_graph(g.npos, s_slot, (int)n);
+        memcpy(out_pcm + done * 2u, s_pcm, n * 2u * sizeof(int16_t));
+        chain_result(ORCH_OK, 0, 0);
+        g.npos += (uint64_t)n;
+        if (g.loop_tick > 0u) {
+            uint64_t end = gst_sample_of_tick(g.loop_tick, fs_now(), bpm_fix(g.tempo), den_fix(g.den));
+            if (end > 0ull && g.npos >= end) {
+                memset(g.ev_live, 0, sizeof g.ev_live);
+                release_all_slots();
+                ring_clear();
+                g.npos = 0;
+                s_arm = 1;
+                s_minit = s_binit = 0;
+                s_mlast = s_blast = 0;
+                if (s_booted) wa_set_clock_samples(0);
+                if (g.home_gen < 4294967295u) g.home_gen++;
+            }
+        }
+        done += n;
+    }
+    (void)gst_rt_wcet_us();
+    (void)gst_rt_period_us();
+}
 static uint32_t queued_frames(void)
 {
     uint32_t b;
@@ -1441,14 +1489,36 @@ int gst_rt_set_state(int target)
         gst_rt_shutdown();
         return 1;
     }
-    if (!s_booted) return 0;
+    if (!s_booted) {
+        if (target == ORCH_GST_PLAYING) {
+            if (!gst_rt_boot(48000u)) return 0;
+            cur = (int)g.state;
+        } else {
+            return 0;
+        }
+    }
     if (target == cur) return 1;
     if (target == ORCH_GST_PLAYING) {
+        uint32_t rate = fs_now();
         if (cur != ORCH_GST_READY && cur != ORCH_GST_PAUSED) return 0;
+        if (!virtio_sound_is_ready()) {
+            (void)virtio_sound_open(rate, 2);
+        }
         if (!virtio_sound_is_ready() || gst_rt_wcet_us() > gst_rt_period_us()) {
             orch_status_hold("play");
             return 0;
         }
+        /* Re-claim shared B-Sound DSP engine & sync rate after Cassette/Synth/LilCu64 */
+        s_sticky = 0;
+        lilcu64_set_audio_owner(1);
+        wa_init(rate);
+        lilcu64_synth_set_rate(rate);
+        wa_set_reverb(1, (float)g.room / 100.0f, (float)g.damping / 100.0f,
+                      (float)g.feedback / 100.0f, (float)g.wet / 100.0f);
+        lc_set_score_base(0.0);
+        memset(g.ev_live, 0, sizeof g.ev_live);
+        release_all_slots();
+        latch_copy();
         wa_set_clock_samples((int64_t)g.npos);
         g.state = ORCH_GST_PLAYING;
         s_arm = 1;
